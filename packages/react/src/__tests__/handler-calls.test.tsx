@@ -117,6 +117,7 @@ function calls(r, ids) {
     getScrollMetrics: () => r.getScrollMetrics(ids.scroller),
     getScrollOffset: () => r.getScrollOffset(ids.scroller),
     getSelectedText: () => r.getSelectedText(),
+    getSvgMarkup: () => r.getSvgMarkup(ids.box),
     getSyntaxCacheStats: () => r.getSyntaxCacheStats(),
     getTextSelection: () => r.getTextSelection(ids.field),
     getWindowSize: () => r.getWindowSize(),

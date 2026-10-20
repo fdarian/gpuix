@@ -15,6 +15,12 @@
 //! resvg ignores the `pathLength` attribute, so every dash that depends on it
 //! is turned into absolute user units against the shape's measured length.
 //!
+//! A shape's `style` may name CSS animations. Their keyframes drive the SVG
+//! properties CSS animates (`strokeDashoffset`, `fill`, `r`...) and their values
+//! are written over the shape's own attributes and over its `motion`, as an
+//! animation beats a presentation attribute. A shape is never built, so the
+//! `<svg>` advances these animations while it writes its markup.
+//!
 //! resvg knows only SVG's own colours, so a `fill` or `stroke` that needs the
 //! element's context (`light-dark()`, `color-mix()`, `color()`) is resolved here,
 //! with the `<svg>`'s, and written as `rgba()`.
@@ -32,7 +38,9 @@ use super::svg_path::{
     PathData,
 };
 use crate::color::ColorContext;
-use crate::motion::{MotionState, SvgMotion};
+use crate::motion::{
+    CssAnimations, KeyframesRegistry, MotionState, ParentFont, Subject, SvgMotion, SvgSource,
+};
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
 
@@ -80,7 +88,31 @@ struct Node<'a> {
     /// has no tag, props or children of its own.
     text: Option<&'a str>,
     motion: Option<SvgMotion>,
+    /// The attributes its CSS animations write, over `motion` and its own.
+    css: Vec<(&'static str, String)>,
     children: Vec<Node<'a>>,
+}
+
+/// What an `<svg>` needs from the frame to write its markup.
+pub(crate) struct Frame<'a> {
+    pub motion_states: &'a HashMap<u64, MotionState>,
+    pub animations: &'a mut CssAnimations,
+    pub keyframes: &'a KeyframesRegistry,
+    /// The `<svg>`'s own colours and font, which its shapes inherit.
+    pub colors: &'a ColorContext,
+    pub font: &'a ParentFont,
+    /// What the animations of the `<svg>` itself write on the root, where every
+    /// shape below inherits it.
+    pub host: Vec<(&'static str, String)>,
+    pub now: Instant,
+}
+
+/// What the shapes above a node pass down.
+struct Above<'a> {
+    colors: ColorContext,
+    font: ParentFont,
+    /// Their props, the nearest last.
+    props: Vec<&'a HashMap<String, Value>>,
 }
 
 /// The serialised markup of every `<svg>` with children, reused until a
@@ -108,17 +140,30 @@ impl SvgTrees {
         &mut self,
         tree: &RetainedTree,
         svg_id: u64,
-        motion_states: &HashMap<u64, MotionState>,
-        colors: &ColorContext,
-        now: Instant,
+        frame: Frame,
     ) -> Option<Arc<str>> {
         let element = tree.elements.get(&svg_id)?;
-        let children = nodes(tree, "svg", &element.children, motion_states, now);
+        let mut frame = frame;
+        let mut above = Above {
+            colors: *frame.colors,
+            font: frame.font.clone(),
+            props: vec![element.custom_props()],
+        };
+        let children = nodes(tree, "svg", &element.children, &mut frame, &mut above);
         if children.is_empty() {
             self.cache.remove(&svg_id);
             return None;
         }
-        let animation = animation_key(&children);
+        let colors = frame.colors;
+        let root = Node {
+            tag: "svg",
+            props: element.custom_props(),
+            text: None,
+            motion: None,
+            css: frame.host,
+            children,
+        };
+        let animation = animation_key(std::slice::from_ref(&root));
         if let Some(cached) = self.cache.get(&svg_id) {
             if cached.revision == element.subtree_revision
                 && cached.animation == animation
@@ -127,13 +172,6 @@ impl SvgTrees {
                 return Some(cached.markup.clone());
             }
         }
-        let root = Node {
-            tag: "svg",
-            props: element.custom_props(),
-            text: None,
-            motion: None,
-            children,
-        };
         let markup: Arc<str> = serialize(&root, colors).into();
         self.made += 1;
         self.cache.insert(
@@ -147,6 +185,11 @@ impl SvgTrees {
             },
         );
         Some(markup)
+    }
+
+    /// The markup `markup` last returned for `svg_id`, as the last frame wrote it.
+    pub(crate) fn current(&self, svg_id: u64) -> Option<Arc<str>> {
+        self.cache.get(&svg_id).map(|cached| cached.markup.clone())
     }
 
     /// Names the markup `markup` last returned for `svg_id`: it differs from the one before it
@@ -164,8 +207,8 @@ fn nodes<'a>(
     tree: &'a RetainedTree,
     parent: &str,
     ids: &[u64],
-    motion_states: &HashMap<u64, MotionState>,
-    now: Instant,
+    frame: &mut Frame,
+    above: &mut Above<'a>,
 ) -> Vec<Node<'a>> {
     ids.iter()
         .filter_map(|id| tree.elements.get(id))
@@ -180,6 +223,7 @@ fn nodes<'a>(
                     props: element.custom_props(),
                     text: Some(content),
                     motion: None,
+                    css: Vec::new(),
                     children: Vec::new(),
                 });
             }
@@ -190,17 +234,69 @@ fn nodes<'a>(
                 );
                 return None;
             }
+            let css = animate(element, frame, above);
+            let own = element
+                .style
+                .as_deref()
+                .map(|style| (above.colors.descend(style), above.font.descend(Some(style))));
+            let saved = own.map(|(colors, font)| {
+                (std::mem::replace(&mut above.colors, colors), std::mem::replace(&mut above.font, font))
+            });
+            above.props.push(element.custom_props());
+            let children = nodes(tree, &element.element_type, &element.children, frame, above);
+            above.props.pop();
+            if let Some((colors, font)) = saved {
+                above.colors = colors;
+                above.font = font;
+            }
             Some(Node {
                 tag: &element.element_type,
                 props: element.custom_props(),
                 text: None,
-                motion: motion_states
+                motion: frame
+                    .motion_states
                     .get(&element.id)
-                    .and_then(|state| state.visible_svg(now)),
-                children: nodes(tree, &element.element_type, &element.children, motion_states, now),
+                    .and_then(|state| state.visible_svg(frame.now)),
+                css,
+                children,
             })
         })
         .collect()
+}
+
+/// Advances the CSS animations of a shape to the frame and returns the
+/// attributes they write.
+fn animate(
+    element: &crate::retained_tree::RetainedElement,
+    frame: &mut Frame,
+    above: &Above,
+) -> Vec<(&'static str, String)> {
+    let style = element.style.as_deref();
+    if !frame.animations.wants(element.id, style) {
+        return Vec::new();
+    }
+    let none;
+    let declared = match style {
+        Some(style) => style,
+        None => {
+            none = StyleDesc::default();
+            &none
+        }
+    };
+    let subject = Subject::svg_shape(declared, SvgSource { own: element.custom_props(), ancestors: &above.props });
+    frame
+        .animations
+        .animate_shape(
+            element.id,
+            declared,
+            frame.keyframes,
+            &subject,
+            &above.colors,
+            &above.font,
+            frame.now,
+        )
+        .map(|values| values.svg_attributes())
+        .unwrap_or_default()
 }
 
 /// The string of a text node: React and Solid make a `text` element with
@@ -224,6 +320,7 @@ fn animation_key(nodes: &[Node]) -> u64 {
                         .hash(hasher);
                 }
             }
+            node.css.hash(hasher);
             visit(&node.children, hasher);
         }
     }
@@ -318,6 +415,9 @@ fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)>
             set(&mut written, name, text.clone());
         }
     }
+    for (name, text) in &node.css {
+        set(&mut written, name, text.clone());
+    }
 
     // The draw wins over the element's own `pathLength`, as it does in Framer.
     let dom_path_length = if node.motion.as_ref().is_some_and(|motion| motion.draw.is_some()) {
@@ -335,20 +435,26 @@ fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)>
         return written;
     };
     if let Some(draw) = draw {
-        set(
-            &mut written,
-            "stroke-dasharray",
-            format!(
-                "{} {}",
-                format_number(draw.length * length),
-                format_number(draw.spacing * length)
-            ),
-        );
-        set(
-            &mut written,
-            "stroke-dashoffset",
-            format_number(-draw.offset * length),
-        );
+        // An animation beats the motion's draw, as it beats everything it names.
+        let animated = |name: &str| node.css.iter().any(|(attribute, _)| *attribute == name);
+        if !animated("stroke-dasharray") {
+            set(
+                &mut written,
+                "stroke-dasharray",
+                format!(
+                    "{} {}",
+                    format_number(draw.length * length),
+                    format_number(draw.spacing * length)
+                ),
+            );
+        }
+        if !animated("stroke-dashoffset") {
+            set(
+                &mut written,
+                "stroke-dashoffset",
+                format_number(-draw.offset * length),
+            );
+        }
     } else if let Some(declared) = dom_path_length {
         let scale = length / declared;
         for name in ["stroke-dasharray", "stroke-dashoffset"] {
@@ -554,6 +660,7 @@ mod tests {
             props,
             text: None,
             motion: None,
+            css: Vec::new(),
             children,
         }
     }
@@ -883,6 +990,7 @@ mod tests {
             props: &NO_PROPS,
             text: Some(text),
             motion: None,
+            css: Vec::new(),
             children: vec![],
         }
     }
@@ -1132,10 +1240,61 @@ mod tests {
     }
 
     fn markup_of(tree: &RetainedTree) -> String {
-        SvgTrees::default()
-            .markup(tree, 1, &HashMap::new(), &ColorContext::root(Scheme::Light), Instant::now())
-            .map(|markup| markup.to_string())
-            .unwrap_or_default()
+        Animated::new().markup(tree)
+    }
+
+    /// An `<svg>` over a clock that the tests move by hand, with the CSS
+    /// animations and the keyframes its shapes may name.
+    struct Animated {
+        trees: SvgTrees,
+        animations: CssAnimations,
+        keyframes: KeyframesRegistry,
+        start: Instant,
+        at: std::time::Duration,
+    }
+
+    impl Animated {
+        fn new() -> Self {
+            Self {
+                trees: SvgTrees::default(),
+                animations: CssAnimations::default(),
+                keyframes: KeyframesRegistry::default(),
+                start: Instant::now(),
+                at: std::time::Duration::ZERO,
+            }
+        }
+
+        fn at(&mut self, millis: u64) -> &mut Self {
+            self.at = std::time::Duration::from_millis(millis);
+            self
+        }
+
+        fn markup(&mut self, tree: &RetainedTree) -> String {
+            self.markup_with(tree, Vec::new())
+        }
+
+        /// The markup with `host` written on the root, as the `<svg>`'s own animations do.
+        fn markup_with(&mut self, tree: &RetainedTree, host: Vec<(&'static str, String)>) -> String {
+            let colors = ColorContext::root(Scheme::Light);
+            let font = ParentFont::initial();
+            let motion = HashMap::new();
+            self.trees
+                .markup(
+                    tree,
+                    1,
+                    Frame {
+                        motion_states: &motion,
+                        animations: &mut self.animations,
+                        keyframes: &self.keyframes,
+                        colors: &colors,
+                        font: &font,
+                        host,
+                        now: self.start + self.at,
+                    },
+                )
+                .map(|markup| markup.to_string())
+                .unwrap_or_default()
+        }
     }
 
     #[test]
@@ -1230,5 +1389,111 @@ mod tests {
         };
         assert!(alpha(2.0, 5.0) > 200, "drawn half");
         assert_eq!(alpha(7.5, 5.0), 0, "undrawn half");
+    }
+
+    // ── CSS animations ───────────────────────────────────────────────
+
+    fn animated_circle(tree: &mut RetainedTree, animation: &str) {
+        tree.create_element(2, "circle".to_string());
+        tree.set_custom_prop(2, "r".to_string(), 5.into());
+        tree.set_style(
+            2,
+            Arc::new(serde_json::from_value(serde_json::json!({ "animation": animation })).unwrap()),
+        );
+        tree.append_child(1, 2);
+    }
+
+    #[test]
+    fn a_shape_is_written_with_the_values_its_css_animation_gives_it() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        animated_circle(&mut tree, "grow 1s linear");
+        let mut svg = Animated::new();
+        svg.keyframes.define("grow", r#"{ "to": { "r": 15 } }"#).unwrap();
+
+        assert!(svg.at(0).markup(&tree).contains(r#"<circle r="5"/>"#));
+        assert!(svg.at(500).markup(&tree).contains(r#"<circle r="10"/>"#));
+        assert!(svg.at(1500).markup(&tree).contains(r#"<circle r="5"/>"#), "no fill, so it ends where it began");
+    }
+
+    #[test]
+    fn the_markup_is_written_again_when_an_animation_moves_it_and_not_before() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        animated_circle(&mut tree, "grow 1s linear forwards");
+        let mut svg = Animated::new();
+        svg.keyframes.define("grow", r#"{ "to": { "r": 15 } }"#).unwrap();
+
+        svg.at(0).markup(&tree);
+        let first = svg.trees.generation(1);
+        svg.at(0).markup(&tree);
+        assert_eq!(svg.trees.generation(1), first, "nothing moved");
+        svg.at(500).markup(&tree);
+        assert_ne!(svg.trees.generation(1), first);
+        svg.at(2000).markup(&tree);
+        let ended = svg.trees.generation(1);
+        svg.at(3000).markup(&tree);
+        assert_eq!(svg.trees.generation(1), ended, "it holds its end value");
+    }
+
+    #[test]
+    fn a_css_animation_beats_the_shapes_motion_and_its_draw() {
+        let line = props(&[("x2", 100.into()), ("pathLength", 10.into())]);
+        let mut shape = node("line", &line, vec![]);
+        shape.motion = Some(SvgMotion {
+            attributes: vec![("stroke-width", "9".into())],
+            draw: Some(PathDraw { length: 0.5, offset: 0.1, spacing: 1.0 }),
+        });
+        shape.css = vec![("stroke-width", "3".into()), ("stroke-dasharray", "7 8".into())];
+        let svg = props(&[]);
+        let xml = serialize(&node("svg", &svg, vec![shape]));
+        assert!(xml.contains(r#"stroke-width="3""#), "{xml}");
+        assert!(xml.contains(r#"stroke-dasharray="7 8""#), "{xml}");
+        // The draw still sets what the animation does not name.
+        assert!(xml.contains(r#"stroke-dashoffset="-10""#), "{xml}");
+    }
+
+    #[test]
+    fn the_dom_path_length_scales_animated_dashes_too() {
+        let line = props(&[("x2", 100.into()), ("pathLength", 10.into())]);
+        let mut shape = node("line", &line, vec![]);
+        shape.css = vec![("stroke-dasharray", "2 1".into()), ("stroke-dashoffset", "-3".into())];
+        let svg = props(&[]);
+        let xml = serialize(&node("svg", &svg, vec![shape]));
+        assert!(xml.contains(r#"stroke-dasharray="20 10""#), "{xml}");
+        assert!(xml.contains(r#"stroke-dashoffset="-30""#), "{xml}");
+    }
+
+    #[test]
+    fn the_animations_of_the_svg_itself_are_written_on_its_root() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        tree.create_element(2, "circle".to_string());
+        tree.append_child(1, 2);
+        let mut svg = Animated::new();
+        let plain = svg.markup(&tree);
+        let first = svg.trees.generation(1);
+        let animated = svg.markup_with(&tree, vec![("stroke-width", "4".into())]);
+        assert!(animated.starts_with(r#"<svg xmlns="http://www.w3.org/2000/svg" stroke-width="4">"#), "{animated}");
+        assert!(!plain.contains("stroke-width"), "{plain}");
+        assert_ne!(svg.trees.generation(1), first, "a new root value is a new markup");
+    }
+
+    #[test]
+    fn a_group_that_animates_passes_its_values_to_the_shapes_in_it() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        tree.create_element(2, "g".to_string());
+        tree.set_style(
+            2,
+            Arc::new(serde_json::from_value(serde_json::json!({ "animation": "thick 1s linear" })).unwrap()),
+        );
+        tree.create_element(3, "path".to_string());
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        let mut svg = Animated::new();
+        svg.keyframes.define("thick", r#"{ "from": { "strokeWidth": 2 }, "to": { "strokeWidth": 6 } }"#).unwrap();
+        svg.at(0).markup(&tree);
+        assert!(svg.at(500).markup(&tree).contains(r#"<g stroke-width="4"><path/></g>"#));
     }
 }

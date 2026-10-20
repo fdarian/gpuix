@@ -1,0 +1,214 @@
+<!doctype html>
+<!--
+  Oracle for svg-keyframes.test.tsx: what headless Chrome computes for the SVG properties a CSS animation drives.
+  A case is an <svg> with a tree of shapes, the @keyframes it uses, and the element that animates (`animate`, an id;
+  `svg` is the <svg> itself). The animation is paused and its currentTime set to each of `times` (ms, including the
+  delay), and every `reads` entry is the computed value of a property on a node then (`prop` in CSS spelling). The
+  JSON carries the case as the test replays it: attributes and keyframes in the camelCase JS spells them, numbers
+  without units (this page writes `px` where a length takes one). An attribute that is not set reads `initial` while
+  the animation has no effect on it. Regenerate with
+
+    sh svg-keyframes-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/20px Menlo;color:#000}
+</style></head><body>
+<script>
+const LENGTHS = new Set(['strokeDashoffset', 'strokeWidth', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'width', 'height', 'fontSize', 'letterSpacing']);
+const kebab = (name) => name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+const cssValue = (prop, value) => {
+  if (prop === 'd') return /^path\(/.test(value) ? value : `path("${value}")`;
+  if (prop === 'strokeDasharray' && Array.isArray(value)) return value.map((n) => n + 'px').join(' ');
+  if (typeof value === 'number') return LENGTHS.has(prop) || prop === 'strokeDasharray' ? value + 'px' : String(value);
+  return String(value);
+};
+const keyframesCss = (all) => Object.entries(all).map(([name, frames]) =>
+  `@keyframes ${name}{${Object.entries(frames).map(([selector, block]) =>
+    `${selector}{${Object.entries(block).map(([p, v]) => `${kebab(p)}:${p === 'animationTimingFunction' ? v : cssValue(p, v)}`).join(';')}}`).join('')}}`).join('');
+
+const KEYFRAMES = {
+  draw: { from: { strokeDashoffset: 180 }, to: { strokeDashoffset: 0 } },
+  drawNear: { from: { strokeDashoffset: 7 }, to: { strokeDashoffset: 0 } },
+  dashes: { from: { strokeDasharray: '4 2' }, to: { strokeDasharray: '8 4' } },
+  dashesUneven: { from: { strokeDasharray: '4' }, to: { strokeDasharray: '8 2' } },
+  dashesArray: { from: { strokeDasharray: [10, 5] }, to: { strokeDasharray: [20, 10] } },
+  stroke: { from: { strokeWidth: 2, strokeOpacity: 1, fillOpacity: 1, opacity: 1 }, to: { strokeWidth: 10, strokeOpacity: 0.2, fillOpacity: 0.4, opacity: 0.5 } },
+  paint: { from: { fill: '#ff0000', stroke: 'rgb(0, 128, 0)' }, to: { fill: '#0000ff', stroke: 'hsl(300, 100%, 25%)' } },
+  strokeFromNone: { from: { stroke: 'none' }, to: { stroke: '#000000' } },
+  fillToNone: { from: { fill: '#ff0000' }, to: { fill: 'none' } },
+  circle: { from: { r: 5, cx: 20, cy: 20 }, to: { r: 25, cx: 80, cy: 60 } },
+  rect: { from: { x: 10, y: 10, width: 20, height: 10, rx: 0 }, to: { x: 50, y: 30, width: 60, height: 40, rx: 8 } },
+  ellipse: { from: { rx: 10, ry: 30 }, to: { rx: 40, ry: 10 } },
+  morph: { from: { d: 'M10 10 L50 10 L50 50' }, to: { d: 'M10 50 L90 10 L50 90' } },
+  morphRelative: { from: { d: 'M10 10 l40 0 l0 40' }, to: { d: 'M10 50 L90 10 L50 90' } },
+  morphUneven: { from: { d: 'M10 10 L50 10' }, to: { d: 'M10 50 L90 10 L50 90' } },
+  hostPaint: { from: { strokeWidth: 2, fill: '#ff0000', strokeDashoffset: 10 }, to: { strokeWidth: 6, fill: '#0000ff', strokeDashoffset: 0 } },
+  toWidth: { to: { strokeWidth: 10 } },
+  toRadius: { to: { r: 30 } },
+  fromRadius: { from: { r: 30 } },
+  middle: { '50%': { r: 20 } },
+  threeStops: { '0%': { r: 5 }, '25%': { r: 25 }, '100%': { r: 10 } },
+  eased: { from: { r: 5, animationTimingFunction: 'ease-in' }, '50%': { r: 25, animationTimingFunction: 'steps(2, end)' }, to: { r: 45 } },
+  stops: { from: { stopColor: '#ff0000', stopOpacity: 1 }, to: { stopColor: '#0000ff', stopOpacity: 0.2 } },
+  miter: { from: { strokeMiterlimit: 1 }, to: { strokeMiterlimit: 10 } },
+  type: { from: { fontSize: 10, letterSpacing: 0 }, to: { fontSize: 30, letterSpacing: 4 } },
+  first: { from: { r: 5, strokeWidth: 2 }, to: { r: 25, strokeWidth: 8 } },
+  second: { from: { r: 40 }, to: { r: 10 } },
+  pulse: { '0%': { fillOpacity: 1 }, '50%': { fillOpacity: 0.2 }, '100%': { fillOpacity: 1 } },
+};
+
+const node = (id, tag, attrs, children, style) => ({ id, tag, attrs: attrs || {}, children: children || [], style });
+const path = (id, attrs, style) => node(id, 'path', Object.assign({ d: 'M10 50 L190 50', stroke: '#000000', strokeWidth: 4 }, attrs), [], style);
+const circle = (id, attrs, style) => node(id, 'circle', Object.assign({ cx: 50, cy: 50, r: 10 }, attrs), [], style);
+const DRAW_TIMES = [0, 250, 500, 750, 999, 1000];
+const dashoffset = [{ node: 't', prop: 'stroke-dashoffset', initial: '0px' }];
+
+// {name, keyframes, svg, nodes, animate, times, reads}
+const cases = [
+  { name: 'a path draws in with stroke-dashoffset', keyframes: ['draw'], nodes: [path('t', { strokeDasharray: 180 }, { animation: 'draw 1s linear' })], animate: 't', times: DRAW_TIMES, reads: dashoffset },
+  { name: 'stroke-dasharray lists blend item by item', keyframes: ['dashes'], nodes: [path('t', {}, { animation: 'dashes 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'stroke-dasharray', initial: 'none' }] },
+  { name: 'stroke-dasharray lists of different lengths repeat to a common length', keyframes: ['dashesUneven'], nodes: [path('t', {}, { animation: 'dashesUneven 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'stroke-dasharray', initial: 'none' }] },
+  { name: 'stroke-dasharray written as an array', keyframes: ['dashesArray'], nodes: [path('t', {}, { animation: 'dashesArray 1s linear' })], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'stroke-dasharray', initial: 'none' }] },
+  { name: 'the width and the opacities of a shape', keyframes: ['stroke'], nodes: [node('t', 'rect', { x: 10, y: 10, width: 50, height: 50, fill: '#336699', stroke: '#000000' }, [], { animation: 'stroke 1s linear' })], animate: 't', times: [0, 250, 500, 999],
+    reads: ['stroke-width', 'stroke-opacity', 'fill-opacity', 'opacity'].map((prop) => ({ node: 't', prop, initial: '1' })) },
+  { name: 'fill and stroke colours blend in sRGB', keyframes: ['paint'], nodes: [circle('t', { r: 20, fill: '#00ff00', stroke: '#000000' }, { animation: 'paint 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 255, 0)' }, { node: 't', prop: 'stroke', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'stroke from none', keyframes: ['strokeFromNone'], nodes: [circle('t', { r: 20 }, { animation: 'strokeFromNone 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'stroke', initial: 'none' }] },
+  { name: 'fill to none', keyframes: ['fillToNone'], nodes: [circle('t', { r: 20 }, { animation: 'fillToNone 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'the radius and centre of a circle', keyframes: ['circle'], nodes: [circle('t', {}, { animation: 'circle 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: ['r', 'cx', 'cy'].map((prop) => ({ node: 't', prop, initial: '0px' })) },
+  { name: 'the box of a rect', keyframes: ['rect'], nodes: [node('t', 'rect', { x: 0, y: 0, width: 10, height: 10 }, [], { animation: 'rect 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: ['x', 'y', 'width', 'height', 'rx'].map((prop) => ({ node: 't', prop, initial: '0px' })) },
+  { name: 'the radii of an ellipse', keyframes: ['ellipse'], nodes: [node('t', 'ellipse', { cx: 50, cy: 50, rx: 5, ry: 5 }, [], { animation: 'ellipse 1s linear' })], animate: 't', times: [0, 500, 999], reads: ['rx', 'ry'].map((prop) => ({ node: 't', prop, initial: '0px' })) },
+  { name: 'a path morphs between paths of the same commands', keyframes: ['morph'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'morph 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
+  { name: 'a relative path morphs after it is made absolute', keyframes: ['morphRelative'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'morphRelative 1s linear' })], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
+  { name: 'paths of different commands flip halfway', keyframes: ['morphUneven'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'morphUneven 1s linear' })], animate: 't', times: [0, 250, 499, 501, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
+  { name: 'values on the svg are inherited by its shapes', keyframes: ['hostPaint'], svg: { style: { animation: 'hostPaint 1s linear' } }, nodes: [path('t', { strokeWidth: undefined })], animate: 'svg', times: [0, 250, 500, 999],
+    reads: [{ node: 't', prop: 'stroke-width', initial: '1px', at: 'svg' }, { node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)', at: 'svg' }, { node: 't', prop: 'stroke-dashoffset', initial: '0px', at: 'svg' }] },
+  { name: 'values on a group are inherited by its shapes', keyframes: ['hostPaint'], nodes: [node('g', 'g', {}, [path('t', { strokeWidth: undefined })], { animation: 'hostPaint 1s linear' })], animate: 'g', times: [0, 500, 999],
+    reads: [{ node: 't', prop: 'stroke-width', initial: '1px', at: 'g' }, { node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)', at: 'g' }] },
+  { name: 'a shape animation beats the group it sits in', keyframes: ['hostPaint'], nodes: [node('g', 'g', { strokeWidth: 20 }, [path('t', { strokeWidth: 3 }, { animation: 'hostPaint 1s linear' })])], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'stroke-width', initial: '3px' }] },
+  { name: 'a missing 0% is the attribute of the shape', keyframes: ['toRadius'], nodes: [circle('t', { r: 10 }, { animation: 'toRadius 1s linear' })], animate: 't', times: [0, 500, 999, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a missing 100% is the attribute of the shape', keyframes: ['fromRadius'], nodes: [circle('t', { r: 10 }, { animation: 'fromRadius 1s linear' })], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a missing endpoint of an inherited property is the one the group gives', keyframes: ['toWidth'], nodes: [node('g', 'g', { strokeWidth: 4 }, [path('t', { strokeWidth: undefined }, { animation: 'toWidth 1s linear' })])], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'stroke-width', initial: '4px' }] },
+  { name: 'a missing endpoint of an inherited property with nothing above it is the initial value', keyframes: ['toWidth'], nodes: [path('t', { strokeWidth: undefined }, { animation: 'toWidth 1s linear' })], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'a property only the middle keyframe sets', keyframes: ['middle'], nodes: [circle('t', { r: 10 }, { animation: 'middle 1s linear' })], animate: 't', times: [0, 250, 500, 750, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'three keyframes', keyframes: ['threeStops'], nodes: [circle('t', {}, { animation: 'threeStops 1s linear' })], animate: 't', times: [0, 125, 250, 625, 999], reads: [{ node: 't', prop: 'r', initial: '0px' }] },
+  { name: 'a keyframe timing function eases to the next keyframe', keyframes: ['eased'], nodes: [circle('t', {}, { animation: 'eased 1s linear' })], animate: 't', times: [0, 125, 250, 499, 500, 750, 999], reads: [{ node: 't', prop: 'r', initial: '0px' }] },
+  { name: 'the animation timing function eases every interval', keyframes: ['circle'], nodes: [circle('t', {}, { animation: 'circle 1s ease-in-out' })], animate: 't', times: [0, 250, 500, 750, 999], reads: [{ node: 't', prop: 'r', initial: '0px' }] },
+  { name: 'the colour and opacity of a gradient stop', keyframes: ['stops'], defs: true, nodes: [node('d', 'defs', {}, [node('grad', 'linearGradient', { id: 'grad' }, [node('t', 'stop', { offset: 0, stopColor: '#00ff00' }, [], { animation: 'stops 1s linear' })])])], animate: 't', times: [0, 250, 500, 999],
+    reads: [{ node: 't', prop: 'stop-color', initial: 'rgb(0, 255, 0)' }, { node: 't', prop: 'stop-opacity', initial: '1' }] },
+  { name: 'the miter limit of a stroke', keyframes: ['miter'], nodes: [path('t', { d: 'M10 10 L50 10 L50 50' }, { animation: 'miter 1s linear' })], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'stroke-miterlimit', initial: '4' }] },
+  { name: 'the font size and letter spacing of text', keyframes: ['type'], nodes: [node('t', 'text', { x: 10, y: 50, text: 'hello' }, [], { animation: 'type 1s linear' })], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'font-size', initial: '16px' }, { node: 't', prop: 'letter-spacing', initial: 'normal' }] },
+  { name: 'a delay holds the attribute and nothing else', keyframes: ['drawNear'], nodes: [path('t', { strokeDashoffset: 3 }, { animation: 'drawNear 1s linear 500ms' })], animate: 't', times: [0, 250, 500, 750, 1000, 1499, 1500, 3000], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '3px' }] },
+  { name: 'fill-mode backwards shows the first keyframe in the delay', keyframes: ['drawNear'], nodes: [path('t', { strokeDashoffset: 3 }, { animation: 'drawNear 1s linear 500ms backwards' })], animate: 't', times: [0, 250, 500, 1000, 1499, 1500, 3000], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '3px' }] },
+  { name: 'fill-mode forwards keeps the last keyframe', keyframes: ['drawNear'], nodes: [path('t', { strokeDashoffset: 3 }, { animation: 'drawNear 1s linear 500ms forwards' })], animate: 't', times: [0, 250, 500, 1000, 1499, 1500, 3000], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '3px' }] },
+  { name: 'fill-mode both', keyframes: ['drawNear'], nodes: [path('t', { strokeDashoffset: 3 }, { animation: 'drawNear 1s linear 500ms both' })], animate: 't', times: [0, 250, 1000, 3000], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '3px' }] },
+  { name: 'a negative delay starts part-way', keyframes: ['drawNear'], nodes: [path('t', {}, { animation: 'drawNear 1s linear -500ms' })], animate: 't', times: [0, 250, 499], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '0px' }] },
+  { name: 'alternate iterations run back', keyframes: ['drawNear'], nodes: [path('t', {}, { animation: 'drawNear 1s linear 2 alternate' })], animate: 't', times: [0, 500, 1000, 1500, 1999], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '0px' }] },
+  { name: 'reverse direction', keyframes: ['drawNear'], nodes: [path('t', {}, { animation: 'drawNear 1s linear reverse' })], animate: 't', times: [0, 250, 750, 999], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '0px' }] },
+  { name: 'a fractional iteration count ends part-way', keyframes: ['drawNear'], nodes: [path('t', {}, { animation: 'drawNear 1s linear 1.5 forwards' })], animate: 't', times: [0, 750, 1250, 1499, 1500, 2500], reads: [{ node: 't', prop: 'stroke-dashoffset', initial: '0px' }] },
+  { name: 'the later of two animations wins a property both set', keyframes: ['first', 'second'], nodes: [circle('t', {}, { animation: 'first 1s linear, second 1s linear' })], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'two animations of different properties', keyframes: ['pulse', 'toRadius'], nodes: [circle('t', {}, { animation: 'pulse 1s linear, toRadius 2s linear' })], animate: 't', times: [0, 500, 1000, 1500], reads: [{ node: 't', prop: 'r', initial: '10px' }, { node: 't', prop: 'fill-opacity', initial: '1' }] },
+  { name: 'a shape with no style has no animation', keyframes: ['draw'], nodes: [path('t', {})], animate: null, times: [0], reads: dashoffset },
+];
+
+// A keyframe set with only a `from` or only a `to`, on a shape that sets nothing of the property: the missing endpoint
+// is the property's initial value, or the parent's for an inherited one. `initial` is what Chrome computes with no
+// animation, `discrete` that the property has no value to blend with the initial one and swaps halfway.
+const UNSET_TIMES = [0, 250, 499, 501, 750, 999];
+const UNSET = [
+  { prop: 'strokeDashoffset', tag: 'circle', value: 20, initial: '0px' },
+  { prop: 'strokeDasharray', tag: 'circle', value: '10 4', initial: 'none', discrete: true },
+  { prop: 'strokeWidth', tag: 'circle', value: 5, initial: '1px' },
+  { prop: 'strokeMiterlimit', tag: 'path', value: 9, initial: '4' },
+  { prop: 'fillOpacity', tag: 'circle', value: 0.2, initial: '1' },
+  { prop: 'strokeOpacity', tag: 'circle', value: 0.2, initial: '1' },
+  { prop: 'opacity', tag: 'circle', value: 0.2, initial: '1' },
+  { prop: 'fill', tag: 'circle', value: '#ff0000', initial: 'rgb(0, 0, 0)' },
+  { prop: 'stroke', tag: 'circle', value: '#ff0000', initial: 'none', discrete: true },
+  { prop: 'cx', tag: 'circle', value: 20, initial: '0px' },
+  { prop: 'cy', tag: 'circle', value: 20, initial: '0px' },
+  { prop: 'r', tag: 'circle', value: 20, initial: '0px' },
+  { prop: 'x', tag: 'rect', value: 20, initial: '0px' },
+  { prop: 'y', tag: 'rect', value: 20, initial: '0px' },
+  { prop: 'rx', tag: 'rect', value: 20, initial: 'auto', discrete: true },
+  { prop: 'ry', tag: 'rect', value: 20, initial: 'auto', discrete: true },
+  { prop: 'width', tag: 'rect', value: 20, initial: '0px', discrete: true },
+  { prop: 'height', tag: 'rect', value: 20, initial: '0px', discrete: true },
+  { prop: 'd', tag: 'path', value: 'M10 10 L50 50', initial: 'none', discrete: true },
+  { prop: 'fontSize', tag: 'text', value: 30, initial: '16px' },
+  { prop: 'letterSpacing', tag: 'text', value: 8, initial: 'normal' },
+  { prop: 'stopColor', tag: 'stop', value: '#ff0000', initial: 'rgb(0, 0, 0)' },
+  { prop: 'stopOpacity', tag: 'stop', value: 0.2, initial: '1' },
+  { prop: 'floodColor', tag: 'feFlood', value: '#ff0000', initial: 'rgb(0, 0, 0)' },
+  { prop: 'floodOpacity', tag: 'feFlood', value: 0.2, initial: '1' },
+];
+for (const unset of UNSET) {
+  for (const end of ['from', 'to']) {
+    const name = `unset-${end}-${unset.prop}`;
+    KEYFRAMES[name] = { [end]: { [unset.prop]: unset.value } };
+    const style = { animation: `${name} 1s linear` };
+    const without = (attrs) => Object.assign(attrs, { [unset.prop]: undefined });
+    const shape = {
+      circle: () => circle('t', without({}), style),
+      rect: () => node('t', 'rect', without({ x: 10, y: 10, width: 50, height: 50 }), [], style),
+      path: () => node('t', 'path', without({ d: 'M10 10 L50 10 L50 50', stroke: '#000000', strokeWidth: 4 }), [], style),
+      text: () => node('t', 'text', without({ x: 10, y: 50, text: 'hi' }), [], style),
+      stop: () => node('d', 'defs', {}, [node('grad', 'linearGradient', { id: 'grad' }, [node('t', 'stop', without({ offset: 0 }), [], style)])]),
+      feFlood: () => node('d', 'defs', {}, [node('f', 'filter', { id: 'f' }, [node('t', 'feFlood', without({}), [], style)])]),
+    }[unset.tag]();
+    cases.push({
+      name: `a missing ${end === 'from' ? '100%' : '0%'} of ${kebab(unset.prop)} nothing sets is its ${unset.discrete ? 'initial value, which swaps halfway' : 'initial value'}`,
+      keyframes: [name], nodes: [shape], animate: 't', times: UNSET_TIMES, reads: [{ node: 't', prop: kebab(unset.prop), initial: unset.initial }],
+    });
+  }
+}
+KEYFRAMES.growFont = { to: { fontSize: 40 } };
+KEYFRAMES.shrinkDashes = { to: { strokeDasharray: '10 4' } };
+cases.push(
+  { name: 'a missing endpoint of font-size is the one the group gives', keyframes: ['growFont'], nodes: [node('g', 'g', { fontSize: 20 }, [node('t', 'text', { x: 10, y: 50, text: 'hi' }, [], { animation: 'growFont 1s linear' })])], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'font-size', initial: '20px' }] },
+  { name: 'a missing endpoint of stroke-dasharray is the one the group gives', keyframes: ['shrinkDashes'], nodes: [node('g', 'g', { strokeDasharray: '4 2' }, [path('t', { strokeDasharray: undefined }, { animation: 'shrinkDashes 1s linear' })])], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'stroke-dasharray', initial: '4px, 2px' }] },
+  { name: 'a missing endpoint of r is not the group\'s', keyframes: ['toRadius'], nodes: [node('g', 'g', { r: 40 }, [circle('t', { r: undefined }, { animation: 'toRadius 1s linear' })])], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'r', initial: '0px' }] },
+);
+
+(async () => { try {
+  const sheet = document.createElement('style');
+  sheet.textContent = keyframesCss(KEYFRAMES);
+  document.head.appendChild(sheet);
+  const NS = 'http://www.w3.org/2000/svg';
+  const build = (spec, parent) => {
+    const el = document.createElementNS(NS, spec.tag);
+    el.setAttribute('id', spec.id);
+    for (const [name, value] of Object.entries(spec.attrs)) {
+      if (value === undefined) continue;
+      if (name === 'text') { el.textContent = value; continue; }
+      el.setAttribute(name === 'viewBox' ? name : kebab(name), String(value));
+    }
+    if (spec.style) Object.assign(el.style, spec.style);
+    for (const child of spec.children) build(child, el);
+    parent.appendChild(el);
+    return el;
+  };
+  const out = { keyframes: KEYFRAMES, cases: [] };
+  for (const spec of cases) {
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', '200'); svg.setAttribute('height', '100'); svg.setAttribute('viewBox', '0 0 200 100');
+    svg.setAttribute('id', 'svg');
+    if (spec.svg && spec.svg.style) Object.assign(svg.style, spec.svg.style);
+    document.body.appendChild(svg);
+    for (const child of spec.nodes) build(child, svg);
+    const byId = (id) => id === 'svg' ? svg : svg.querySelector('#' + id);
+    const target = spec.animate ? byId(spec.animate) : byId(spec.nodes[0].id);
+    const animations = target.getAnimations();
+    const record = { animations: animations.map((a) => a.animationName), samples: [] };
+    for (const time of spec.times) {
+      if (spec.animate) for (const a of animations) { a.pause(); a.currentTime = time; }
+      record.samples.push({ time, values: spec.reads.map((read) => getComputedStyle(byId(read.node)).getPropertyValue(read.prop)) });
+    }
+    out.cases.push({ name: spec.name, keyframes: spec.keyframes, svg: spec.svg || {}, nodes: spec.nodes, animate: spec.animate, times: spec.times, reads: spec.reads, record });
+    svg.remove();
+  }
+  const holder = document.createElement('div');
+  holder.setAttribute('data-oracle', JSON.stringify(out));
+  document.body.appendChild(holder);
+} catch (e) { const h = document.createElement('div'); h.setAttribute('data-error', String(e && e.stack)); document.body.appendChild(h); } })();
+</script></body></html>

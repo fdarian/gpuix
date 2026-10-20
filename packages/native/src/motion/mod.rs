@@ -30,7 +30,9 @@ use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
 pub(crate) use inline::{InlineStyles, Timeline};
 use css_animation::animates_width;
-pub(crate) use css_animation::{validate_animations, AnimationEvent, CssAnimations};
+pub(crate) use css_animation::{
+    validate_animations, AnimationEvent, AnimationStyle, CssAnimations, Subject, SvgSource,
+};
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use layout_flip::{drag_value_ids, LayoutEvent, LayoutFlips};
 pub(crate) use css_transition::{
@@ -90,10 +92,25 @@ impl PropKey {
         }
     }
 
+    /// [`parse`](Self::parse) for keyframes of a CSS animation.
+    fn parse_css(self, value: &Value, colors: &Colors) -> Result<AnimValue, String> {
+        match self {
+            Self::Style(prop) => prop.parse(value, colors),
+            Self::Svg(attr) => attr.parse_css(value, &colors.element),
+        }
+    }
+
     fn is_list_value(self, items: &[Value]) -> bool {
         match self {
             Self::Style(prop) => prop.is_list_value(items),
             Self::Svg(attr) => attr.is_list_value(items),
+        }
+    }
+
+    fn clamp_value(self, value: AnimValue) -> AnimValue {
+        match self {
+            Self::Style(prop) => prop.clamp_value(value),
+            Self::Svg(attr) => attr.clamp_value(value),
         }
     }
 }

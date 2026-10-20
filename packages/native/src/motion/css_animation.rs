@@ -25,13 +25,15 @@ use super::curve::{ease, parse_timing_function, Curve, Ease, Repeat, Transition}
 use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
 use super::property::{AnimProp, Scope};
+use super::svg_attr::{attribute_text, SvgAttr};
 use super::track::{Goal, Track};
 use super::value::{AnimValue, Colors, Interpolation, ParentFont};
 use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback};
-use super::{needs_layout, resolve_keyframes, InterpolateSize};
+use super::{needs_layout, resolve_keyframes, InterpolateSize, PropKey};
 use crate::color::ColorContext;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
+use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum IterationCount {
@@ -548,16 +550,91 @@ enum Underlying {
     /// A size the style leaves unset, which CSS computes to `auto` (`none` for
     /// a max).
     Keyword,
-    /// Inherited or otherwise unresolvable here: the endpoint is left out and
-    /// the nearest keyframe holds.
+    /// A style that only the parent can give (an inherited one): the endpoint is
+    /// left out and the nearest keyframe holds.
     Unknown,
 }
 
-fn underlying_of(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Underlying {
-    match prop.read(style, colors).or_else(|| prop.initial(Some(style), colors)) {
-        Some(value) => Underlying::Value(value),
-        None if prop.size_axis().is_some() => Underlying::Keyword,
-        None => Underlying::Unknown,
+/// What a name in a keyframe set means on an element, which is also what it
+/// animates: a layout element has styles, a shape inside an `<svg>` has the
+/// SVG properties, and the `<svg>` itself has both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PropTarget {
+    Element,
+    /// A name that is both a style and an SVG property (`opacity`, `width`,
+    /// `height`, `fontSize`) is the SVG one. A style with no SVG meaning is
+    /// ignored, as Chrome computes it but never paints it.
+    SvgShape,
+    /// The style properties, and the SVG properties that no style property
+    /// shares a name with. Those are written on the root `<svg>`, where the
+    /// shapes inherit them.
+    SvgHost,
+}
+
+impl PropTarget {
+    fn takes(self, key: PropKey) -> bool {
+        match (self, key) {
+            (Self::Element | Self::SvgHost, PropKey::Style(_)) | (Self::SvgShape, PropKey::Svg(_)) => true,
+            (Self::SvgHost, PropKey::Svg(attr)) => AnimProp::from_name(attr.name()).is_none(),
+            _ => false,
+        }
+    }
+}
+
+/// The attributes of an SVG element a keyframe set's missing endpoints read.
+pub(crate) struct SvgSource<'a> {
+    pub own: &'a HashMap<String, Value>,
+    /// The elements above it in the `<svg>`, the nearest last, which an inherited
+    /// property it sets nothing for comes from.
+    pub ancestors: &'a [&'a HashMap<String, Value>],
+}
+
+/// What an element's animations lay their values over.
+pub(crate) struct Subject<'a> {
+    /// The element's style beneath the animations: transitions and motion
+    /// included, so a missing endpoint is what the element shows without them.
+    style: &'a StyleDesc,
+    target: PropTarget,
+    svg: Option<SvgSource<'a>>,
+}
+
+impl<'a> Subject<'a> {
+    pub(crate) fn element(style: &'a StyleDesc) -> Self {
+        Self { style, target: PropTarget::Element, svg: None }
+    }
+
+    pub(crate) fn svg_host(style: &'a StyleDesc, own: &'a HashMap<String, Value>) -> Self {
+        Self { style, target: PropTarget::SvgHost, svg: Some(SvgSource { own, ancestors: &[] }) }
+    }
+
+    pub(crate) fn svg_shape(style: &'a StyleDesc, source: SvgSource<'a>) -> Self {
+        Self { style, target: PropTarget::SvgShape, svg: Some(source) }
+    }
+
+    fn underlying(&self, key: PropKey, colors: &Colors) -> Underlying {
+        match key {
+            PropKey::Style(prop) => {
+                match prop.read(self.style, colors).or_else(|| prop.initial(Some(self.style), colors)) {
+                    Some(value) => Underlying::Value(value),
+                    None if prop.size_axis().is_some() => Underlying::Keyword,
+                    None => Underlying::Unknown,
+                }
+            }
+            PropKey::Svg(attr) => {
+                let value = self.svg.as_ref().and_then(|source| {
+                    let own = attr.read_css(source.own, &colors.element);
+                    let inherited = || {
+                        attr.inherits()
+                            .then(|| {
+                                source.ancestors.iter().rev().find_map(|above| attr.read_css(above, &colors.element))
+                            })
+                            .flatten()
+                    };
+                    own.or_else(inherited).or_else(|| attr.initial_css(colors.font.size))
+                });
+                value.map_or(Underlying::Unknown, Underlying::Value)
+            }
+        }
     }
 }
 
@@ -573,7 +650,7 @@ struct Stop {
 
 enum PropPlan {
     Continuous {
-        prop: AnimProp,
+        key: PropKey,
         track: Track,
         /// The keyframes as the style wrote them. `track` runs through px where
         /// they are `auto` or a percentage, and the ends go back to the literal.
@@ -586,15 +663,15 @@ enum PropPlan {
 }
 
 impl PropPlan {
-    fn sample(&self, progress: f64) -> (AnimProp, Option<AnimValue>) {
+    fn sample(&self, progress: f64) -> (PropKey, Option<AnimValue>) {
         match self {
-            Self::Continuous { prop, track, literal, measured } => {
+            Self::Continuous { key, track, literal, measured } => {
                 let value = match (measured, progress) {
                     (true, progress) if progress <= 0.0 => literal[0].clone(),
                     (true, progress) if progress >= 1.0 => literal[literal.len() - 1].clone(),
-                    _ => prop.clamp_value(track.value_at(progress)),
+                    _ => key.clamp_value(track.value_at(progress)),
                 };
-                (*prop, Some(value))
+                (*key, Some(value))
             }
             Self::Discrete { prop, stops } => {
                 let last = &stops[stops.len() - 1];
@@ -612,7 +689,7 @@ impl PropPlan {
                         to.value.clone()
                     }
                 };
-                (*prop, value)
+                (PropKey::Style(*prop), value)
             }
         }
     }
@@ -623,6 +700,7 @@ impl PropPlan {
 /// out), the animation's own timing function, and what layout measured.
 #[derive(Clone, Debug, PartialEq)]
 struct PlanKey {
+    target: PropTarget,
     timing: Ease,
     /// What the keyframes' colours resolved in.
     colors: Colors,
@@ -662,15 +740,20 @@ struct Planner<'a> {
 }
 
 impl Planner<'_> {
-    fn endpoint(&mut self, prop: AnimProp, underlying: &Underlying) -> Endpoint {
+    fn endpoint(&mut self, key: PropKey, underlying: &Underlying) -> Endpoint {
         match underlying {
             Underlying::Value(value) => Endpoint::Value(Some(value.clone())),
             Underlying::Unknown => Endpoint::Absent,
-            Underlying::Keyword if matches!(prop, AnimProp::Width | AnimProp::Height) => {
-                Endpoint::Value(Some(AnimValue::Auto))
-            }
-            Underlying::Keyword if !self.allow_keywords => Endpoint::Value(None),
             Underlying::Keyword => {
+                let PropKey::Style(prop) = key else {
+                    unreachable!("only a style size is a keyword");
+                };
+                if matches!(prop, AnimProp::Width | AnimProp::Height) {
+                    return Endpoint::Value(Some(AnimValue::Auto));
+                }
+                if !self.allow_keywords {
+                    return Endpoint::Value(None);
+                }
                 if let Some(size) = self.frozen.get(&prop) {
                     return Endpoint::Value(Some(AnimValue::Number(*size)));
                 }
@@ -688,13 +771,13 @@ impl Planner<'_> {
 
     /// The stops of `prop`: its keyframes, with the underlying value standing in
     /// for a missing 0% or 100%. `None` while an endpoint waits for layout.
-    fn stops(&mut self, prop: AnimProp, underlying: &Underlying) -> Option<Vec<Stop>> {
+    fn stops(&mut self, key: PropKey, underlying: &Underlying) -> Option<Vec<Stop>> {
         let mut stops: Vec<Stop> = self
             .keyframes
             .frames
             .iter()
             .filter_map(|frame| {
-                let value = frame.value(prop, self.colors)?;
+                let value = frame.value(key, self.colors)?;
                 Some(Stop {
                     offset: frame.offset,
                     value: Some(value),
@@ -705,7 +788,7 @@ impl Planner<'_> {
         let missing_start = stops.first().is_some_and(|stop| stop.offset > 0.0);
         let missing_end = stops.last().is_some_and(|stop| stop.offset < 1.0);
         if missing_start || missing_end {
-            let value = match self.endpoint(prop, underlying) {
+            let value = match self.endpoint(key, underlying) {
                 Endpoint::Value(value) => Some(value),
                 Endpoint::Waiting => return None,
                 Endpoint::Absent => None,
@@ -732,14 +815,16 @@ impl Planner<'_> {
         Some(stops)
     }
 
-    fn plan_prop(&mut self, prop: AnimProp, underlying: &Underlying) -> Option<PropPlan> {
-        let stops = self.stops(prop, underlying).or_else(|| {
+    fn plan_prop(&mut self, key: PropKey, underlying: &Underlying) -> Option<PropPlan> {
+        let stops = self.stops(key, underlying).or_else(|| {
             self.waiting = true;
             None
         })?;
         let keyword = |stop: &Stop| matches!(stop.value, None | Some(AnimValue::Auto));
-        if prop.size_axis().is_some() && !self.allow_keywords && stops.iter().any(keyword) {
-            return Some(PropPlan::Discrete { prop, stops });
+        if let PropKey::Style(prop) = key {
+            if prop.size_axis().is_some() && !self.allow_keywords && stops.iter().any(keyword) {
+                return Some(PropPlan::Discrete { prop, stops });
+            }
         }
 
         let literal: Vec<AnimValue> = stops
@@ -747,6 +832,9 @@ impl Planner<'_> {
             .map(|stop| stop.value.clone().expect("an unset size is discrete unless keywords are allowed"))
             .collect();
         let resolved = if needs_layout(&literal) {
+            let PropKey::Style(prop) = key else {
+                unreachable!("only a style property is auto");
+            };
             self.reads_layout = true;
             let has_auto = literal.contains(&AnimValue::Auto);
             let Some(measurement) = self
@@ -774,12 +862,12 @@ impl Planner<'_> {
             segment_eases: Some(stops[..stops.len() - 1].iter().map(|stop| stop.timing.clone()).collect()),
             repeat: Repeat::default(),
         };
-        let name = prop.name();
+        let name = key.name();
         let built = Goal::keyframes(name, literal.iter().cloned().map(Some).collect()).and_then(|goal| {
             Track::keyframed(name, goal, literal.clone(), &resolved, Interpolation::Css, transition, self.now)
         });
         match built {
-            Ok(track) => Some(PropPlan::Continuous { prop, track, measured: literal != resolved, literal }),
+            Ok(track) => Some(PropPlan::Continuous { key, track, measured: literal != resolved, literal }),
             Err(error) => {
                 log::warn!("CSS animation cannot interpolate {name}: {error}");
                 None
@@ -794,7 +882,7 @@ struct Run {
     name: String,
     /// The registry's definition of `name` as of the last frame.
     keyframes: Arc<Keyframes>,
-    properties: Vec<AnimProp>,
+    properties: Vec<PropKey>,
     params: Animation,
     /// The animation's local time (its `currentTime`), the API controls and its id.
     clock: Playback,
@@ -933,24 +1021,27 @@ impl Run {
     fn values(
         &mut self,
         progress: f64,
-        underlying: &StyleDesc,
+        subject: &Subject,
         parent_colors: &ColorContext,
         parent_font: &ParentFont,
         measurement: Option<&Measurement>,
         allow_keywords: bool,
         now: Instant,
-    ) -> Vec<(AnimProp, Option<AnimValue>)> {
+    ) -> Vec<(PropKey, Option<AnimValue>)> {
         let reads_layout = self.plan.as_ref().is_none_or(|plan| plan.reads_layout);
-        let colors = Colors::inheriting(parent_colors, parent_font, Some(underlying));
+        let colors = Colors::inheriting(parent_colors, parent_font, Some(subject.style));
+        let properties: Vec<PropKey> = self
+            .properties
+            .iter()
+            .copied()
+            .filter(|key| subject.target.takes(*key))
+            .collect();
         let key = PlanKey {
+            target: subject.target,
             timing: self.params.timing.clone(),
             colors: colors.clone(),
             allow_keywords,
-            underlying: self
-                .properties
-                .iter()
-                .map(|prop| underlying_of(*prop, underlying, &colors))
-                .collect(),
+            underlying: properties.iter().map(|key| subject.underlying(*key, &colors)).collect(),
             measurement: measurement.copied().filter(|_| reads_layout),
         };
         if self.plan.as_ref().is_none_or(|plan| plan.key != key) {
@@ -965,11 +1056,10 @@ impl Run {
                 reads_layout: false,
                 waiting: false,
             };
-            let props = self
-                .properties
+            let props = properties
                 .iter()
                 .zip(&key.underlying)
-                .filter_map(|(prop, underlying)| planner.plan_prop(*prop, underlying))
+                .filter_map(|(key, underlying)| planner.plan_prop(*key, underlying))
                 .collect();
             let (reads_layout, waiting) = (planner.reads_layout, planner.waiting);
             self.plan = Some(Plan { key, props, reads_layout, waiting });
@@ -1020,11 +1110,34 @@ struct ElementState {
     config: Config,
     list: AnimationList,
     runs: Vec<Run>,
+    /// What the element's last update animated.
+    target: PropTarget,
+    /// Some animation was moving at the last update.
+    moving: bool,
 }
 
 impl ElementState {
     fn new() -> Self {
-        Self { config: Default::default(), list: AnimationList::default(), runs: Vec::new() }
+        Self {
+            config: Default::default(),
+            list: AnimationList::default(),
+            runs: Vec::new(),
+            target: PropTarget::Element,
+            moving: false,
+        }
+    }
+
+    /// Whether what the animations show can change without the style or the
+    /// clock moving: a run is still going, or its keyframes were defined or
+    /// redefined since it last read them.
+    fn shows_something_new(&self, registry: &KeyframesRegistry) -> bool {
+        self.moving
+            || self.runs.iter().any(|run| {
+                registry.get(&run.name).is_some_and(|keyframes| !Arc::ptr_eq(keyframes, &run.keyframes))
+            })
+            || self.list.0.iter().filter_map(|animation| animation.name.as_ref()).any(|name| {
+                registry.get(name).is_some() && !self.runs.iter().any(|run| run.name == *name)
+            })
     }
 
     fn sync_config(&mut self, id: u64, style: &StyleDesc) {
@@ -1086,14 +1199,25 @@ impl ElementState {
 
 /// The values of the animations running on an element, ready to lay over the
 /// style beneath them.
-pub(crate) struct AnimationStyle(Vec<(AnimProp, AnimValue)>);
+pub(crate) struct AnimationStyle {
+    style: Vec<(AnimProp, AnimValue)>,
+    svg: Vec<(SvgAttr, AnimValue)>,
+}
 
 impl AnimationStyle {
+    /// The SVG attributes the animations drive, as the XML writes them.
+    pub(crate) fn svg_attributes(&self) -> Vec<(&'static str, String)> {
+        self.svg
+            .iter()
+            .filter_map(|(attr, value)| Some((attr.attribute()?, attribute_text(value))))
+            .collect()
+    }
+
     /// Lays the animated values over `style`, except the properties a running
     /// transition holds: `style` already has the transition's value for them,
     /// and a transition beats an animation in the cascade.
     pub(crate) fn apply_to(self, style: &mut StyleDesc, transitions: Option<&TransitionStyle>) {
-        for (prop, value) in self.0 {
+        for (prop, value) in self.style {
             if transitions.is_some_and(|transitions| transitions.runs(prop)) {
                 continue;
             }
@@ -1117,7 +1241,7 @@ pub(crate) fn animates_width(style: &StyleDesc, registry: &KeyframesRegistry) ->
             .iter()
             .filter_map(|animation| animation.name.as_deref())
             .filter_map(|name| registry.get(name))
-            .any(|keyframes| keyframes.properties().contains(&AnimProp::Width))
+            .any(|keyframes| keyframes.properties().contains(&PropKey::Style(AnimProp::Width)))
     })
 }
 
@@ -1180,7 +1304,10 @@ impl CssAnimations {
                 });
             }
             if run.progress.is_some() {
-                covered.extend(run.properties.iter().copied().filter(|prop| scope.animates(*prop)));
+                covered.extend(run.properties.iter().filter_map(|key| match key {
+                    PropKey::Style(prop) if scope.animates(*prop) => Some(*prop),
+                    _ => None,
+                }));
             }
         }
         covered
@@ -1188,16 +1315,16 @@ impl CssAnimations {
 
     /// The second half of a frame, after [`advance`](Self::advance): the values
     /// of the animations. `declared` is the style [`advance`](Self::advance) read
-    /// the `animation*` values from, plus the transitions; `underlying` is the
-    /// style the animations lay over, transitions and motion included, which
-    /// supplies the endpoints a keyframe set leaves out. `inherited` is the
+    /// the `animation*` values from, plus the transitions; `subject` is what the
+    /// animations lay over, transitions and motion included, which supplies the
+    /// endpoints a keyframe set leaves out. `inherited` is the
     /// `interpolateSize` of the parent.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn update(
         &mut self,
         id: u64,
         declared: &StyleDesc,
-        underlying: &StyleDesc,
+        subject: &Subject,
         parent_colors: &ColorContext,
         parent_font: &ParentFont,
         measurement: Option<&Measurement>,
@@ -1206,16 +1333,17 @@ impl CssAnimations {
         now: Instant,
     ) -> Option<AnimationStyle> {
         let state = self.states.get_mut(&id).expect("advance made the state of this frame");
+        state.target = subject.target;
         let allow_keywords = InterpolateSize::declared(declared)
             .unwrap_or(inherited)
             .allows_keywords();
-        let mut values: BTreeMap<AnimProp, Option<AnimValue>> = BTreeMap::new();
+        let mut values: BTreeMap<PropKey, Option<AnimValue>> = BTreeMap::new();
         for run in &mut state.runs {
             if let Some(progress) = run.progress {
                 // Later in the list is higher in the cascade.
                 values.extend(run.values(
                     progress,
-                    underlying,
+                    subject,
                     parent_colors,
                     parent_font,
                     measurement,
@@ -1225,16 +1353,60 @@ impl CssAnimations {
             }
             self.active |= run.wants_frame(now);
         }
+        state.moving = state.runs.iter().any(|run| run.wants_frame(now));
 
         if state.runs.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
             self.states.remove(&id);
         }
-        let values: Vec<(AnimProp, AnimValue)> = values
-            .into_iter()
-            .filter(|(prop, _)| scope.animates(*prop))
-            .filter_map(|(prop, value)| Some((prop, value?)))
-            .collect();
-        (!values.is_empty()).then_some(AnimationStyle(values))
+        let mut animated = AnimationStyle { style: Vec::new(), svg: Vec::new() };
+        for (key, value) in values {
+            let Some(value) = value else {
+                continue;
+            };
+            match key {
+                PropKey::Style(prop) if scope.animates(prop) => animated.style.push((prop, value)),
+                PropKey::Svg(attr) => animated.svg.push((attr, value)),
+                PropKey::Style(_) => {}
+            }
+        }
+        (!animated.style.is_empty() || !animated.svg.is_empty()).then_some(animated)
+    }
+
+    /// A frame of a shape inside an `<svg>`: its animations advance and the SVG
+    /// properties they drive come back. A shape has no layout and starts no
+    /// transitions, so nothing waits between the two halves of the frame.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn animate_shape(
+        &mut self,
+        id: u64,
+        declared: &StyleDesc,
+        registry: &KeyframesRegistry,
+        subject: &Subject,
+        parent_colors: &ColorContext,
+        parent_font: &ParentFont,
+        now: Instant,
+    ) -> Option<AnimationStyle> {
+        self.advance(id, declared, registry, Scope::Element, now);
+        self.update(
+            id,
+            declared,
+            subject,
+            parent_colors,
+            parent_font,
+            None,
+            InterpolateSize::default(),
+            Scope::Element,
+            now,
+        )
+    }
+
+    /// The shapes inside an `<svg>` whose animations show something new next
+    /// frame. A shape is not built itself, so its `<svg>` has to be, to write it.
+    pub(crate) fn svg_shapes<'a>(&'a self, registry: &'a KeyframesRegistry) -> impl Iterator<Item = u64> + 'a {
+        self.states
+            .iter()
+            .filter(|(_, state)| state.target == PropTarget::SvgShape && state.shows_something_new(registry))
+            .map(|(id, _)| *id)
     }
 
     /// `id` is `display: none`, which takes it and everything below it out of
@@ -1594,7 +1766,7 @@ mod tests {
             if let Some(values) = self.animations.update(
                 1,
                 declared,
-                underlying,
+                &Subject::element(underlying),
                 &self.parent_colors,
                 &self.parent_font,
                 measurement,
@@ -1637,7 +1809,7 @@ mod tests {
             if let Some(values) = self.animations.update(
                 1,
                 declared,
-                &underlying,
+                &Subject::element(&underlying),
                 &self.parent_colors,
                 &self.parent_font,
                 None,
@@ -1648,6 +1820,23 @@ mod tests {
                 values.apply_to(&mut resolved, running.as_ref());
             }
             resolved
+        }
+
+        /// One frame of a shape inside an `<svg>` at `millis`: the SVG attributes
+        /// its animations write.
+        fn shape(
+            &mut self,
+            millis: u64,
+            declared: &StyleDesc,
+            own: &HashMap<String, Value>,
+            ancestors: &[&HashMap<String, Value>],
+        ) -> Vec<(&'static str, String)> {
+            let now = self.at(millis);
+            let subject = Subject::svg_shape(declared, SvgSource { own, ancestors });
+            self.animations
+                .animate_shape(1, declared, &self.registry, &subject, &self.parent_colors, &self.parent_font, now)
+                .map(|values| values.svg_attributes())
+                .unwrap_or_default()
         }
 
         fn events(&mut self) -> Seen {
@@ -2247,7 +2436,7 @@ mod tests {
             let values = frames.animations.update(
                 id,
                 declared,
-                declared,
+                &Subject::element(declared),
                 &frames.parent_colors,
                 &frames.parent_font,
                 None,
@@ -3336,5 +3525,319 @@ mod tests {
                 named(End, "fade", 2.0),
             ]
         );
+    }
+
+    // ── SVG properties ───────────────────────────────────────────────
+
+    fn attrs(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
+        pairs.iter().map(|(key, value)| (key.to_string(), value.clone())).collect()
+    }
+
+    fn attribute(written: &[(&'static str, String)], name: &str) -> String {
+        written
+            .iter()
+            .find(|(attribute, _)| *attribute == name)
+            .unwrap_or_else(|| panic!("{name} is not written: {written:?}"))
+            .1
+            .clone()
+    }
+
+    const DRAW: &str = r#"{ "from": { "strokeDashoffset": 100 }, "to": { "strokeDashoffset": 0 } }"#;
+
+    #[test]
+    fn keyframes_drive_the_svg_properties_of_a_shape() {
+        let mut frames = Frames::new();
+        frames.define("draw", DRAW);
+        let declared = fading("draw 1s linear forwards");
+        let own = attrs(&[]);
+        for (millis, expected) in [(0, "100"), (250, "75"), (500, "50"), (1000, "0")] {
+            let written = frames.shape(millis, &declared, &own, &[]);
+            assert_eq!(attribute(&written, "stroke-dashoffset"), expected, "at {millis}");
+        }
+        assert_eq!(
+            frames.events(),
+            [named(Start, "draw", 0.0), named(End, "draw", 1.0)]
+        );
+    }
+
+    #[test]
+    fn a_shape_animation_lists_its_shape_and_lists_for_the_api() {
+        let mut frames = Frames::new();
+        frames.define("draw", DRAW);
+        let declared = fading("draw 1s linear");
+        assert_eq!(frames.animations.svg_shapes(&frames.registry).count(), 0);
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        assert_eq!(only(&frames, 0).name, "draw");
+        // It is listed while it moves, and not once it has ended.
+        frames.shape(500, &declared, &attrs(&[]), &[]);
+        assert_eq!(frames.animations.svg_shapes(&frames.registry).collect::<Vec<_>>(), [1]);
+        frames.shape(2000, &declared, &attrs(&[]), &[]);
+        assert_eq!(frames.animations.svg_shapes(&frames.registry).count(), 0);
+        // New keyframes under the name bring it back, once.
+        frames.define("draw", r#"{ "to": { "strokeDashoffset": 5 } }"#);
+        assert_eq!(frames.animations.svg_shapes(&frames.registry).collect::<Vec<_>>(), [1]);
+        frames.shape(2100, &declared, &attrs(&[]), &[]);
+        assert_eq!(frames.animations.svg_shapes(&frames.registry).count(), 0);
+    }
+
+    #[test]
+    fn a_missing_endpoint_is_the_attribute_the_shape_has() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "to": { "r": 20 } }"#);
+        let declared = fading("grow 1s linear");
+        frames.shape(0, &declared, &attrs(&[("r", Value::from(10))]), &[]);
+        let written = frames.shape(500, &declared, &attrs(&[("r", Value::from(10))]), &[]);
+        assert_eq!(attribute(&written, "r"), "15");
+        // The attribute moving moves the animation's start.
+        let written = frames.shape(500, &declared, &attrs(&[("r", Value::from(0))]), &[]);
+        assert_eq!(attribute(&written, "r"), "10");
+    }
+
+    #[test]
+    fn an_inherited_property_starts_from_the_nearest_ancestor_that_sets_it() {
+        let mut frames = Frames::new();
+        frames.define("thick", r#"{ "to": { "strokeWidth": 10, "r": 10 } }"#);
+        let declared = fading("thick 1s linear");
+        let group = attrs(&[("strokeWidth", Value::from(2)), ("r", Value::from(99))]);
+        let svg = attrs(&[("strokeWidth", Value::from(100))]);
+        frames.shape(0, &declared, &attrs(&[]), &[&svg, &group]);
+        let written = frames.shape(500, &declared, &attrs(&[]), &[&svg, &group]);
+        assert_eq!(attribute(&written, "stroke-width"), "6");
+        // `r` is not inherited: it starts from its initial value, 0, and not from the group's.
+        assert_eq!(attribute(&written, "r"), "5");
+        // With nothing above, CSS's initial value is the start.
+        let written = frames.shape(500, &declared, &attrs(&[]), &[]);
+        assert_eq!(attribute(&written, "stroke-width"), "5.5");
+    }
+
+    #[test]
+    fn colours_blend_and_dashes_blend_item_by_item() {
+        let mut frames = Frames::new();
+        frames.define(
+            "mix",
+            r##"{ "from": { "fill": "#ff0000", "strokeDasharray": "4 2", "stroke": "none" },
+                  "to": { "fill": "#0000ff", "strokeDasharray": [8, 4], "stroke": "#000000" } }"##,
+        );
+        let declared = fading("mix 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let written = frames.shape(500, &declared, &attrs(&[]), &[]);
+        assert_eq!(attribute(&written, "stroke-dasharray"), "6 3");
+        assert!(attribute(&written, "fill").starts_with("rgba(127.5"), "{written:?}");
+        // `none` against a colour is not blended: it swaps halfway.
+        assert!(attribute(&written, "stroke").starts_with("rgba(0.000, 0.000, 0.000, 1"), "{written:?}");
+        let written = frames.shape(250, &declared, &attrs(&[]), &[]);
+        assert_eq!(attribute(&written, "stroke"), "none");
+    }
+
+    #[test]
+    fn a_missing_endpoint_of_an_unset_property_is_its_initial_value() {
+        let mut frames = Frames::new();
+        frames.define(
+            "to",
+            r##"{ "to": { "strokeDashoffset": 10, "r": 20, "fillOpacity": 0, "strokeWidth": 5, "stopColor": "#ff0000",
+                          "strokeMiterlimit": 10, "floodOpacity": 0, "cx": 20, "fontSize": 30 } }"##,
+        );
+        frames.define(
+            "from",
+            r##"{ "from": { "strokeDashoffset": 10, "r": 20, "fillOpacity": 0, "strokeWidth": 5, "stopColor": "#ff0000",
+                            "strokeMiterlimit": 10, "floodOpacity": 0, "cx": 20, "fontSize": 30 } }"##,
+        );
+        let at = |frames: &mut Frames, name: &str, millis| {
+            let declared = fading(&format!("{name} 1s linear"));
+            frames.shape(millis, &declared, &attrs(&[]), &[])
+        };
+        at(&mut frames, "to", 0);
+        let written = at(&mut frames, "to", 500);
+        for (name, expected) in [
+            ("stroke-dashoffset", "5"),
+            ("r", "10"),
+            ("fill-opacity", "0.5"),
+            ("stroke-width", "3"),
+            ("stroke-miterlimit", "7"),
+            ("flood-opacity", "0.5"),
+            ("cx", "10"),
+            ("font-size", "23"),
+        ] {
+            assert_eq!(attribute(&written, name), expected, "to, {name}");
+        }
+        assert!(attribute(&written, "stop-color").starts_with("rgba(127.500, 0.000, 0.000"), "{written:?}");
+        at(&mut frames, "from", 0);
+        let written = at(&mut frames, "from", 500);
+        for (name, expected) in [
+            ("stroke-dashoffset", "5"),
+            ("r", "10"),
+            ("fill-opacity", "0.5"),
+            ("stroke-width", "3"),
+            ("stroke-miterlimit", "7"),
+            ("flood-opacity", "0.5"),
+            ("cx", "10"),
+            ("font-size", "23"),
+        ] {
+            assert_eq!(attribute(&written, name), expected, "from, {name}");
+        }
+    }
+
+    #[test]
+    fn a_missing_endpoint_is_the_font_the_shape_inherits() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "to": { "fontSize": 40 } }"#);
+        let declared = fading("grow 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let own = attrs(&[("fontSize", Value::from(20))]);
+        let written = frames.shape(500, &declared, &own, &[]);
+        assert_eq!(attribute(&written, "font-size"), "30");
+        let group = attrs(&[("fontSize", Value::from(10))]);
+        let written = frames.shape(500, &declared, &attrs(&[]), &[&group]);
+        assert_eq!(attribute(&written, "font-size"), "25");
+    }
+
+    #[test]
+    fn a_keyword_initial_value_swaps_halfway_against_a_value() {
+        let mut frames = Frames::new();
+        frames.define(
+            "keywords",
+            r#"{ "to": { "strokeDasharray": [10, 4], "d": "M0 0 L10 10", "width": 20, "rx": 5 } }"#,
+        );
+        let declared = fading("keywords 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let before = frames.shape(499, &declared, &attrs(&[]), &[]);
+        let after = frames.shape(501, &declared, &attrs(&[]), &[]);
+        for (name, none, value) in [
+            ("stroke-dasharray", "none", "10 4"),
+            ("d", "none", "M 0 0 L 10 10"),
+            ("width", "auto", "20"),
+            ("rx", "auto", "5"),
+        ] {
+            assert_eq!(attribute(&before, name), none, "before, {name}");
+            assert_eq!(attribute(&after, name), value, "after, {name}");
+        }
+    }
+
+    #[test]
+    fn a_stroke_nothing_sets_is_none_and_a_fill_is_black() {
+        let mut frames = Frames::new();
+        frames.define("paint", r##"{ "to": { "stroke": "#ff0000", "fill": "#ff0000" } }"##);
+        let declared = fading("paint 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let written = frames.shape(250, &declared, &attrs(&[]), &[]);
+        assert_eq!(attribute(&written, "stroke"), "none");
+        assert!(attribute(&written, "fill").starts_with("rgba(63.75"), "{written:?}");
+    }
+
+    #[test]
+    fn a_path_morphs_between_keyframes_of_one_shape() {
+        let mut frames = Frames::new();
+        frames.define(
+            "morph",
+            r#"{ "from": { "d": "M0 0 L10 0" }, "to": { "d": "path('M0 10 L10 10')" } }"#,
+        );
+        frames.shape(0, &fading("morph 1s linear"), &attrs(&[]), &[]);
+        let written = frames.shape(500, &fading("morph 1s linear"), &attrs(&[]), &[]);
+        assert_eq!(attribute(&written, "d"), "M 0 5 L 10 5");
+    }
+
+    #[test]
+    fn overshooting_easing_stays_inside_the_range_of_an_svg_property() {
+        let mut frames = Frames::new();
+        frames.define("fade", r#"{ "from": { "fillOpacity": 0 }, "to": { "fillOpacity": 1 } }"#);
+        let declared = fading("fade 1s cubic-bezier(0.5, 2, 0.5, 2)");
+        let written = frames.shape(250, &declared, &attrs(&[]), &[]);
+        let value: f64 = attribute(&written, "fill-opacity").parse().unwrap();
+        assert!((0.0..=1.0).contains(&value), "{value}");
+    }
+
+    #[test]
+    fn a_name_in_both_tables_is_the_svg_one_on_a_shape_and_the_style_one_elsewhere() {
+        let mut frames = Frames::new();
+        frames.define("dim", r#"{ "from": { "opacity": 0 }, "to": { "opacity": 1 } }"#);
+        let declared = fading("dim 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let written = frames.shape(500, &declared, &attrs(&[]), &[]);
+        assert_eq!(attribute(&written, "opacity"), "0.5");
+        // The same keyframes on a layout element are the style.
+        let mut element = Frames::new();
+        element.define("dim", r#"{ "from": { "opacity": 0 }, "to": { "opacity": 1 } }"#);
+        element.frame(0, &declared);
+        near(opacity(&element.frame(500, &declared)), 0.5);
+    }
+
+    #[test]
+    fn a_value_one_table_cannot_read_is_left_to_the_other() {
+        let mut frames = Frames::new();
+        frames.define("size", r#"{ "from": { "width": "10%" }, "to": { "width": "30%" } }"#);
+        let declared = fading("size 1s linear");
+        // A percentage is no SVG number: nothing animates on the shape.
+        assert!(frames.shape(0, &declared, &attrs(&[]), &[]).is_empty());
+        assert!(frames.shape(500, &declared, &attrs(&[]), &[]).is_empty());
+        frames.frame(0, &declared);
+        assert_eq!(width_of(&frames.frame(500, &declared)), DimensionValue::Percentage(0.2));
+    }
+
+    #[test]
+    fn an_svg_property_on_a_layout_element_is_ignored() {
+        let mut frames = Frames::new();
+        frames.define("draw", DRAW);
+        let declared = fading("draw 1s linear");
+        let sample = frames.frame(500, &declared);
+        assert_eq!(sample, declared);
+        assert!(frames.animations.svg_shapes(&frames.registry).next().is_none());
+    }
+
+    #[test]
+    fn the_svg_host_animates_styles_and_the_svg_properties_no_style_shares_a_name_with() {
+        let mut frames = Frames::new();
+        frames.define(
+            "pulse",
+            r#"{ "from": { "opacity": 0, "strokeWidth": 2, "r": 1 }, "to": { "opacity": 1, "strokeWidth": 4, "r": 3 } }"#,
+        );
+        let declared = fading("pulse 1s linear");
+        let own = attrs(&[]);
+        let mut host = |frames: &mut Frames, millis: u64| {
+            let now = frames.at(millis);
+            frames.animations.advance(1, &declared, &frames.registry, Scope::Element, now);
+            frames.animations.update(
+                1,
+                &declared,
+                &Subject::svg_host(&declared, &own),
+                &frames.parent_colors,
+                &frames.parent_font,
+                None,
+                frames.inherited,
+                Scope::Element,
+                now,
+            )
+        };
+        host(&mut frames, 0);
+        let values = host(&mut frames, 500).expect("the animation has an effect");
+        let written = values.svg_attributes();
+        assert_eq!(attribute(&written, "stroke-width"), "3");
+        assert_eq!(attribute(&written, "r"), "2");
+        assert!(written.iter().all(|(name, _)| *name != "opacity"), "opacity is the box's: {written:?}");
+        let mut resolved = declared.clone();
+        values.apply_to(&mut resolved, None);
+        near(opacity(&resolved), 0.5);
+    }
+
+    #[test]
+    fn a_shape_whose_animation_is_removed_is_cancelled() {
+        let mut frames = Frames::new();
+        frames.define("draw", DRAW);
+        frames.shape(0, &fading("draw 1s linear"), &attrs(&[]), &[]);
+        frames.shape(500, &fading("draw 1s linear"), &attrs(&[]), &[]);
+        frames.events();
+        assert!(frames.shape(600, &fading("none"), &attrs(&[]), &[]).is_empty());
+        assert_eq!(frames.events(), [named(Cancel, "draw", 0.6)]);
+    }
+
+    #[test]
+    fn a_shape_animation_with_a_fill_holds_its_end_value() {
+        let mut frames = Frames::new();
+        frames.define("draw", DRAW);
+        let declared = fading("draw 1s linear 500ms forwards");
+        let own = attrs(&[("strokeDashoffset", Value::from(7))]);
+        // Before the delay there is no effect, so the attribute stays.
+        assert!(frames.shape(0, &declared, &own, &[]).is_empty());
+        let written = frames.shape(5000, &declared, &own, &[]);
+        assert_eq!(attribute(&written, "stroke-dashoffset"), "0");
     }
 }

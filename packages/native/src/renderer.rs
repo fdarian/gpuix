@@ -5206,7 +5206,7 @@ pub(crate) struct GpuixView {
     /// The glide of the elements that declare `layout`.
     layout_flips: crate::motion::LayoutFlips,
     /// Serialised markup of the `<svg>` elements that have shape children.
-    svg_trees: crate::custom_elements::svg_tree::SvgTrees,
+    pub(crate) svg_trees: crate::custom_elements::svg_tree::SvgTrees,
     /// Live text selection, shared with the paint closures and the napi methods.
     pub(crate) selection: SharedSelection,
     /// Persistent measurement and scroll state for React-backed virtual lists.
@@ -7879,6 +7879,7 @@ impl gpui::Render for GpuixView {
                 .iter()
                 .filter(|(_, state)| state.is_animating(now))
                 .map(|(id, _)| *id)
+                .chain(self.css_animations.svg_shapes(&self.keyframes))
                 .collect(),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
@@ -8449,33 +8450,39 @@ fn build_element_unpumped(
         .as_ref()
         .or(animated_style.as_ref())
         .or(declared_style);
-    let css_animated = animations_wanted
+    let css_values = animations_wanted
         .then(|| {
-            let declared = declared_style.unwrap_or(&EMPTY_STYLE);
-            ctx.css_animations
-                .update(
-                    id,
-                    declared,
-                    underlying_style.unwrap_or(&EMPTY_STYLE),
-                    &ctx.inherited.colors,
-                    &ctx.inherited.parent_font(),
-                    measurement.as_ref(),
-                    ctx.inherited.interpolate_size,
-                    crate::motion::Scope::Element,
-                    ctx.now,
-                )
-                .map(|values| {
-                    let mut resolved = underlying_style.cloned().unwrap_or_default();
-                    values.apply_to(
-                        &mut resolved,
-                        transitioned
-                            .as_ref()
-                            .and_then(|declared| declared.transitions.as_ref()),
-                    );
-                    resolved
-                })
+            let beneath = underlying_style.unwrap_or(&EMPTY_STYLE);
+            let subject = if element.element_type == "svg" {
+                crate::motion::Subject::svg_host(beneath, element.custom_props())
+            } else {
+                crate::motion::Subject::element(beneath)
+            };
+            ctx.css_animations.update(
+                id,
+                declared_style.unwrap_or(&EMPTY_STYLE),
+                &subject,
+                &ctx.inherited.colors,
+                &ctx.inherited.parent_font(),
+                measurement.as_ref(),
+                ctx.inherited.interpolate_size,
+                crate::motion::Scope::Element,
+                ctx.now,
+            )
         })
         .flatten();
+    // What the animations of an `<svg>` write on its root, for its shapes to inherit.
+    let svg_css = css_values.as_ref().map(crate::motion::AnimationStyle::svg_attributes).unwrap_or_default();
+    let css_animated = css_values.map(|values| {
+        let mut resolved = underlying_style.cloned().unwrap_or_default();
+        values.apply_to(
+            &mut resolved,
+            transitioned
+                .as_ref()
+                .and_then(|declared| declared.transitions.as_ref()),
+        );
+        resolved
+    });
     let current_style = css_animated.as_ref().or(underlying_style);
     let overlaid_style = contents_overlay
         .map(|overlay| current_style.unwrap_or(&EMPTY_STYLE).with_inherited_overlay(&overlay));
@@ -8673,8 +8680,22 @@ fn build_element_unpumped(
                 ctx.retain.exclude(crate::retain::Exclusion::Anchored);
             }
             let svg_markup = is_svg
-                .then(|| ctx.svg_trees
-                    .markup(ctx.tree, id, ctx.motion_states, &ctx.inherited.colors, ctx.now))
+                .then(|| {
+                    let font = ctx.inherited.parent_font();
+                    ctx.svg_trees.markup(
+                        ctx.tree,
+                        id,
+                        crate::custom_elements::svg_tree::Frame {
+                            motion_states: ctx.motion_states,
+                            animations: &mut *ctx.css_animations,
+                            keyframes: ctx.keyframes,
+                            colors: &ctx.inherited.colors,
+                            font: &font,
+                            host: svg_css,
+                            now: ctx.now,
+                        },
+                    )
+                })
                 .flatten();
             let sized_style = is_svg
                 .then(|| crate::custom_elements::svg_tree::sized_style(style, element.custom_props()))

@@ -26,6 +26,7 @@ enum Clamp {
     None,
     NonNegative,
     Unit,
+    AtLeastOne,
 }
 
 #[derive(Clone, Copy)]
@@ -37,8 +38,21 @@ enum Initial {
     Transparent,
 }
 
+/// What CSS computes a property to when nothing sets it, where that differs from
+/// [`Initial`], the value `motion` starts from.
+#[derive(Clone, Copy)]
+enum CssInitial {
+    Same,
+    Length(f64),
+    /// A keyword that no number, list or path blends with, so the property swaps
+    /// halfway against one that has a value (`none`, `auto`).
+    Keyword(&'static str),
+    /// An inherited property reads the font above it.
+    ParentFontSize,
+}
+
 macro_rules! attributes {
-    ($($variant:ident $name:literal $attribute:literal $kind:ident $clamp:ident $initial:expr;)*) => {
+    ($($variant:ident $name:literal $attribute:literal $kind:ident $clamp:ident $initial:expr, $css:expr;)*) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub(super) enum SvgAttr {
             $($variant),*
@@ -82,47 +96,57 @@ macro_rules! attributes {
                     $(Self::$variant => $initial),*
                 }
             }
+
+            fn css_initial_rule(self) -> CssInitial {
+                match self {
+                    $(Self::$variant => $css),*
+                }
+            }
         }
     };
 }
 
+use CssInitial::{Keyword, Length, ParentFontSize, Same};
 use Initial::{Black, Number, Transparent, Unresolved};
 
 attributes! {
-    PathLength "pathLength" "" Number NonNegative Number(1.0);
-    PathOffset "pathOffset" "" Number None Number(0.0);
-    PathSpacing "pathSpacing" "" Number NonNegative Number(1.0);
-    StrokeDasharray "strokeDasharray" "stroke-dasharray" Dashes None Unresolved;
-    StrokeDashoffset "strokeDashoffset" "stroke-dashoffset" Number None Number(0.0);
-    StrokeWidth "strokeWidth" "stroke-width" Number NonNegative Number(1.0);
-    Fill "fill" "fill" Colour None Black;
-    Stroke "stroke" "stroke" Colour None Transparent;
-    Opacity "opacity" "opacity" Number Unit Number(1.0);
-    FillOpacity "fillOpacity" "fill-opacity" Number Unit Number(1.0);
-    StrokeOpacity "strokeOpacity" "stroke-opacity" Number Unit Number(1.0);
-    Cx "cx" "cx" Number None Number(0.0);
-    Cy "cy" "cy" Number None Number(0.0);
-    R "r" "r" Number NonNegative Unresolved;
-    Rx "rx" "rx" Number NonNegative Unresolved;
-    Ry "ry" "ry" Number NonNegative Unresolved;
-    X "x" "x" Number None Number(0.0);
-    Y "y" "y" Number None Number(0.0);
-    Width "width" "width" Number NonNegative Unresolved;
-    Height "height" "height" Number NonNegative Unresolved;
-    X1 "x1" "x1" Number None Number(0.0);
-    Y1 "y1" "y1" Number None Number(0.0);
-    X2 "x2" "x2" Number None Number(0.0);
-    Y2 "y2" "y2" Number None Number(0.0);
-    D "d" "d" Path None Unresolved;
-    StdDeviation "stdDeviation" "stdDeviation" Number NonNegative Number(0.0);
-    Dx "dx" "dx" Number None Number(0.0);
-    Dy "dy" "dy" Number None Number(0.0);
-    FloodColor "floodColor" "flood-color" Colour None Black;
-    FloodOpacity "floodOpacity" "flood-opacity" Number Unit Number(1.0);
-    RefX "refX" "refX" Number None Number(0.0);
-    RefY "refY" "refY" Number None Number(0.0);
-    FontSize "fontSize" "font-size" Number NonNegative Unresolved;
-    LetterSpacing "letterSpacing" "letter-spacing" Number None Number(0.0);
+    PathLength "pathLength" "" Number NonNegative Number(1.0), Same;
+    PathOffset "pathOffset" "" Number None Number(0.0), Same;
+    PathSpacing "pathSpacing" "" Number NonNegative Number(1.0), Same;
+    StrokeDasharray "strokeDasharray" "stroke-dasharray" Dashes None Unresolved, Keyword("none");
+    StrokeDashoffset "strokeDashoffset" "stroke-dashoffset" Number None Number(0.0), Same;
+    StrokeWidth "strokeWidth" "stroke-width" Number NonNegative Number(1.0), Same;
+    Fill "fill" "fill" Colour None Black, Same;
+    Stroke "stroke" "stroke" Colour None Transparent, Keyword("none");
+    Opacity "opacity" "opacity" Number Unit Number(1.0), Same;
+    FillOpacity "fillOpacity" "fill-opacity" Number Unit Number(1.0), Same;
+    StrokeOpacity "strokeOpacity" "stroke-opacity" Number Unit Number(1.0), Same;
+    Cx "cx" "cx" Number None Number(0.0), Same;
+    Cy "cy" "cy" Number None Number(0.0), Same;
+    R "r" "r" Number NonNegative Unresolved, Length(0.0);
+    Rx "rx" "rx" Number NonNegative Unresolved, Keyword("auto");
+    Ry "ry" "ry" Number NonNegative Unresolved, Keyword("auto");
+    X "x" "x" Number None Number(0.0), Same;
+    Y "y" "y" Number None Number(0.0), Same;
+    Width "width" "width" Number NonNegative Unresolved, Keyword("auto");
+    Height "height" "height" Number NonNegative Unresolved, Keyword("auto");
+    X1 "x1" "x1" Number None Number(0.0), Same;
+    Y1 "y1" "y1" Number None Number(0.0), Same;
+    X2 "x2" "x2" Number None Number(0.0), Same;
+    Y2 "y2" "y2" Number None Number(0.0), Same;
+    D "d" "d" Path None Unresolved, Keyword("none");
+    StdDeviation "stdDeviation" "stdDeviation" Number NonNegative Number(0.0), Same;
+    Dx "dx" "dx" Number None Number(0.0), Same;
+    Dy "dy" "dy" Number None Number(0.0), Same;
+    FloodColor "floodColor" "flood-color" Colour None Black, Same;
+    FloodOpacity "floodOpacity" "flood-opacity" Number Unit Number(1.0), Same;
+    StopColor "stopColor" "stop-color" Colour None Black, Same;
+    StopOpacity "stopOpacity" "stop-opacity" Number Unit Number(1.0), Same;
+    StrokeMiterlimit "strokeMiterlimit" "stroke-miterlimit" Number AtLeastOne Number(4.0), Same;
+    RefX "refX" "refX" Number None Number(0.0), Same;
+    RefY "refY" "refY" Number None Number(0.0), Same;
+    FontSize "fontSize" "font-size" Number NonNegative Unresolved, ParentFontSize;
+    LetterSpacing "letterSpacing" "letter-spacing" Number None Number(0.0), Same;
 }
 
 impl SvgAttr {
@@ -153,6 +177,75 @@ impl SvgAttr {
     ) -> Option<AnimValue> {
         self.attribute()?;
         self.parse(attributes.get(self.name())?, colors).ok()
+    }
+
+    /// Whether CSS has a property of this name that `@keyframes` can animate on
+    /// an SVG element. The draw keys and the attributes that exist only in the
+    /// markup (`x1`, `stdDeviation`, `dx`, `refX`...) are not CSS properties.
+    pub(super) fn is_css_property(self) -> bool {
+        !matches!(
+            self,
+            Self::PathLength
+                | Self::PathOffset
+                | Self::PathSpacing
+                | Self::X1
+                | Self::Y1
+                | Self::X2
+                | Self::Y2
+                | Self::StdDeviation
+                | Self::Dx
+                | Self::Dy
+                | Self::RefX
+                | Self::RefY
+        )
+    }
+
+    /// Whether an element that sets no value computes to its parent's.
+    pub(super) fn inherits(self) -> bool {
+        matches!(
+            self,
+            Self::StrokeDasharray
+                | Self::StrokeDashoffset
+                | Self::StrokeWidth
+                | Self::Fill
+                | Self::Stroke
+                | Self::FillOpacity
+                | Self::StrokeOpacity
+                | Self::StrokeMiterlimit
+                | Self::FontSize
+                | Self::LetterSpacing
+        )
+    }
+
+    /// What CSS computes the property to when nothing sets it, which is what a
+    /// keyframe set's missing endpoint stands for. `font_size` is what an element
+    /// with no `font-size` of its own inherits, in px.
+    pub(super) fn initial_css(self, font_size: f64) -> Option<AnimValue> {
+        match self.css_initial_rule() {
+            CssInitial::Same => self.initial(),
+            CssInitial::Length(value) => Some(AnimValue::Number(value)),
+            CssInitial::Keyword(keyword) => Some(AnimValue::Keyword(Some(keyword.to_string()))),
+            CssInitial::ParentFontSize => Some(AnimValue::Number(font_size)),
+        }
+    }
+
+    /// [`read`](Self::read) for a CSS animation.
+    pub(super) fn read_css(
+        self,
+        attributes: &HashMap<String, Value>,
+        colors: &ColorContext,
+    ) -> Option<AnimValue> {
+        self.attribute()?;
+        self.parse_css(attributes.get(self.name())?, colors).ok()
+    }
+
+    /// [`parse`](Self::parse) for a CSS animation, where a paint of `none` stays
+    /// the keyword: CSS does not blend it with a colour, it swaps halfway.
+    pub(super) fn parse_css(self, value: &Value, colors: &ColorContext) -> Result<AnimValue, String> {
+        if matches!(self.kind(), Kind::Colour) && value.as_str().is_some_and(|text| text.trim() == "none") {
+            return Ok(none_paint());
+        }
+        self.parse(value, colors)
     }
 
     /// Whether `items` is one value of a list-valued attribute (a dash list)
@@ -186,7 +279,13 @@ impl SvgAttr {
                 let text = value
                     .as_str()
                     .ok_or_else(|| format!("motion {name} must be path data"))?;
-                AnimValue::Path(PathData::parse(text).map_err(|error| format!("motion {name}: {error}"))?)
+                // The CSS `d` property is `path("...")`; the attribute is the bare data.
+                let data = text
+                    .trim()
+                    .strip_prefix("path(")
+                    .and_then(|rest| rest.strip_suffix(')'))
+                    .map_or(text, |quoted| quoted.trim().trim_matches(|quote| quote == '"' || quote == '\''));
+                AnimValue::Path(PathData::parse(data).map_err(|error| format!("motion {name}: {error}"))?)
             }
         };
         self.validate(&parsed)?;
@@ -205,6 +304,7 @@ impl SvgAttr {
             Clamp::Unit if !(0.0..=1.0).contains(number) => {
                 Err(format!("motion {name} must be between 0 and 1"))
             }
+            Clamp::AtLeastOne if *number < 1.0 => Err(format!("motion {name} must be at least 1")),
             _ => Ok(()),
         }
     }
@@ -214,9 +314,14 @@ impl SvgAttr {
         match (self.clamp_rule(), value) {
             (Clamp::NonNegative, AnimValue::Number(value)) => AnimValue::Number(value.max(0.0)),
             (Clamp::Unit, AnimValue::Number(value)) => AnimValue::Number(value.clamp(0.0, 1.0)),
+            (Clamp::AtLeastOne, AnimValue::Number(value)) => AnimValue::Number(value.max(1.0)),
             (_, value) => value,
         }
     }
+}
+
+fn none_paint() -> AnimValue {
+    AnimValue::Keyword(Some("none".to_string()))
 }
 
 /// The text of an animated value as an XML attribute.
@@ -230,7 +335,8 @@ pub(super) fn attribute_text(value: &AnimValue) -> String {
             .collect::<Vec<_>>()
             .join(" "),
         AnimValue::Path(path) => path.to_data(),
-        AnimValue::Percent(_) | AnimValue::Variations(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. } | AnimValue::Ellipse { .. } | AnimValue::Shadows(_) | AnimValue::Auto | AnimValue::Keyword(_) | AnimValue::List(_) => {
+        AnimValue::Keyword(Some(keyword)) => keyword.clone(),
+        AnimValue::Percent(_) | AnimValue::Variations(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. } | AnimValue::Ellipse { .. } | AnimValue::Shadows(_) | AnimValue::Auto | AnimValue::Keyword(None) | AnimValue::List(_) => {
             unreachable!("an SVG attribute never holds {value:?}")
         }
     }
@@ -312,6 +418,47 @@ mod tests {
     }
 
     #[test]
+    fn css_initial_values_are_what_a_missing_keyframe_endpoint_stands_for() {
+        let number = |value| Some(AnimValue::Number(value));
+        let keyword = |word: &str| Some(AnimValue::Keyword(Some(word.to_string())));
+        for (attr, expected) in [
+            (SvgAttr::StrokeDashoffset, number(0.0)),
+            (SvgAttr::StrokeDasharray, keyword("none")),
+            (SvgAttr::StrokeWidth, number(1.0)),
+            (SvgAttr::StrokeMiterlimit, number(4.0)),
+            (SvgAttr::Stroke, keyword("none")),
+            (SvgAttr::FillOpacity, number(1.0)),
+            (SvgAttr::StrokeOpacity, number(1.0)),
+            (SvgAttr::Opacity, number(1.0)),
+            (SvgAttr::FloodOpacity, number(1.0)),
+            (SvgAttr::StopOpacity, number(1.0)),
+            (SvgAttr::Cx, number(0.0)),
+            (SvgAttr::Cy, number(0.0)),
+            (SvgAttr::X, number(0.0)),
+            (SvgAttr::Y, number(0.0)),
+            (SvgAttr::R, number(0.0)),
+            (SvgAttr::Rx, keyword("auto")),
+            (SvgAttr::Ry, keyword("auto")),
+            (SvgAttr::Width, keyword("auto")),
+            (SvgAttr::Height, keyword("auto")),
+            (SvgAttr::D, keyword("none")),
+            (SvgAttr::LetterSpacing, number(0.0)),
+            (SvgAttr::FontSize, number(24.0)),
+        ] {
+            assert_eq!(attr.initial_css(24.0), expected, "{attr:?}");
+        }
+        for attr in [SvgAttr::Fill, SvgAttr::StopColor, SvgAttr::FloodColor] {
+            let Some(AnimValue::Color(color)) = attr.initial_css(24.0) else {
+                panic!("{attr:?} is a colour");
+            };
+            assert_eq!(color.to_css(), "rgba(0.000, 0.000, 0.000, 1.00000)", "{attr:?}");
+        }
+        // Motion still starts from what it cannot resolve.
+        assert_eq!(SvgAttr::R.initial(), None);
+        assert_eq!(SvgAttr::Stroke.initial(), Some(AnimValue::Color(Color::TRANSPARENT)));
+    }
+
+    #[test]
     fn parses_dashes_in_every_spelling() {
         let dashes = |value: Value| SvgAttr::StrokeDasharray.parse(&value, &colors());
         assert_eq!(dashes(serde_json::json!(4)).unwrap(), AnimValue::Numbers(vec![4.0]));
@@ -372,5 +519,39 @@ mod tests {
             SvgAttr::Cx.clamp_value(AnimValue::Number(-3.0)),
             AnimValue::Number(-3.0)
         );
+    }
+
+    #[test]
+    fn stops_and_miter_limits_are_attributes_with_their_ranges() {
+        assert_eq!(SvgAttr::StopColor.attribute(), Some("stop-color"));
+        assert_eq!(SvgAttr::StopOpacity.attribute(), Some("stop-opacity"));
+        assert_eq!(SvgAttr::StrokeMiterlimit.attribute(), Some("stroke-miterlimit"));
+        assert!(SvgAttr::StopOpacity.parse(&serde_json::json!(2), &colors()).is_err());
+        assert!(SvgAttr::StrokeMiterlimit.parse(&serde_json::json!(0.5), &colors()).is_err());
+        assert_eq!(
+            SvgAttr::StrokeMiterlimit.clamp_value(AnimValue::Number(0.2)),
+            AnimValue::Number(1.0)
+        );
+        assert_eq!(SvgAttr::StrokeMiterlimit.initial(), Some(AnimValue::Number(4.0)));
+    }
+
+    #[test]
+    fn only_css_properties_are_keyframeable_and_only_some_inherit() {
+        for attr in [SvgAttr::StrokeDashoffset, SvgAttr::Fill, SvgAttr::R, SvgAttr::D, SvgAttr::StopColor, SvgAttr::FloodColor] {
+            assert!(attr.is_css_property(), "{attr:?}");
+        }
+        for attr in [SvgAttr::PathLength, SvgAttr::X1, SvgAttr::StdDeviation, SvgAttr::Dx, SvgAttr::RefY] {
+            assert!(!attr.is_css_property(), "{attr:?}");
+        }
+        assert!(SvgAttr::StrokeWidth.inherits() && SvgAttr::Fill.inherits());
+        assert!(!SvgAttr::Opacity.inherits() && !SvgAttr::R.inherits() && !SvgAttr::StopColor.inherits());
+    }
+
+    #[test]
+    fn a_path_may_be_written_as_the_css_path_function() {
+        let bare = SvgAttr::D.parse(&serde_json::json!("M1 1 L2 2"), &colors()).unwrap();
+        for written in [r#"path("M1 1 L2 2")"#, "path('M1 1 L2 2')", r#" path( "M1 1 L2 2" ) "#] {
+            assert_eq!(SvgAttr::D.parse(&serde_json::json!(written), &colors()).unwrap(), bare, "{written}");
+        }
     }
 }

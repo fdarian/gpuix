@@ -886,6 +886,22 @@ pub(super) fn align_in(
             frames: (0..values.len()).map(|index| vec![index as f64]).collect(),
         });
     }
+    // `none` against a colour, a dash list or a path: CSS swaps them halfway.
+    for blends in [
+        |value: &AnimValue| matches!(value, AnimValue::Color(_)),
+        |value: &AnimValue| matches!(value, AnimValue::Numbers(_)),
+        |value: &AnimValue| matches!(value, AnimValue::Path(_)),
+    ] {
+        if values.iter().any(|value| keyword(value))
+            && values.iter().any(|value| blends(value))
+            && values.iter().all(|value| keyword(value) || blends(value))
+        {
+            return Ok(Aligned {
+                layout: Layout::DiscreteList(values.iter().map(|value| (*value).clone()).collect()),
+                frames: (0..values.len()).map(|index| vec![index as f64]).collect(),
+            });
+        }
+    }
     if values.iter().any(|value| matches!(value, AnimValue::Relative { .. }))
         && values.iter().all(|value| value.as_terms().is_some())
     {

@@ -415,6 +415,9 @@ interface SvgMotionTargets {
   dy?: number
   floodColor?: string
   floodOpacity?: number
+  stopColor?: string
+  stopOpacity?: number
+  strokeMiterlimit?: number
   refX?: number
   refY?: number
   fontSize?: number
@@ -1985,11 +1988,32 @@ export interface SvgPresentationProps {
 }
 
 /**
- * Props shared by the shapes inside an `<svg>`. A shape is part of its svg's
- * one image, so it has no `style`, layout box or events: size and place the
- * `<svg>`, and draw inside its `viewBox`.
+ * What a shape's `style` takes: CSS animations. A shape is painted by its
+ * `<svg>`, so no layout or paint style applies to it; its `animation` runs
+ * keyframes made with `defineKeyframes` over the SVG properties CSS animates
+ * (see `SvgKeyframeStyle`).
  */
-export interface SvgShapeProps extends SvgPresentationProps {
+export type SvgShapeStyle = Pick<
+  StyleDesc,
+  | "animation"
+  | "animationName"
+  | "animationDuration"
+  | "animationTimingFunction"
+  | "animationDelay"
+  | "animationIterationCount"
+  | "animationDirection"
+  | "animationFillMode"
+  | "animationPlayState"
+>
+
+/**
+ * Props shared by the shapes inside an `<svg>`. A shape is part of its svg's
+ * one image, so it has no layout box, paint style or pointer events: size and
+ * place the `<svg>`, and draw inside its `viewBox`. Its `style` takes CSS
+ * animations only, and the animation events fire from the shape.
+ */
+export interface SvgShapeProps extends SvgPresentationProps, AnimationEventProps {
+  style?: SvgShapeStyle
   testId?: string
   /** What `fill="url(#id)"`, `clipPath`, `mask` and `<use href="#id">` refer to. */
   id?: string

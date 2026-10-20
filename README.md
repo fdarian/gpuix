@@ -1825,6 +1825,69 @@ then from the SVG default (`fill` black, `stroke` transparent, opacities 1,
 one that the element does not declare jumps to its target. Naming a key that is
 not in the table, or a style such as `backgroundColor`, is an error.
 
+#### CSS keyframes on SVG properties
+
+[CSS animations](#css-animations) animate SVG properties too, without `motion`:
+a shape's `style` takes `animation` (and its longhands), and `defineKeyframes`
+takes the SVG properties CSS animates. This is the way to write a stroke that
+draws itself in:
+
+```tsx
+defineKeyframes('draw', { from: { strokeDashoffset: 180 }, to: { strokeDashoffset: 0 } })
+
+<svg viewBox="0 0 200 100" width={200} height={100}>
+  <path
+    d="M10 50 L190 50"
+    stroke="#000"
+    strokeWidth={4}
+    strokeDasharray={180}
+    style={{ animation: 'draw 1s ease-out forwards' }}
+    onAnimationEnd={() => console.log('drawn')}
+  />
+</svg>
+```
+
+- **Properties.** `fill`, `stroke`, `strokeWidth`, `strokeDasharray`,
+  `strokeDashoffset`, `strokeOpacity`, `strokeMiterlimit`, `fillOpacity`,
+  `opacity`, `floodColor`, `floodOpacity`, `stopColor`, `stopOpacity`,
+  `fontSize`, `letterSpacing`, `cx`, `cy`, `r`, `rx`, `ry`, `x`, `y`, `width`,
+  `height` and `d` (path data, or `path("...")` as in CSS), each on the elements
+  a browser applies it to. A value is a number in user units (a `"12px"` string
+  is read as 12), a colour, a dash list or path data, as for `motion`.
+  `pathLength`, `pathOffset` and `pathSpacing` are Framer's draw keys, and `x1`
+  to `y2`, `stdDeviation`, `dx`, `dy`, `refX` and `refY` are attributes and not
+  CSS properties: `defineKeyframes` refuses them. A name that is both a style and
+  an SVG property (`opacity`, `width`, `height`, `fontSize`) is the SVG one on a
+  shape and the style on any other element; a property with no meaning on the
+  element it reaches (`r` on a `<div>`, `backgroundColor` on a `<circle>`) is
+  ignored, as a browser computes it and never paints it
+- **Where it runs.** On a shape, a group or any other element in the `<svg>`
+  (`style` takes the `animation` properties only, as the shape is painted by its
+  `<svg>`), and on the `<svg>` itself. The `<svg>`'s values are written on its
+  root, so the shapes inherit them as in CSS (`fill`, `stroke`, `strokeWidth`,
+  the dash properties and `fontSize` inherit; a shape's own attribute wins over
+  an inherited value). A shape's animation beats its attribute, its group's
+  value and its own `motion`. A missing `from` or `to` is the value the shape
+  has without the animation: its attribute, else the nearest ancestor's for an
+  inherited property (`fontSize` falls back to the font the `<svg>` inherits,
+  16px by default), else CSS's initial value. That is `0` for `strokeDashoffset`,
+  `cx`, `cy`, `r`, `x`, `y` and `letterSpacing`, `1` for `strokeWidth` and the
+  opacities, `4` for `strokeMiterlimit`, black for `fill`, `stopColor` and
+  `floodColor`, and `none` for `stroke`, `strokeDasharray` and `d`. `rx`,
+  `ry`, `width` and `height` are `auto`
+- **Events and Web Animations.** `onAnimationStart`, `onAnimationEnd` and the
+  rest fire from the shape and bubble, and `getAnimations()` on its ref lists its
+  `CSSAnimation`s, which can be paused, played and sought
+- **Paint.** A paint of `none` against a colour swaps halfway, as in Chrome (it
+  does not fade, as in `motion`). A property whose value is `none` or `auto`
+  (a missing endpoint of `strokeDasharray`, `d`, `rx`, `ry`, `width` or
+  `height` included) is discrete against one that has a number, a dash list or
+  a path. Dash lists of different lengths repeat to a common length, and
+  paths blend when their commands match and swap halfway otherwise
+
+Not built: CSS transitions of SVG properties (a changed prop jumps; use `motion`
+or an animation), and the attributes that are not CSS properties above.
+
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
 image every frame. The `<svg>` keeps the image it last painted and drops it from
 the texture atlas when it makes the next one, so an animation holds one atlas
@@ -5665,7 +5728,8 @@ JSX instead of a markup string: `path`, `circle`, `ellipse`, `rect`, `line`,
 `clipPath="url(#left)"`, `<use href="#bar" />`). They are valid only inside
 `<svg>` (anywhere else is an error; `<text>` is the plain text element outside
 one), and they are not layout boxes: the `<svg>` paints them all as one image,
-so they take no `style` and no events.
+so they take no layout or paint `style` and no pointer events. Their `style` takes
+[CSS animations](#css-keyframes-on-svg-properties) only, and the animation events fire from them.
 
 - **`pattern`** tiles its children over a `fill="url(#id)"`: `patternUnits`,
   `patternContentUnits`, `patternTransform`, `x`, `y`, `width`, `height`,
@@ -7881,7 +7945,8 @@ defineKeyframes('pulse', {
 - **`defineKeyframes(name, frames)`.** Keys are `from`, `to`, a percentage
   (`'50%'`) or a comma list (`'0%, 50%'`). Values are the properties `motion` can
   animate (see [Targets and timing](#targets-and-timing)), each with a single
-  value, plus `animationTimingFunction`, which eases from that keyframe to the
+  value (and the [SVG properties](#css-keyframes-on-svg-properties), for
+  `<svg>` and the shapes in it), plus `animationTimingFunction`, which eases from that keyframe to the
   next. Blocks at the same offset merge, the later key winning. A property a
   definition leaves out of `from` or `to` starts or ends at the element's own
   value, as in CSS, and that value is read every frame, so it follows the
@@ -7927,14 +7992,15 @@ defineKeyframes('pulse', {
 
 Differences from a browser:
 
-- A missing `from` or `to` of a property whose own value gpuix cannot read from
+- A missing `from` or `to` of a style whose own value gpuix cannot read from
   the element's style (an inherited one such as `fontSize`) holds the nearest
   keyframe instead of using the computed value
 - A property the keyframes name counts as driven by the animation for as long as
   it runs or fills, so a declared change on it starts no transition even where
   the animation cannot produce a value for it (it waits for layout)
 - Only the properties `motion` can animate are animatable, so `transform` and
-  discrete properties such as `display` cannot be keyframed
+  discrete properties such as `display` cannot be keyframed. The SVG properties
+  CSS animates are, on [SVG shapes](#css-keyframes-on-svg-properties)
 - `animation-composition`, `animation-timeline` and `animation-range` are not
   supported
 - `animation-duration: auto` is `0s`

@@ -174,6 +174,7 @@ interface NativeTestRendererApi
   hasPointerCapture(elementId: number, pointerId: number): boolean
   clickElement(elementId: number): void
   getAnimations(elementId: number): WebAnimationInfo[]
+  getSvgMarkup(elementId: number): string | null
   getAnimation(animationId: number): WebAnimationInfo
   releaseAnimation(animationId: number): void
   pauseAnimation(animationId: number): void
@@ -1254,6 +1255,14 @@ export class TestRenderer implements NativeRenderer {
 
   getAnimations(elementId: number): WebAnimationInfo[] {
     return this.native.getAnimations(elementId)
+  }
+
+  /**
+   * The XML the `<svg>` painted from its shape children in the last frame, with
+   * animated attributes as that frame had them, or `null` when it painted none.
+   */
+  getSvgMarkup(elementId: number): string | null {
+    return this.native.getSvgMarkup(elementId)
   }
 
   getAnimation(animationId: number): WebAnimationInfo {

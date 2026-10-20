@@ -21,7 +21,7 @@ use web_time::Instant;
 
 use super::{
     resolve_declared_style, CssAnimations, CssTransitions, InterpolateSize, KeyframesRegistry,
-    MotionState, MotionValueStore, ParentFont, Scope,
+    MotionState, MotionValueStore, ParentFont, Scope, Subject,
 };
 use crate::color::ColorContext;
 use crate::events::state_styles::{folded, PointerStates};
@@ -192,7 +192,7 @@ fn step(
             animations.update(
                 id,
                 &declared.style,
-                underlying,
+                &Subject::element(underlying),
                 colors,
                 font,
                 None,

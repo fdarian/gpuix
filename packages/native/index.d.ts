@@ -1001,6 +1001,12 @@ export declare class TestGpuixRenderer {
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
   /**
+   * The SVG an `<svg>` element with shape children painted in the last
+   * frame, as the XML its shapes were written to, or `null` when it painted
+   * none. Animated attributes are in it as the frame had them.
+   */
+  getSvgMarkup(elementId: number): string | null
+  /**
    * One CSS animation or transition by the id `getAnimations` gave. See
    * `GpuixRenderer.getAnimation`.
    */

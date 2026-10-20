@@ -2336,6 +2336,15 @@ impl TestGpuixRenderer {
         self.with_motion_state(false, move |view, _now| Ok(view.web_animations(id)))
     }
 
+    /// The SVG an `<svg>` element with shape children painted in the last
+    /// frame, as the XML its shapes were written to, or `null` when it painted
+    /// none. Animated attributes are in it as the frame had them.
+    #[napi]
+    pub fn get_svg_markup(&self, element_id: f64) -> Result<Option<String>> {
+        let id = to_element_id(element_id)?;
+        self.with_motion_state(false, move |view, _now| Ok(view.svg_trees.current(id).map(|markup| markup.to_string())))
+    }
+
     /// One CSS animation or transition by the id `getAnimations` gave. See
     /// `GpuixRenderer.getAnimation`.
     #[napi]

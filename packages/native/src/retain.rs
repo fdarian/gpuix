@@ -3318,6 +3318,33 @@ mod tests {
     }
 
     #[gpui::test]
+    fn an_svg_whose_shape_runs_a_css_animation_is_changed_every_frame_of_it(cx: &mut gpui::TestAppContext) {
+        let mut elements = icon(SMALL_ICON, None);
+        elements.iter_mut().find(|element| element.id == 41).unwrap().style =
+            r#"{"animation": "grow 600ms linear"}"#;
+        let scene = Scene::new(cx, elements);
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.keyframes.define("grow", r#"{"from": {"r": 2}, "to": {"r": 10}}"#).unwrap();
+            })
+            .unwrap();
+        scene.draw(cx);
+        crate::perf_counters::reset();
+        for _ in 0..4 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.draw(cx);
+            // The circle is never built, so its animation is advanced by the svg writing it, and
+            // the svg is the one that changes.
+            assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        }
+        assert!(Scene::counted("changed:shape") >= 4, "{:?}", crate::perf_counters::retain_reasons());
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(2000.0)).unwrap();
+        scene.settle(cx);
+        assert_eq!(scene.roots(cx), vec![1], "it came to rest");
+    }
+
+    #[gpui::test]
     fn an_svg_too_big_to_raster_in_paint_is_not_retained_until_the_raster_lands(cx: &mut gpui::TestAppContext) {
         let scene = Scene::new(cx, icon(r#"{"width": 300, "height": 200}"#, None));
         crate::perf_counters::reset();

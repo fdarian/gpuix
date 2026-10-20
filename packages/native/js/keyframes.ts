@@ -2,10 +2,45 @@ import type { GpuixRenderer } from "../index.js"
 import type { MotionStyleTargets } from "./host.js"
 
 /**
- * The properties one keyframe can set: the ones `MotionStyle` animates, each
- * with a single value, plus the easing from that keyframe to the next.
+ * The SVG properties CSS animates, for the shapes inside an `<svg>` and for the
+ * `<svg>` itself (a value on the `<svg>` is inherited by the shapes in it). A
+ * property applies only to the elements it does in a browser (`r` to a
+ * `<circle>`, `stopColor` to a `<stop>`...). `opacity`, `width`, `height` and
+ * `fontSize` are the shape's own on a shape and the box's on any other element.
+ * `pathLength`, `pathOffset`, `pathSpacing`, `x1`..`y2`, `stdDeviation`, `dx`,
+ * `dy`, `refX` and `refY` are attributes, not CSS properties: keyframes refuse them.
  */
-export type KeyframeStyle = MotionStyleTargets & {
+export interface SvgKeyframeStyle {
+  strokeDasharray?: number | string | number[]
+  strokeDashoffset?: number
+  strokeWidth?: number
+  strokeOpacity?: number
+  strokeMiterlimit?: number
+  fill?: string
+  stroke?: string
+  fillOpacity?: number
+  stopColor?: string
+  stopOpacity?: number
+  floodColor?: string
+  floodOpacity?: number
+  cx?: number
+  cy?: number
+  r?: number
+  rx?: number
+  ry?: number
+  x?: number
+  y?: number
+  letterSpacing?: number
+  /** Path data, or CSS `path("M0 0 L10 10")`. Paths morph when their commands match. */
+  d?: string
+}
+
+/**
+ * The properties one keyframe can set: the ones `MotionStyle` animates and the
+ * SVG ones, each with a single value, plus the easing from that keyframe to
+ * the next.
+ */
+export type KeyframeStyle = MotionStyleTargets & SvgKeyframeStyle & {
   /** A CSS easing function (`ease-in`, `cubic-bezier()`, `steps()`...). */
   animationTimingFunction?: string
 }

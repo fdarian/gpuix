@@ -3,10 +3,15 @@
 //!
 //! A definition is the frames object as JSON: keys are `from`, `to`, `N%` or a
 //! comma list of them (`"0%, 50%"`), values are the animatable style
-//! properties plus `animationTimingFunction`, which eases from that keyframe
+//! properties and the SVG properties CSS animates (`strokeDashoffset`, `fill`,
+//! `r`...), plus `animationTimingFunction`, which eases from that keyframe
 //! to the next, as it does in CSS. Blocks at the same offset merge, later keys
 //! winning property by property. The endpoints a definition leaves out are the
 //! element's underlying values, which only the runtime knows.
+//!
+//! A definition does not know what it will animate, so a name that is both a
+//! style property and an SVG one (`opacity`, `width`, `height`, `fontSize`) is
+//! kept for both, with each value that parses for it. The element picks.
 //!
 //! A definition is shared by every element that names it, so its values stay as
 //! written: a colour means something only at an element (`currentColor`,
@@ -24,7 +29,9 @@ use super::css_animation::check_keyframes_name;
 use super::css_transition::parse_list;
 use super::curve::{parse_timing_function, Ease};
 use super::property::{split_shorthand, AnimProp};
+use super::svg_attr::SvgAttr;
 use super::value::{AnimValue, Colors};
+use super::PropKey;
 
 const TIMING_FUNCTION: &str = "animationTimingFunction";
 
@@ -34,7 +41,7 @@ pub(super) struct Keyframe {
     pub offset: f64,
     /// Longhands only, each at most once, as written. They were parsed once when
     /// the keyframes were defined, to reject a bad one where it is written.
-    pub values: Vec<(AnimProp, Value)>,
+    pub values: Vec<(PropKey, Value)>,
     /// Eases from this keyframe to the next. `None` uses the animation's.
     pub timing: Option<Ease>,
 }
@@ -103,11 +110,11 @@ impl Keyframes {
     }
 
     /// Every property some keyframe sets, in no particular order.
-    pub(super) fn properties(&self) -> Vec<AnimProp> {
-        let mut props: Vec<AnimProp> = self
+    pub(super) fn properties(&self) -> Vec<PropKey> {
+        let mut props: Vec<PropKey> = self
             .frames
             .iter()
-            .flat_map(|frame| frame.values.iter().map(|(prop, _)| *prop))
+            .flat_map(|frame| frame.values.iter().map(|(key, _)| *key))
             .collect();
         props.sort();
         props.dedup();
@@ -116,24 +123,27 @@ impl Keyframes {
 }
 
 impl Keyframe {
-    /// What `prop` is at this keyframe for an element with `colors`.
-    pub(super) fn value(&self, prop: AnimProp, colors: &Colors) -> Option<AnimValue> {
-        let (_, written) = self.values.iter().find(|(p, _)| *p == prop)?;
-        Some(
-            prop.parse(written, colors)
-                .expect("a keyframe value was parsed when the keyframes were defined, and no colour is valid in only some contexts"),
-        )
+    /// What `key` is at this keyframe for an element with `colors`. A value that
+    /// does not parse for the element is no value of that keyframe, as CSS drops
+    /// a declaration it cannot read.
+    pub(super) fn value(&self, key: PropKey, colors: &Colors) -> Option<AnimValue> {
+        let (_, written) = self.values.iter().find(|(k, _)| *k == key)?;
+        key.parse_css(written, colors).ok()
     }
 
     fn merge(&mut self, later: &Keyframe) {
-        for (prop, value) in &later.values {
-            match self.values.iter_mut().find(|(existing, _)| existing == prop) {
-                Some(slot) => slot.1 = value.clone(),
-                None => self.values.push((*prop, value.clone())),
-            }
+        for (key, value) in &later.values {
+            self.set(*key, value.clone());
         }
         if later.timing.is_some() {
             self.timing = later.timing.clone();
+        }
+    }
+
+    fn set(&mut self, key: PropKey, value: Value) {
+        match self.values.iter_mut().find(|(existing, _)| *existing == key) {
+            Some(slot) => slot.1 = value,
+            None => self.values.push((key, value)),
         }
     }
 }
@@ -181,23 +191,47 @@ fn parse_block(block: &Value) -> Result<Keyframe, String> {
             continue;
         }
         let split = split_shorthand(name, value).transpose()?;
-        let channels = match (&split, AnimProp::from_name(name)) {
-            (Some(split), _) => split.channels.clone(),
-            (None, Some(prop)) => vec![(prop, value.clone())],
-            (None, None) => {
-                return Err(format!("`{name}` cannot be animated in keyframes"));
+        let candidates: Vec<(PropKey, Value)> = match &split {
+            Some(split) => split
+                .channels
+                .iter()
+                .map(|(prop, value)| (PropKey::Style(*prop), value.clone()))
+                .collect(),
+            None => {
+                let style = AnimProp::from_name(name).map(PropKey::Style);
+                let svg = SvgAttr::from_name(name)
+                    .filter(|attr| attr.is_css_property())
+                    .map(PropKey::Svg);
+                let found: Vec<_> = [style, svg]
+                    .into_iter()
+                    .flatten()
+                    .map(|key| (key, value.clone()))
+                    .collect();
+                if found.is_empty() {
+                    return Err(format!("`{name}` cannot be animated in keyframes"));
+                }
+                found
             }
         };
-        for (prop, value) in channels {
-            prop.parse(&value, &Colors::root()).map_err(|error| {
-                let error = split.as_ref().map_or(error.clone(), |split| split.error(prop, error));
-                format!("{name}: {error}")
-            })?;
-            // A shorthand sets longhands in order, so a later key wins.
-            match keyframe.values.iter_mut().find(|(existing, _)| *existing == prop) {
-                Some(slot) => slot.1 = value,
-                None => keyframe.values.push((prop, value)),
+        let mut errors = Vec::new();
+        let mut accepted = Vec::new();
+        for (key, value) in candidates {
+            match key.parse_css(&value, &Colors::root()) {
+                Ok(_) => accepted.push((key, value)),
+                Err(error) => errors.push(match (&split, key) {
+                    (Some(split), PropKey::Style(prop)) => split.error(prop, error),
+                    _ => error,
+                }),
             }
+        }
+        // A shorthand needs every longhand to parse. A name both tables know
+        // needs one of them to, and the first to say why is the one it reports.
+        if let Some(error) = errors.into_iter().find(|_| split.is_some() || accepted.is_empty()) {
+            return Err(format!("{name}: {error}"));
+        }
+        // A shorthand sets longhands in order, so a later key wins.
+        for (key, value) in accepted {
+            keyframe.set(key, value);
         }
     }
     Ok(keyframe)
@@ -242,7 +276,7 @@ mod tests {
     }
 
     fn number(frame: &Keyframe, prop: AnimProp) -> Option<f64> {
-        match frame.value(prop, &Colors::root())? {
+        match frame.value(PropKey::Style(prop), &Colors::root())? {
             AnimValue::Number(number) => Some(number),
             _ => None,
         }
@@ -320,9 +354,72 @@ mod tests {
         assert_eq!(number(frame, AnimProp::Top), Some(7.0));
         assert_eq!(number(frame, AnimProp::Left), Some(8.0));
         assert_eq!(
-            frame.value(AnimProp::BorderTopLeftRadius, &Colors::root()),
+            frame.value(PropKey::Style(AnimProp::BorderTopLeftRadius), &Colors::root()),
             Some(AnimValue::Ellipse { x: (5.0, 0.0), y: (6.0, 0.0) })
         );
+    }
+
+    fn svg(frame: &Keyframe, attr: SvgAttr) -> Option<AnimValue> {
+        frame.value(PropKey::Svg(attr), &Colors::root())
+    }
+
+    #[test]
+    fn svg_properties_are_keyframeable_and_keep_their_own_key() {
+        let keyframes = parse(
+            r##"{
+                "from": { "strokeDashoffset": 100, "strokeDasharray": "4 2", "fill": "#ff0000", "stroke": "none", "r": 1 },
+                "to": { "strokeDashoffset": 0, "strokeWidth": 3, "fillOpacity": 0.5, "stopColor": "red", "stopOpacity": 0.2,
+                        "strokeMiterlimit": 2, "d": "path('M0 0 L1 1')", "cx": 4, "x": 1, "rx": 2 }
+            }"##,
+        );
+        assert_eq!(svg(&keyframes.frames[0], SvgAttr::StrokeDashoffset), Some(AnimValue::Number(100.0)));
+        assert_eq!(svg(&keyframes.frames[0], SvgAttr::StrokeDasharray), Some(AnimValue::Numbers(vec![4.0, 2.0])));
+        assert!(matches!(svg(&keyframes.frames[0], SvgAttr::Fill), Some(AnimValue::Color(_))));
+        assert_eq!(svg(&keyframes.frames[1], SvgAttr::StrokeWidth), Some(AnimValue::Number(3.0)));
+        assert_eq!(svg(&keyframes.frames[1], SvgAttr::StrokeMiterlimit), Some(AnimValue::Number(2.0)));
+        assert!(matches!(svg(&keyframes.frames[1], SvgAttr::D), Some(AnimValue::Path(_))));
+        assert!(keyframes.properties().iter().all(|key| matches!(key, PropKey::Svg(_))));
+    }
+
+    #[test]
+    fn a_name_both_tables_know_is_kept_for_each_that_reads_the_value() {
+        let keyframes = parse(r#"{ "from": { "opacity": 0.5, "width": 10, "height": "50%", "fontSize": 12 } }"#);
+        let frame = &keyframes.frames[0];
+        assert_eq!(number(frame, AnimProp::Opacity), Some(0.5));
+        assert_eq!(svg(frame, SvgAttr::Opacity), Some(AnimValue::Number(0.5)));
+        assert_eq!(number(frame, AnimProp::Width), Some(10.0));
+        assert_eq!(svg(frame, SvgAttr::Width), Some(AnimValue::Number(10.0)));
+        // A percentage is a style length and no SVG number.
+        assert!(matches!(frame.value(PropKey::Style(AnimProp::Height), &Colors::root()), Some(AnimValue::Percent(_))));
+        assert_eq!(svg(frame, SvgAttr::Height), None);
+        assert_eq!(number(frame, AnimProp::FontSize), Some(12.0));
+        assert_eq!(svg(frame, SvgAttr::FontSize), Some(AnimValue::Number(12.0)));
+    }
+
+    #[test]
+    fn a_later_svg_key_wins_like_any_other() {
+        let keyframes = parse(r#"{ "from": { "r": 1 }, "0%": { "r": 2 } }"#);
+        assert_eq!(svg(&keyframes.frames[0], SvgAttr::R), Some(AnimValue::Number(2.0)));
+    }
+
+    #[test]
+    fn attributes_that_are_not_css_properties_are_rejected() {
+        for name in ["pathLength", "pathOffset", "pathSpacing", "x1", "y1", "x2", "y2", "stdDeviation", "dx", "dy", "refX", "refY"] {
+            let message = error(&format!(r#"{{ "to": {{ "{name}": 1 }} }}"#));
+            assert!(message.contains(&format!("`{name}` cannot be animated")), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_bad_svg_value_says_which_property() {
+        assert!(error(r#"{ "to": { "strokeWidth": -1 } }"#).starts_with("to: strokeWidth:"));
+        assert!(error(r#"{ "to": { "fill": "nope" } }"#).starts_with("to: fill:"));
+        assert!(error(r#"{ "to": { "strokeDashoffset": "far" } }"#).starts_with("to: strokeDashoffset:"));
+        assert!(error(r#"{ "to": { "strokeDasharray": [-1] } }"#).starts_with("to: strokeDasharray:"));
+        assert!(error(r#"{ "to": { "strokeMiterlimit": 0.5 } }"#).starts_with("to: strokeMiterlimit:"));
+        assert!(error(r#"{ "to": { "d": "L1 1" } }"#).starts_with("to: d:"));
+        // Both tables refuse it: the message is the style one.
+        assert!(error(r#"{ "to": { "opacity": 2 } }"#).starts_with("to: opacity:"));
     }
 
     #[test]
@@ -341,7 +438,7 @@ mod tests {
             }"##,
         );
         let colors = Colors::root();
-        let value = |frame: usize, prop| keyframes.frames[frame].value(prop, &colors);
+        let value = |frame: usize, prop| keyframes.frames[frame].value(PropKey::Style(prop), &colors);
         assert!(matches!(value(0, AnimProp::BackgroundColor), Some(AnimValue::Color(_))));
         assert!(matches!(value(0, AnimProp::Width), Some(AnimValue::Percent(_))));
         assert!(matches!(value(1, AnimProp::BoxShadow), Some(AnimValue::Shadows(_))));
@@ -401,7 +498,6 @@ mod tests {
         registry.define("fade", r#"{ "to": { "opacity": 0 } }"#).unwrap();
         let error = registry.define("fade", r#"{ "to": { "opacity": 5 } }"#).unwrap_err();
         assert!(error.starts_with("keyframes fade:"), "{error}");
-        assert_eq!(registry.get("fade").unwrap().frames[0].values.len(), 1);
         assert_eq!(number(&registry.get("fade").unwrap().frames[0], AnimProp::Opacity), Some(0.0));
 
         assert!(registry.define("none", "{}").is_err());
