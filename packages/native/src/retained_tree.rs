@@ -2165,20 +2165,7 @@ mod tests {
             boxes
                 .iter()
                 .find(|(candidate, _)| *candidate == id)
-                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds {
-                    x: *x,
-                    y: *y,
-                    width: *width,
-                    height: *height,
-                    client_left: 0.0,
-                    client_top: 0.0,
-                    border_right: 0.0,
-                    border_bottom: 0.0,
-                    padding_left: 0.0,
-                    padding_top: 0.0,
-                    padding_right: 0.0,
-                    padding_bottom: 0.0,
-                })
+                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds::plain(*x, *y, *width, *height))
         };
         (tree, lookup)
     }
@@ -2226,20 +2213,7 @@ mod tests {
             boxes
                 .iter()
                 .find(|(candidate, _)| *candidate == id)
-                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds {
-                    x: *x,
-                    y: *y,
-                    width: *width,
-                    height: *height,
-                    client_left: 0.0,
-                    client_top: 0.0,
-                    border_right: 0.0,
-                    border_bottom: 0.0,
-                    padding_left: 0.0,
-                    padding_top: 0.0,
-                    padding_right: 0.0,
-                    padding_bottom: 0.0,
-                })
+                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds::plain(*x, *y, *width, *height))
         };
         (tree, lookup)
     }
@@ -2328,20 +2302,7 @@ mod tests {
         tree.append_child(1, 2);
         tree.append_child(1, 3);
         let painted = |id: u64| {
-            Some(crate::automation::ElementBounds {
-                x: 0.0,
-                y: 0.0,
-                width: 100.0,
-                height: 100.0,
-                client_left: 0.0,
-                client_top: 0.0,
-                border_right: 0.0,
-                border_bottom: 0.0,
-                padding_left: 0.0,
-                padding_top: 0.0,
-                padding_right: 0.0,
-                padding_bottom: 0.0,
-            })
+            Some(crate::automation::ElementBounds::plain(0.0, 0.0, 100.0, 100.0))
             .filter(|_| id != 0)
         };
         assert_eq!(tree.elements_at(45.0, 45.0, &painted), vec![3, 2, 1]);
@@ -2417,20 +2378,7 @@ mod tests {
             boxes
                 .iter()
                 .find(|(candidate, _)| *candidate == id)
-                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds {
-                    x: *x,
-                    y: *y,
-                    width: *width,
-                    height: *height,
-                    client_left: 0.0,
-                    client_top: 0.0,
-                    border_right: 0.0,
-                    border_bottom: 0.0,
-                    padding_left: 0.0,
-                    padding_top: 0.0,
-                    padding_right: 0.0,
-                    padding_bottom: 0.0,
-                })
+                .map(|(_, (x, y, width, height))| crate::automation::ElementBounds::plain(*x, *y, *width, *height))
         }
     }
 
@@ -2521,20 +2469,7 @@ mod tests {
         }
         let ids: Vec<u64> = nodes.iter().map(|(id, ..)| *id).collect();
         let lookup = move |id: u64| {
-            ids.contains(&id).then_some(crate::automation::ElementBounds {
-                x: 0.0,
-                y: 0.0,
-                width: 100.0,
-                height: 100.0,
-                client_left: 0.0,
-                client_top: 0.0,
-                border_right: 0.0,
-                border_bottom: 0.0,
-                padding_left: 0.0,
-                padding_top: 0.0,
-                padding_right: 0.0,
-                padding_bottom: 0.0,
-            })
+            ids.contains(&id).then_some(crate::automation::ElementBounds::plain(0.0, 0.0, 100.0, 100.0))
         };
         (tree, lookup)
     }

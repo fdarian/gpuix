@@ -2207,17 +2207,16 @@ describeNative("tables: border-collapse", () => {
     )
     expectBoxes(ui, {
       // oracle:begin
-      // Chrome's boxes are at 1.5 and 34.5: here they snap to a pixel, half toward zero, and the sizes agree.
       t: [0, 0, 69, 29],
-      r1: [1, 1, 66, 13],
-      a: [1, 1, 33, 13],
+      r1: [1.5, 1.5, 66, 13],
+      a: [1.5, 1.5, 33, 13],
       a1: [3, 3, 30, 10],
-      b: [34, 1, 33, 13],
+      b: [34.5, 1.5, 33, 13],
       b1: [36, 3, 30, 10],
-      r2: [1, 14, 66, 13],
-      c: [1, 14, 33, 13],
+      r2: [1.5, 14.5, 66, 13],
+      c: [1.5, 14.5, 33, 13],
       c1: [3, 16, 30, 10],
-      d: [34, 14, 33, 13],
+      d: [34.5, 14.5, 33, 13],
       d1: [36, 16, 30, 10],
       // oracle:end
     })

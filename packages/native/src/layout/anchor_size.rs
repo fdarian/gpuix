@@ -196,13 +196,12 @@ mod tests {
     }
 
     fn paint(id: u64, width: f32, height: f32) {
+        let origin = gpui::point(gpui::px(10.0), gpui::px(10.0));
         crate::automation::record_bounds(
             WindowId::from(1),
             id,
-            gpui::Bounds::new(
-                gpui::point(gpui::px(10.0), gpui::px(10.0)),
-                gpui::size(gpui::px(width), gpui::px(height)),
-            ),
+            crate::automation::LaidOut::of_box(gpui::Bounds::new(origin, gpui::size(gpui::px(width), gpui::px(height)))),
+            origin,
             gpui::LayoutInsets::default(),
         );
     }

@@ -262,7 +262,7 @@ fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Beha
 /// Callers draw pending changes first (`draw_pending_changes`, or `draw_if_dirty` inside a
 /// window command) so the layout is never older than the tree.
 pub(crate) fn scroll_metrics(window: gpui::WindowId, id: u64) -> Option<[f64; 6]> {
-    let painted = crate::automation::get_bounds(window, id).map(|b| (b.width as f32, b.height as f32));
+    let painted = crate::automation::get_bounds(window, id);
     SCROLL_HANDLES.with(|cell| crate::scroll::metrics(cell.borrow().get(&id), painted))
 }
 
@@ -9403,6 +9403,7 @@ pub(crate) fn build_host_container(
         el,
         element.id,
         selection_start,
+        ctx.scroll_handles.contains_key(&element.id),
         scroll_report,
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {
@@ -11493,7 +11494,8 @@ fn window_insets_js(
     Ok(object.into())
 }
 
-/// Last painted box for a host element.
+/// Last box of a host element, as layout computed it: fractional, in 1/64 of a pixel, as
+/// `getBoundingClientRect` reports it, and not the box snapped to device pixels that is painted.
 #[derive(Debug, Clone)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct ElementBounds {
@@ -11501,8 +11503,8 @@ pub struct ElementBounds {
     pub y: f64,
     pub width: f64,
     pub height: f64,
-    /// The DOM's `clientLeft` and `clientTop`: the left and top border widths.
-    /// The padding box starts at `(x + clientLeft, y + clientTop)`.
+    /// The DOM's `clientLeft` and `clientTop`: the left and top border widths, rounded to whole
+    /// pixels as the DOM does.
     pub client_left: f64,
     pub client_top: f64,
 }
@@ -11566,8 +11568,8 @@ impl ElementBounds {
             y: bounds.y,
             width: bounds.width,
             height: bounds.height,
-            client_left: bounds.client_left,
-            client_top: bounds.client_top,
+            client_left: bounds.client_left.round(),
+            client_top: bounds.client_top.round(),
         }
     }
 }
@@ -11582,8 +11584,8 @@ fn element_bounds_js(
         ("y", bounds.y),
         ("width", bounds.width),
         ("height", bounds.height),
-        ("clientLeft", bounds.client_left),
-        ("clientTop", bounds.client_top),
+        ("clientLeft", bounds.client_left.round()),
+        ("clientTop", bounds.client_top.round()),
     ] {
         js_sys::Reflect::set(
             &object,
@@ -13964,20 +13966,9 @@ mod dimension_length_tests {
     const LONG: &str = "hello wonderful world";
     const COLUMN: &str = r#"{"width": 600}"#;
 
-    /// The width of the text up to 1/64 of a pixel, as layout has it, and then the right edge at the
-    /// nearest of the device pixels of the 2x test window (the box is at the origin, and a half
-    /// rounds toward it), as the box is painted.
+    /// The width of the text up to 1/64 of a pixel, as layout has it and as a box reports it.
     fn text_width(characters: usize) -> f64 {
-        painted_edge(laid_out_text_width(characters))
-    }
-
-    fn laid_out_text_width(characters: usize) -> f64 {
         (characters as f64 * CHAR * 64.0).ceil() / 64.0
-    }
-
-    /// The right edge of a box at the origin, as the 2x test window paints it.
-    fn painted_edge(laid_out: f64) -> f64 {
-        ((laid_out * 2.0) - 0.5).ceil() / 2.0
     }
 
     /// Element 1 is `parent`, 2 a child with `style` holding the text `content`.
@@ -14275,7 +14266,7 @@ mod dimension_length_tests {
 
         // The width is no limit: the item grows from it, sharing the free space with the sibling.
         let growing = basis_row(cx, ROW, r#"{"width": "fit-content", "flexGrow": 1}"#, HELLO_WORLD);
-        near(growing.size(2), (painted_edge((600.0 + laid_out_text_width(11)) / 2.0), LINE));
+        near(growing.size(2), ((600.0 + text_width(11)) / 2.0, LINE));
 
         // A basis of its own wins, and the item is held up by its content only.
         let basis = basis_row(cx, narrow, r#"{"width": "fit-content", "flexBasis": 20, "flexShrink": 0}"#, LONG);

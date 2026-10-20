@@ -1,7 +1,7 @@
 /// Text is laid out in fractions of a pixel, as Chrome lays it out in 1/64 of one, and snapped to device pixels when it
-/// is painted: a cap-trimmed label is centred in a fixed-height box, and a chip is as wide as its text, to within the
-/// pixel that painting snaps to. gpui checks the layout itself to 1/64 before the snap (`chrome_layout_units` in
-/// gpui's text.rs); this checks what an app reads back, with the system fonts, against the same Chrome.
+/// is painted: a cap-trimmed label is centred in a fixed-height box, and a chip is as wide as its text. gpui checks the
+/// layout itself to 1/64 (`chrome_layout_units` in gpui's text.rs); this checks what an app reads back, which is the
+/// layout and not the painted box, with the system fonts, against the same Chrome, to a unit of 1/64.
 ///
 /// Numbers are from headless Chrome 155 on macOS (`getBoundingClientRect`), each case giving its HTML.
 ///   box    `<div style="height:40px;display:flex;align-items:center;font:13px/20px 'Helvetica Neue'">
@@ -29,10 +29,12 @@ function setup() {
   return { ...root, ref, rect }
 }
 
-/** Painting snaps both edges of a box to a device pixel, which is a pixel in a 1x window. */
+/** What a box is read as: layout's own value, a multiple of 1/64, so it can differ from Chrome's by a unit of it. */
 function within(actual: number, chrome: number, what: string, tolerance: number) {
   expect(Math.abs(actual - chrome), `${what}: ${actual} != Chrome's ${chrome}`).toBeLessThanOrEqual(tolerance)
 }
+
+const UNIT = 1 / 64 + 1e-6
 
 const TRIM = { textBox: "trim-both cap alphabetic" } as const
 
@@ -61,9 +63,9 @@ describeNative("a cap-trimmed label in a fixed-height box", () => {
         )
         const label = rect("label")
         const box = rect("box")
-        within(label.top - box.top, sample.y, "label y", 1)
-        within(label.width, sample.w, "label width", 0.5)
-        within(label.height, sample.h, "label height", 1)
+        within(label.top - box.top, sample.y, "label y", UNIT)
+        within(label.width, sample.w, "label width", UNIT)
+        within(label.height, sample.h, "label height", UNIT)
         const above = label.top - box.top
         const below = box.bottom - label.bottom
         expect(Math.abs(above - below), `${above} above and ${below} below`).toBeLessThanOrEqual(1)
@@ -104,7 +106,7 @@ describeNative("a chip as wide as its text", () => {
           </div>
         )
         const chip = rect("chip")
-        within(chip.width, sample.w, "chip width", 0.5)
+        within(chip.width, sample.w, "chip width", UNIT)
         within(chip.height, sample.h, "chip height", 0.01)
       } finally {
         unmount()

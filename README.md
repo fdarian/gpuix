@@ -2625,8 +2625,8 @@ function ProgrammaticScroll() {
 | Member | |
 |---|---|
 | `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range. |
-| `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. |
-| `clientWidth`, `clientHeight` | The padding box less the scrollbar. Overlay scrollbars take nothing from it; classic ones (see [Scrollbars](#scrollbars)) take 15 px, or 11 with `scrollbarWidth: "thin"`. |
+| `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. A whole number: the extent as layout measured it, rounded half up, as Chrome does. |
+| `clientWidth`, `clientHeight` | The padding box less the scrollbar. Overlay scrollbars take nothing from it; classic ones (see [Scrollbars](#scrollbars)) take 15 px, or 11 with `scrollbarWidth: "thin"`. A whole number: the size as layout measured it, rounded half up, as Chrome does, so a box 33.328125 px wide has a `clientWidth` of 33. |
 | `scrollTo({ top, left, behavior })`, `scrollTo(x, y)` | An axis you leave out stays where it is. |
 | `scrollBy({ top, left, behavior })`, `scrollBy(dx, dy)` | Relative to the current position. |
 | `scrollIntoView({ block, inline, behavior })` | `block` defaults to `"start"` and `inline` to `"nearest"`; each takes `"start"`, `"center"`, `"end"` or `"nearest"`. `scrollIntoView(false)` aligns the end. |
@@ -3145,7 +3145,8 @@ together (Helvetica at 16px is 18px, Menlo 19px). A number or a length is laid o
 sixty-fourths of a pixel, so `lineHeight: 1.2` at 12px is 14.390625px and not 14 or 15. What a
 line has over the font's ascent and descent is shared around them, the half above rounded
 down. Boxes are snapped to the pixel grid when they are painted, so a stack of such lines is as
-tall as the sum of its lines, but one box reports its height to the nearest pixel.
+tall as the sum of its lines; `getBoundingClientRect()` reports the layout and not the snapped box, so one box
+reports its height in sixty-fourths of a pixel.
 
 The strut of a line is the element's own font and line height. A run in another weight,
 family or size is a box of its own on the line, and the line is as tall as the strut and
@@ -3755,8 +3756,8 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
 #### Deviations
 
 - A text is as wide as its advance up to 1/64 of a pixel, as in Chrome, and boxes are laid out in
-  fractions of a pixel. Their positions are snapped to device pixels when painted (and in
-  `getBoundingClientRect`), where Chrome's are in 1/64 of a pixel. Chrome rounds the ascent and descent of a font to whole pixels,
+  fractions of a pixel. Their positions are snapped to device pixels when painted, but not in
+  `getBoundingClientRect`, which reports them in 1/64 of a pixel as Chrome does. Chrome rounds the ascent and descent of a font to whole pixels,
   gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
@@ -4909,6 +4910,22 @@ Two reads in one turn see the same frame: a window with nothing pending does not
 redraw, so the offset between a parent and a child stays constant under a moving
 ancestor.
 
+The rect is the layout, as in Chrome, and not the box that is painted: `x`, `y`, `width`
+and `height` are fractions of a pixel, cut down to a multiple of 1/64 as a browser's
+`LayoutUnit` is (a `width: "33.3333%"` of 100 px is 33.328125, and a box after a text
+starts where the text ends, say 69.3125). Painting, hit testing and the pointer's
+`clientX`, `offsetX` and `offsetY` use the box snapped to device pixels and are
+unchanged. `ResizeObserver` sizes, `IntersectionObserver` rects, `onLayout`, the
+bounds of a `<span>` and `getElementsAt` read the same boxes. The integer members are
+rounded as Chrome rounds them: `clientWidth`, `clientHeight`, `scrollWidth` and
+`scrollHeight` (see [Scrolling](#scrolling)) are the padding box and the scrollable overflow
+rounded half up, `clientLeft` and `clientTop` of `getElementBounds` are the rounded border
+widths, and `scrollTop` and `scrollLeft` are as they were. Deviations: a length you write
+in px is snapped to a device pixel before layout, so at 1x `width: 100.4` is 100 (a
+percentage, a flex share and a text are not); and the scroll offset an element is placed
+at is the one it is painted at, which is a whole device pixel, so a box inside a scroller
+that is scrolled by a fraction is where it is painted and not where a browser puts it.
+
 `renderer.getElementBounds(id)` is the raw read on the live `GpuixRenderer` and
 on the test renderer. It does the same flush and layout, and returns `null`
 instead of a zero rect when the element has no box. `<input>` reports its border
@@ -4932,7 +4949,9 @@ useEffect(() => {
 ```
 
 `ResizeObserver` calls back with `entries` (`target`, `contentRect`,
-`borderBoxSize`, `contentBoxSize`) and the observer. The first callback follows
+`borderBoxSize`, `contentBoxSize`) and the observer. The sizes are fractions of a
+pixel, as layout has them (see [Measure an element](#measure-an-element)); so are
+the rects of an `IntersectionObserver` entry. The first callback follows
 `observe()` for an element that is not 0 by 0, then one per change of the
 observed box (`"content-box"`, the default, or `"border-box"`). The content box
 is the border box minus the element's laid-out `padding` and border, so `em`, `calc()`
@@ -4988,7 +5007,8 @@ report; its rows do, and a row outside the window reports as not painting.
 
 ### Find what is under a point
 
-`getElementsAt(x, y)` returns the ids of the elements whose last painted box
+`getElementsAt(x, y)` returns the ids of the elements whose last box (as laid out, not
+snapped; see [Measure an element](#measure-an-element))
 holds a window point, topmost first, like the DOM's `elementsFromPoint`. It
 works on the live `GpuixRenderer` and on the test renderer.
 

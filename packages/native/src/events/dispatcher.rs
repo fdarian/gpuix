@@ -407,7 +407,7 @@ impl<'a> Emitter<'a> {
             .chain(self.previous_hits)
             .find(|hit| hit.id == id)
             .map(|hit| hit_origin(hit.bounds))
-            .or_else(|| crate::automation::get_bounds(self.window, id).map(|bounds| (bounds.x, bounds.y)))
+            .or_else(|| crate::automation::get_bounds(self.window, id).map(|bounds| (bounds.painted_x, bounds.painted_y)))
     }
 }
 
@@ -1754,7 +1754,8 @@ mod tests {
         crate::automation::record_bounds(
             WindowId::from(1),
             id,
-            Bounds::default(),
+            crate::automation::LaidOut::of_box(Bounds::default()),
+            gpui::Point::default(),
             gpui::LayoutInsets { border: gpui::Edges::all(gpui::px(border)), ..Default::default() },
         );
     }
@@ -1942,7 +1943,8 @@ mod tests {
         crate::automation::record_bounds(
             WindowId::from(window),
             id,
-            Bounds::new(point(px(x), px(y)), size(px(50.0), px(50.0))),
+            crate::automation::LaidOut::of_box(Bounds::new(point(px(x), px(y)), size(px(50.0), px(50.0)))),
+            point(px(x), px(y)),
             gpui::LayoutInsets::default(),
         );
     }

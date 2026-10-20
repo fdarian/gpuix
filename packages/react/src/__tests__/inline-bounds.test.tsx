@@ -54,6 +54,9 @@ function setup() {
   return { ...root, ref, element }
 }
 
+/** Boxes are cut down to a multiple of 1/64, which a column measured from the glyphs need not be. */
+const UNIT = 1 / 64
+
 describeNative("bounds of an inline element", () => {
   it("is the width of its glyphs on a single line", () => {
     const { render, ref, element, unmount } = setup()
@@ -70,7 +73,7 @@ describeNative("bounds of an inline element", () => {
       const span = element("span").getBoundingClientRect()
 
       expect(span.x).toBeCloseTo(text.x + 6 * column, 2)
-      expect(span.width).toBeCloseTo(5 * column, 2)
+      expect(Math.abs(span.width - 5 * column), "a width is cut to 1/64, as Chrome's is").toBeLessThanOrEqual(UNIT)
       expect(span.y, "the content area is centred in the line").toBeCloseTo(text.y + INSET, 2)
       expect(span.height, "as tall as the font, not the line").toBeCloseTo(CONTENT, 2)
       expect(span.right).toBeCloseTo(span.x + span.width, 2)
@@ -207,7 +210,7 @@ describeNative("observing an inline element", () => {
 
       expect(entries).toHaveLength(1)
       expect(entries[0]!.target).toBe(element("span"))
-      expect(entries[0]!.borderBoxSize[0]!.inlineSize).toBeCloseTo(13 * column, 2)
+      expect(Math.abs(entries[0]!.borderBoxSize[0]!.inlineSize - 13 * column)).toBeLessThanOrEqual(UNIT)
       expect(entries[0]!.borderBoxSize[0]!.blockSize).toBeCloseTo(CONTENT, 2)
 
       render(app(12))

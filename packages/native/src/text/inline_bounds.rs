@@ -18,9 +18,9 @@
 
 use std::ops::Range;
 
-use gpui::{point, size, Bounds, Pixels, TextLayout, Window};
+use gpui::{point, size, Bounds, Pixels, Point, TextLayout, Window};
 
-use crate::automation::record_bounds;
+use crate::automation::{record_bounds, LaidOut};
 
 use super::inline_insets::{BoxEdges, Edges};
 use super::paint::range_rows;
@@ -147,16 +147,21 @@ pub fn union(fragments: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
         .reduce(|joined, fragment| joined.union(&fragment))
 }
 
-/// Records the painted box of every inline element of the paragraph `layout`
-/// belongs to. Call it from paint.
-pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &Window) {
+/// Records the box of every inline element of the paragraph `layout` belongs to. Call it from
+/// paint.
+///
+/// The rows are measured from the snapped origin of the paragraph, where its glyphs are painted,
+/// and `shift` is how far layout's origin of the paragraph is from it: a span reports where
+/// layout put it, as a browser does.
+pub fn record(layout: &TextLayout, boxes: &[InlineBox], shift: Point<Pixels>, window: &Window) {
     for inline in boxes {
-        let Some(bounds) = union(&border_box_rows(layout, &inline.range, &inline.edges)) else {
+        let Some(painted) = union(&border_box_rows(layout, &inline.range, &inline.edges)) else {
             continue;
         };
         // An inline box has no layout node: its padding and border are its style's.
         let insets = inline.edges.layout_insets(layout);
-        record_bounds(window.window_handle().window_id(), inline.id, bounds, insets);
+        let laid_out = Bounds::new(painted.origin + shift, painted.size);
+        record_bounds(window.window_handle().window_id(), inline.id, LaidOut::of_box(laid_out), painted.origin, insets);
     }
 }
 

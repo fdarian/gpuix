@@ -1128,15 +1128,18 @@ export interface EdgeInsets {
   left: number
 }
 
-/** Last painted box for a host element. */
+/**
+ * Last box of a host element, as layout computed it: fractional, in 1/64 of a pixel, as
+ * `getBoundingClientRect` reports it, and not the box snapped to device pixels that is painted.
+ */
 export interface ElementBounds {
   x: number
   y: number
   width: number
   height: number
   /**
-   * The DOM's `clientLeft` and `clientTop`: the left and top border widths.
-   * The padding box starts at `(x + clientLeft, y + clientTop)`.
+   * The DOM's `clientLeft` and `clientTop`: the left and top border widths, rounded to whole
+   * pixels as the DOM does.
    */
   clientLeft: number
   clientTop: number

@@ -1,4 +1,7 @@
-//! Shared automation host: paint bounds and a controllable motion clock.
+//! Shared automation host: element bounds and a controllable motion clock.
+//!
+//! The box recorded is the one layout computed (fractional), which only prepaint can ask for, so
+//! [`capture_layout_box`] keeps it for the paint listener that records it.
 //!
 //! Record bounds during **paint**, not prepaint. The frame reset canvas
 //! clears the map in paint, and GPUI prepaint runs for the whole tree
@@ -7,7 +10,7 @@
 //! TestGpuixRenderer and GpuixRenderer both use this so locators, screenshots,
 //! and clock control do not fork between headless tests and a live window.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -23,12 +26,23 @@ use web_time::Instant;
 
 use crate::events::key_names::Press;
 
+/// An element's border box as layout computed it, which is what the DOM reports for
+/// `getBoundingClientRect`: fractional, in 1/64 of a pixel as Chrome's `LayoutUnit` is. The box
+/// that is painted and hit is [`snapped`](Self::snapped_origin) to device pixels and is not what
+/// these four are.
 #[derive(Clone, Copy, Debug)]
 pub struct ElementBounds {
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// Where the border box is painted, which the pointer's `offsetX` and `offsetY` are measured from.
+    pub painted_x: f64,
+    pub painted_y: f64,
+    /// The extent of the content from the padding box's origin as layout measured it (padding
+    /// included), which `scrollWidth` and `scrollHeight` round.
+    pub content_width: f64,
+    pub content_height: f64,
     /// The DOM's `clientLeft`: the left border's width as laid out, so the padding box starts at `x + client_left`.
     pub client_left: f64,
     pub client_top: f64,
@@ -41,13 +55,36 @@ pub struct ElementBounds {
     pub padding_bottom: f64,
 }
 
+/// Layout resolution, the one of Chrome's `LayoutUnit`: a length is cut down to a multiple of
+/// 1/64 of a pixel, which `getBoundingClientRect` reports as it is. A multiple of it is exact in an
+/// `f32` and in a sum with a device-pixel offset, so a box a replay moves by a whole offset is the
+/// box a build would have given there.
+const LAYOUT_UNITS_PER_PX: f64 = 64.0;
+
+/// Taffy computes in `f32`, so a length that is a multiple of 1/64 (a text's width, `10px`) comes
+/// out a rounding error either side of it, an error that depends on how far from the window's
+/// origin the box is. Cutting that down would take a whole unit off one side, and a replayed box
+/// and a built one would differ. The error is taken off first, by rounding to a finer grid that
+/// is still many times coarser than it.
+const NOISE_UNITS_PER_PX: f64 = 512.0;
+
+fn layout_units(value: Pixels) -> f64 {
+    let denoised = (f64::from(f32::from(value)) * NOISE_UNITS_PER_PX).round() / NOISE_UNITS_PER_PX;
+    (denoised * LAYOUT_UNITS_PER_PX).floor() / LAYOUT_UNITS_PER_PX
+}
+
 impl ElementBounds {
-    fn from_gpui(bounds: Bounds<Pixels>, insets: LayoutInsets) -> Self {
+    /// `painted` is where the box is when snapped to device pixels.
+    fn from_gpui(layout: LaidOut, painted: Point<Pixels>, insets: LayoutInsets) -> Self {
         Self {
-            x: f64::from(f32::from(bounds.origin.x)),
-            y: f64::from(f32::from(bounds.origin.y)),
-            width: f64::from(f32::from(bounds.size.width)),
-            height: f64::from(f32::from(bounds.size.height)),
+            x: layout_units(layout.border_box.origin.x),
+            y: layout_units(layout.border_box.origin.y),
+            width: layout_units(layout.border_box.size.width),
+            height: layout_units(layout.border_box.size.height),
+            content_width: layout_units(layout.content.width),
+            content_height: layout_units(layout.content.height),
+            painted_x: f64::from(f32::from(painted.x)),
+            painted_y: f64::from(f32::from(painted.y)),
             client_left: f64::from(f32::from(insets.border.left)),
             client_top: f64::from(f32::from(insets.border.top)),
             border_right: f64::from(f32::from(insets.border.right)),
@@ -59,6 +96,29 @@ impl ElementBounds {
         }
     }
 
+    /// A box with no border or padding, painted where it is laid out.
+    #[cfg(test)]
+    pub(crate) fn plain(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            painted_x: x,
+            painted_y: y,
+            content_width: width,
+            content_height: height,
+            client_left: 0.0,
+            client_top: 0.0,
+            border_right: 0.0,
+            border_bottom: 0.0,
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+        }
+    }
+
     /// The box `offset` away, in the single precision it is measured in, which is what painting
     /// it there measures.
     fn translated(self, offset: Point<Pixels>) -> Self {
@@ -66,6 +126,8 @@ impl ElementBounds {
         Self {
             x: moved(self.x, offset.x),
             y: moved(self.y, offset.y),
+            painted_x: moved(self.painted_x, offset.x),
+            painted_y: moved(self.painted_y, offset.y),
             ..self
         }
     }
@@ -112,10 +174,84 @@ fn forget_window(window: WindowId) {
 /// would become the flex item and the image would lose intrinsic sizing and
 /// corner clipping.
 pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(el: E, id: u64) -> E {
+    let (el, laid_out) = capture_layout_box(el, false);
     el.on_painted_layout(move |bounds, layout_id, window, _| {
         let insets = window.layout_insets(layout_id);
-        record_bounds(window.window_handle().window_id(), id, bounds, insets);
+        record_bounds(window.window_handle().window_id(), id, laid_out.get(), bounds.origin, insets);
     })
+}
+
+/// The box layout gave an element, as its prepaint saw it.
+///
+/// Paint cannot ask for it: `Window::layout_unsnapped_bounds` reads the element offset, which only
+/// prepaint has. The prepaint listener runs for a culled subtree too, and its box is read by the
+/// painted-layout listener of the same element, which paints, or publishes after a pass that only
+/// lays out, right after it.
+#[derive(Clone, Default)]
+pub struct LaidOutBox(Rc<Cell<Option<PrepaintedBox>>>);
+
+/// What layout measured of an element, before any of it is snapped to device pixels.
+#[derive(Clone, Copy)]
+pub struct LaidOut {
+    /// See `Window::layout_unsnapped_bounds`.
+    pub border_box: Bounds<Pixels>,
+    /// How far the scrollable overflow reaches from the origin of the padding box, the padding
+    /// after the content included, which `scrollWidth` and `scrollHeight` round. The border box
+    /// for an element that does not scroll.
+    pub content: gpui::Size<Pixels>,
+}
+
+impl LaidOut {
+    /// An inline box has no layout node: it holds what it is.
+    pub fn of_box(border_box: Bounds<Pixels>) -> Self {
+        Self { border_box, content: border_box.size }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PrepaintedBox {
+    laid_out: LaidOut,
+    snapped: Bounds<Pixels>,
+}
+
+impl LaidOutBox {
+    fn seen(&self) -> PrepaintedBox {
+        self.0.get().expect("an element is prepainted before its box is reported")
+    }
+
+    fn get(&self) -> LaidOut {
+        self.seen().laid_out
+    }
+
+    /// How far the box as laid out is from the box snapped to device pixels, which is what
+    /// moves a position measured from the snapped box to the same position in the laid out one.
+    pub fn shift(&self) -> Point<Pixels> {
+        let seen = self.seen();
+        seen.laid_out.border_box.origin - seen.snapped.origin
+    }
+}
+
+/// `scrolls`: the element is a scroller, whose overflow is measured; it walks the subtree, so it is
+/// not asked of the others.
+pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> (E, LaidOutBox) {
+    let captured = LaidOutBox::default();
+    let slot = captured.0.clone();
+    let el = el.on_prepainted_layout(move |snapped, layout_id, window, _| {
+        let border_box = window.layout_unsnapped_bounds(layout_id);
+        let content = match scrolls.then(|| window.layout_unsnapped_scrollable_overflow(layout_id)).flatten() {
+            Some(reach) => {
+                let insets = window.layout_insets(layout_id);
+                gpui::size(
+                    reach.width - insets.border.left + insets.padding.right,
+                    reach.height - insets.border.top + insets.padding.bottom,
+                )
+            }
+            None => border_box.size,
+        };
+        let laid_out = LaidOut { border_box, content };
+        slot.set(Some(PrepaintedBox { laid_out, snapped }));
+    });
+    (el, captured)
 }
 
 /// Record a host element's painted box, and its selection-start region, for
@@ -130,7 +266,7 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(el: E, id: u
 /// reader of the screen would see: the selection-start region.
 ///
 /// The box is the border box, which is what a DOM `getBoundingClientRect`
-/// reports.
+/// reports. `scrolls` says it is a scroller, whose scrollable overflow is measured too.
 ///
 /// `report` sees the painted box right after it is recorded. `on_painted_layout`
 /// takes one listener, so it shares this one. It is for what cannot be read from the recorded
@@ -140,15 +276,17 @@ pub fn track_host_bounds<E>(
     el: E,
     id: u64,
     selection_start: Option<bool>,
+    scrolls: bool,
     report: Option<PaintReporter>,
 ) -> E
 where
     E: gpui::InteractiveElement + gpui::Styled,
 {
+    let (el, laid_out) = capture_layout_box(el, scrolls);
     el.on_painted_layout(move |bounds, layout_id, window, cx| {
         let insets = window.layout_insets(layout_id);
         let window_id = window.window_handle().window_id();
-        record_bounds(window_id, id, bounds, insets);
+        record_bounds(window_id, id, laid_out.get(), bounds.origin, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
             crate::text::record_start_region(window_id, bounds, selectable);
@@ -164,9 +302,16 @@ where
 /// frame produced. The window is the one being painted.
 pub type PaintReporter = Rc<dyn Fn(Bounds<Pixels>, LayoutInsets, &mut Window, &mut App)>;
 
-pub fn record_bounds(window: WindowId, id: u64, bounds: Bounds<Pixels>, insets: LayoutInsets) {
+/// `layout` is the box as laid out and `painted` where its snapped box starts.
+pub fn record_bounds(
+    window: WindowId,
+    id: u64,
+    layout: LaidOut,
+    painted: Point<Pixels>,
+    insets: LayoutInsets,
+) {
     crate::tape::write_in_layout(
-        (window, id, ElementBounds::from_gpui(bounds, insets)),
+        (window, id, ElementBounds::from_gpui(layout, painted, insets)),
         |(window, id, bounds), offset| insert_bounds(*window, *id, bounds.translated(offset)),
         |(_, id, bounds), offset| format!("bounds {id} {:?}", bounds.translated(offset)),
     );
@@ -571,6 +716,32 @@ pub fn dispatch_scroll_wheel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_length_is_cut_down_to_a_sixty_fourth_of_a_pixel_as_chrome_cuts_it() {
+        // 33.3333% of 100px, and `getBoundingClientRect` in Chrome for it.
+        assert_eq!(layout_units(px(33.3333)), 33.328125);
+        assert_eq!(layout_units(px(100.4)), 100.390625);
+        assert_eq!(layout_units(px(-0.3)), -0.3125);
+    }
+
+    #[test]
+    fn a_multiple_of_a_sixty_fourth_stays_put_whatever_its_rounding_error() {
+        for value in [69.3125_f32, 0.015625, 2783.984375] {
+            let below = f32::from_bits(value.to_bits() - 1);
+            let above = f32::from_bits(value.to_bits() + 1);
+            for noisy in [below, value, above] {
+                assert_eq!(layout_units(px(noisy)), f64::from(value), "{noisy}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_box_moved_by_a_device_pixel_offset_is_the_box_laid_out_there() {
+        let at = |x: f32| layout_units(px(x));
+        let moved = ElementBounds::plain(at(33.3333), 0.0, 10.0, 10.0).translated(gpui::point(px(-1021.5), px(0.0)));
+        assert_eq!(moved.x, at(33.3333 - 1021.5));
+    }
 
     #[test]
     fn wheel_deltas_have_the_doms_sign() {

@@ -452,6 +452,16 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
     let inline_boxes = std::rc::Rc::new(inline_boxes);
     let layout_of_boxes = layout.clone();
     let boxes_to_record = inline_boxes.clone();
+    // The glyphs are placed from the snapped origin of the paragraph; a span reports its box from
+    // the origin layout gave it. The wrapper starts where the glyphs do.
+    let wrapper = div().relative().unlifted();
+    let (wrapper, laid_out) = if inline_boxes.is_empty() {
+        (wrapper, None)
+    } else {
+        let (wrapper, laid_out) = crate::automation::capture_layout_box(wrapper, false);
+        (wrapper, Some(laid_out))
+    };
+    let laid_out_in_layout_pass = laid_out.clone();
     let underlay = canvas(
         move |_, window, _| {
             // Numbers the find matches in document order, which needs every run's matches
@@ -465,8 +475,9 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
             if window.is_layout_pass() && !boxes_to_record.is_empty() {
                 let layout = layout_of_boxes.clone();
                 let boxes = boxes_to_record.clone();
+                let laid_out = laid_out_in_layout_pass.clone().expect("a paragraph with boxes captures its own");
                 window.publish_layout(move |window, _| {
-                    super::inline_bounds::record(&layout, &boxes, window)
+                    super::inline_bounds::record(&layout, &boxes, laid_out.shift(), window)
                 });
             }
             let Some((source, key, doc, text)) = &announced else {
@@ -561,7 +572,9 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     targets.clone(),
                 );
             }
-            super::inline_bounds::record(&layout, &inline_boxes, window);
+            if let Some(laid_out) = &laid_out {
+                super::inline_bounds::record(&layout, &inline_boxes, laid_out.shift(), window);
+            }
             super::inline_focus::focus_on_press(window, element_id, press_focus.clone());
             if let Some(on_link) = &on_link {
                 register_link_listener(window, &layout, &links, on_link, &selection);
@@ -575,7 +588,6 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
 
     // Positioned only to hold the underlay. Lifted, every text run would rise above the
     // later boxes of its context.
-    let wrapper = div().relative().unlifted();
     let wrapper = match cull_outset {
         Some(outset) => wrapper.cullable(outset),
         None => wrapper,

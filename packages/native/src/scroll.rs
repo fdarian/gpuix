@@ -168,29 +168,42 @@ pub(crate) fn apply_container<E: gpui::Styled + gpui::StatefulInteractiveElement
 }
 
 /// `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]` as the DOM
-/// reports them. `painted` is the border box of an element that does not scroll, whose
-/// content is as big as it is.
+/// reports them. `painted` is the element's box, which an element that does not scroll has no
+/// scroll handle for: its content is as big as it is.
+///
+/// The sizes are integers, as Chrome's are: the size of the padding box (or of the scrollable
+/// overflow) rounded half up, from what layout measured and not from the boxes as painted, so a
+/// fractional width reads as Chrome reads it.
 pub(crate) fn metrics(
     handle: Option<&gpui::ScrollHandle>,
-    painted: Option<(f32, f32)>,
+    painted: Option<crate::automation::ElementBounds>,
 ) -> Option<[f64; 6]> {
+    let painted = painted?;
+    let (reserved_width, reserved_height) = handle.map_or((0.0, 0.0), |handle| {
+        let bars = handle.scrollbar_size();
+        (f64::from(f32::from(bars.width)), f64::from(f32::from(bars.height)))
+    });
+    let width = (painted.width - painted.client_left - painted.border_right - reserved_width).max(0.0);
+    let height = (painted.height - painted.client_top - painted.border_bottom - reserved_height).max(0.0);
+    let (client_width, client_height) = (round_half_up(width), round_half_up(height));
     let Some(handle) = handle else {
-        let (width, height) = painted?;
-        return Some([0.0, 0.0, width as f64, height as f64, width as f64, height as f64]);
+        return Some([0.0, 0.0, client_width, client_height, client_width, client_height]);
     };
-    let client = handle.padding_box().size;
-    let max = handle.max_offset();
-    let offset = clamp_offset(handle.offset(), max);
-    let (width, height) = (f32::from(client.width), f32::from(client.height));
+    let offset = clamp_offset(handle.offset(), handle.max_offset());
     Some([
         // `0.0 -` rather than negation: an offset of 0 must read +0, not -0.
         0.0 - f64::from(f32::from(offset.x)),
         0.0 - f64::from(f32::from(offset.y)),
-        f64::from(width + f32::from(max.x)),
-        f64::from(height + f32::from(max.y)),
-        f64::from(width),
-        f64::from(height),
+        round_half_up(width.max(painted.content_width)),
+        round_half_up(height.max(painted.content_height)),
+        client_width,
+        client_height,
     ])
+}
+
+/// `Math.round`, which is how Chrome rounds a `LayoutUnit` for `clientWidth` and `scrollWidth`.
+fn round_half_up(value: f64) -> f64 {
+    (value + 0.5).floor()
 }
 
 fn clamp_offset(
@@ -644,6 +657,13 @@ pub(crate) fn virtual_list_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_client_size_rounds_half_up_like_chromes() {
+        assert_eq!(round_half_up(10.5), 11.0);
+        assert_eq!(round_half_up(10.4375), 10.0);
+        assert_eq!(round_half_up(31.328125), 31.0);
+    }
 
     #[test]
     fn virtual_list_rows_align_like_scroll_container_targets() {
