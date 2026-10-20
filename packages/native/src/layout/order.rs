@@ -7,8 +7,9 @@ use crate::retained_tree::{RetainedElement, RetainedTree};
 ///
 /// Taffy has no `order`, and GPUI paints children in the order they are added,
 /// so sorting the list that gets built moves layout and paint together. The sort
-/// is stable, so equal `order` values keep document order. Focus and tab order
-/// never read this list: they follow the retained tree.
+/// is stable, so equal `order` values keep document order. Tab order is document
+/// order, so the builder hands each child's document position to gpui, which puts
+/// the tab stops back in it (`plan_children_at` returns the positions).
 pub(crate) fn children_in_order<'a>(
     tree: &RetainedTree,
     element: &'a RetainedElement,

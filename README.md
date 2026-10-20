@@ -4180,7 +4180,7 @@ bubbling, but a `div` that only declares `onKeyDown` never takes focus. Give it 
 
 | Prop | Behavior |
 |---|---|
-| `tabIndex={0}` | Joins the tab order, in document order |
+| `tabIndex={0}` | Joins the tab order, in document order: a flex or grid `order` moves what is painted, not where Tab goes |
 | `tabIndex={n}`, `n > 0` | Tabbed first, in ascending order of `n` (document order among equal values), then the `0`s |
 | `tabIndex={-1}` | Focusable by click, `focus()` or `focusElement`, but never a Tab stop |
 | `autoFocus` | Takes focus once, when it mounts: in the commit that attaches it, as in React DOM. Windows and Linux focus it on the next frame |

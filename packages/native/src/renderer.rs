@@ -9203,7 +9203,7 @@ pub(crate) fn build_host_container(
     // and focus events come from `GpuixView::observe_focus`. The wheel is a window-level
     // input like the pointer's (`events::listeners`).
 
-    let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
+    let (content, placements, containing_heights) = build_content(element, plan, ctx, window, cx);
     if collapsed_table {
         rebuild_if_borders_moved(ctx, used_from, window);
     }
@@ -9238,17 +9238,27 @@ pub(crate) fn build_host_container(
     let absent_children = ctx.retain.absent_children();
     ctx.retain.digest(|| {
         let resolved = ctx.tree.resolved_of(element, &ctx.inherited.colors, &ctx.inherited.lengths);
-        let present_ranks: Vec<i32> = paint_ranks
+        let present: Vec<Placement> = placements
             .iter()
             .enumerate()
             .filter(|(index, _)| !absent_children.contains(index))
-            .map(|(_, rank)| *rank)
+            .map(|(_, placement)| *placement)
             .collect();
-        format!("{:?} {} {:?} {:?}", host.style(), content.len() - absent_children.len(), present_ranks, resolved)
+        format!(
+            "{:?} {} {:?} {:?} {:?}",
+            host.style(),
+            content.len() - absent_children.len(),
+            present.iter().map(|placement| placement.rank).collect::<Vec<_>>(),
+            Placement::document_order(&present),
+            resolved
+        )
     });
     host.extend(content);
-    if paint_ranks.iter().any(|rank| *rank != 0) {
-        host = host.paint_ranks(paint_ranks);
+    if placements.iter().any(|placement| placement.rank != 0) {
+        host = host.paint_ranks(placements.iter().map(|placement| placement.rank).collect());
+    }
+    if let Some(positions) = Placement::document_order(&placements) {
+        host = host.document_order(positions);
     }
 
     host.into_any_element()
@@ -9365,7 +9375,28 @@ fn rebuild_if_borders_moved(ctx: &mut BuildCtx, used_from: usize, window: &mut g
     }
 }
 
-/// What a host element holds, in paint order, with the paint rank of each, and the cells its
+/// Where a child of a host element paints, and where it sits in the document.
+#[derive(Clone, Copy, Debug)]
+struct Placement {
+    /// The `z-index` order of the child among its siblings.
+    rank: i32,
+    /// The child's position among the children of its parent in the document, which flex and
+    /// grid `order` moves it away from in the built list. Tab order follows it.
+    document: u32,
+}
+
+impl Placement {
+    /// The document positions of `placements`, or `None` when they are in the order the children
+    /// were built in.
+    fn document_order(placements: &[Placement]) -> Option<Vec<u32>> {
+        placements
+            .windows(2)
+            .any(|pair| pair[0].document > pair[1].document)
+            .then(|| placements.iter().map(|placement| placement.document).collect())
+    }
+}
+
+/// What a host element holds, in paint order, with the placement of each, and the cells its
 /// atomic inlines read the content height of the element from.
 fn build_content(
     element: &crate::retained_tree::RetainedElement,
@@ -9373,7 +9404,7 @@ fn build_content(
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
-) -> (Vec<gpui::AnyElement>, Vec<i32>, Vec<Rc<Cell<gpui::Pixels>>>) {
+) -> (Vec<gpui::AnyElement>, Vec<Placement>, Vec<Rc<Cell<gpui::Pixels>>>) {
     let outer_heights = std::mem::take(&mut ctx.containing_heights);
     // Text content — selectable, same as a <text> leaf.
     // An empty string paints no glyphs, so it must take no space: gpui's text
@@ -9382,7 +9413,7 @@ fn build_content(
     // `{cond && x}`). Emitting those as full-height lines inflated every
     // conditional row. React never sends empty text, so this is a no-op there.
     let mut content_elements = Vec::new();
-    let mut paint_ranks = Vec::new();
+    let mut placements = Vec::new();
     let trim = std::mem::take(&mut ctx.text_box_trim);
     if element.children.is_empty() {
         if let Some(content) = crate::text::search::leaf_text(ctx.tree, element) {
@@ -9393,7 +9424,7 @@ fn build_content(
                 ctx.inherited.lengths.font_size as f32,
                 ctx.inherited.underline_reach,
             ));
-            paint_ranks.push(0);
+            placements.push(Placement { rank: 0, document: 0 });
         }
     }
 
@@ -9406,13 +9437,13 @@ fn build_content(
             .as_ref()
             .filter(|probe| probe.container == element.id)
             .map(crate::text::atomic::Probe::clone_handle);
-        build_plan(element, plan, trim, probe.as_ref(), &mut 0, &mut content_elements, &mut paint_ranks, ctx, window, cx);
+        build_plan(element, plan, trim, probe.as_ref(), &mut 0, &mut content_elements, &mut placements, ctx, window, cx);
     }
     let containing_heights = std::mem::replace(&mut ctx.containing_heights, outer_heights);
-    (content_elements, paint_ranks, containing_heights)
+    (content_elements, placements, containing_heights)
 }
 
-/// Builds the children `plan` of `element` into `content_elements`, with the paint rank of each.
+/// Builds the children `plan` of `element` into `content_elements`, with the placement of each.
 /// `anonymous` counts the anonymous cells and tables of `element` built so far.
 fn build_plan(
     element: &crate::retained_tree::RetainedElement,
@@ -9421,7 +9452,7 @@ fn build_plan(
     probe: Option<&crate::text::atomic::Probe>,
     anonymous: &mut usize,
     content_elements: &mut Vec<gpui::AnyElement>,
-    paint_ranks: &mut Vec<i32>,
+    placements: &mut Vec<Placement>,
     ctx: &mut BuildCtx,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<GpuixView>,
@@ -9449,7 +9480,7 @@ fn build_plan(
         match child {
             crate::text::inline::Child::AnonymousCell(cell) => {
                 let mut inside = Vec::new();
-                let mut inside_ranks = Vec::new();
+                let mut inside_placements = Vec::new();
                 let key = crate::layout::table_grid::BoxKey::Anonymous { container: element.id, ordinal: *anonymous };
                 *anonymous += 1;
                 let outside = ctx.inherited.table_cell;
@@ -9457,15 +9488,18 @@ fn build_plan(
                     .inherited
                     .table_row
                     .map(|row| crate::text::selection::TableCell { row, cell: key.token() });
-                build_plan(element, cell, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                build_plan(element, cell, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_placements, ctx, window, cx);
                 ctx.inherited.table_cell = outside;
                 let halves = ctx.inherited.table.collapse.then(|| ctx.collapsed.cell(key));
                 let mut cell = crate::layout::table::anonymous_cell(halves);
                 ctx.inherited.direction.apply(&mut cell);
-                if inside_ranks.iter().any(|rank| *rank != 0) {
-                    cell = cell.paint_ranks(inside_ranks);
+                if inside_placements.iter().any(|placement| placement.rank != 0) {
+                    cell = cell.paint_ranks(inside_placements.iter().map(|placement| placement.rank).collect());
                 }
-                paint_ranks.push(0);
+                if let Some(positions) = Placement::document_order(&inside_placements) {
+                    cell = cell.document_order(positions);
+                }
+                placements.push(Placement { rank: 0, document: at });
                 content_elements.push(cell.children(inside).into_any_element());
                 continue;
             }
@@ -9479,18 +9513,21 @@ fn build_plan(
                 }
                 let blocks = parts.into_iter().map(|(id, at)| (crate::text::inline::Child::Block(id), at)).collect();
                 let mut inside = Vec::new();
-                let mut inside_ranks = Vec::new();
+                let mut inside_placements = Vec::new();
                 let outside = (ctx.inherited.table_row, ctx.inherited.table_cell);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = (Some(key.token()), None);
-                build_plan(element, blocks, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_ranks, ctx, window, cx);
+                build_plan(element, blocks, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_placements, ctx, window, cx);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = outside;
                 rebuild_if_borders_moved(ctx, used_from, window);
                 let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
                 ctx.inherited.direction.apply(&mut table);
-                if inside_ranks.iter().any(|rank| *rank != 0) {
-                    table = table.paint_ranks(inside_ranks);
+                if inside_placements.iter().any(|placement| placement.rank != 0) {
+                    table = table.paint_ranks(inside_placements.iter().map(|placement| placement.rank).collect());
                 }
-                paint_ranks.push(0);
+                if let Some(positions) = Placement::document_order(&inside_placements) {
+                    table = table.document_order(positions);
+                }
+                placements.push(Placement { rank: 0, document: at });
                 content_elements.push(table.children(inside).into_any_element());
                 continue;
             }
@@ -9501,14 +9538,17 @@ fn build_plan(
             crate::text::inline::Child::Block(child_id) => {
                 let item = crate::layout::stacking::is_flex_or_grid_container(ctx.tree, element);
                 let child_element = ctx.tree.elements.get(&child_id);
-                paint_ranks.push(crate::layout::stacking::paint_rank(
-                    &child_element
-                        .and_then(|child| child.style.as_deref())
-                        .map_or(crate::resolved_style::Resolved::UNSTYLED, |style| {
-                            crate::resolved_style::Resolved::of_style(style, &ctx.inherited.colors, &ctx.inherited.lengths)
-                        }),
-                    item,
-                ));
+                placements.push(Placement {
+                    document: at,
+                    rank: crate::layout::stacking::paint_rank(
+                        &child_element
+                            .and_then(|child| child.style.as_deref())
+                            .map_or(crate::resolved_style::Resolved::UNSTYLED, |style| {
+                                crate::resolved_style::Resolved::of_style(style, &ctx.inherited.colors, &ctx.inherited.lengths)
+                            }),
+                        item,
+                    ),
+                });
                 ctx.contents_overlay =
                     crate::layout::contents::inherited_overlay(ctx.tree, element, child_id);
                 ctx.contents_key = crate::layout::contents::overlay_key(ctx.tree, element, child_id);
@@ -9540,7 +9580,7 @@ fn build_plan(
                 if let Some(probe) = probe {
                     probe.first_is_text();
                 }
-                paint_ranks.push(0);
+                placements.push(Placement { rank: 0, document: at });
                 // A span's container units are fractions of the container it sits in, which
                 // may be this element.
                 // Only a query container changes what the paragraph's boxes inherit.
@@ -9618,7 +9658,7 @@ fn build_contents_container(
     } else {
         crate::text::inline::plan_children_at(ctx.tree, element)
     };
-    let (content, paint_ranks, containing_heights) = build_content(element, plan, ctx, window, cx);
+    let (content, placements, containing_heights) = build_content(element, plan, ctx, window, cx);
     el = crate::text::atomic::report_containing_height(el, containing_heights);
     if ctx.inherited.table.collapse {
         ctx.subtree.block();
@@ -9627,8 +9667,11 @@ fn build_contents_container(
         el = el.cullable(outset);
     }
     el.extend(content);
-    if paint_ranks.iter().any(|rank| *rank != 0) {
-        el = el.paint_ranks(paint_ranks);
+    if placements.iter().any(|placement| placement.rank != 0) {
+        el = el.paint_ranks(placements.iter().map(|placement| placement.rank).collect());
+    }
+    if let Some(positions) = Placement::document_order(&placements) {
+        el = el.document_order(positions);
     }
     el.into_any_element()
 }

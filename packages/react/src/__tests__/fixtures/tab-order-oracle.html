@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  Oracle for tab-order.test.tsx: the ids headless Chrome visits when Tab, and when Shift+Tab, is pressed through a page, for
+  cases of flex and grid containers whose items have `order`, nested, with `tabindex` above zero, `display: contents` and
+  absolutely positioned items. Tab order is document order (`tabindex` above zero first, ascending) whatever `order` and the
+  layout say. Each case is a tree of `{ id, tabIndex, style, children }` that the test builds as well; `width` and `height`
+  are numbers of pixels. The driver, tab-order-oracle.sh, mounts each case with `mount(index)` and presses the keys, and
+  writes `{ name, tree, tab, shiftTab }` per case. Regenerate with
+
+    sh tab-order-oracle.sh
+-->
+<html><head><meta charset="utf-8"></head><body style="margin:10px">
+<div id="scene"></div>
+<script>
+const stop = (id, style = {}, extra = {}) => ({ id, tabIndex: 0, style: { width: 40, height: 20, ...style }, ...extra });
+const row = (children, style = {}) => ({ style: { display: 'flex', ...style }, children });
+const grid = (children, style = {}) => ({ style: { display: 'grid', gridTemplateColumns: '40px 40px 40px', ...style }, children });
+
+window.CASES = [
+  { name: 'flex row, order 3 2 1', tree: row([stop('a', { order: 3 }), stop('b', { order: 2 }), stop('c', { order: 1 })]) },
+  { name: 'flex row, order 0 -1 2 1', tree: row([stop('a'), stop('b', { order: -1 }), stop('c', { order: 2 }), stop('d', { order: 1 })]) },
+  { name: 'flex column reverse, order', tree: row([stop('a', { order: 1 }), stop('b'), stop('c', { order: -1 })], { flexDirection: 'column-reverse' }) },
+  { name: 'flex row-reverse, order', tree: row([stop('a', { order: 2 }), stop('b', { order: 1 }), stop('c')], { flexDirection: 'row-reverse' }) },
+  { name: 'flex wrap, order', tree: row([stop('a', { order: 4 }), stop('b', { order: 3 }), stop('c', { order: 2 }), stop('d', { order: 1 })], { flexWrap: 'wrap', width: 90 }) },
+  { name: 'grid, order 3 2 1', tree: grid([stop('a', { order: 3 }), stop('b', { order: 2 }), stop('c', { order: 1 })]) },
+  { name: 'grid, order 0 -1 2 and a second row', tree: grid([stop('a'), stop('b', { order: -1 }), stop('c', { order: 2 }), stop('d'), stop('e', { order: -2 })]) },
+  { name: 'inline-flex, order', tree: row([stop('a', { order: 2 }), stop('b', { order: 1 })], { display: 'inline-flex' }) },
+  {
+    name: 'nested flex containers with order',
+    tree: row([
+      { style: { order: 2, display: 'flex' }, children: [stop('a', { order: 2 }), stop('b', { order: 1 })] },
+      { style: { order: 1, display: 'flex' }, children: [stop('c', { order: 3 }), stop('d', { order: 2 }), stop('e', { order: 1 })] },
+      stop('f', { order: -1 }),
+    ]),
+  },
+  {
+    name: 'flex in grid in flex',
+    tree: row([
+      grid([
+        row([stop('a', { order: 2 }), stop('b', { order: 1 })], { order: 3 }),
+        row([stop('c', { order: 2 }), stop('d', { order: 1 })], { order: 1 }),
+      ], { order: 2 }),
+      stop('e', { order: 1 }),
+    ]),
+  },
+  {
+    name: 'focusable container with ordered focusable children',
+    tree: row([
+      stop('a', { order: 2, display: 'flex' }, { children: [stop('b', { order: 2 }), stop('c', { order: 1 })] }),
+      stop('d', { order: 1 }),
+    ]),
+  },
+  { name: 'block wrapper in a flex item', tree: row([{ style: { order: 2 }, children: [stop('a')] }, { style: { order: 1 }, children: [stop('b'), stop('c')] }]) },
+  {
+    name: 'tabindex above zero under order',
+    tree: row([stop('a', { order: 3 }, { tabIndex: 2 }), stop('b', { order: 2 }), stop('c', { order: 1 }, { tabIndex: 1 }), stop('d', { order: 0 }, { tabIndex: 2 }), stop('e', { order: -1 })]),
+  },
+  {
+    name: 'tabindex above zero in nested containers',
+    tree: row([
+      { style: { order: 2, display: 'flex' }, children: [stop('a', { order: 2 }, { tabIndex: 3 }), stop('b', { order: 1 })] },
+      { style: { order: 1, display: 'flex' }, children: [stop('c', { order: 2 }), stop('d', { order: 1 }, { tabIndex: 1 })] },
+    ]),
+  },
+  {
+    name: 'tabindex above zero in a grid',
+    tree: grid([stop('a', { order: 3 }, { tabIndex: 1 }), stop('b', { order: 2 }), stop('c', { order: 1 }, { tabIndex: 1 })]),
+  },
+  {
+    name: 'display: contents in a flex container',
+    tree: row([
+      { style: { display: 'contents' }, children: [stop('a', { order: 3 }), stop('b', { order: 1 })] },
+      stop('c', { order: 2 }),
+      { style: { display: 'contents', order: 5 }, children: [stop('d', { order: 0 })] },
+    ]),
+  },
+  {
+    name: 'absolutely positioned item with order',
+    tree: row([stop('a', { order: 2 }), stop('b', { position: 'absolute', order: 3 }), stop('c', { order: 1 })], { position: 'relative' }),
+  },
+  { name: 'tabindex -1 and a hidden item between ordered stops', tree: row([stop('a', { order: 2 }), stop('x', {}, { tabIndex: -1 }), stop('h', { display: 'none', order: 1 }), stop('b', { order: 1 })]) },
+];
+
+const build = (node, parent) => {
+  const element = document.createElement('div');
+  if (node.id) element.id = node.id;
+  if (node.tabIndex !== undefined) element.tabIndex = node.tabIndex;
+  for (const [key, value] of Object.entries(node.style ?? {})) {
+    element.style[key] = typeof value === 'number' && (key === 'width' || key === 'height') ? `${value}px` : value;
+  }
+  parent.appendChild(element);
+  for (const child of node.children ?? []) build(child, element);
+};
+window.mount = (index) => {
+  const scene = document.getElementById('scene');
+  scene.replaceChildren();
+  build(window.CASES[index].tree, scene);
+};
+</script>
+</body></html>

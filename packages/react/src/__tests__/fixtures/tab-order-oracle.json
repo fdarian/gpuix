@@ -1,0 +1,1088 @@
+[
+ {
+  "name": "flex row, order 3 2 1",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 3
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "flex row, order 0 -1 2 1",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": -1
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "d",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "shiftTab": [
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "flex column reverse, order",
+  "tree": {
+   "style": {
+    "display": "flex",
+    "flexDirection": "column-reverse"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": -1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "flex row-reverse, order",
+  "tree": {
+   "style": {
+    "display": "flex",
+    "flexDirection": "row-reverse"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "flex wrap, order",
+  "tree": {
+   "style": {
+    "display": "flex",
+    "flexWrap": "wrap",
+    "width": 90
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 4
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 3
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "d",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "shiftTab": [
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "grid, order 3 2 1",
+  "tree": {
+   "style": {
+    "display": "grid",
+    "gridTemplateColumns": "40px 40px 40px"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 3
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "grid, order 0 -1 2 and a second row",
+  "tree": {
+   "style": {
+    "display": "grid",
+    "gridTemplateColumns": "40px 40px 40px"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": -1
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "d",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20
+     }
+    },
+    {
+     "id": "e",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": -2
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e"
+  ],
+  "shiftTab": [
+   "e",
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "inline-flex, order",
+  "tree": {
+   "style": {
+    "display": "inline-flex"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b"
+  ],
+  "shiftTab": [
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "nested flex containers with order",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "style": {
+      "order": 2,
+      "display": "flex"
+     },
+     "children": [
+      {
+       "id": "a",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 2
+       }
+      },
+      {
+       "id": "b",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 1
+       }
+      }
+     ]
+    },
+    {
+     "style": {
+      "order": 1,
+      "display": "flex"
+     },
+     "children": [
+      {
+       "id": "c",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 3
+       }
+      },
+      {
+       "id": "d",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 2
+       }
+      },
+      {
+       "id": "e",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 1
+       }
+      }
+     ]
+    },
+    {
+     "id": "f",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": -1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e",
+   "f"
+  ],
+  "shiftTab": [
+   "f",
+   "e",
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "flex in grid in flex",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "style": {
+      "display": "grid",
+      "gridTemplateColumns": "40px 40px 40px",
+      "order": 2
+     },
+     "children": [
+      {
+       "style": {
+        "display": "flex",
+        "order": 3
+       },
+       "children": [
+        {
+         "id": "a",
+         "tabIndex": 0,
+         "style": {
+          "width": 40,
+          "height": 20,
+          "order": 2
+         }
+        },
+        {
+         "id": "b",
+         "tabIndex": 0,
+         "style": {
+          "width": 40,
+          "height": 20,
+          "order": 1
+         }
+        }
+       ]
+      },
+      {
+       "style": {
+        "display": "flex",
+        "order": 1
+       },
+       "children": [
+        {
+         "id": "c",
+         "tabIndex": 0,
+         "style": {
+          "width": 40,
+          "height": 20,
+          "order": 2
+         }
+        },
+        {
+         "id": "d",
+         "tabIndex": 0,
+         "style": {
+          "width": 40,
+          "height": 20,
+          "order": 1
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e"
+  ],
+  "shiftTab": [
+   "e",
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "focusable container with ordered focusable children",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2,
+      "display": "flex"
+     },
+     "children": [
+      {
+       "id": "b",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 2
+       }
+      },
+      {
+       "id": "c",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 1
+       }
+      }
+     ]
+    },
+    {
+     "id": "d",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "shiftTab": [
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "block wrapper in a flex item",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "style": {
+      "order": 2
+     },
+     "children": [
+      {
+       "id": "a",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20
+       }
+      }
+     ]
+    },
+    {
+     "style": {
+      "order": 1
+     },
+     "children": [
+      {
+       "id": "b",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20
+       }
+      },
+      {
+       "id": "c",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "tabindex above zero under order",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 2,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 3
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 1,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    },
+    {
+     "id": "d",
+     "tabIndex": 2,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 0
+     }
+    },
+    {
+     "id": "e",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": -1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "c",
+   "a",
+   "d",
+   "b",
+   "e"
+  ],
+  "shiftTab": [
+   "e",
+   "b",
+   "d",
+   "a",
+   "c"
+  ]
+ },
+ {
+  "name": "tabindex above zero in nested containers",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "style": {
+      "order": 2,
+      "display": "flex"
+     },
+     "children": [
+      {
+       "id": "a",
+       "tabIndex": 3,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 2
+       }
+      },
+      {
+       "id": "b",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 1
+       }
+      }
+     ]
+    },
+    {
+     "style": {
+      "order": 1,
+      "display": "flex"
+     },
+     "children": [
+      {
+       "id": "c",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 2
+       }
+      },
+      {
+       "id": "d",
+       "tabIndex": 1,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 1
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "tab": [
+   "d",
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a",
+   "d"
+  ]
+ },
+ {
+  "name": "tabindex above zero in a grid",
+  "tree": {
+   "style": {
+    "display": "grid",
+    "gridTemplateColumns": "40px 40px 40px"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 1,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 3
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 1,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "c",
+   "b"
+  ],
+  "shiftTab": [
+   "b",
+   "c",
+   "a"
+  ]
+ },
+ {
+  "name": "display: contents in a flex container",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "style": {
+      "display": "contents"
+     },
+     "children": [
+      {
+       "id": "a",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 3
+       }
+      },
+      {
+       "id": "b",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 1
+       }
+      }
+     ]
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "style": {
+      "display": "contents",
+      "order": 5
+     },
+     "children": [
+      {
+       "id": "d",
+       "tabIndex": 0,
+       "style": {
+        "width": 40,
+        "height": 20,
+        "order": 0
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "shiftTab": [
+   "d",
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "absolutely positioned item with order",
+  "tree": {
+   "style": {
+    "display": "flex",
+    "position": "relative"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "position": "absolute",
+      "order": 3
+     }
+    },
+    {
+     "id": "c",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b",
+   "c"
+  ],
+  "shiftTab": [
+   "c",
+   "b",
+   "a"
+  ]
+ },
+ {
+  "name": "tabindex -1 and a hidden item between ordered stops",
+  "tree": {
+   "style": {
+    "display": "flex"
+   },
+   "children": [
+    {
+     "id": "a",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 2
+     }
+    },
+    {
+     "id": "x",
+     "tabIndex": -1,
+     "style": {
+      "width": 40,
+      "height": 20
+     }
+    },
+    {
+     "id": "h",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "display": "none",
+      "order": 1
+     }
+    },
+    {
+     "id": "b",
+     "tabIndex": 0,
+     "style": {
+      "width": 40,
+      "height": 20,
+      "order": 1
+     }
+    }
+   ]
+  },
+  "tab": [
+   "a",
+   "b"
+  ],
+  "shiftTab": [
+   "b",
+   "a"
+  ]
+ }
+]
