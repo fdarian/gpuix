@@ -10008,6 +10008,7 @@ pub(crate) fn build_host_container(
         && crate::layout::table::part(element) == Some(crate::layout::table::Part::Table);
     let used_from = ctx.collapsed.used_len();
     if collapsed_table {
+        ctx.retain.collapsed_table();
         resolve_collapsed_borders(ctx, CollapsedTable::Element(element, style), window.scale_factor());
     }
     el = crate::layout::table::apply(el, ctx.tree, element, style, &ctx.inherited.table, &ctx.collapsed);

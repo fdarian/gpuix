@@ -410,8 +410,20 @@ struct Record {
     /// The selection the element was built under. The frame that finds a new selection builds
     /// only the elements it visits, so one it did not (under `display: none`) is still of the old.
     selection: u64,
-    /// What runs on the element itself (`Vol::dynamic`) only changes what it paints, see
-    /// [`Retain::paints_only`].
+    /// Nothing in the subtree is excluded but for the parts of a collapsed table, which the table
+    /// the element is paints itself: `eligible`, or that.
+    unit_eligible: bool,
+    /// What runs where a unit of the element would be rebuilt, see [`Motion`].
+    motion: Motion,
+}
+
+/// The motion a unit would repaint: what runs on the element, or for a table with collapsed
+/// borders on the element and its parts, which it paints the borders of.
+#[derive(Clone, Copy, Default)]
+struct Motion {
+    /// `Vol::dynamic` of the elements, or-ed.
+    dynamic: u8,
+    /// What runs on each of them only changes what it paints, see [`Retain::paints_only`].
     paints_only: bool,
 }
 
@@ -419,11 +431,11 @@ impl Record {
     /// Whether the last build of the element found it a unit to be: only paint-only motion runs on
     /// it, and it lifts nothing out of it (`end_unit` judges the build for what is inside).
     fn is_unit_candidate(&self) -> bool {
-        let only_motion = self.vol.dynamic & Dynamic::OWN != 0 && self.vol.dynamic & !Dynamic::OWN == 0;
+        let only_motion = self.motion.dynamic & Dynamic::OWN != 0 && self.motion.dynamic & !Dynamic::OWN == 0;
         // `Record::lifts` is true of every lifted element: whether it holds a descendant that lifts
         // out of it is for `end_unit` to find in the build.
         let lifts_out = self.lifts && self.lift_z.is_none();
-        self.eligible && !lifts_out && only_motion && self.paints_only
+        self.unit_eligible && !lifts_out && only_motion && self.motion.paints_only
     }
 }
 
@@ -557,6 +569,8 @@ struct Node {
     effects_end: usize,
     skipped: Option<Skipped>,
     paints_only: bool,
+    /// The element is a table with collapsed borders, which paints the borders of its parts.
+    collapsed_table: bool,
 }
 
 /// What a node adds up to with what is below it, filled in bottom-up when the build is done.
@@ -1578,9 +1592,11 @@ impl Retain {
         // Children come after their parent, as in `finish_session`.
         let mut lifts = vec![false; size];
         let mut escapes = vec![false; size];
+        let parts_of_unit = self.nodes[first].collapsed_table;
         for index in (0..size).rev() {
             let node = &self.nodes[first + index];
-            if node.exclusion.is_some() || node.skipped.is_some() || node.vol.scroll != 0 {
+            let excluded = node.exclusion.is_some_and(|reason| index == 0 || !parts_of_unit || reason != Exclusion::CollapsedTable);
+            if excluded || node.skipped.is_some() || node.vol.scroll != 0 {
                 return None;
             }
             let lifts_below = !node.forms_context && lifts[index];
@@ -1798,6 +1814,7 @@ impl Retain {
             effects_end: 0,
             skipped: None,
             paints_only: false,
+            collapsed_table: false,
         };
         let at = self.nodes.len() as u32;
         match self.skippable(&node, &entry) {
@@ -1954,11 +1971,25 @@ impl Retain {
         Some(&mut self.nodes[at as usize])
     }
 
-    /// The first reason wins: it is the one the element is counted under.
+    /// The first reason wins: it is the one the element is counted under. The parts of a collapsed
+    /// table are excluded on entry for every element below the table, which says nothing of
+    /// the others: a reason found in the build replaces it, so that a unit that is the table can
+    /// tell the parts the table paints from what is excluded for another reason.
     pub(crate) fn exclude(&mut self, reason: Exclusion) {
         let Some(reason) = self.unless_lifted(reason) else { return };
         if let Some(node) = self.top() {
-            node.exclusion.get_or_insert(reason);
+            match node.exclusion {
+                Some(first) if first != Exclusion::CollapsedTable => {}
+                _ => node.exclusion = Some(reason),
+            }
+        }
+    }
+
+    /// The element being built is a table with collapsed borders. A unit that is the table builds
+    /// its parts again with it, since it is the table that paints their borders.
+    pub(crate) fn collapsed_table(&mut self) {
+        if let Some(node) = self.top() {
+            node.collapsed_table = true;
         }
     }
 
@@ -2091,6 +2122,29 @@ impl Retain {
         if recorded && self.backs_off() && self.pass == 1 {
             self.back_off(candidates);
         }
+    }
+
+    /// Whether the build of the node `at` can be a unit if nothing else is against it, and the motion
+    /// that would be repainted. A table with collapsed borders paints the borders of its parts, so
+    /// the parts of the table are excluded from everything but a unit that is the table, and the motion
+    /// that repaints them is the motion of the table and what is in it.
+    fn unit_facts(&self, at: usize, eligible: bool, escaped: bool) -> (bool, Motion) {
+        let node = &self.nodes[at];
+        let own = Motion { dynamic: node.vol.dynamic, paints_only: node.paints_only };
+        if !node.collapsed_table || node.skipped.is_some() {
+            return (eligible, own);
+        }
+        let inside = &self.nodes[at + 1..node.end as usize];
+        let only_parts = node.exclusion.is_none()
+            && !escaped
+            && inside.iter().all(|inner| inner.exclusion.is_none_or(|reason| reason == Exclusion::CollapsedTable));
+        // An element with nothing running on it says nothing about whether it paints only.
+        let start = Motion { paints_only: own.paints_only || own.dynamic == 0, ..own };
+        let motion = inside.iter().fold(start, |motion, inner| Motion {
+            dynamic: motion.dynamic | inner.vol.dynamic,
+            paints_only: motion.paints_only && (inner.vol.dynamic == 0 || inner.paints_only),
+        });
+        (eligible || only_parts, motion)
     }
 
     /// Plans the frames that follow a recorded one that found `candidates`, or none, to skip.
@@ -2296,6 +2350,7 @@ impl Retain {
                 self.dynamic.remove(&node.id);
             }
             let (epoch, token, holes) = (own.epoch, own.token, own.holes);
+            let (unit_eligible, motion) = self.unit_facts(at, eligible, escaped);
             let effects = (node.effects_end > node.effects_start)
                 .then(|| Rc::<[BuildEffect]>::from(&all_effects[node.effects_start..node.effects_end]));
             self.records.insert(
@@ -2318,7 +2373,8 @@ impl Retain {
                     effects,
                     seasoned: self.deferred,
                     selection: self.selection,
-                    paints_only: node.paints_only,
+                    unit_eligible,
+                    motion,
                 },
             );
         }
@@ -4239,6 +4295,67 @@ mod tests {
         page.page(&[], Some(true), None);
         page.page(&[], Some(true), None);
         assert_eq!(page.ids(), vec![2]);
+    }
+
+    impl Units {
+        /// The page with 2 a table with collapsed borders, which 3 (a row) and 4 are the parts of; `row` is
+        /// what runs on the row, `cell` what 4 notes (an exclusion, for instance).
+        fn table(&mut self, row: Option<bool>, cell: impl Fn(&mut Retain)) {
+            self.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, None, |page| {
+                        page.retain.collapsed_table();
+                        page.inherited.table.collapse = true;
+                        page.element(3, row, |_| {});
+                        page.element(4, None, |page| cell(&mut page.retain));
+                        page.inherited.table.collapse = false;
+                    });
+                    page.leaf(5);
+                });
+            });
+        }
+    }
+
+    #[test]
+    fn a_table_with_collapsed_borders_is_the_unit_of_the_paint_only_animation_of_its_parts() {
+        let mut page = Units::new();
+        page.table(Some(true), |_| {});
+        assert_eq!(page.ids(), Vec::<u64>::new(), "a unit is made once a build found something running");
+        page.table(Some(true), |_| {});
+        assert_eq!(page.ids(), vec![2], "the table, not the row that runs it");
+        assert_eq!(page.preview(&[], false), Ok(vec![2]));
+        page.table(Some(true), |_| {});
+        assert_eq!(page.ids(), vec![2]);
+
+        // The frame that finds it over is still built as the unit, and the one after as none.
+        page.table(None, |_| {});
+        assert_eq!(page.ids(), vec![2]);
+        page.table(None, |_| {});
+        assert_eq!(page.ids(), Vec::<u64>::new(), "nothing runs in the table any more");
+    }
+
+    #[test]
+    fn a_table_with_collapsed_borders_is_no_unit_when_a_part_moves_what_it_lays_out() {
+        let mut page = Units::new();
+        page.table(Some(false), |_| {});
+        page.table(Some(false), |_| {});
+        assert_eq!(page.ids(), Vec::<u64>::new());
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(3)));
+    }
+
+    #[test]
+    fn a_table_with_collapsed_borders_is_no_unit_when_a_part_is_excluded_for_another_reason() {
+        for (what, exclude) in [("a scroller", Exclusion::Scroller), ("an input", Exclusion::CustomElement)] {
+            let mut page = Units::new();
+            page.table(Some(true), |retain| retain.exclude(exclude));
+            page.table(Some(true), |retain| retain.exclude(exclude));
+            assert_eq!(page.ids(), Vec::<u64>::new(), "{what} in a part");
+        }
+        // The parts of the table are no reason for the elements around it to be retained.
+        let mut page = Units::new();
+        page.table(None, |_| {});
+        assert_eq!(page.retain.records.get(&2).map(|record| record.eligible), Some(false));
+        assert_eq!(page.retain.records.get(&1).map(|record| record.eligible), Some(false));
     }
 
     #[test]
