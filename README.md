@@ -1042,7 +1042,8 @@ the window's content size, and `change` fires when a list's result flips. A
 Under test, the OS settings start as "no preference" regardless of the machine.
 `TestRenderer.setMediaFeatures({ reducedMotion: true })` changes them and
 delivers the `change` events, and `TestRenderer.setWindowSize(width, height)`
-resizes the window the same way. `prefers-color-scheme` reports the system
+resizes the window the same way. `TestRenderer.setWindowScaleFactor(2)` gives it
+the scale of a retina display, for the frames after it. `prefers-color-scheme` reports the system
 appearance and cannot be flipped, for the reason given under Appearance.
 The "Show scroll bars" setting (see [Scrollbars](#scrollbars)) works the same way:
 `TestRenderer.setScrollbarStyle("classic" | "overlay")`.

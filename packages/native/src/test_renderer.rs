@@ -2536,6 +2536,19 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// Gives the window the scale factor of a display of another density, `2` for a retina one:
+    /// the next frame lays out and paints at it. Resizing the window gives it the display's own back.
+    #[napi]
+    pub fn set_window_scale_factor(&self, scale_factor: f64) -> Result<()> {
+        if !(scale_factor.is_finite() && scale_factor > 0.) {
+            return Err(Error::from_reason(format!("scale factor must be positive, got {scale_factor}")));
+        }
+        with_test_state(|cx, window, _view| {
+            cx.update_window(window, |_, window, _| window.set_scale_factor(scale_factor as f32))
+                .map_err(|error| Error::from_reason(error.to_string()))
+        })
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     fn collect_text(id: u64, tree: &RetainedTree, texts: &mut Vec<String>) {

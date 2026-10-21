@@ -87,6 +87,7 @@ interface NativeTestRendererApi
   setWindowMediaChange(enabled: boolean): void
   getMediaFeatures(): MediaFeatures
   setWindowSize(width: number, height: number): void
+  setWindowScaleFactor(scaleFactor: number): void
   setMediaFeatures(
     reducedMotion?: boolean,
     increasedContrast?: boolean,
@@ -1215,6 +1216,13 @@ export class TestRenderer implements NativeRenderer {
   setWindowSize(width: number, height: number): void {
     this.native.setWindowSize(width, height)
     this.dispatchNativeEvents()
+  }
+
+  /** Give the offscreen window the scale factor of a display of another density (`2` is a
+   *  retina one), as a window dragged to it has: the next frame lays out and paints at it.
+   *  Resizing the window gives it the display's own back. */
+  setWindowScaleFactor(scaleFactor: number): void {
+    this.native.setWindowScaleFactor(scaleFactor)
   }
 
   // ── Scroll API ──────────────────────────────────────────────────

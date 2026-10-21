@@ -82,17 +82,16 @@ function labelOf(spec: Spec, ref: (name: string) => (instance: PublicInstance | 
   )
 }
 
-/** The boxes of the case `name`, relative to its line, and the device scale the window has. */
-function laidOut(name: string) {
+/** The boxes of the case `name` in a window of `scale`, relative to its line. */
+function laidOut(name: string, scale: 1 | 2) {
   const root = createTestRoot()
   try {
+    root.renderer.setWindowScaleFactor(scale)
     const refs = new Map<string, PublicInstance>()
     const ref = (key: string) => (instance: PublicInstance | null) => {
       if (instance) refs.set(key, instance)
     }
-    const scale = root.renderer.getA11yTree().frame?.scale_factor
-    expect(scale === 1 || scale === 2, `a window of scale ${scale}`).toBe(true)
-    const expected = ORACLE[`x${scale as 1 | 2}`][name]
+    const expected = ORACLE[`x${scale}`][name]
     expect(expected, `no oracle case ${name}`).toBeDefined()
     const spec = expected!.spec
     const line = { width: 300, fontFamily: "Menlo", fontSize: 16, lineHeight: spec.line, color: "#000000" }
@@ -129,8 +128,9 @@ function laidOut(name: string) {
       const box = refs.get(key)!.getBoundingClientRect()
       return [box.x - origin.x, box.y - origin.y, box.width, box.height]
     }
+    expect(root.renderer.getA11yTree().frame?.scale_factor, "the window has the scale asked for").toBe(scale)
     return {
-      scale: scale as number,
+      scale,
       expected: expected!,
       actual: { line: rect("line"), holder: rect("holder"), label: rect("label"), ink: rect("ink") },
     }
@@ -139,43 +139,50 @@ function laidOut(name: string) {
   }
 }
 
-function expectCase(name: string) {
-  const found = laidOut(name)
-  const { actual, expected, scale } = found
+/** Chrome shares the half-leading of a line out in device pixels (a 24px line round a 19px content area has 5 device
+ *  pixels above it, 2.5px at scale 2), where gpuix floors it in CSS pixels (2px): at scale 2 the baseline of a line, and
+ *  every box seated on it, is up to a device pixel higher than Chrome's. That is `extent_in_line` and the ascent and
+ *  descent of `line_box` being whole CSS pixels (zed `text_system.rs`), and has nothing to do with the trim. The
+ *  largest difference seen is exactly this device pixel, in the heights and offsets that follow the baseline. */
+const halfLeadingError = (scale: 1 | 2) => (scale === 1 ? 0 : 1 / scale)
+
+function expectCase(name: string, scale: 1 | 2) {
+  const { actual, expected } = laidOut(name, scale)
   const within = (value: number, chrome: number, tolerance: number, what: string) =>
     expect(Math.abs(value - chrome), `${name} (scale ${scale}) ${what}: ${value} != Chrome's ${chrome}`).toBeLessThanOrEqual(
       tolerance
     )
+  const leading = halfLeadingError(scale)
   for (const key of ["line", "holder", "label", "ink"] as const) {
-    // A width is the advance of "Hello", which Chrome's shaping can make a unit wider or narrower; a height is the
-    // metric of the font rounded to a unit, and a line a unit taller than Chrome's where the label's rounds up.
-    within(actual[key][2], expected[key][2], 2 * UNIT, `${key} width`)
-    within(actual[key][3], expected[key][3], UNIT, `${key} height`)
-    within(actual[key][0], expected[key][0], 2 * UNIT, `${key} x`)
-  }
-  // The atomic is placed at a whole device pixel (the offset of an element is snapped), where Chrome keeps the
-  // fraction of the label's top: the same to half a device pixel. At scale 2 the strut's baseline is also up to half
-  // a pixel higher than Chrome's, which shares the half-leading out in device pixels and gpuix in CSS pixels, so a
-  // line of 24px with a content area of 19 has its baseline at 17 and not 17.5. This is not about the trim: the
-  // label's offset from that baseline is exact.
-  for (const key of ["holder", "label"] as const) {
-    within(actual[key][1], expected[key][1], (scale === 1 ? 0.5 : 0.75) + UNIT, `${key} y`)
+    // A width is the advance of "Hello", which Chrome's shaping can make a unit wider or narrower (seen: 2/128 at scale
+    // 2, 1/64 at scale 1); x follows a width in the row cases. A height is the metric of the font rounded to a unit, and
+    // a trim-start or trim-end label has the height of the line less the trim, so it has the half-leading too.
+    within(actual[key][2], expected[key][2], UNIT, `${key} width`)
+    within(actual[key][0], expected[key][0], UNIT, `${key} x`)
+    within(actual[key][3], expected[key][3], UNIT + (key === "line" || key === "ink" ? 0 : leading), `${key} height`)
   }
   if (expected.spec.row) {
-    // A flex or grid item is placed where layout puts it, the fraction included: the label is where Chrome has it
-    // to 1/64 (and at scale 2 the half pixel of the strut's baseline above). The box of the span inside it is not read that way yet: it is as far below the label's top as the
-    // fraction of that top (an untrimmed label at 8.5 in a 41px flex box has its span at 11 and Chrome at 10.5), so
-    // it is left out.
-    within(actual.label[1], expected.label[1], (scale === 1 ? 0 : 0.5) + UNIT, "label y")
+    // A flex or grid item is placed where layout puts it, the fraction included, so the label is where Chrome has it
+    // but for the half-leading of the line it is seated on. The box of the span inside it is not read that way yet: it
+    // is as far below the label's top as the fraction of that top (an untrimmed label at 8.5 in a 41px flex box has
+    // its span at 11 and Chrome at 10.5), so it is left out.
+    within(actual.label[1], expected.label[1], UNIT + leading, "label y")
     return
   }
-  within(actual.ink[1], expected.ink[1], (scale === 1 ? 0.5 : 0.75) + UNIT, "ink y")
+  // The atomic is placed at a whole device pixel (the offset of an element is snapped), where Chrome keeps the
+  // fraction of the label's top: the same to half a device pixel (seen: 0.48 at scale 1, 0.25 more at scale 2 on top
+  // of the half-leading).
+  const place = UNIT + leading + 0.5 / scale
+  within(actual.holder[1], expected.holder[1], place, "holder y")
+  within(actual.label[1], expected.label[1], place, "label y")
+  within(actual.ink[1], expected.ink[1], place, "ink y")
   // The label is seated on the baseline by its trimmed box, and the glyphs are in the label as Chrome has them.
-  within(actual.ink[1] - actual.label[1], expected.ink[1] - expected.label[1], UNIT, "ink below the label")
+  within(actual.ink[1] - actual.label[1], expected.ink[1] - expected.label[1], UNIT + leading, "ink below the label")
   within(actual.holder[1], actual.label[1], UNIT, "holder y against the label")
 }
 
 const NAMES = Object.keys(ORACLE.x1)
+const SCALES = [1, 2] as const
 
 describeNative("a text-box-trimmed label in an atomic inline", () => {
   it("has an oracle for both scales", () => {
@@ -183,13 +190,15 @@ describeNative("a text-box-trimmed label in an atomic inline", () => {
     expect(NAMES.length).toBeGreaterThan(40)
   })
 
-  it("sits on the baseline of the strut, as the tab label of a design system does", () => {
-    expectCase("ff")
-  })
-
-  for (const name of NAMES) {
-    it(`is where Chrome puts it: ${name}`, () => {
-      expectCase(name)
+  for (const scale of SCALES) {
+    it(`sits on the baseline of the strut, as the tab label of a design system does, at scale ${scale}`, () => {
+      expectCase("ff", scale)
     })
+
+    for (const name of NAMES) {
+      it(`is where Chrome puts it at scale ${scale}: ${name}`, () => {
+        expectCase(name, scale)
+      })
+    }
   }
 })

@@ -1049,6 +1049,11 @@ export declare class TestGpuixRenderer {
    * listening window queues a `mediaChange` event.
    */
   setWindowSize(width: number, height: number): void
+  /**
+   * Gives the window the scale factor of a display of another density, `2` for a retina one:
+   * the next frame lays out and paints at it. Resizing the window gives it the display's own back.
+   */
+  setWindowScaleFactor(scaleFactor: number): void
 }
 
 /** Counts of the work the element build did, see `get_build_counters`. */
