@@ -285,6 +285,15 @@ pub trait CustomElement: 'static {
         None
     }
 
+    /// Whether what it paints now changes with the clock and nothing else of it does (a caret
+    /// that blinks), so that a tick which builds only this element again, at the instant of the
+    /// tick, paints the change. It asks for those ticks itself (`Window::request_tick`), when the
+    /// change is due. Read after `render`; the element is then built again by every frame that
+    /// builds its page, and is rebuilt alone by the ticks.
+    fn follows_clock(&self, _window: &gpui::Window, _cx: &gpui::App) -> bool {
+        false
+    }
+
     /// Whether a change of what it draws is made in the paint that shows it, so that a tick which
     /// builds only this element again can paint it alone and show the change. An element whose
     /// paint hands the change to a job that lands in a later paint is not.
@@ -473,6 +482,13 @@ impl CustomElementRegistry {
     /// See [`CustomElement::retain_state`].
     pub(crate) fn retain_state(&self, id: u64) -> Option<u64> {
         self.instances.get(&id)?.element.retain_state()
+    }
+
+    /// See [`CustomElement::follows_clock`].
+    pub(crate) fn follows_clock(&self, id: u64, window: &gpui::Window, cx: &gpui::App) -> bool {
+        self.instances
+            .get(&id)
+            .is_some_and(|instance| instance.element.follows_clock(window, cx))
     }
 
     /// See [`CustomElement::draws_changes_at_once`]. An element that is gone does not.

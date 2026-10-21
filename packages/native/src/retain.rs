@@ -163,9 +163,8 @@ pub(crate) enum Exclusion {
     PaintReporter,
     /// It declares a `highlight`, or is inside one.
     Highlight,
-    /// A custom element that has no `retain_state`: `<input>` and `<textarea>` are views of their
-    /// own that notify, take the input handler while focused and blink; `<code>`, `<markdown>`
-    /// and `<diff>` hold scrollers whose offset only gpui knows.
+    /// A custom element that has no `retain_state`: `<code>`, `<markdown>` and `<diff>`, which hold
+    /// scrollers whose offset only gpui knows.
     CustomElement,
     /// An `<svg>` that has not been painted yet, whose raster is still being made, or whose document
     /// changed and is too big to be rasterised in paint.
@@ -260,10 +259,11 @@ enum Cause {
     Animation,
     MotionValues,
     InlineMotion,
+    Blink,
 }
 
 impl Cause {
-    const ALL: [Cause; 14] = [
+    const ALL: [Cause; 15] = [
         Self::New,
         Self::Edited,
         Self::Inherited,
@@ -278,6 +278,7 @@ impl Cause {
         Self::Animation,
         Self::MotionValues,
         Self::InlineMotion,
+        Self::Blink,
     ];
 
     fn name(self) -> &'static str {
@@ -296,6 +297,7 @@ impl Cause {
             Self::Animation => "animation",
             Self::MotionValues => "motion-values",
             Self::InlineMotion => "inline-motion",
+            Self::Blink => "blink",
         }
     }
 }
@@ -311,12 +313,16 @@ pub(crate) enum Dynamic {
     /// What runs on a `display: contents` element the build was spliced out of, which only its
     /// children are built for: nothing on the child says what it is.
     Spliced = 32,
+    /// What the element paints follows the clock and nothing else of it does, see
+    /// `CustomElement::follows_clock`.
+    Blink = 64,
 }
 
 impl Dynamic {
     /// The kinds that only ever run on the element they are noted on, so that what the element
     /// is running can be asked of its own state (`Sources::dormant`).
-    pub(crate) const OWN: u8 = Self::Motion as u8 | Self::Transition as u8 | Self::Animation as u8 | Self::MotionValues as u8;
+    pub(crate) const OWN: u8 =
+        Self::Motion as u8 | Self::Transition as u8 | Self::Animation as u8 | Self::MotionValues as u8 | Self::Blink as u8;
 }
 
 /// What the build of an element is a function of that the retained tree can see.
@@ -370,6 +376,7 @@ impl Vol {
             (Dynamic::Animation, Cause::Animation),
             (Dynamic::MotionValues, Cause::MotionValues),
             (Dynamic::InlineMotion, Cause::InlineMotion),
+            (Dynamic::Blink, Cause::Blink),
         ]
         .into_iter()
         .find(|(kind, _)| dynamic & *kind as u8 != 0)
@@ -2172,6 +2179,17 @@ impl Retain {
 
     pub(crate) fn dynamic(&mut self, kind: Dynamic) {
         self.dynamic_bits(kind as u8);
+    }
+
+    /// The element paints what follows the clock and nothing else of it does (`Dynamic::Blink`). It
+    /// is a unit then, unless something else runs on it that changes more than its paint.
+    pub(crate) fn blinks(&mut self) {
+        if let Some(node) = self.top() {
+            if node.vol.dynamic & Dynamic::OWN == 0 {
+                node.paints_only = true;
+            }
+            node.vol.dynamic |= Dynamic::Blink as u8;
+        }
     }
 
     /// `Dynamic` kinds as bits. A spliced child notes what runs on the `display: contents` element
@@ -4049,8 +4067,7 @@ mod tests {
     ) {
         let scene = Scene::new(cx, labelled_input());
         scene.settle(cx);
-        // An input rebuilds itself every frame, so the page above it is the spine.
-        assert_eq!(scene.roots(cx), vec![10, 20, 30, 40, 41]);
+        assert_eq!(scene.roots(cx), vec![1]);
         crate::perf_counters::reset();
         scene.set_prop(43, "disabled", serde_json::json!(true));
         scene.draw(cx);
@@ -4059,7 +4076,7 @@ mod tests {
         assert_eq!(scene.roots(cx), vec![10, 20, 30, 40]);
         assert_eq!(Scene::counted("changed:shape"), 2);
         scene.settle(cx);
-        assert_eq!(scene.roots(cx), vec![10, 20, 30, 40, 41]);
+        assert_eq!(scene.roots(cx), vec![1]);
         scene.set_prop(43, "disabled", serde_json::json!(false));
         scene.draw(cx);
         assert_eq!(scene.roots(cx), vec![10, 20, 30, 40]);
@@ -4219,14 +4236,14 @@ mod tests {
     }
 
     #[gpui::test]
-    fn an_img_still_loading_and_an_input_are_never_retained(cx: &mut gpui::TestAppContext) {
+    fn an_img_still_loading_and_a_code_block_are_never_retained(cx: &mut gpui::TestAppContext) {
         let mut elements = page([CARD; 3]);
         elements.push(with(
             typed(40, 1, "img", r#"{"width": 16, "height": 16}"#),
             "src",
             serde_json::json!("blob:never-arrives"),
         ));
-        elements.push(typed(41, 1, "input", r#"{"height": 20}"#));
+        elements.push(typed(41, 1, "code", r#"{"height": 20}"#));
         let scene = Scene::new(cx, elements);
         scene.settle(cx);
         crate::perf_counters::reset();
@@ -4705,6 +4722,27 @@ mod tests {
         assert_eq!(page.preview(&[], false), Err(Unpatchable::LayoutPass));
         page.page(&[], Some(true), None);
         assert_eq!(page.preview(&[], false), Ok(vec![2]), "a frame built whole gives a new start");
+    }
+
+    #[test]
+    fn an_element_that_blinks_is_a_unit_unless_something_that_lays_out_runs_on_it_too() {
+        for (runs, is_unit) in [(None, true), (Some(true), true), (Some(false), false)] {
+            let mut page = Units::new();
+            for _ in 0..3 {
+                page.frame(&[], false, |page| {
+                    page.element(1, None, |page| {
+                        page.element(2, runs, |page| page.retain.blinks());
+                        page.leaf(3);
+                    });
+                });
+            }
+            assert_eq!(page.ids(), if is_unit { vec![2] } else { Vec::new() }, "{runs:?}");
+            assert_eq!(
+                page.preview(&[], false),
+                if is_unit { Ok(vec![2]) } else { Err(Unpatchable::Refused(Refusal::LayoutAnimation)) },
+                "{runs:?}"
+            );
+        }
     }
 
     #[test]

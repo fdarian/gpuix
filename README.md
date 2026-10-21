@@ -4005,7 +4005,10 @@ does not reject an edit like a browser-controlled input.
 
 The focused caret stays solid during edits and then blinks every 500ms while
 idle. It stops scheduling repaint frames on blur or while the window is
-inactive. Override its colour through the shared native theme:
+inactive. The blink is a tick that repaints only the input, so a field costs a
+page with a running animation nothing: an idle one, a focused one and one outside
+its clip leave every tick of the animation patched. Override its colour through the
+shared native theme:
 
 ```tsx
 <input theme={{ caret: '#22c55e' }} />
@@ -8851,7 +8854,7 @@ Counters you read off the renderer:
   it is none: `LayoutAnimation` (what runs moves a box), `Escapes` (it is
   `position: absolute` against a containing block outside it, or holds such a box),
   `Lifts` (it lifts a box out of itself), `TooLarge` (more than 256 elements),
-  `Scrolls`, `Excluded:<kind>` (it is a scroller, an input and so on) and
+  `Scrolls`, `Excluded:<kind>` (it is a scroller, a `<code>` block and so on) and
   `ExcludedBelow:<kind>` (something it holds is). A loop that is patched has
   `patchedFrames` equal to its ticks, whatever positioned or translucent ancestor it
   sits under.

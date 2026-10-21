@@ -120,8 +120,8 @@ async function settle(renderer, frames = 12) {
 
 const SIZE = { width: 1240, height: 780 }
 
-/** The page: `head` above N/5 rows of 4 bordered cells with a text each. */
-function Page({ nodes, head }: { nodes: number; head: React.ReactNode }) {
+/** The page: `head` above N/5 rows of 4 bordered cells with a text each, and `tail` after them (outside the clip). */
+function Page({ nodes, head, tail }: { nodes: number; head: React.ReactNode; tail?: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", width: 1200, height: 760, overflow: "hidden" }}>
       {head}
@@ -134,6 +134,7 @@ function Page({ nodes, head }: { nodes: number; head: React.ReactNode }) {
           ))}
         </div>
       ))}
+      {tail}
     </div>
   )
 }
@@ -347,11 +348,11 @@ function FadeOutHead() {
   )
 }
 
-async function mount(head: React.ReactNode, nodes: number, a11y = false) {
+async function mount(head: React.ReactNode, nodes: number, a11y = false, tail?: React.ReactNode) {
   const root = createTestRoot(SIZE)
   const renderer = root.renderer
   renderer.clockPause()
-  root.render(<Page nodes={nodes} head={head} />)
+  root.render(<Page nodes={nodes} head={head} tail={tail} />)
   await settle(renderer)
   renderer.setInlineDraws(false)
   renderer.setA11yActive(a11y)
@@ -885,6 +886,241 @@ describeNative("a patched tick on a live clock", { timeout: TIMEOUT }, () => {
       expect(after.patchedFrames - before.patchedFrames, "frames are drawn by patching").toBeGreaterThan(10)
       expect(after.paintedFrames - before.paintedFrames, "and by nothing else").toBe(0)
       expect(renderer.getBuildCounters().elementsBuilt).toBeLessThanOrEqual(3 * 30)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
+const probeStyle = { width: 160, height: 24 }
+const withProbe = (probe: React.ReactNode) => (
+  <div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
+    {colourHead()}
+    {probe}
+  </div>
+)
+
+/** Focuses the probe, and draws the frame that notes the blink and the one after it that makes the input a unit. */
+async function focusProbe(renderer) {
+  renderer.focusElement(renderer.findByTestId("probe").id)
+  renderer.dispatchNativeEvents()
+  renderer.drawFrame()
+  wholeFrame(renderer)
+}
+
+/** A frame built whole: the view is told, as a commit does. */
+function wholeFrame(renderer) {
+  renderer.flush()
+  renderer.drawFrame()
+}
+
+// r17: an `<input>` or `<textarea>` anywhere on the page made every tick of a loop elsewhere a frame built whole. An
+// idle one paints the same in every tick, a focused one changes the phase of its caret twice a second: neither is
+// a reason to draw the page.
+describeNative("an input on a page with a loop", { timeout: TIMEOUT }, () => {
+  const pages: Record<string, { head: React.ReactNode; tail?: React.ReactNode; focus?: boolean }> = {
+    "an input": { head: withProbe(<input testId="probe" style={probeStyle} />) },
+    "a textarea": { head: withProbe(<textarea testId="probe" style={probeStyle} />) },
+    "a focused input": { head: withProbe(<input testId="probe" style={probeStyle} />), focus: true },
+    "an input with a value, selected": { head: withProbe(<input testId="probe" defaultValue="some text" style={probeStyle} />), focus: true },
+    "an input outside the clip": { head: colourHead(), tail: <input testId="probe" style={probeStyle} /> },
+  }
+  const run = async (name: string, nodes: number) => {
+    const shape = pages[name]
+    const page = await mount(shape.head, nodes, false, shape.tail)
+    try {
+      const renderer = page.renderer
+      if (shape.focus) await focusProbe(renderer)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      const before = renderer.getPatchCounters()
+      const done: Work[] = []
+      for (let frame = 0; frame < TICKS; frame++) done.push(tick(renderer))
+      const after = renderer.getPatchCounters()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return {
+        done,
+        patched: after.patchedFrames - before.patchedFrames,
+        declines: gained(after.declines, before.declines),
+        unpatchable: gained(after.unpatchable, before.unpatchable),
+      }
+    } finally {
+      page.root.unmount()
+    }
+  }
+  for (const name of Object.keys(pages)) {
+    counted(`patches every tick of the loop and does the work of one text on any page: ${name}`, async () => {
+      const small = await run(name, 500)
+      const large = await run(name, 5000)
+      for (const result of [small, large]) {
+        expect(result.patched).toBe(TICKS)
+        expect(result.declines).toEqual({})
+        expect(result.unpatchable).toEqual({})
+      }
+      for (let index = 0; index < TICKS; index++) {
+        expect(large.done[index], `tick ${index}`).toEqual(small.done[index])
+        expect(small.done[index].elementsBuilt, `tick ${index}`).toBeLessThanOrEqual(6)
+        expect(small.done[index].hits + small.done[index].replays + small.done[index].builds, `tick ${index}`).toBe(0)
+      }
+    })
+
+    it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
+      const shape = pages[name]
+      const page = await mount(shape.head, 500, false, shape.tail)
+      try {
+        const renderer = page.renderer
+        if (shape.focus) await focusProbe(renderer)
+        for (let warm = 0; warm < WARM; warm++) tick(renderer)
+        for (let step = 0; step < 40; step++) tick(renderer)
+        const file = name.replace(/\W+/g, "-")
+        const patched = shot(renderer, `${file}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        const whole = shot(renderer, `${file}-whole`)
+        renderer.setPatchEnabled(true)
+        expect(patched.equals(whole)).toBe(true)
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        page.root.unmount()
+      }
+    })
+  }
+})
+
+describeNative("the caret of a focused input", { timeout: TIMEOUT }, () => {
+  const blinking = (value = "") => <input testId="probe" defaultValue={value} style={{ width: 200, height: 24 }} />
+
+  counted("blinks in patched frames that build the input alone, at any size of the page", async () => {
+    const run = async (nodes: number) => {
+      const page = await mount(blinking("some text"), nodes)
+      try {
+        const renderer = page.renderer
+        await focusProbe(renderer)
+        wholeFrame(renderer)
+        const before = renderer.getPatchCounters()
+        const done: Work[] = []
+        for (let phase = 0; phase < 6; phase++) done.push(work(renderer, () => renderer.advanceTime(500)))
+        const after = renderer.getPatchCounters()
+        expect(after.patchedFrames - before.patchedFrames, "a patched frame for every change of phase").toBe(6)
+        expect(after.declines, "no change of phase is declined by gpui").toBe(before.declines)
+        expect(after.unpatchable, "no change of phase is left unpatched by gpuix").toBe(before.unpatchable)
+        return done
+      } finally {
+        page.root.unmount()
+      }
+    }
+    const small = await run(500)
+    const large = await run(5000)
+    for (let phase = 0; phase < 6; phase++) {
+      expect(small[phase].patchedFrames, `phase ${phase}`).toBe(1)
+      expect(small[phase].elementsBuilt, `phase ${phase} builds the input alone`).toBeLessThanOrEqual(2)
+      expect(small[phase].hits + small[phase].replays + small[phase].builds, `phase ${phase}`).toBe(0)
+      expect(large[phase], `phase ${phase}`).toEqual(small[phase])
+    }
+  })
+
+  counted("asks for no frame while nothing is focused, and none once it is blurred or the window is not key", async () => {
+    const page = await mount(blinking("some text"), 500)
+    try {
+      const renderer = page.renderer
+      const id = renderer.findByTestId("probe").id
+      wholeFrame(renderer)
+      for (let index = 0; index < 4; index++) expect(work(renderer, () => renderer.advanceTime(500)).paintedFrames, "idle").toBe(0)
+      await focusProbe(renderer)
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      expect(work(renderer, () => renderer.advanceTime(500)).patchedFrames, "focused").toBe(1)
+      renderer.setWindowActive(false)
+      renderer.dispatchNativeEvents()
+      renderer.drawFrame()
+      for (let index = 0; index < 4; index++) expect(work(renderer, () => renderer.advanceTime(500)).paintedFrames, "window not key").toBe(0)
+      renderer.setWindowActive(true)
+      renderer.dispatchNativeEvents()
+      renderer.drawFrame()
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      expect(work(renderer, () => renderer.advanceTime(500)).patchedFrames, "key again").toBe(1)
+      renderer.blurElement(id)
+      renderer.dispatchNativeEvents()
+      renderer.drawFrame()
+      for (let index = 0; index < 4; index++) expect(work(renderer, () => renderer.advanceTime(500)).paintedFrames, "blurred").toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  // The caret is painted in both phases (in no colour while it is off), so the patched frame has the operations of the one
+  // before and the picture of the one a build of the page makes.
+  it.skipIf(!patching)("shows the picture of a frame built whole in both phases, after focus, blur and the window going key", async () => {
+    const page = await mount(blinking("some text"), 500)
+    try {
+      const renderer = page.renderer
+      const id = renderer.findByTestId("probe").id
+      const same = (name: string) => {
+        const patched = shot(renderer, `caret-${name}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        const whole = shot(renderer, `caret-${name}-whole`)
+        renderer.setPatchEnabled(true)
+        expect(patched.equals(whole), name).toBe(true)
+        return patched
+      }
+      const idle = same("idle")
+      await focusProbe(renderer)
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      const lit = same("lit")
+      expect(lit.equals(idle), "a caret is drawn").toBe(false)
+      work(renderer, () => renderer.advanceTime(500))
+      const dark = same("dark")
+      expect(dark.equals(lit), "the caret went out").toBe(false)
+      expect(dark.equals(idle), "and left the picture of an input that has none").toBe(true)
+      work(renderer, () => renderer.advanceTime(500))
+      expect(same("lit again").equals(lit)).toBe(true)
+      renderer.setWindowActive(false)
+      renderer.dispatchNativeEvents()
+      renderer.drawFrame()
+      expect(same("inactive").equals(idle), "no caret in a window that is not key").toBe(true)
+      renderer.setWindowActive(true)
+      renderer.dispatchNativeEvents()
+      renderer.drawFrame()
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      expect(same("key again").equals(lit)).toBe(true)
+      renderer.blurElement(id)
+      renderer.dispatchNativeEvents()
+      renderer.drawFrame()
+      expect(same("blurred").equals(idle)).toBe(true)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  // What is typed, selected or scrolled is not retained from the frame before: a frame that replays the page around the input
+  // draws it as one that builds everything does.
+  it.skipIf(!patching)("draws typing, selection and the caret moving as a frame built whole does", async () => {
+    const page = await mount(withProbe(<input testId="probe" style={probeStyle} />), 500)
+    try {
+      const renderer = page.renderer
+      const id = renderer.findByTestId("probe").id
+      await focusProbe(renderer)
+      const steps = ["h e l l o", "Shift+ArrowLeft Shift+ArrowLeft", "ArrowLeft", "Meta+a", "Backspace", "w o r l d Meta+z", "Meta+Shift+z"]
+      let previous: Buffer | undefined
+      for (const [index, keys] of steps.entries()) {
+        renderer.nativeSimulateKeystrokes(id, keys)
+        renderer.dispatchNativeEvents()
+        for (let frame = 0; frame < 3; frame++) tick(renderer)
+        const retained = shot(renderer, `typing-${index}-retained`)
+        renderer.setRetainEnabled(false)
+        tick(renderer, 0)
+        const whole = shot(renderer, `typing-${index}-whole`)
+        renderer.setRetainEnabled(true)
+        for (let frame = 0; frame < 3; frame++) tick(renderer)
+        expect(retained.equals(whole), keys).toBe(true)
+        expect(previous === undefined || !previous.equals(retained), `${keys} changed the picture`).toBe(true)
+        previous = retained
+      }
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
     } finally {
       page.root.unmount()
     }

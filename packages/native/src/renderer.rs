@@ -9834,6 +9834,9 @@ fn build_element_unpumped(
             let built = ctx
                 .custom_registry
                 .render(custom_type, element.custom_props(), render_ctx, window, cx);
+            if ctx.custom_registry.follows_clock(id, window, cx) {
+                ctx.retain.blinks();
+            }
             // What the adapter keeps for itself is the part of its build the tree cannot show. An
             // adapter that cannot name it is rebuilt every frame.
             match ctx.custom_registry.retain_state(id) {

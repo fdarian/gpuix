@@ -8,8 +8,11 @@
 //! Upstream: https://github.com/zeronsh/comet/blob/main/crates/ui/src/composer.rs
 //! Reviewed at: https://github.com/zeronsh/comet/blob/b3fa51872f70c8f973c241b659cf0c166766f4f5/crates/ui/src/composer.rs
 
+use std::cell::Cell;
 use std::collections::VecDeque;
+use std::hash::{Hash, Hasher};
 use std::ops::Range;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -335,6 +338,8 @@ struct TextEditorElement {
     inert_focus: Option<FocusHandle>,
     /// A selection requested before the first render created the state.
     pending_selection: Option<SelectionRequest>,
+    /// What `TextEditorState::paint_epoch` counts, for `retain_state` to read without the entity.
+    paint_epoch: Rc<Cell<u64>>,
 }
 
 impl TextEditorElement {
@@ -357,6 +362,7 @@ impl TextEditorElement {
             state: None,
             inert_focus: None,
             pending_selection: None,
+            paint_epoch: Rc::new(Cell::new(0)),
         }
     }
 
@@ -409,7 +415,7 @@ impl CustomElement for TextEditorElement {
     fn render(
         &mut self,
         ctx: CustomRenderContext,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
         // Inert takes the same path as disabled: no focus handle, no mouse.
@@ -462,7 +468,9 @@ impl CustomElement for TextEditorElement {
                         None => (cursor..cursor, false, None),
                     };
                 let state_focus_handle = focus_handle.clone();
+                let paint_epoch = self.paint_epoch.clone();
                 cx.new(move |cx| TextEditorState {
+                    entity_id: cx.entity_id(),
                     element_id: id,
                     view,
                     callback,
@@ -500,7 +508,10 @@ impl CustomElement for TextEditorElement {
                     content_width: 0.0,
                     display_is_placeholder: false,
                     caret_color,
+                    paint_epoch,
                     blink_anchor: cx.background_executor().now(),
+                    caret_was_shown: false,
+                    blink_armed: false,
                     blink_task: None,
                     pending_values: VecDeque::new(),
                     undo_stack: VecDeque::new(),
@@ -519,7 +530,7 @@ impl CustomElement for TextEditorElement {
                 state.disabled = disabled;
                 state.is_selecting = false;
                 state.drag_position = None;
-                cx.notify();
+                state.changed(cx);
             }
             state.input_type = input_type;
             state.max_length = self.max_length;
@@ -533,8 +544,9 @@ impl CustomElement for TextEditorElement {
             state.max_rows = self.max_rows.max(state.min_rows);
             if state.caret_color != self.theme.caret {
                 state.caret_color = self.theme.caret;
-                cx.notify();
+                state.changed(cx);
             }
+            state.arm_blink(window, cx);
         });
 
         let mut editor = div().id(crate::events::ids::host_element_id(ctx.id)).flex().min_w_0().w_full();
@@ -675,6 +687,18 @@ impl CustomElement for TextEditorElement {
     fn destroy(&mut self) {
         self.state = None;
         self.inert_focus = None;
+    }
+
+    /// What the editor paints is a function of its props, the focus, and the state its
+    /// notifications count (`TextEditorState::changed`): the phase of the caret is the clock's.
+    fn retain_state(&self) -> Option<u64> {
+        Some(self.paint_epoch.get())
+    }
+
+    fn follows_clock(&self, window: &Window, cx: &App) -> bool {
+        self.state
+            .as_ref()
+            .is_some_and(|state| state.read(cx).shows_caret(window))
     }
 
     fn text_selection(&mut self, cx: &mut App) -> Option<TextSelection> {
@@ -866,7 +890,17 @@ fn push_undo_snapshot(history: &mut VecDeque<EditSnapshot>, snapshot: EditSnapsh
     history.push_back(snapshot);
 }
 
+/// What the text of an editor is shaped from besides the width it wraps at.
+struct Shaping {
+    display: SharedString,
+    is_placeholder: bool,
+    font_size: Pixels,
+    line_height: Pixels,
+    runs: Vec<TextRun>,
+}
+
 struct TextEditorState {
+    entity_id: gpui::EntityId,
     element_id: u64,
     view: gpui::WeakEntity<GpuixView>,
     callback: Option<EventCallback>,
@@ -908,7 +942,13 @@ struct TextEditorState {
     content_width: f32,
     display_is_placeholder: bool,
     caret_color: gpui::Hsla,
+    /// Counts the changes of everything the editor paints but the blink, see `retain_state`.
+    paint_epoch: Rc<Cell<u64>>,
     blink_anchor: Instant,
+    /// Whether the last render found the caret shown, to start its phase over when focus comes.
+    caret_was_shown: bool,
+    /// A task is waiting for the caret to change phase, see `arm_blink`.
+    blink_armed: bool,
     blink_task: Option<Task<()>>,
     pending_values: VecDeque<String>,
     undo_stack: VecDeque<EditSnapshot>,
@@ -917,27 +957,83 @@ struct TextEditorState {
 }
 
 impl TextEditorState {
+    /// The caret is solid from now, and the task waiting for the end of the phase it was in is
+    /// dropped: the next render aims another at the new one.
     fn reset_blink(&mut self, cx: &Context<Self>) {
         self.blink_anchor = cx.background_executor().now();
+        self.blink_armed = false;
+        self.blink_task = None;
     }
 
-    fn caret_shown(&mut self, window: &Window, cx: &mut Context<Self>) -> bool {
-        if !self.focus_handle.is_focused(window) || !window.is_window_active() {
-            self.blink_task = None;
+    /// Notes a change of what the editor paints other than the phase of its caret, which is the
+    /// clock's (`retain_state`). Every other notification of the editor comes through here.
+    fn changed(&mut self, cx: &mut Context<Self>) {
+        self.paint_epoch.set(self.paint_epoch.get() + 1);
+        cx.notify();
+    }
+
+    /// Whether the selection is the caret, which is also the case of a placeholder.
+    fn caret_collapsed(&self) -> bool {
+        self.selected_range.is_empty() || self.display_is_placeholder
+    }
+
+    /// Whether the editor paints a caret in this window, in whichever phase.
+    fn shows_caret(&self, window: &Window) -> bool {
+        !self.disabled
+            && self.caret_collapsed()
+            && self.focus_handle.is_focused(window)
+            && window.is_window_active()
+    }
+
+    fn ms_since_activity(&self, cx: &App) -> u64 {
+        cx.background_executor()
+            .now()
+            .saturating_duration_since(self.blink_anchor)
+            .as_millis() as u64
+    }
+
+    fn until_phase_change(&self, cx: &App) -> Duration {
+        Duration::from_millis(CARET_BLINK_MS - self.ms_since_activity(cx) % CARET_BLINK_MS)
+    }
+
+    /// Keeps a task waiting for the caret to change phase while it is shown. The change is a tick
+    /// of the window and not a notification of the editor: nothing about the editor changed, and
+    /// the frame that follows paints again only the element of the caret, see
+    /// `CustomElement::follows_clock`.
+    fn arm_blink(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let shown = self.shows_caret(window);
+        let was_shown = std::mem::replace(&mut self.caret_was_shown, shown);
+        if !shown {
+            return;
+        }
+        if !was_shown {
+            self.reset_blink(cx);
+        }
+        if self.blink_armed {
+            return;
+        }
+        self.blink_armed = true;
+        self.blink_task = Some(cx.spawn_in(window, async move |this, cx| loop {
+            let Ok(wait) = this.read_with(cx, |state, cx| state.until_phase_change(cx)) else {
+                return;
+            };
+            cx.background_executor().timer(wait).await;
+            if !matches!(
+                this.update_in(cx, |state, window, _| state.blink_due(window)),
+                Ok(true)
+            ) {
+                return;
+            }
+        }));
+    }
+
+    fn blink_due(&mut self, window: &mut Window) -> bool {
+        if !self.shows_caret(window) {
+            self.blink_armed = false;
             return false;
         }
-        if self.blink_task.is_none() {
-            self.reset_blink(cx);
-            self.blink_task = Some(cx.spawn(async move |this, cx| loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(CARET_BLINK_MS))
-                    .await;
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    break;
-                }
-            }));
-        }
-        caret_visible(self.blink_anchor.elapsed().as_millis() as u64)
+        window.request_tick();
+        true
     }
 
     fn masks_text(&self) -> bool {
@@ -988,7 +1084,7 @@ impl TextEditorState {
         self.directionless_range = selection.directionless.then_some(selection.range);
         self.follow_cursor = true;
         self.reset_blink(cx);
-        cx.notify();
+        self.changed(cx);
     }
 
     fn snapshot(&self) -> EditSnapshot {
@@ -1028,7 +1124,7 @@ impl TextEditorState {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.last_edit = None;
-        cx.notify();
+        self.changed(cx);
     }
 
     fn replace_range(
@@ -1080,7 +1176,7 @@ impl TextEditorState {
         self.last_edit = None;
         self.reset_blink(cx);
         self.emit_change(kind, "", false);
-        cx.notify();
+        self.changed(cx);
     }
 
     fn record_edit(&mut self, range: &Range<usize>, new_text: &str, now: Instant) {
@@ -1115,7 +1211,7 @@ impl TextEditorState {
         self.selection_reversed = false;
         self.follow_cursor = true;
         self.reset_blink(cx);
-        cx.notify();
+        self.changed(cx);
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -1131,7 +1227,7 @@ impl TextEditorState {
         }
         self.follow_cursor = true;
         self.reset_blink(cx);
-        cx.notify();
+        self.changed(cx);
     }
 
     fn previous_boundary(&self, offset: usize) -> usize {
@@ -1274,7 +1370,7 @@ impl TextEditorState {
         // Non-directional, as a browser reports it.
         self.directionless_range = Some(self.selected_range.clone());
         self.reset_blink(cx);
-        cx.notify();
+        self.changed(cx);
     }
 
     fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
@@ -1500,7 +1596,7 @@ impl TextEditorState {
         if ends_composition {
             self.emit_composition("compositionend", &replacement);
         }
-        cx.notify();
+        self.changed(cx);
     }
 
     fn single_line_if_needed(&self, text: &str) -> String {
@@ -1774,7 +1870,7 @@ impl TextEditorState {
         self.scroll_top = next;
         self.follow_cursor = false;
         cx.stop_propagation();
-        cx.notify();
+        self.changed(cx);
     }
 
     fn offset_from_utf16(&self, offset: usize) -> usize {
@@ -1811,15 +1907,15 @@ impl TextEditorState {
         self.offset_from_utf16(range.start)..self.offset_from_utf16(range.end)
     }
 
-    fn layout_text(&mut self, width: Pixels, style: &TextStyle, window: &mut Window) -> f32 {
+    /// What the text is shaped from besides the width it wraps at.
+    fn shaping(&self, style: &TextStyle, window: &Window) -> Shaping {
         let (display, is_placeholder) = self.display_text();
         let rem_size = window.rem_size();
         let font_size = style.font_size.to_pixels(rem_size);
-        self.font_size = font_size;
         // Taffy measures after parent `with_text_style` is gone, so
         // `window.line_height()` is always 16×φ. Use the style captured during
         // request_layout instead.
-        self.line_height = window
+        let line_height = window
             .text_system()
             .line_height(style, rem_size, window.scale_factor());
         let color = if is_placeholder {
@@ -1861,10 +1957,43 @@ impl TextEditorState {
             .collect(),
             _ => vec![run(display.len(), false)],
         };
+        Shaping {
+            display,
+            is_placeholder,
+            font_size,
+            line_height,
+            runs,
+        }
+    }
+
+    /// Everything `layout_text` reads but the width, which the layout engine hands the measure.
+    /// Two requests with the same key measure the same, so layout keeps the node's measure and
+    /// the editor's lines and heights stay as they were measured.
+    fn measure_key(&self, style: &TextStyle, min_rows: usize, max_rows: usize, window: &Window) -> u64 {
+        let shaping = self.shaping(style, window);
+        let mut hasher = std::hash::DefaultHasher::new();
+        // The measure writes into the entity, and a node found again for another one has not
+        // measured it.
+        self.entity_id.hash(&mut hasher);
+        shaping.display.hash(&mut hasher);
+        shaping.font_size.hash(&mut hasher);
+        shaping.line_height.hash(&mut hasher);
+        shaping.runs.hash(&mut hasher);
+        self.multiline.hash(&mut hasher);
+        min_rows.hash(&mut hasher);
+        max_rows.hash(&mut hasher);
+        window.text_system().font_generation().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn layout_text(&mut self, width: Pixels, style: &TextStyle, window: &mut Window) -> f32 {
+        let shaping = self.shaping(style, window);
+        self.font_size = shaping.font_size;
+        self.line_height = shaping.line_height;
         let wrap_width = self.multiline.then_some(width);
         let lines = window
             .text_system()
-            .shape_text(display, font_size, &runs, wrap_width, None)
+            .shape_text(shaping.display, shaping.font_size, &shaping.runs, wrap_width, None)
             .map(|lines| lines.into_vec())
             .unwrap_or_default();
         let mut line_starts = Vec::with_capacity(lines.len());
@@ -1885,7 +2014,7 @@ impl TextEditorState {
             .iter()
             .map(|line| f32::from(line.unwrapped_layout.width))
             .fold(0.0, f32::max);
-        self.display_is_placeholder = is_placeholder;
+        self.display_is_placeholder = shaping.is_placeholder;
         self.last_lines = lines;
         self.line_starts = line_starts;
         self.content_height
@@ -1960,7 +2089,7 @@ impl EntityInputHandler for TextEditorState {
             let text = self.content[marked].to_string();
             self.emit_composition("compositionend", &text);
         }
-        cx.notify();
+        self.changed(cx);
     }
 
     fn replace_text_in_range(
@@ -2033,7 +2162,7 @@ impl EntityInputHandler for TextEditorState {
         if was_composing && !is_composing {
             self.emit_composition("compositionend", "");
         }
-        cx.notify();
+        self.changed(cx);
     }
 
     fn bounds_for_range(
@@ -2073,7 +2202,7 @@ impl EntityInputHandler for TextEditorState {
         self.selection_reversed = false;
         self.follow_cursor = true;
         self.reset_blink(cx);
-        cx.notify();
+        self.changed(cx);
     }
 
     fn text_length_utf16(&mut self, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
@@ -2179,7 +2308,7 @@ impl gpui::Element for EditorTextElement {
         _: Option<&GlobalElementId>,
         _: Option<&gpui::InspectorElementId>,
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) -> (LayoutId, ()) {
         let mut style = Style::default();
         style.size.width = relative(1.0).into();
@@ -2187,19 +2316,28 @@ impl gpui::Element for EditorTextElement {
         let text_style = window.text_style();
         let min_rows = self.min_rows;
         let max_rows = self.max_rows.max(min_rows);
-        let layout = window.request_measured_layout(style, move |known, available, _, window, cx| {
-            let width = known.width.unwrap_or(match available.width {
-                gpui::AvailableSpace::Definite(width) => width,
-                _ => px(320.0),
-            });
-            let (content_height, line_height) = input.update(cx, |input, _| {
-                let content_height = input.layout_text(width, &text_style, window);
-                (content_height, f32::from(input.line_height))
-            });
-            let height =
-                content_height.clamp(min_rows as f32 * line_height, max_rows as f32 * line_height);
-            size(width, px(height))
-        });
+        let measure_key = self
+            .input
+            .read(cx)
+            .measure_key(&text_style, min_rows, max_rows, window);
+        let (layout, _) = window.request_keyed_measured_layout(
+            measure_key,
+            style,
+            (),
+            move |known, available, _, window, cx| {
+                let width = known.width.unwrap_or(match available.width {
+                    gpui::AvailableSpace::Definite(width) => width,
+                    _ => px(320.0),
+                });
+                let (content_height, line_height) = input.update(cx, |input, _| {
+                    let content_height = input.layout_text(width, &text_style, window);
+                    (content_height, f32::from(input.line_height))
+                });
+                let height = content_height
+                    .clamp(min_rows as f32 * line_height, max_rows as f32 * line_height);
+                size(width, px(height))
+            },
+        );
         (layout, ())
     }
 
@@ -2225,7 +2363,7 @@ impl gpui::Element for EditorTextElement {
         let mut caret = None;
         if input.disabled {
             // No caret and no selection wash on a control that cannot be edited.
-        } else if input.selected_range.is_empty() || input.display_is_placeholder {
+        } else if input.caret_collapsed() {
             let caret_point = input
                 .point_for_index(input.cursor_offset())
                 .unwrap_or(point(px(0.0), px(0.0)));
@@ -2335,12 +2473,23 @@ impl gpui::Element for EditorTextElement {
                 y += height;
             }
             self.input.update(cx, |input, _| input.last_lines = lines);
-            let caret_shown = self
-                .input
-                .update(cx, |input, cx| input.caret_shown(window, cx));
-            if caret_shown {
-                if let Some(caret) = prepaint.caret.take() {
-                    window.paint_quad(caret);
+            // A caret in the phase it is not shown in is still painted, in no colour: the
+            // operations of the editor are the same in both, which a tick that paints only the
+            // editor again (`CustomElement::follows_clock`) is checked against.
+            if let Some(caret) = prepaint.caret.take() {
+                let shown = self.input.read(cx).shows_caret(window);
+                if shown {
+                    let lit = self
+                        .input
+                        .update(cx, |input, cx| caret_visible(input.ms_since_activity(cx)));
+                    window.paint_quad(if lit {
+                        caret
+                    } else {
+                        PaintQuad {
+                            background: gpui::transparent_black().into(),
+                            ..caret
+                        }
+                    });
                 }
             }
         });
