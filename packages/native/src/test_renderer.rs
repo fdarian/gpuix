@@ -2364,6 +2364,55 @@ impl TestGpuixRenderer {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.stop(id, now))
     }
 
+    /// Holds the value's animation where it is. The value stays, its velocity
+    /// reads 0 and no frame is asked for; `isMotionValueAnimating` stays true.
+    #[napi]
+    pub fn pause_motion_value(&self, id: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.pause(id, now))
+    }
+
+    /// Continues a held animation from the time it holds. A finished one plays
+    /// again from its start, or from its end when its speed is negative.
+    #[napi]
+    pub fn play_motion_value(&self, id: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.play(id, now))
+    }
+
+    /// Moves the value's animation to `seconds` after its delay ended. A
+    /// finished animation is held there; one seeked past its end finishes.
+    #[napi]
+    pub fn seek_motion_value(&self, id: f64, seconds: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
+            values.seek(id, seconds, now)
+        })
+    }
+
+    /// Sets the pace of the value's animation: 2 is twice as fast, a negative
+    /// speed runs it backwards to its first keyframe, 0 holds it while it stays
+    /// in effect.
+    #[napi]
+    pub fn set_motion_value_speed(&self, id: f64, speed: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
+            values.set_speed(id, speed, now)
+        })
+    }
+
+    /// Jumps the value's animation to its last keyframe (the first when it runs
+    /// backwards) and finishes it.
+    #[napi]
+    pub fn complete_motion_value(&self, id: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.complete(id, now))
+    }
+
+    /// What the controls of the value's animation read, or null if it has none:
+    /// it was never animated, or was stopped or jumped.
+    #[napi]
+    pub fn get_motion_value_playback(&self, id: f64) -> Result<Option<crate::renderer::MotionValuePlayback>> {
+        self.with_motion_values(Repaint::None, move |values, now| {
+            values.playback(id, now).map(|info| info.map(crate::renderer::MotionValuePlayback::from))
+        })
+    }
+
     /// Chooses which events the value delivers. Neither removes the listener.
     #[napi]
     pub fn set_motion_value_listener(&self, id: f64, change: bool, animation: bool) -> Result<()> {

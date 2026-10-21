@@ -205,7 +205,7 @@ describeNative("motion values in style", () => {
     const stopped = animate(x, 100, linear)
     frame(renderer, 400)
     stopped.stop()
-    await stopped.finished
+    expect(stopped.state).toBe("idle")
     frame(renderer, 1000)
     expect(sizeOf(renderer, "box").width).toBeCloseTo(40, 0)
 
@@ -219,7 +219,7 @@ describeNative("motion values in style", () => {
     const cancelled = animate(x, 0, linear)
     frame(renderer, 300)
     cancelled.cancel()
-    await cancelled.finished
+    expect(cancelled.state).toBe("idle")
     renderer.flush()
     expect(sizeOf(renderer, "box").width).toBe(100)
 

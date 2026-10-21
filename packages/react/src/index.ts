@@ -32,7 +32,9 @@ export {
   motionValue,
 } from "@gpuix/native/host"
 export type {
-  AnimationControls,
+  AnimationPlaybackControls,
+  AnimationPlaybackControlsWithThen,
+  AnimationPlaybackState,
   AnimationPlayState,
   KeyframesDefinition,
   KeyframeStyle,

@@ -393,7 +393,12 @@ impl Track {
     }
 
     pub(super) fn sample(&self, now: Instant) -> Sample {
-        let elapsed = now.saturating_duration_since(self.started);
+        self.sample_at(now.saturating_duration_since(self.started))
+    }
+
+    /// [`Self::sample`] at `elapsed` since the track started, for a clock that
+    /// is not the wall: one that holds, seeks or runs at a rate.
+    pub(super) fn sample_at(&self, elapsed: Duration) -> Sample {
         let delay = seconds(self.transition.delay);
         match &self.transition.curve {
             Curve::Tween { duration, .. } => {
@@ -602,20 +607,69 @@ impl Track {
     /// is at rest, sampled at 60 Hz as motion-dom measures a generator's
     /// duration, and no longer than 20 s.
     fn spring_settle(&self) -> f64 {
-        let Curve::Spring(spring) = &self.transition.curve else {
-            return 0.0;
-        };
         if !self.transition.repeat.repeats() || self.is_static() {
             return 0.0;
         }
+        self.settle_time().unwrap_or(SPRING_SETTLE_LIMIT)
+    }
+
+    /// Seconds a spring takes to come to rest, found by the scan of
+    /// [`Self::spring_settle`]; `None` if it is still moving after 20 s.
+    fn settle_time(&self) -> Option<f64> {
+        let Curve::Spring(spring) = &self.transition.curve else {
+            return Some(0.0);
+        };
         let steps = (SPRING_SETTLE_LIMIT / SPRING_SETTLE_STEP) as u32;
         (1..=steps)
             .map(|step| f64::from(step) * SPRING_SETTLE_STEP)
             .find(|t| {
                 evolve_all(&self.layout, spring, &self.frames[0], &self.frames[1], &self.from_velocity, *t).at_rest
             })
-            .unwrap_or(SPRING_SETTLE_LIMIT)
     }
+
+    /// How long the track plays. A spring that has not come to rest after 20 s
+    /// plays for ever, as does a repeat without a count.
+    pub(super) fn span(&self) -> Span {
+        let iteration = match &self.transition.curve {
+            Curve::Tween { duration, .. } => *duration,
+            Curve::Spring(_) if !self.has_motion() => 0.0,
+            Curve::Spring(_) if self.transition.repeat.repeats() => self.settle,
+            Curve::Spring(_) => self.settle_time().unwrap_or(f64::INFINITY),
+        };
+        let delay = self.transition.delay;
+        let repeat = &self.transition.repeat;
+        let end = match repeat.count {
+            // A zero-length iteration repeated never advances.
+            _ if iteration == 0.0 => delay,
+            RepeatCount::Finite(count) => {
+                let repeats = f64::from(count);
+                delay + iteration * (repeats + 1.0) + repeat.delay * repeats
+            }
+            RepeatCount::Infinite => f64::INFINITY,
+        };
+        Span { iteration, end }
+    }
+
+    /// The channels the track holds once it has finished: the last keyframe,
+    /// or the first when it is run backwards or ends on a reversed iteration.
+    pub(super) fn final_position(&self, backwards: bool) -> Vec<f64> {
+        let repeat = &self.transition.repeat;
+        let ends_reversed = match repeat.count {
+            RepeatCount::Finite(count) => count % 2 == 1 && repeat.kind != RepeatType::Loop,
+            RepeatCount::Infinite => false,
+        };
+        let first = backwards || ends_reversed;
+        self.frames[if first { 0 } else { self.frames.len() - 1 }].clone()
+    }
+}
+
+/// How long a track plays, in seconds.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Span {
+    /// One iteration, without the delay or the repeats.
+    pub(super) iteration: f64,
+    /// Where the track ends, the delay and the repeats included.
+    pub(super) end: f64,
 }
 
 struct Evolved {
@@ -649,5 +703,79 @@ fn evolve_all(
         position,
         velocity,
         at_rest,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn number(value: f64) -> AnimValue {
+        AnimValue::Number(value)
+    }
+
+    fn track(transition: serde_json::Value) -> Track {
+        Track::new(
+            "test",
+            &number(0.0),
+            number(100.0),
+            Transition::parse(transition).unwrap(),
+            Instant::now(),
+        )
+        .unwrap()
+    }
+
+    fn at(track: &Track, seconds: f64) -> f64 {
+        match track.value(&track.sample_at(Duration::from_secs_f64(seconds)).position) {
+            AnimValue::Number(value) => value,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn sampling_at_an_elapsed_time_is_sampling_at_an_instant() {
+        let track = track(json!({ "duration": 2, "ease": "linear" }));
+        let started = Instant::now();
+        let again = Track { started, ..track.clone() };
+        assert_eq!(
+            again.sample(started + Duration::from_millis(500)).position,
+            track.sample_at(Duration::from_millis(500)).position
+        );
+        assert_eq!(at(&track, 0.5), 25.0);
+    }
+
+    #[test]
+    fn the_span_counts_the_delay_once_and_the_repeat_delay_between_iterations() {
+        let once = track(json!({ "duration": 2, "delay": 0.5 }));
+        assert_eq!((once.span().iteration, once.span().end), (2.0, 2.5));
+        let repeated = track(json!({ "duration": 2, "delay": 0.5, "repeat": 2, "repeatDelay": 0.25 }));
+        assert_eq!(repeated.span().end, 0.5 + 3.0 * 2.0 + 2.0 * 0.25);
+        assert_eq!(track(json!({ "duration": 2, "repeat": "Infinity" })).span().end, f64::INFINITY);
+        // Nothing to repeat, so it ends when its delay does.
+        assert_eq!(track(json!({ "duration": 0, "delay": 1, "repeat": "Infinity" })).span().end, 1.0);
+    }
+
+    #[test]
+    fn the_end_of_a_track_is_where_it_rests() {
+        let track = track(json!({ "duration": 1, "ease": "linear", "repeat": 1, "repeatType": "reverse" }));
+        assert_eq!(at(&track, track.span().end), 0.0);
+        assert_eq!(track.final_position(false), track.final_position(true));
+        let loops = self::track(json!({ "duration": 1, "repeat": 1 }));
+        assert_eq!(at(&loops, loops.span().end), 100.0);
+        assert_ne!(loops.final_position(false), loops.final_position(true));
+    }
+
+    #[test]
+    fn a_spring_has_a_span_whether_or_not_it_repeats() {
+        let spring = json!({ "type": "spring", "stiffness": 200, "damping": 12 });
+        let once = track(spring.clone());
+        let mut again = spring;
+        again["repeat"] = json!(1);
+        let repeated = track(again);
+        assert!(once.span().iteration > 0.0 && once.span().iteration.is_finite());
+        assert_eq!(once.span().iteration, repeated.span().iteration);
+        assert_eq!(repeated.span().end, repeated.span().iteration * 2.0);
     }
 }

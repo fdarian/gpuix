@@ -210,6 +210,37 @@ export declare class GpuixRenderer {
   animateMotionValue(id: number, target: any, transition?: any | undefined | null): void
   /** Ends an animation where it is, keeping the speed for the next one. */
   stopMotionValue(id: number): void
+  /**
+   * Holds the value's animation where it is. The value stays, its velocity
+   * reads 0 and no frame is asked for; `isMotionValueAnimating` stays true.
+   */
+  pauseMotionValue(id: number): void
+  /**
+   * Continues a held animation from the time it holds. A finished one plays
+   * again from its start, or from its end when its speed is negative.
+   */
+  playMotionValue(id: number): void
+  /**
+   * Moves the value's animation to `seconds` after its delay ended. A
+   * finished animation is held there; one seeked past its end finishes.
+   */
+  seekMotionValue(id: number, seconds: number): void
+  /**
+   * Sets the pace of the value's animation: 2 is twice as fast, a negative
+   * speed runs it backwards to its first keyframe, 0 holds it while it stays
+   * in effect.
+   */
+  setMotionValueSpeed(id: number, speed: number): void
+  /**
+   * Jumps the value's animation to its last keyframe (the first when it runs
+   * backwards) and finishes it.
+   */
+  completeMotionValue(id: number): void
+  /**
+   * What the controls of the value's animation read, or null if it has none:
+   * it was never animated, or was stopped or jumped.
+   */
+  getMotionValuePlayback(id: number): MotionValuePlayback | null
   /** Chooses which events the value delivers. Neither removes the listener. */
   setMotionValueListener(id: number, change: boolean, animation: boolean): void
   /**
@@ -995,6 +1026,37 @@ export declare class TestGpuixRenderer {
   animateMotionValue(id: number, target: any, transition?: any | undefined | null): void
   /** Ends an animation where it is, keeping the speed for the next one. */
   stopMotionValue(id: number): void
+  /**
+   * Holds the value's animation where it is. The value stays, its velocity
+   * reads 0 and no frame is asked for; `isMotionValueAnimating` stays true.
+   */
+  pauseMotionValue(id: number): void
+  /**
+   * Continues a held animation from the time it holds. A finished one plays
+   * again from its start, or from its end when its speed is negative.
+   */
+  playMotionValue(id: number): void
+  /**
+   * Moves the value's animation to `seconds` after its delay ended. A
+   * finished animation is held there; one seeked past its end finishes.
+   */
+  seekMotionValue(id: number, seconds: number): void
+  /**
+   * Sets the pace of the value's animation: 2 is twice as fast, a negative
+   * speed runs it backwards to its first keyframe, 0 holds it while it stays
+   * in effect.
+   */
+  setMotionValueSpeed(id: number, speed: number): void
+  /**
+   * Jumps the value's animation to its last keyframe (the first when it runs
+   * backwards) and finishes it.
+   */
+  completeMotionValue(id: number): void
+  /**
+   * What the controls of the value's animation read, or null if it has none:
+   * it was never animated, or was stopped or jumped.
+   */
+  getMotionValuePlayback(id: number): MotionValuePlayback | null
   /** Chooses which events the value delivers. Neither removes the listener. */
   setMotionValueListener(id: number, change: boolean, animation: boolean): void
   /**
@@ -1622,6 +1684,23 @@ export interface MediaFeatures {
   increasedContrast: boolean
   /** `forced-colors: active`. macOS has no forced colors mode. */
   forcedColors: boolean
+}
+
+/** What the controls of a motion value's animation read, in seconds. */
+export interface MotionValuePlayback {
+  /** Since the delay ended, up to the end of the last repeat. */
+  time: number
+  /** The pace: 1 is real time, negative runs backwards. */
+  speed: number
+  /**
+   * One iteration, without the delay or the repeats. `Infinity` for a spring
+   * that has not come to rest in 20 seconds.
+   */
+  duration: number
+  /** `duration` plus the delay. */
+  iterationDuration: number
+  /** `"running"`, `"paused"` or `"finished"`. */
+  state: string
 }
 
 /**

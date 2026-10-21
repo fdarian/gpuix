@@ -19,7 +19,7 @@ use super::property::{
     check_finite, expand_shorthand, parse_shadow_list, shadow_layers, split_list, AnimProp, Scope,
 };
 use super::value::{AnimValue, Color, ParentFont};
-use super::values::{MotionValues, TransformOptions, ValueId};
+use super::values::{MotionValues, PlaybackInfo, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
 use crate::css::length::{LengthContext, LinearLength};
@@ -56,7 +56,8 @@ pub(crate) struct MotionValueEvent {
 
 #[derive(Default)]
 pub(crate) struct MotionValueFrame {
-    /// Something sampled is still moving by itself, so another frame is due.
+    /// Something sampled is still moving by itself, so another frame is due. A held
+    /// animation is not.
     pub(crate) active: bool,
     pub(crate) events: Vec<MotionValueEvent>,
 }
@@ -246,6 +247,46 @@ impl MotionValueStore {
         Ok(())
     }
 
+    pub(crate) fn pause(&mut self, id: f64, now: Instant) -> Result<(), String> {
+        self.command(id, now, |graph, id| graph.pause(id, now))
+    }
+
+    pub(crate) fn play(&mut self, id: f64, now: Instant) -> Result<(), String> {
+        self.command(id, now, |graph, id| graph.play(id, now))
+    }
+
+    pub(crate) fn seek(&mut self, id: f64, seconds: f64, now: Instant) -> Result<(), String> {
+        self.command(id, now, |graph, id| graph.seek(id, seconds, now))
+    }
+
+    pub(crate) fn set_speed(&mut self, id: f64, speed: f64, now: Instant) -> Result<(), String> {
+        self.command(id, now, |graph, id| graph.set_speed(id, speed, now))
+    }
+
+    pub(crate) fn complete(&mut self, id: f64, now: Instant) -> Result<(), String> {
+        self.command(id, now, |graph, id| graph.complete(id, now))
+    }
+
+    /// A control on the animation of a value. The events up to `now` are found first: a finish
+    /// that no frame saw would otherwise be undone by `play` or `seek` before anyone heard of it.
+    fn command(
+        &mut self,
+        id: f64,
+        now: Instant,
+        run: impl FnOnce(&mut MotionValues, ValueId) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let id = value_id(id)?;
+        self.observe(now);
+        run(&mut self.graph, id)?;
+        self.observe(now);
+        Ok(())
+    }
+
+    /// `None` for a value that has not been animated, or whose animation was stopped.
+    pub(crate) fn playback(&mut self, id: f64, now: Instant) -> Result<Option<PlaybackInfo>, String> {
+        self.graph.playback(value_id(id)?, now)
+    }
+
     /// Chooses which events a value delivers. Neither removes the listener.
     pub(crate) fn listen(
         &mut self,
@@ -335,7 +376,7 @@ impl MotionValueStore {
             }
             match self.graph.sample(id, now) {
                 Ok(sample) => {
-                    active |= sample.active;
+                    active |= sample.moving;
                     self.frame_values.insert(id, sample.value);
                 }
                 Err(error) => self.warn(error),
@@ -364,7 +405,7 @@ impl MotionValueStore {
                 continue;
             }
             if let Ok(sample) = self.graph.sample(id, now) {
-                active |= sample.active;
+                active |= sample.moving;
                 self.frame_values.insert(id, sample.value);
             }
         }
@@ -446,7 +487,9 @@ impl MotionValueStore {
         }
     }
 
-    /// Whether any listened value is moving. Events it finds wait in `pending`.
+    /// Whether any listened value is moving. Events it finds wait in `pending`. A
+    /// held animation starts no frame and has not completed: the events follow
+    /// whether one is in effect.
     fn observe(&mut self, now: Instant) -> bool {
         let mut active = false;
         let mut failed = Vec::new();
@@ -460,7 +503,7 @@ impl MotionValueStore {
                     continue;
                 }
             };
-            active |= sample.active;
+            active |= sample.moving;
             let Some(watch) = self.watches.get_mut(&id) else {
                 continue;
             };
@@ -1227,6 +1270,55 @@ mod tests {
         assert!(!store.frame([&binding], &[], clock.at(1000)).active);
         store.listen(2.0, true, false, clock.at(500)).unwrap();
         assert!(store.frame([], &[], clock.at(600)).active);
+    }
+
+    #[test]
+    fn a_held_animation_asks_for_no_frame_and_is_not_complete() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.listen(1.0, true, true, clock.at(0)).unwrap();
+        store.animate(1.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
+        let binding = json!({ "opacity": 1 });
+        let started = store.frame([&binding], &[], clock.at(100));
+        assert!(started.active);
+        assert_eq!(started.events.iter().map(|event| event.kind).collect::<Vec<_>>(), vec![
+            MotionValueEventKind::AnimationStart,
+            MotionValueEventKind::Change,
+        ]);
+
+        store.pause(1.0, clock.at(400)).unwrap();
+        for millis in [400, 1500, 6000] {
+            let frame = store.frame([&binding], &[], clock.at(millis));
+            assert!(!frame.active, "{millis}: a held value needs no frame");
+            assert!(frame.events.iter().all(|event| event.kind != MotionValueEventKind::AnimationComplete));
+        }
+        assert!(store.is_animating(1.0, clock.at(6000)).unwrap());
+        assert_eq!(store.get(1.0, clock.at(6000)).unwrap(), json!(4.0));
+
+        store.play(1.0, clock.at(6000)).unwrap();
+        assert!(store.frame([&binding], &[], clock.at(6100)).active);
+        let done = store.frame([&binding], &[], clock.at(7000));
+        assert!(done.events.iter().any(|event| event.kind == MotionValueEventKind::AnimationComplete));
+        assert!(!done.active);
+    }
+
+    #[test]
+    fn running_an_animation_backwards_to_its_start_completes_it() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.listen(1.0, false, true, clock.at(0)).unwrap();
+        store.animate(1.0, &json!(10), Some(&linear(1.0)), clock.at(0)).unwrap();
+        store.frame([], &[], clock.at(100));
+        store.set_speed(1.0, -1.0, clock.at(100)).unwrap();
+        assert!(store.frame([], &[], clock.at(150)).events.is_empty());
+        let end = store.frame([], &[], clock.at(200));
+        assert_eq!(end.events.iter().map(|event| event.kind).collect::<Vec<_>>(), vec![
+            MotionValueEventKind::AnimationComplete,
+        ]);
+        assert!(!end.active);
+        assert_eq!(store.get(1.0, clock.at(200)).unwrap(), json!(0.0));
     }
 
     #[test]

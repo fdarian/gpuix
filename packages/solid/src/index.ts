@@ -34,7 +34,13 @@ export {
   MediaQueryListEvent,
   matchMedia,
 } from "@gpuix/native/host"
-export type { AnimationPlayState, MatchMedia } from "@gpuix/native/host"
+export type {
+  AnimationPlaybackControls,
+  AnimationPlaybackControlsWithThen,
+  AnimationPlaybackState,
+  AnimationPlayState,
+  MatchMedia,
+} from "@gpuix/native/host"
 export {
   createAppearance,
   createMatchMedia,

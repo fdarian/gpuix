@@ -64,15 +64,67 @@ export type MotionValueEvents<Data extends MotionData> = {
   animationComplete: () => void
 }
 
-export interface AnimationControls extends PromiseLike<void> {
-  /** Resolves when the animation completes, is stopped, cancelled or replaced. Never rejects. */
-  readonly finished: Promise<void>
-  /** Ends the animation where it is. */
+export type AnimationPlaybackState = "idle" | "running" | "paused" | "finished"
+
+/**
+ * What `animate` returns for a value, as Motion's `animate` does. Times are in seconds.
+ *
+ * Calls made before the value is bound to a renderer, when the animation has not started,
+ * apply when it does. Once the animation is stopped, cancelled or replaced by another one, its
+ * controls do nothing and read as they were, with state `"idle"`.
+ */
+export interface AnimationPlaybackControls {
+  /**
+   * Seconds since the delay ended, up to the end of the last repeat. Assigning it seeks, and it
+   * reads back as assigned: Motion counts the delay in the assigned time, so there a delayed
+   * animation reads back less. A running animation goes on from there, a held one stays, a
+   * finished one is held there and is not finished again.
+   */
+  time: number
+  /**
+   * The pace: 2 is twice as fast, negative runs backwards to the first keyframe, 0 holds the
+   * animation while it stays in effect. A value other than 0 after 0 runs it again; Motion
+   * needs `play()`.
+   */
+  speed: number
+  /**
+   * One iteration, without the delay or the repeats. A spring lasts until it is at rest,
+   * `Infinity` if that takes more than 20 seconds. Read once the value is bound to a renderer.
+   */
+  readonly duration: number
+  /** `duration` and the delay. */
+  readonly iterationDuration: number
+  /**
+   * `"running"` from the start, the delay included and at speed 0; `"paused"` after `pause()`;
+   * `"finished"` at the end and after `complete()`; `"idle"` after `stop()` and `cancel()`, and
+   * once another animation replaced this one.
+   */
+  readonly state: AnimationPlaybackState
+  /** Ends the animation where it is. `finished` stays pending. */
   stop(): void
-  /** Ends the animation and puts the value back where it started. */
+  /**
+   * Ends the animation and puts the value back on its first keyframe, or leaves it on the last
+   * if the animation had finished. `finished` stays pending.
+   */
   cancel(): void
-  /** Ends the animation at its target. */
+  /** Jumps to the end and finishes: `finished` resolves. */
   complete(): void
+  /**
+   * Continues from where `pause()` held the animation. A finished animation starts again, from
+   * its end if the speed is negative, and `finished` is a new promise. Does nothing after `stop()`
+   * and `cancel()`.
+   */
+  play(): void
+  /** Holds the value and the time. The value keeps `isAnimating()` and its velocity is 0. */
+  pause(): void
+}
+
+export interface AnimationPlaybackControlsWithThen extends AnimationPlaybackControls, PromiseLike<void> {
+  /**
+   * Resolves when the animation finishes by itself or `complete()` ends it. It never rejects, and
+   * a stopped, cancelled or replaced animation leaves it pending.
+   */
+  readonly finished: Promise<void>
 }
 
 /**
@@ -104,6 +156,12 @@ const HOST_METHODS = [
   "jumpMotionValue",
   "animateMotionValue",
   "stopMotionValue",
+  "pauseMotionValue",
+  "playMotionValue",
+  "seekMotionValue",
+  "setMotionValueSpeed",
+  "completeMotionValue",
+  "getMotionValuePlayback",
   "setMotionValueListener",
 ] as const satisfies readonly (keyof MotionValueHost)[]
 
@@ -163,6 +221,54 @@ function endOf(target: MotionTarget<MotionData>, from: MotionData): MotionData {
   return from
 }
 
+/** Where an animation of `target` begins: its first keyframe, or the value it started from. */
+function startOf(target: MotionTarget<MotionData>, from: MotionData): MotionData {
+  if (!Array.isArray(target) || endOf(target, from) === target) return from
+  const first: unknown = target[0]
+  return first === null ? from : (first as MotionData)
+}
+
+/** What the controls read before the animation started: what they were told so far. */
+function pendingPlayback(animation: Animation): Playback {
+  let time = 0
+  let speed = 1
+  let state: AnimationPlaybackState = "running"
+  for (const command of animation.pending) {
+    switch (command.kind) {
+      case "pause":
+        state = "paused"
+        break
+      case "play":
+        if (state === "finished") time = 0
+        state = "running"
+        break
+      case "complete":
+        state = "finished"
+        break
+      case "seek":
+        time = Math.max(0, command.seconds)
+        if (state === "finished") state = "paused"
+        break
+      case "speed":
+        speed = command.speed
+        break
+    }
+  }
+  return { time, speed, duration: undefined, iterationDuration: undefined, state }
+}
+
+/** A cancelled animation is back at its start. */
+function rewound(animation: Animation): void {
+  if (animation.ended) animation.ended = { ...animation.ended, time: 0 }
+}
+
+function known(value: number | undefined): number {
+  if (value === undefined) {
+    throw new Error("The duration of an animation is not known until its value is bound to a renderer")
+  }
+  return value
+}
+
 type ComputedTrigger = "change" | "animationComplete"
 
 type Definition =
@@ -194,14 +300,47 @@ type Attachment = {
   sentAnimation: boolean
 }
 
+type PlaybackCommand =
+  | { kind: "pause" }
+  | { kind: "play" }
+  | { kind: "complete" }
+  | { kind: "seek"; seconds: number }
+  | { kind: "speed"; speed: number }
+
+/** What the controls of an animation read. The durations are not known before it starts. */
+type Playback = {
+  time: number
+  speed: number
+  duration: number | undefined
+  iterationDuration: number | undefined
+  state: AnimationPlaybackState
+}
+
+type Deferred = { promise: Promise<void>; resolve: () => void }
+
 type Animation = {
   readonly target: MotionTarget<MotionData>
   readonly from: MotionData
   readonly transition: MotionCurve | undefined
-  readonly resolve: () => void
   started: boolean
+  /** Controls used before the animation started, applied when it does. */
+  readonly pending: PlaybackCommand[]
+  /** Holds the renderer's completion events and the node, until the animation finishes or ends. */
   unwatch?: () => void
+  /** It reached its end, and has not been played again since. */
+  done: boolean
+  /** What `finished` is, until `play()` starts a finished animation again. */
+  finished: Deferred
+  /** Resolves when the animation ends in any way, for what cleans up after it. */
+  readonly settled: Deferred
+  /** The last thing the renderer said, for when it no longer has the animation. */
+  last?: Playback
+  /** What the controls read from the moment the animation stopped, was replaced or its value went away. */
+  ended?: Playback
 }
+
+/** `finished` is for callers; what cleans up after an animation waits on this one. */
+const settlements = new WeakMap<object, Promise<void>>()
 
 const COUNTER_KEY = Symbol.for("@gpuix/native/motion-value-ids")
 
@@ -227,7 +366,7 @@ function tracking<Result>(
   }
 }
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
+function deferred(): Deferred {
   let resolve = () => {}
   const promise = new Promise<void>((done) => {
     resolve = done
@@ -317,8 +456,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
 
   /** Writes the value, ending any animation and dropping its velocity. */
   jump(value: Data): void {
-    this.#write("jump", value)
-    this.#settle(this.#animation)
+    this.#ending(() => this.#write("jump", value), "stopped")
   }
 
   /** Units per second, for a value that holds a number. A value that is not bound has none. */
@@ -341,16 +479,16 @@ export class MotionValue<Data extends MotionData = MotionData> {
   /** Ends an animation where it is, keeping the speed for the next one. */
   stop(): void {
     this.#assertAlive()
-    this.#attachment?.renderer.stopMotionValue(this.id)
-    this.#settle(this.#animation)
+    this.#ending(() => this.#attachment?.renderer.stopMotionValue(this.id), "stopped")
   }
 
   /**
    * Animates from where the value is, with the speed it has. Before the value
    * is bound the animation waits, and starts from the value at that point.
-   * Only a `motionValue()` animates: a spring is moved with `set()`.
+   * Only a `motionValue()` animates: a spring is moved with `set()`. The controls
+   * it returns have the names and semantics of Motion's.
    */
-  animate(target: MotionTarget<Data>, transition?: MotionCurve): AnimationControls {
+  animate(target: MotionTarget<Data>, transition?: MotionCurve): AnimationPlaybackControlsWithThen {
     this.#assertAlive()
     if (this.#definition.kind !== "source") {
       throw new Error(
@@ -359,38 +497,144 @@ export class MotionValue<Data extends MotionData = MotionData> {
           : `A ${this.#definition.kind} motion value is computed from other values and cannot be animated`
       )
     }
-    const waiting = deferred()
-    const finished = waiting.promise
     const animation: Animation = {
       target: target as MotionTarget<MotionData>,
       from: this.get(),
       transition: this.#reducers > 0 ? INSTANT : transition,
-      resolve: waiting.resolve,
       started: false,
+      pending: [],
+      done: false,
+      finished: deferred(),
+      settled: deferred(),
     }
     const previous = this.#animation
+    // Read before the new animation takes the value's place in the renderer.
+    const leaving = previous && this.#snapshot(previous)
     this.#animation = animation
-    if (this.#attachment) this.#start(animation)
+    try {
+      if (this.#attachment) this.#start(animation)
+    } catch (error) {
+      if (this.#animation === undefined) this.#animation = previous
+      throw error
+    }
     // The new animation holds the node first, so replacing the last one
     // cannot be the release that disposes it.
-    if (previous) this.#finish(previous)
+    if (previous && leaving) this.#end(previous, leaving, "released")
+    return this.#controls(animation)
+  }
 
-    const current = () => this.#animation === animation
-    return {
-      finished,
-      then: (onFulfilled, onRejected) => finished.then(onFulfilled, onRejected),
+  #controls(animation: Animation): AnimationPlaybackControlsWithThen {
+    const playback = () => this.#snapshot(animation)
+    const command = (command: PlaybackCommand) => this.#command(animation, command)
+    const controls: AnimationPlaybackControlsWithThen = {
+      get time() {
+        return playback().time
+      },
+      set time(seconds: number) {
+        command({ kind: "seek", seconds })
+      },
+      get speed() {
+        return playback().speed
+      },
+      set speed(speed: number) {
+        command({ kind: "speed", speed })
+      },
+      get duration() {
+        return known(playback().duration)
+      },
+      get iterationDuration() {
+        return known(playback().iterationDuration)
+      },
+      get state() {
+        return playback().state
+      },
+      get finished() {
+        return animation.finished.promise
+      },
+      then: (onFulfilled, onRejected) => animation.finished.promise.then(onFulfilled, onRejected),
       stop: () => {
-        if (current()) this.stop()
+        if (!animation.ended) this.stop()
       },
       cancel: () => {
-        if (!current()) return
+        if (animation.ended) return
+        const finished = playback().state === "finished"
         this.stop()
-        this.jump(animation.from as Data)
+        if (finished) return
+        this.jump(startOf(animation.target, animation.from) as Data)
+        rewound(animation)
       },
-      complete: () => {
-        if (current()) this.jump(endOf(animation.target, animation.from) as Data)
-      },
+      complete: () => command({ kind: "complete" }),
+      play: () => command({ kind: "play" }),
+      pause: () => command({ kind: "pause" }),
     }
+    settlements.set(controls, animation.settled.promise)
+    return controls
+  }
+
+  #command(animation: Animation, command: PlaybackCommand): void {
+    if (animation.ended) return
+    if (!animation.started) {
+      animation.pending.push(command)
+      return
+    }
+    this.#apply(animation, command)
+  }
+
+  /** Runs a control on the renderer, which owns the animation once it has started. */
+  #apply(animation: Animation, command: PlaybackCommand): void {
+    const renderer = this.#attached().renderer
+    switch (command.kind) {
+      case "pause":
+        renderer.pauseMotionValue(this.id)
+        return
+      case "play":
+        this.#play(animation)
+        return
+      case "seek":
+        renderer.seekMotionValue(this.id, command.seconds)
+        return
+      case "speed":
+        renderer.setMotionValueSpeed(this.id, command.speed)
+        return
+      case "complete":
+        renderer.completeMotionValue(this.id)
+        this.#finish(animation)
+        return
+    }
+  }
+
+  #play(animation: Animation): void {
+    const renderer = this.#attached().renderer
+    const playback = renderer.getMotionValuePlayback(this.id)
+    if (playback === null) return
+    if (playback.state === "finished") {
+      // Held through the hand-over, so letting go of the finished run cannot be the release
+      // that disposes the node.
+      const hold = this.#watch("animationComplete")
+      this.#finish(animation)
+      animation.finished = deferred()
+      animation.done = false
+      animation.unwatch = hold
+    }
+    renderer.playMotionValue(this.id)
+  }
+
+  /** What the controls of `animation` read now. */
+  #snapshot(animation: Animation): Playback {
+    if (animation.ended) return animation.ended
+    if (!animation.started) return pendingPlayback(animation)
+    const playback = this.#attached().renderer.getMotionValuePlayback(this.id)
+    if (playback === null) {
+      // The renderer let go of a finished animation when the value was written.
+      return { ...(animation.last ?? pendingPlayback(animation)), state: animation.done ? "finished" : "idle" }
+    }
+    animation.last = { ...playback, state: playback.state as AnimationPlaybackState }
+    return animation.last
+  }
+
+  #attached(): Attachment {
+    if (!this.#attachment) throw new Error(`Motion value ${this.id} has no renderer to control an animation on`)
+    return this.#attachment
   }
 
   /**
@@ -429,16 +673,21 @@ export class MotionValue<Data extends MotionData = MotionData> {
   bind(renderer: NativeRenderer): () => void {
     this.#assertAlive()
     assertHost(renderer)
-    if (this.#attachment) {
-      if (this.#attachment.renderer !== renderer) {
-        throw new Error(
-          `Motion value ${this.id} is bound to another renderer. A value drives one window at a time; release it there first`
-        )
-      }
-    } else {
-      this.#attach(renderer)
+    if (this.#attachment && this.#attachment.renderer !== renderer) {
+      throw new Error(
+        `Motion value ${this.id} is bound to another renderer. A value drives one window at a time; release it there first`
+      )
     }
+    // Counted before the node is attached, so an animation that ends while it is cannot take the node away.
     this.#bindings += 1
+    if (!this.#attachment) {
+      try {
+        this.#attach(renderer)
+      } catch (error) {
+        this.#bindings -= 1
+        throw error
+      }
+    }
     let released = false
     return () => {
       if (released) return
@@ -455,7 +704,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
    */
   destroy(): void {
     if (this.#destroyed) return
-    this.#settle(this.#animation)
+    this.#ending(() => {}, "released")
     this.#detach(false)
     this.#destroyed = true
     this.#bindings = 0
@@ -502,11 +751,10 @@ export class MotionValue<Data extends MotionData = MotionData> {
       this.#emit("animationComplete")
       const attachment = this.#attachment
       const animation = this.#animation
+      if (!attachment || !animation?.started || animation.done) return
       // A stop and a new animation in one frame deliver the old completion
-      // after the new start, so ask whether the value still moves.
-      if (attachment && animation && !attachment.renderer.isMotionValueAnimating(this.id)) {
-        this.#settle(animation)
-      }
+      // after the new start, so ask whether the animation is over.
+      if (attachment.renderer.getMotionValuePlayback(this.id)?.state === "finished") this.#finish(animation)
     },
   }
 
@@ -644,12 +892,14 @@ export class MotionValue<Data extends MotionData = MotionData> {
   #detach(keepState: boolean): void {
     const attachment = this.#attachment
     if (!attachment) return
+    const animation = this.#animation
+    const leaving = animation && this.#snapshot(animation)
     this.#attachment = undefined
     const kind = this.#definition.kind
     if (keepState && (kind === "source" || kind === "spring")) {
       this.#state = attachment.renderer.getMotionValue(this.id) as MotionData
     }
-    this.#settle(this.#animation)
+    if (animation && leaving) this.#end(animation, leaving, "released")
     // The sink goes first, then the node, then the inputs the node read.
     attachment.unsubscribe?.()
     attachment.renderer.disposeMotionValue(this.id)
@@ -662,25 +912,55 @@ export class MotionValue<Data extends MotionData = MotionData> {
     animation.started = true
     // Listened before the animation starts, so its start and end are seen.
     animation.unwatch = this.#watch("animationComplete")
+    const renderer = attachment.renderer
     try {
-      attachment.renderer.animateMotionValue(this.id, animation.target, wireTransition(animation.transition))
+      renderer.animateMotionValue(this.id, animation.target, wireTransition(animation.transition))
+      for (const command of animation.pending.splice(0)) this.#apply(animation, command)
     } catch (error) {
-      this.#settle(animation)
+      this.#end(animation, { ...pendingPlayback(animation), state: "idle" }, "stopped")
       throw error
     }
-    if (!attachment.renderer.isMotionValueAnimating(this.id)) this.#settle(animation)
+    const playback = renderer.getMotionValuePlayback(this.id)
+    if (playback === null) throw new Error(`Motion value ${this.id} has no animation after it was started`)
+    animation.last = { ...playback, state: playback.state as AnimationPlaybackState }
+    if (playback.state === "finished") this.#finish(animation)
   }
 
-  /** Ends `animation` if it is the current one. */
-  #settle(animation: Animation | undefined): void {
-    if (!animation || this.#animation !== animation) return
-    this.#animation = undefined
-    this.#finish(animation)
+  /**
+   * Runs `operation`, which takes the value from the animation, and ends the animation. What the
+   * controls read is taken first, while the renderer still has the animation.
+   */
+  #ending(operation: () => void, how: "stopped" | "released"): void {
+    const animation = this.#animation
+    const leaving = animation && this.#snapshot(animation)
+    operation()
+    if (animation && leaving) this.#end(animation, leaving, how)
   }
 
+  /** The animation got to its end, or `complete()` took it there: `finished` resolves. */
   #finish(animation: Animation): void {
-    animation.unwatch?.()
-    animation.resolve()
+    if (animation.done || animation.ended) return
+    animation.done = true
+    animation.finished.resolve()
+    animation.settled.resolve()
+    const unwatch = animation.unwatch
+    animation.unwatch = undefined
+    unwatch?.()
+  }
+
+  /**
+   * The animation is over for good: stopped, cancelled, replaced, or its value went away. Its
+   * controls read as `leaving` from then on, and `finished` stays as it was.
+   */
+  #end(animation: Animation, leaving: Playback, how: "stopped" | "released"): void {
+    if (animation.ended) return
+    const finished = how === "released" && (animation.done || leaving.state === "finished")
+    animation.ended = { ...leaving, state: finished ? "finished" : "idle" }
+    if (this.#animation === animation) this.#animation = undefined
+    const unwatch = animation.unwatch
+    animation.unwatch = undefined
+    animation.settled.resolve()
+    unwatch?.()
   }
 }
 
@@ -763,26 +1043,27 @@ export function velocityValue(source: MotionValue<number>): MotionValue<number> 
   })
 }
 
-/** Animates `value`. Returns controls whose `finished` resolves when it ends. */
+/** Animates `value`. Returns the controls of the animation; `finished` resolves when it finishes. */
 export function animate<Data extends MotionData>(
   value: MotionValue<Data>,
   target: MotionTarget<Data>,
   transition?: MotionCurve
-): AnimationControls
+): AnimationPlaybackControlsWithThen
 /**
  * Animates a number on `options.host`, reporting each frame to `onUpdate`.
- * The temporary value is destroyed when the animation ends.
+ * The temporary value is destroyed when the animation ends in any way, so the
+ * controls do nothing after that.
  */
 export function animate(
   from: number,
   to: MotionTarget<number>,
   options: MotionCurve & NumberAnimationOptions
-): AnimationControls
+): AnimationPlaybackControlsWithThen
 export function animate(
   first: MotionValue<MotionData> | number,
   second: MotionTarget<MotionData>,
   third?: (MotionCurve & Partial<NumberAnimationOptions>) | MotionCurve
-): AnimationControls {
+): AnimationPlaybackControlsWithThen {
   if (first instanceof MotionValue) return first.animate(second, third as MotionCurve | undefined)
   const options = third as MotionCurve & Partial<NumberAnimationOptions>
   if (!options?.host) throw new Error("animate(from, to) needs options.host, the renderer that samples the animation")
@@ -793,11 +1074,20 @@ export function animate(
   const release = temporary.bind(options.host)
   const onUpdate = options.onUpdate
   const stopUpdates = onUpdate ? temporary.on("change", onUpdate) : () => {}
-  const controls = temporary.animate(second as MotionTarget<number>, curve as MotionCurve)
-  void controls.finished.then(() => {
+  try {
+    const controls = temporary.animate(second as MotionTarget<number>, curve as MotionCurve)
+    const settled = settlements.get(controls)
+    if (!settled) throw new Error("An animation of a motion value has no settlement")
+    void settled.then(() => {
+      stopUpdates()
+      release()
+      temporary.destroy()
+    })
+    return controls
+  } catch (error) {
     stopUpdates()
     release()
     temporary.destroy()
-  })
-  return controls
+    throw error
+  }
 }

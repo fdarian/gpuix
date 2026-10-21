@@ -1,0 +1,6825 @@
+{
+ "fluid-hover loop paused mid-loop and played again": {
+  "from": 2,
+  "to": [ 2, 210, 2, 210, 2, 210, 2 ],
+  "transition": {
+   "duration": 6.199999999999999,
+   "times": [ 0, 0.32258064516129037, 0.6451612903225807, 0.7741935483870969, 0.903225806451613, 0.9516129032258065, 1 ],
+   "ease": "easeInOut",
+   "repeat": "Infinity"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 3500
+   },
+   {
+    "at": 3500,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 6000
+   },
+   {
+    "at": 9000
+   },
+   {
+    "at": 9000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 9500
+   },
+   {
+    "at": 12000
+   },
+   {
+    "at": 15700
+   },
+   {
+    "at": 16000
+   },
+   {
+    "at": 25000
+   },
+   {
+    "at": 40000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 106,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3500,
+    "value": 28.819629435893148,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3500,
+    "value": 28.819629435893148,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 6000,
+    "value": 28.819629435893148,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 9000,
+    "value": 28.819629435893148,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 9000,
+    "value": 28.819629435893148,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 9500,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 12000,
+    "value": 11.375428489875048,
+    "animating": true,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 15700,
+    "value": 2.000037187244743,
+    "animating": true,
+    "controls": [
+     {
+      "time": 10.2,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 16000,
+    "value": 62.93138982029632,
+    "animating": true,
+    "controls": [
+     {
+      "time": 10.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 25000,
+    "value": 88.17817219672725,
+    "animating": true,
+    "controls": [
+     {
+      "time": 19.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 40000,
+    "value": 28.819629435893148,
+    "animating": true,
+    "controls": [
+     {
+      "time": 34.5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "fluid-hover loop paused in a turnaround": {
+  "from": 2,
+  "to": [ 2, 210, 2, 210, 2, 210, 2 ],
+  "transition": {
+   "duration": 6.199999999999999,
+   "times": [ 0, 0.32258064516129037, 0.6451612903225807, 0.7741935483870969, 0.903225806451613, 0.9516129032258065, 1 ],
+   "ease": "easeInOut",
+   "repeat": "Infinity"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 4000,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 5000
+   },
+   {
+    "at": 5000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 5100
+   },
+   {
+    "at": 6000
+   },
+   {
+    "at": 7200
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 4000,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 5000,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 5000,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 5100,
+    "value": 8.481886760797352,
+    "animating": true,
+    "controls": [
+     {
+      "time": 4.1,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 6000,
+    "value": 183.18037056410685,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 7200,
+    "value": 2.000037187244743,
+    "animating": true,
+    "controls": [
+     {
+      "time": 6.2,
+      "speed": 1,
+      "duration": 6.199999999999999,
+      "iterationDuration": 6.199999999999999,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "pause and play twice": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 700,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 800,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 900,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1600
+   },
+   {
+    "at": 1800
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1800,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "pause during the delay": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1700
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2200
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2200,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "pause after the delay": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 800,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2300
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2300,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "seek", 0.7 ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 1200
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "seek", 0.6 ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 700,
+    "ops": [
+     [ "seek", 0.1 ]
+    ]
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 800,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 900
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1800
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1800,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek while finished": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "seek", 0.4 ]
+    ]
+   },
+   {
+    "at": 1600
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 2500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2700
+   },
+   {
+    "at": 3200
+   },
+   {
+    "at": 4000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2700,
+    "value": 60,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 4000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the end while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "seek", 5 ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the end while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "seek", 5 ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek into a repeat iteration": {
+  "from": 0,
+  "to": [ 0, 100, 50 ],
+  "transition": {
+   "duration": 2,
+   "ease": "linear",
+   "times": [ 0, 0.5, 1 ],
+   "repeat": 2,
+   "repeatType": "reverse"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "seek", 3.5 ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 2500,
+    "ops": [
+     [ "seek", 5.9 ]
+    ]
+   },
+   {
+    "at": 2600
+   },
+   {
+    "at": 2900
+   },
+   {
+    "at": 4000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 39.99999999999999,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.6,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 4.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 75,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 54.99999999999998,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5.9,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 50,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2900,
+    "value": 50,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 4000,
+    "value": 50,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek back to zero": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "seek", 0 ]
+    ]
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "seek in a delayed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "seek", 0.4 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1700
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 2": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0,
+    "ops": [
+     [ "speed", 2 ]
+    ]
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 250
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 499
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 250,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 499,
+    "value": 99.8,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.998,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 2 set midway": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 250
+   },
+   {
+    "at": 250,
+    "ops": [
+     [ "speed", 2 ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 900
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 250,
+    "value": 25,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 250,
+    "value": 25,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 35,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.35,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 75,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.75,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 95,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.95,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.55,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0.5": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0,
+    "ops": [
+     [ "speed", 0.5 ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1999
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 25,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 75,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.75,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1999,
+    "value": 99.95,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9995,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 0.5,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 holds, running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then 1": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "speed", 1 ]
+    ]
+   },
+   {
+    "at": 2100
+   },
+   {
+    "at": 2300
+   },
+   {
+    "at": 2700
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2300,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2700,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then play": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "speed", 1 ],
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2100
+   },
+   {
+    "at": 2300
+   },
+   {
+    "at": 2700
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2300,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed -1 from the middle": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1199
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1300
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1199,
+    "value": 0.1,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.001,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1300,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed -1 through repeats": {
+  "from": 0,
+  "to": [ 0, 100 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "repeat": 3
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 2500,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 2600
+   },
+   {
+    "at": 3000
+   },
+   {
+    "at": 3500
+   },
+   {
+    "at": 4500
+   },
+   {
+    "at": 5000
+   },
+   {
+    "at": 5500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 39.99999999999999,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2.4,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 4500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 5000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 5500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed -1 after a finish and play": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 1600
+   },
+   {
+    "at": 1700,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1800
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 2700
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1800,
+    "value": 90,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 70,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 20,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2700,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 2 while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "speed", 2 ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "stop while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "stop" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "stop while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "stop" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "stop after the finish": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "stop" ]
+    ]
+   },
+   {
+    "at": 1600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "cancel while running": {
+  "from": 10,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2100
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 46,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 19,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "cancel keyframes": {
+  "from": 0,
+  "to": [ 20, 60, 30 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 52,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "cancel after the finish": {
+  "from": 10,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 1600
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "complete while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2100
+   },
+   {
+    "at": 2600
+   },
+   {
+    "at": 3200
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 10,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 60,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "complete while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "complete a loop forever": {
+  "from": 2,
+  "to": [ 2, 210, 2 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "repeat": "Infinity"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 2300
+   },
+   {
+    "at": 2300,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 2400
+   },
+   {
+    "at": 5000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2300,
+    "value": 126.79999999999993,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2300,
+    "value": 2,
+    "animating": false,
+    "controls": [
+     {
+      "time": "Infinity",
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2400,
+    "value": 2,
+    "animating": false,
+    "controls": [
+     {
+      "time": "Infinity",
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 5000,
+    "value": 2,
+    "animating": false,
+    "controls": [
+     {
+      "time": "Infinity",
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "complete a reversed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 700,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "complete after the finish": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 1600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "replacement": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [
+      "animate",
+      0,
+      {
+       "duration": 2,
+       "ease": "linear"
+      }
+     ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 2400
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 38,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 28,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 26,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2400,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 2,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 2,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "replacement after a pause": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 900,
+    "ops": [
+     [
+      "animate",
+      0,
+      {
+       "duration": 1,
+       "ease": "linear"
+      }
+     ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "controls", 0, "play" ]
+    ]
+   },
+   {
+    "at": 2100
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 36,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 16,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     },
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "replacement after the finish": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [
+      "animate",
+      50,
+      {
+       "duration": 1,
+       "ease": "linear"
+      }
+     ]
+    ]
+   },
+   {
+    "at": 1600
+   },
+   {
+    "at": 2600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     },
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 95,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     },
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 50,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     },
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "play after the finish": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1600
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 10,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 50,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "play after the finish of a repeat": {
+  "from": 0,
+  "to": [ 0, 100 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "repeat": 1,
+   "repeatType": "reverse"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 2200
+   },
+   {
+    "at": 2500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2600
+   },
+   {
+    "at": 3500
+   },
+   {
+    "at": 4500
+   },
+   {
+    "at": 5000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2200,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 2.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 10,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 4500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 5000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "play while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1200
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "duration of a tween, a delay and repeats": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 2,
+   "ease": "linear",
+   "delay": 0.5,
+   "repeat": 3,
+   "repeatDelay": 0.25
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "seek", 100 ]
+    ]
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 700
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 5,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 99.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 99.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 99.5,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the time of a delayed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 250
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 750
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1250
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1750
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 250,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 750,
+    "value": 25,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1250,
+    "value": 75,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.75,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1750,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the time of repeats with a repeat delay": {
+  "from": 0,
+  "to": [ 0, 100 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "repeat": 2,
+   "repeatDelay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2500
+   },
+   {
+    "at": 3000
+   },
+   {
+    "at": 3500
+   },
+   {
+    "at": 4000
+   },
+   {
+    "at": 4500
+   },
+   {
+    "at": 5000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 49.999999999999986,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 2.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 3500,
+    "value": 50.00000000000002,
+    "animating": true,
+    "controls": [
+     {
+      "time": 3.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 4000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 4500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 5000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of a spring": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "type": "spring",
+   "stiffness": 200,
+   "damping": 12
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 59.659534176063204,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   }
+  ]
+ }
+}

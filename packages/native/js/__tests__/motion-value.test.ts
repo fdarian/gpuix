@@ -22,6 +22,8 @@ type FakeNode = {
   animating: boolean
   target?: unknown
   transition?: unknown
+  /** The animation the controls act on, until it is stopped or jumped. */
+  run?: { held: boolean; speed: number; time: number }
 }
 
 /** Just enough of the native graph to see what the core asks of it. */
@@ -101,6 +103,7 @@ class FakeRenderer {
     const node = this.node(id)
     node.value = value
     node.animating = false
+    node.run = undefined
   }
 
   animateMotionValue(id: number, target: unknown, transition?: unknown) {
@@ -109,11 +112,61 @@ class FakeRenderer {
     node.target = target
     node.transition = transition
     node.animating = target !== node.value
+    node.run = { held: false, speed: 1, time: 0 }
   }
 
   stopMotionValue(id: number) {
     this.calls.push(`stop ${id}`)
-    this.node(id).animating = false
+    const node = this.node(id)
+    node.animating = false
+    node.run = undefined
+  }
+
+  pauseMotionValue(id: number) {
+    this.calls.push(`pause ${id}`)
+    const run = this.node(id).run
+    if (run && this.node(id).animating) run.held = true
+  }
+
+  playMotionValue(id: number) {
+    this.calls.push(`play ${id}`)
+    const node = this.node(id)
+    if (!node.run) return
+    if (!node.animating) {
+      node.animating = true
+      node.run.time = 0
+    }
+    node.run.held = false
+  }
+
+  seekMotionValue(id: number, seconds: number) {
+    this.calls.push(`seek ${id} ${seconds}`)
+    const run = this.node(id).run
+    if (run) run.time = seconds
+  }
+
+  setMotionValueSpeed(id: number, speed: number) {
+    this.calls.push(`speed ${id} ${speed}`)
+    const run = this.node(id).run
+    if (run) run.speed = speed
+  }
+
+  completeMotionValue(id: number) {
+    this.calls.push(`complete ${id}`)
+    const node = this.node(id)
+    if (!node.run) return
+    const frames = node.target
+    const lastFrame = Array.isArray(frames) ? frames.filter((frame) => frame !== null).at(-1) : frames
+    const holdsList = Array.isArray(node.value) && Array.isArray(frames) && frames.every((frame) => typeof frame === "number")
+    node.value = holdsList ? frames : lastFrame
+    node.animating = false
+  }
+
+  getMotionValuePlayback(id: number) {
+    const node = this.node(id)
+    if (!node.run) return null
+    const state = node.run.held ? "paused" : node.animating ? "running" : "finished"
+    return { time: node.run.time, speed: node.run.speed, duration: 1, iterationDuration: 1, state }
   }
 
   setMotionValueListener(id: number, change: boolean, animation: boolean) {
@@ -150,6 +203,10 @@ class FakeRenderer {
     })
   }
 }
+
+/** Whether a promise has resolved by the time the microtasks and the next timer have run. */
+const resolved = (promise: Promise<unknown>) =>
+  Promise.race([promise.then(() => true), new Promise<boolean>((done) => setTimeout(() => done(false), 0))])
 
 const fake = () => new FakeRenderer()
 const host = (renderer: FakeRenderer) => renderer as unknown as MotionValueRenderer
@@ -356,16 +413,19 @@ describe("animate", () => {
     await x.animate(3).finished
   })
 
-  it("resolves the replaced animation when a new one starts", async () => {
+  it("leaves the replaced animation pending and idle when a new one starts", async () => {
     const renderer = fake()
     const x = motionValue(0)
     x.bind(host(renderer))
     const first = x.animate(10)
     const second = x.animate(20)
-    await first.finished
+    expect(first.state).toBe("idle")
+    expect(second.state).toBe("running")
     expect(x.isAnimating()).toBe(true)
     renderer.finish(x.id)
     await second.finished
+    expect(second.state).toBe("finished")
+    expect(await resolved(first.finished)).toBe(false)
   })
 
   it("does not end the new animation on the completion of the one it stopped", () => {
@@ -395,22 +455,39 @@ describe("animate", () => {
     const stopped = x.animate(9)
     renderer.setMotionValue(x.id, 4)
     stopped.stop()
-    await stopped.finished
+    expect(stopped.state).toBe("idle")
+    expect(await resolved(stopped.finished)).toBe(false)
     expect(x.get()).toBe(4)
 
     const cancelled = x.animate(9)
     renderer.setMotionValue(x.id, 6)
     cancelled.cancel()
-    await cancelled.finished
+    expect(cancelled.state).toBe("idle")
+    expect(await resolved(cancelled.finished)).toBe(false)
     expect(x.get()).toBe(4)
 
     const completed = x.animate(9)
     completed.complete()
+    expect(completed.state).toBe("finished")
     await completed.finished
     expect(x.get()).toBe(9)
-    // A finished animation's controls do nothing.
+    // A finished animation cannot be cancelled: the value stays where it ended.
     completed.cancel()
     expect(x.get()).toBe(9)
+    expect(completed.state).toBe("idle")
+  })
+
+  it("cancels a finished animation without taking the value from its end", async () => {
+    const renderer = fake()
+    const x = motionValue(1)
+    x.bind(host(renderer))
+    const controls = x.animate(9)
+    renderer.finish(x.id)
+    await controls.finished
+    expect(controls.state).toBe("finished")
+    controls.cancel()
+    expect(x.get()).toBe(9)
+    expect(controls.state).toBe("idle")
   })
 
   it("lets a jump or a stop end the animation", async () => {
@@ -419,10 +496,13 @@ describe("animate", () => {
     x.bind(host(renderer))
     const jumped = x.animate(5)
     x.jump(1)
-    await jumped.finished
+    expect(jumped.state).toBe("idle")
+    expect(await resolved(jumped.finished)).toBe(false)
     const stopped = x.animate(5)
     x.stop()
-    await stopped.finished
+    expect(stopped.state).toBe("idle")
+    expect(await resolved(stopped.finished)).toBe(false)
+    expect(x.isAnimating()).toBe(false)
   })
 
   it("only animates a plain value", () => {
@@ -489,8 +569,8 @@ describe("animate with keyframes", () => {
 
     const cancelled = x.animate([20, 30])
     cancelled.cancel()
-    await cancelled.finished
-    expect(x.get()).toBe(7)
+    expect(await resolved(cancelled.finished)).toBe(false)
+    expect(x.get()).toBe(20)
   })
 
   it("completes a list-valued animation at its target, whichever way the array is read", () => {
@@ -628,7 +708,8 @@ describe("destroy", () => {
     x.on("change", () => {})
     const controls = x.animate(5)
     x.destroy()
-    await controls.finished
+    expect(controls.state).toBe("idle")
+    expect(await resolved(controls.finished)).toBe(false)
     expect(renderer.nodes.size).toBe(0)
     expect(() => x.get()).toThrow(/destroyed/)
     expect(() => x.set(1)).toThrow(/destroyed/)
@@ -833,8 +914,9 @@ describe.skipIf(!hasNativeTestRenderer)("on the native test renderer", () => {
       frame(renderer, 10_000)
       expect(x.get()).toBe(held)
       expect(x.isAnimating()).toBe(false)
-      await controls.finished
-      expect(finished).toBe(true)
+      expect(await resolved(controls.finished)).toBe(false)
+      expect(finished).toBe(false)
+      expect(controls.state).toBe("idle")
       expect(log).toEqual(["start", "complete"])
     })
 

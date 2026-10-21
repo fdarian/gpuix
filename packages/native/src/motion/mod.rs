@@ -40,6 +40,7 @@ pub(crate) use css_transition::{
     TransitionStyle,
 };
 pub(crate) use bindings::{MotionValueEvent, MotionValueFrame, MotionValueStore};
+pub(crate) use values::PlaybackInfo;
 use css_transition::transitions_width;
 use curve::Transition;
 use measure::Measurement;

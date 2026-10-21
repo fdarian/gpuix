@@ -2510,6 +2510,12 @@ export type MotionValueHost = Pick<
   | "jumpMotionValue"
   | "animateMotionValue"
   | "stopMotionValue"
+  | "pauseMotionValue"
+  | "playMotionValue"
+  | "seekMotionValue"
+  | "setMotionValueSpeed"
+  | "completeMotionValue"
+  | "getMotionValuePlayback"
   | "setMotionValueListener"
 >
 /** `applyBatch` plus the live renderer methods a host may also expose. */

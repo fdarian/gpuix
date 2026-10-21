@@ -19,6 +19,7 @@ import {
   type RetainedCounters,
   type EventPayload,
   type MediaFeatures,
+  type MotionValuePlayback,
   type WebAnimationInfo,
   type WindowOptions,
 } from "../index.js"
@@ -1103,6 +1104,30 @@ export class TestRenderer implements NativeRenderer {
 
   stopMotionValue(id: number): void {
     this.native.stopMotionValue(id)
+  }
+
+  pauseMotionValue(id: number): void {
+    this.native.pauseMotionValue(id)
+  }
+
+  playMotionValue(id: number): void {
+    this.native.playMotionValue(id)
+  }
+
+  seekMotionValue(id: number, seconds: number): void {
+    this.native.seekMotionValue(id, seconds)
+  }
+
+  setMotionValueSpeed(id: number, speed: number): void {
+    this.native.setMotionValueSpeed(id, speed)
+  }
+
+  completeMotionValue(id: number): void {
+    this.native.completeMotionValue(id)
+  }
+
+  getMotionValuePlayback(id: number): MotionValuePlayback | null {
+    return this.native.getMotionValuePlayback(id)
   }
 
   setMotionValueListener(id: number, change: boolean, animation: boolean): void {

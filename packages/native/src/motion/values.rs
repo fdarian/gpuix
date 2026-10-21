@@ -23,8 +23,9 @@ use std::time::Duration;
 use web_time::Instant;
 
 use super::curve::{ease, ease_slope, validate_ease, Curve, Ease, Transition};
-use super::track::{Goal, Track};
+use super::track::{Goal, Span, Track};
 use super::value::{pair, AnimValue, Interpolation, Layout, Pair};
+use super::web_animation::{Command, Playback, Status};
 
 const NAME: &str = "motion value";
 
@@ -51,8 +52,12 @@ pub(super) struct Sample {
     /// Rate of change per second, one entry per channel of the value. A
     /// number has one; colours and shadows have their interpolation channels.
     pub(super) velocity: Vec<f64>,
-    /// Whether the value is still moving by itself at this instant.
+    /// Whether an animation is in effect at this instant: running, or held by
+    /// a pause. It starts and completes the animation events.
     pub(super) active: bool,
+    /// Whether the value is changing by itself at this instant, so another
+    /// frame is due. A paused animation is active and not moving.
+    pub(super) moving: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -235,6 +240,60 @@ impl MotionValues {
         Ok(self.sample(id, now)?.active)
     }
 
+    /// Holds the animation of `id` where it is.
+    pub(super) fn pause(&mut self, id: ValueId, now: Instant) -> Result<(), String> {
+        self.with_run(id, now, |run| run.pause(now))
+    }
+
+    /// Continues a held animation, or plays a finished one again from its
+    /// start (its end, when it runs backwards).
+    pub(super) fn play(&mut self, id: ValueId, now: Instant) -> Result<(), String> {
+        self.with_run(id, now, |run| run.play(now))
+    }
+
+    /// Moves the animation of `id` to `seconds` after its delay ended, and holds
+    /// there if it had finished.
+    pub(super) fn seek(&mut self, id: ValueId, seconds: f64, now: Instant) -> Result<(), String> {
+        self.with_run(id, now, |run| run.seek(seconds, now))
+    }
+
+    /// Runs the animation of `id` at `speed` times its own pace, backwards if
+    /// negative, held at 0.
+    pub(super) fn set_speed(&mut self, id: ValueId, speed: f64, now: Instant) -> Result<(), String> {
+        self.with_run(id, now, |run| run.set_speed(speed, now))
+    }
+
+    /// Jumps the animation of `id` to its end and finishes it.
+    pub(super) fn complete(&mut self, id: ValueId, now: Instant) -> Result<(), String> {
+        self.with_run(id, now, |run| {
+            run.complete();
+            Ok(())
+        })
+    }
+
+    /// What the animation of `id` reads as, or `None` for a value with none.
+    pub(super) fn playback(&mut self, id: ValueId, now: Instant) -> Result<Option<PlaybackInfo>, String> {
+        self.catch_up(now);
+        match self.node(id)? {
+            Node::Source(source) => Ok(source.run.as_ref().map(|run| run.info(now))),
+            Node::Spring(_) | Node::Transform(_) => Ok(None),
+        }
+    }
+
+    /// Runs a command on the animation of a source. A value with none ignores it.
+    fn with_run(
+        &mut self,
+        id: ValueId,
+        now: Instant,
+        command: impl FnOnce(&mut Run) -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.catch_up(now);
+        match self.node_mut(id)? {
+            Node::Source(source) => source.run.as_mut().map_or(Ok(()), command),
+            Node::Spring(_) | Node::Transform(_) => Ok(()),
+        }
+    }
+
     /// Writes `value`. Over a running animation this does not stop it: the
     /// value reads back as written at this instant, and the animation takes
     /// over again from the next one, as in motion-dom. Call [`Self::stop`]
@@ -415,7 +474,8 @@ struct Source {
     /// speed of a value that is being dragged.
     before: Option<(AnimValue, Instant)>,
     rate: Option<Rate>,
-    track: Option<Track>,
+    /// The latest animation, which stays after it finished so it can play again.
+    run: Option<Run>,
     /// A `set` made while the track runs, which holds until the next instant.
     held: Option<(AnimValue, Instant)>,
 }
@@ -427,15 +487,16 @@ impl Source {
             written_at: None,
             before: None,
             rate: None,
-            track: None,
+            run: None,
             held: None,
         }
     }
 
+    /// Whether an animation is in effect, running or held.
     fn running(&self, now: Instant) -> bool {
-        self.track
+        self.run
             .as_ref()
-            .is_some_and(|track| track.sample(now).active)
+            .is_some_and(|run| run.sample(now).phase != Phase::Finished)
     }
 
     /// Folds an animation that has ended into the resting value.
@@ -443,8 +504,8 @@ impl Source {
         if self.running(now) {
             return;
         }
-        if let Some(track) = self.track.take() {
-            self.rest = track.current(now);
+        if let Some(run) = self.run.take() {
+            self.rest = run.value(now);
             self.written_at = None;
             self.before = None;
             self.rate = None;
@@ -458,29 +519,35 @@ impl Source {
                 return held.clone();
             }
         }
-        match &self.track {
-            Some(track) => track.current(now),
+        match &self.run {
+            Some(run) => run.value(now),
             None => self.rest.clone(),
         }
     }
 
     fn sample(&self, now: Instant) -> Result<Sample, String> {
-        let value = self.value(now);
-        if let Some(track) = &self.track {
-            let sample = track.sample(now);
-            if sample.active {
+        if let Some(run) = &self.run {
+            let sample = run.sample(now);
+            if sample.phase != Phase::Finished {
+                let value = match &self.held {
+                    Some((held, at)) if now <= *at => held.clone(),
+                    _ => run.track.value(&sample.position),
+                };
                 return Ok(Sample {
                     value,
                     velocity: sample.velocity,
                     active: true,
+                    moving: sample.phase == Phase::Running && run.playback.rate() != 0.0,
                 });
             }
         }
+        let value = self.value(now);
         let velocity = self.rest_velocity(&value, now)?;
         Ok(Sample {
             value,
             velocity,
             active: false,
+            moving: false,
         })
     }
 
@@ -518,7 +585,7 @@ impl Source {
     fn jump(&mut self, value: AnimValue, now: Instant) -> Result<(), String> {
         let current = self.value(now);
         pair(NAME, &current, &value)?;
-        self.track = None;
+        self.run = None;
         self.held = None;
         self.rest = value;
         self.written_at = Some(now);
@@ -546,8 +613,10 @@ impl Source {
         // A track that opens on a keyframe of its own does not start at the
         // speed the value had.
         if starts_here {
-            match &self.track {
-                Some(previous) => track.carry_velocity(previous, now),
+            match &self.run {
+                Some(previous) => {
+                    track.carry_rate(previous.track.layout(), previous.sample(now).velocity);
+                }
                 None => {
                     if let Some(rate) = self.rate.as_ref().filter(|rate| fresh(rate.at, now)) {
                         track.carry_rate(&rate.layout, rate.per_second.clone());
@@ -555,7 +624,7 @@ impl Source {
                 }
             }
         }
-        self.track = Some(track);
+        self.run = Some(Run::new(track, now));
         self.held = None;
         Ok(())
     }
@@ -564,21 +633,230 @@ impl Source {
     /// the animation can still hand its speed on.
     fn stop(&mut self, now: Instant) -> Result<(), String> {
         let value = self.value(now);
-        let Some(track) = self.track.take() else {
+        let Some(run) = self.run.take() else {
             return Ok(());
         };
-        let sample = track.sample(now);
+        let sample = run.sample(now);
         self.rest = value;
         self.held = None;
         self.written_at = Some(now);
         self.before = None;
-        self.rate = sample.active.then(|| Rate {
-            layout: track.layout().clone(),
+        self.rate = (sample.phase != Phase::Finished).then(|| Rate {
+            layout: run.track.layout().clone(),
             per_second: sample.velocity,
             at: now,
         });
         Ok(())
     }
+}
+
+/// Whether an animation runs, is held by a pause, or has reached an end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Phase {
+    Running,
+    Paused,
+    Finished,
+}
+
+impl Phase {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Paused => "paused",
+            Self::Finished => "finished",
+        }
+    }
+}
+
+/// What the controls of an animation read, in seconds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PlaybackInfo {
+    /// Since the delay ended, up to the end of the last repeat.
+    pub(crate) time: f64,
+    pub(crate) speed: f64,
+    /// One iteration, without the delay or the repeats.
+    pub(crate) duration: f64,
+    pub(crate) iteration_duration: f64,
+    pub(crate) phase: Phase,
+}
+
+/// One animation of a source: its track on a clock the controls move.
+struct Run {
+    track: Track,
+    playback: Playback,
+    span: Span,
+    /// What a finished run shows and keeps showing. A command that meets a run
+    /// at its end latches it, so a change of speed does not take the run off
+    /// its end; `play` and `seek` start it again.
+    settled: Option<Settled>,
+}
+
+struct Settled {
+    position: Vec<f64>,
+    /// Seconds from the start of the delay.
+    time: f64,
+}
+
+struct RunSample {
+    position: Vec<f64>,
+    /// Per second, at the pace the run goes at; none while it is held.
+    velocity: Vec<f64>,
+    phase: Phase,
+    /// Seconds from the start of the delay.
+    time: f64,
+}
+
+impl Run {
+    fn new(track: Track, now: Instant) -> Self {
+        Self {
+            span: track.span(),
+            track,
+            playback: Playback::start(now, true),
+            settled: None,
+        }
+    }
+
+    fn sample(&self, now: Instant) -> RunSample {
+        if let Some(settled) = &self.settled {
+            return RunSample {
+                velocity: vec![0.0; settled.position.len()],
+                position: settled.position.clone(),
+                phase: Phase::Finished,
+                time: settled.time,
+            };
+        }
+        let end = self.span.end;
+        let time = self.playback.current(now, end);
+        let sample = self.track.sample_at(elapsed_at(time));
+        let rate = self.playback.rate();
+        let phase = match self.playback.status(now, end) {
+            Status::Paused => Phase::Paused,
+            Status::Finished => Phase::Finished,
+            // A spring is at rest a little before the 60 Hz scan that gave its end says.
+            _ if rate > 0.0 && !sample.active => Phase::Finished,
+            _ => Phase::Running,
+        };
+        let velocity = match phase {
+            Phase::Running => sample.velocity.iter().map(|velocity| velocity * rate).collect(),
+            Phase::Paused | Phase::Finished => vec![0.0; sample.velocity.len()],
+        };
+        let time = match phase {
+            Phase::Finished if rate > 0.0 => end,
+            Phase::Finished => 0.0,
+            Phase::Running | Phase::Paused => time,
+        };
+        RunSample {
+            position: sample.position,
+            velocity,
+            phase,
+            time,
+        }
+    }
+
+    fn value(&self, now: Instant) -> AnimValue {
+        self.track.value(&self.sample(now).position)
+    }
+
+    fn info(&self, now: Instant) -> PlaybackInfo {
+        let sample = self.sample(now);
+        let delay = self.track.transition().delay;
+        PlaybackInfo {
+            time: (sample.time - delay).clamp(0.0, self.span.end - delay),
+            speed: self.playback.rate(),
+            duration: self.span.iteration,
+            iteration_duration: self.span.iteration + delay,
+            phase: sample.phase,
+        }
+    }
+
+    /// Latches a run that is at its end.
+    fn freeze(&mut self, now: Instant) {
+        if self.settled.is_some() {
+            return;
+        }
+        let sample = self.sample(now);
+        if sample.phase == Phase::Finished {
+            self.settled = Some(Settled {
+                position: sample.position,
+                time: sample.time,
+            });
+        }
+    }
+
+    fn pause(&mut self, now: Instant) -> Result<(), String> {
+        self.freeze(now);
+        if self.settled.is_some() {
+            return Ok(());
+        }
+        self.playback.apply(Command::Pause, now, self.span.end)
+    }
+
+    fn play(&mut self, now: Instant) -> Result<(), String> {
+        match self.sample(now).phase {
+            Phase::Finished => {
+                let backwards = self.playback.rate() < 0.0;
+                if backwards && self.span.end.is_infinite() {
+                    return Err("cannot play an animation of infinite length backwards from its end".to_string());
+                }
+                self.playback = self.fresh(now)?;
+                if backwards {
+                    self.playback
+                        .apply(Command::SetCurrentTime(self.span.end * 1000.0), now, self.span.end)?;
+                }
+                self.settled = None;
+            }
+            Phase::Paused => {
+                // Not the clock's own `play`, which starts a held clock at its end from the
+                // start, as the Web Animations API does; a held animation here goes on from
+                // wherever it is held, and finishes at once if that is past its end.
+                let held = self.playback.current(now, self.span.end);
+                self.playback = self.fresh(now)?;
+                self.playback
+                    .apply(Command::SetCurrentTime(held * 1000.0), now, self.span.end)?;
+            }
+            Phase::Running => {}
+        }
+        Ok(())
+    }
+
+    fn seek(&mut self, seconds: f64, now: Instant) -> Result<(), String> {
+        if !seconds.is_finite() {
+            return Err(format!("time must be finite, got {seconds}"));
+        }
+        let end = self.span.end;
+        if self.sample(now).phase == Phase::Finished {
+            self.playback = self.fresh(now)?;
+            self.settled = None;
+            self.playback.apply(Command::Pause, now, end)?;
+        }
+        let at = self.track.transition().delay + seconds.max(0.0);
+        self.playback.apply(Command::SetCurrentTime(at * 1000.0), now, end)
+    }
+
+    fn set_speed(&mut self, speed: f64, now: Instant) -> Result<(), String> {
+        self.freeze(now);
+        self.playback.apply(Command::SetPlaybackRate(speed), now, self.span.end)
+    }
+
+    fn complete(&mut self) {
+        self.settled = Some(Settled {
+            position: self.track.final_position(self.playback.rate() < 0.0),
+            time: self.span.end,
+        });
+    }
+
+    /// A clock at the start of the track that goes at the pace of the one it replaces.
+    fn fresh(&self, now: Instant) -> Result<Playback, String> {
+        let mut playback = Playback::start(now, true);
+        playback.apply(Command::SetPlaybackRate(self.playback.rate()), now, self.span.end)?;
+        Ok(playback)
+    }
+}
+
+/// How far into the track `time` seconds is. Rounded up, so that the end of a
+/// track is never a nanosecond short of it.
+fn elapsed_at(time: f64) -> Duration {
+    Duration::from_nanos((time * 1e9).ceil() as u64)
 }
 
 fn fresh(at: Instant, now: Instant) -> bool {
@@ -720,6 +998,7 @@ impl Transform {
             value: segment.pair.at(eased),
             velocity,
             active: input.active,
+            moving: input.moving,
         })
     }
 }
@@ -781,7 +1060,8 @@ impl Follower {
         Ok(Sample {
             value: self.track.value(&sample.position),
             velocity: sample.velocity,
-            active: sample.active || upstream.is_some_and(|input| input.active),
+            active: sample.active || upstream.as_ref().is_some_and(|input| input.active),
+            moving: sample.active || upstream.is_some_and(|input| input.moving),
         })
     }
 
@@ -1626,5 +1906,398 @@ mod tests {
             values.get(follower, clock.at(30_000)).unwrap(),
             color("#ffffff")
         );
+    }
+
+    fn curve(json: serde_json::Value) -> Transition {
+        Transition::parse(json).unwrap()
+    }
+
+    fn info(values: &mut MotionValues, id: ValueId, at: Instant) -> PlaybackInfo {
+        values.playback(id, at).unwrap().expect("the value has an animation")
+    }
+
+    /// 0 to 100 in a second, linear, started at 0 ms.
+    fn linear_run(values: &mut MotionValues, clock: &Clock) -> ValueId {
+        let id = values.new_source(number(0.0)).unwrap();
+        values.animate(id, number(100.0), tween(1.0), clock.at(0)).unwrap();
+        id
+    }
+
+    #[test]
+    fn pause_holds_the_value_and_stops_the_motion() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        assert!(values.sample(id, clock.at(400)).unwrap().moving);
+
+        values.pause(id, clock.at(400)).unwrap();
+        let held = values.sample(id, clock.at(900)).unwrap();
+        close(read(&mut values, id, clock.at(900)), 40.0);
+        assert!(held.active, "a held animation is still in effect");
+        assert!(!held.moving, "and asks for no frame");
+        assert_eq!(held.velocity, vec![0.0]);
+        assert!(values.is_animating(id, clock.at(5000)).unwrap());
+        assert_eq!(info(&mut values, id, clock.at(5000)).phase, Phase::Paused);
+        close(info(&mut values, id, clock.at(5000)).time, 0.4);
+    }
+
+    #[test]
+    fn play_continues_from_the_held_time() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.pause(id, clock.at(400)).unwrap();
+        values.play(id, clock.at(1000)).unwrap();
+        close(read(&mut values, id, clock.at(1000)), 40.0);
+        close(read(&mut values, id, clock.at(1300)), 70.0);
+        assert!(values.sample(id, clock.at(1300)).unwrap().moving);
+        assert!(values.is_animating(id, clock.at(1599)).unwrap());
+        assert!(!values.is_animating(id, clock.at(1600)).unwrap());
+        assert_eq!(read(&mut values, id, clock.at(1600)), 100.0);
+    }
+
+    #[test]
+    fn a_pause_during_the_delay_holds_the_start() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = values.new_source(number(0.0)).unwrap();
+        values
+            .animate(id, number(100.0), curve(json!({ "duration": 1, "ease": "linear", "delay": 0.5 })), clock.at(0))
+            .unwrap();
+        values.pause(id, clock.at(200)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(700)), 0.0);
+        assert_eq!(info(&mut values, id, clock.at(700)).time, 0.0);
+        values.play(id, clock.at(1000)).unwrap();
+        // 300 ms of delay left, then the first quarter second.
+        assert_eq!(read(&mut values, id, clock.at(1300)), 0.0);
+        close(read(&mut values, id, clock.at(1550)), 25.0);
+    }
+
+    #[test]
+    fn seek_moves_the_animation_whether_it_runs_or_is_held() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.seek(id, 0.75, clock.at(100)).unwrap();
+        close(read(&mut values, id, clock.at(100)), 75.0);
+        close(read(&mut values, id, clock.at(150)), 80.0);
+
+        values.pause(id, clock.at(150)).unwrap();
+        values.seek(id, 0.25, clock.at(300)).unwrap();
+        close(read(&mut values, id, clock.at(900)), 25.0);
+        close(info(&mut values, id, clock.at(900)).time, 0.25);
+        assert_eq!(info(&mut values, id, clock.at(900)).phase, Phase::Paused);
+    }
+
+    #[test]
+    fn seek_reads_back_with_a_delay_and_into_a_repeat() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = values.new_source(number(0.0)).unwrap();
+        values
+            .animate(
+                id,
+                number(100.0),
+                curve(json!({ "duration": 1, "ease": "linear", "delay": 0.5, "repeat": 2, "repeatType": "loop" })),
+                clock.at(0),
+            )
+            .unwrap();
+        values.seek(id, 1.25, clock.at(10)).unwrap();
+        close(info(&mut values, id, clock.at(10)).time, 1.25);
+        close(read(&mut values, id, clock.at(10)), 25.0);
+        values.seek(id, 0.0, clock.at(10)).unwrap();
+        close(read(&mut values, id, clock.at(10)), 0.0);
+        values.seek(id, -3.0, clock.at(10)).unwrap();
+        assert_eq!(info(&mut values, id, clock.at(10)).time, 0.0);
+    }
+
+    #[test]
+    fn seek_past_the_end_finishes_a_running_animation() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.seek(id, 5.0, clock.at(100)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(100)), 100.0);
+        assert!(!values.is_animating(id, clock.at(100)).unwrap());
+        let finished = info(&mut values, id, clock.at(100));
+        assert_eq!(finished.phase, Phase::Finished);
+        assert_eq!(finished.time, 1.0);
+    }
+
+    #[test]
+    fn seek_on_a_finished_animation_holds_it_there() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        assert!(!values.is_animating(id, clock.at(1500)).unwrap());
+        values.seek(id, 0.5, clock.at(1500)).unwrap();
+        close(read(&mut values, id, clock.at(3000)), 50.0);
+        assert_eq!(info(&mut values, id, clock.at(3000)).phase, Phase::Paused);
+        values.play(id, clock.at(3000)).unwrap();
+        close(read(&mut values, id, clock.at(3250)), 75.0);
+        assert!(!values.is_animating(id, clock.at(3500)).unwrap());
+    }
+
+    #[test]
+    fn speed_scales_the_pace_and_the_velocity() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.set_speed(id, 2.0, clock.at(0)).unwrap();
+        close(read(&mut values, id, clock.at(250)), 50.0);
+        close(rate(&mut values, id, clock.at(250)), 200.0);
+        assert!(values.is_animating(id, clock.at(499)).unwrap());
+        assert!(!values.is_animating(id, clock.at(500)).unwrap());
+
+        let slow = linear_run(&mut values, &clock);
+        values.set_speed(slow, 0.5, clock.at(0)).unwrap();
+        close(read(&mut values, slow, clock.at(1000)), 50.0);
+        close(rate(&mut values, slow, clock.at(1000)), 50.0);
+        assert!(values.is_animating(slow, clock.at(1999)).unwrap());
+        assert!(!values.is_animating(slow, clock.at(2000)).unwrap());
+    }
+
+    #[test]
+    fn speed_changed_midway_keeps_the_time() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.set_speed(id, 2.0, clock.at(250)).unwrap();
+        close(read(&mut values, id, clock.at(250)), 25.0);
+        close(read(&mut values, id, clock.at(500)), 75.0);
+        assert_eq!(info(&mut values, id, clock.at(500)).speed, 2.0);
+    }
+
+    #[test]
+    fn speed_zero_holds_the_value_in_effect_and_nonzero_resumes() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.set_speed(id, 0.0, clock.at(400)).unwrap();
+        let held = values.sample(id, clock.at(5000)).unwrap();
+        close(read(&mut values, id, clock.at(5000)), 40.0);
+        assert!(held.active);
+        assert!(!held.moving);
+        assert_eq!(held.velocity, vec![0.0]);
+        assert_eq!(info(&mut values, id, clock.at(5000)).phase, Phase::Running);
+
+        values.set_speed(id, 1.0, clock.at(6000)).unwrap();
+        close(read(&mut values, id, clock.at(6300)), 70.0);
+    }
+
+    #[test]
+    fn a_negative_speed_runs_back_and_finishes_at_the_first_keyframe() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.set_speed(id, -1.0, clock.at(600)).unwrap();
+        close(read(&mut values, id, clock.at(800)), 40.0);
+        close(rate(&mut values, id, clock.at(800)), -100.0);
+        assert!(values.is_animating(id, clock.at(1199)).unwrap());
+
+        let end = values.sample(id, clock.at(1200)).unwrap();
+        assert!(!end.active, "the way back ends like a way forward");
+        assert!(!end.moving);
+        assert_eq!(read(&mut values, id, clock.at(1200)), 0.0);
+        assert_eq!(read(&mut values, id, clock.at(3000)), 0.0);
+        let finished = info(&mut values, id, clock.at(3000));
+        assert_eq!(finished.phase, Phase::Finished);
+        assert_eq!(finished.time, 0.0);
+        assert_eq!(finished.speed, -1.0);
+    }
+
+    #[test]
+    fn a_change_of_speed_does_not_take_a_finished_run_off_its_end() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.set_speed(id, -1.0, clock.at(2000)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(2500)), 100.0);
+        assert!(!values.is_animating(id, clock.at(2500)).unwrap());
+        assert_eq!(info(&mut values, id, clock.at(2500)).phase, Phase::Finished);
+    }
+
+    #[test]
+    fn play_after_a_finish_starts_over_and_after_a_reverse_finish_starts_from_the_end() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.play(id, clock.at(1500)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(1500)), 0.0);
+        close(read(&mut values, id, clock.at(1750)), 25.0);
+        assert!(values.is_animating(id, clock.at(1750)).unwrap());
+
+        values.set_speed(id, -1.0, clock.at(1750)).unwrap();
+        assert!(values.is_animating(id, clock.at(1999)).unwrap());
+        assert!(!values.is_animating(id, clock.at(2000)).unwrap());
+        assert_eq!(read(&mut values, id, clock.at(2000)), 0.0);
+        values.play(id, clock.at(2000)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(2000)), 100.0);
+        close(read(&mut values, id, clock.at(2250)), 75.0);
+    }
+
+    #[test]
+    fn play_on_a_running_animation_changes_nothing() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.play(id, clock.at(400)).unwrap();
+        close(read(&mut values, id, clock.at(600)), 60.0);
+    }
+
+    #[test]
+    fn complete_jumps_to_the_end_and_finishes() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.complete(id, clock.at(300)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(300)), 100.0);
+        assert!(!values.is_animating(id, clock.at(300)).unwrap());
+        assert_eq!(info(&mut values, id, clock.at(300)).phase, Phase::Finished);
+        values.play(id, clock.at(400)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(400)), 0.0);
+    }
+
+    #[test]
+    fn complete_ends_a_repeat_forever_on_its_last_keyframe() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = values.new_source(number(0.0)).unwrap();
+        values
+            .animate_keyframes(
+                id,
+                vec![Some(number(10.0)), Some(number(20.0)), Some(number(30.0))],
+                curve(json!({ "duration": 1, "ease": "linear", "repeat": "Infinity" })),
+                clock.at(0),
+            )
+            .unwrap();
+        assert!(values.is_animating(id, clock.at(50_000)).unwrap());
+        values.complete(id, clock.at(50_000)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(50_000)), 30.0);
+        assert!(!values.is_animating(id, clock.at(50_000)).unwrap());
+        assert_eq!(info(&mut values, id, clock.at(50_000)).time, f64::INFINITY);
+    }
+
+    #[test]
+    fn duration_is_one_iteration_without_the_delay_and_the_repeats() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let plain = linear_run(&mut values, &clock);
+        let plain = info(&mut values, plain, clock.at(0));
+        assert_eq!((plain.duration, plain.iteration_duration), (1.0, 1.0));
+
+        let delayed = values.new_source(number(0.0)).unwrap();
+        values
+            .animate(
+                delayed,
+                number(1.0),
+                curve(json!({ "duration": 2, "delay": 0.5, "repeat": 3, "repeatDelay": 0.25 })),
+                clock.at(0),
+            )
+            .unwrap();
+        let delayed_info = info(&mut values, delayed, clock.at(0));
+        assert_eq!((delayed_info.duration, delayed_info.iteration_duration), (2.0, 2.5));
+        // The time runs to the end of the last repeat, and no further.
+        values.seek(delayed, 100.0, clock.at(0)).unwrap();
+        assert_eq!(info(&mut values, delayed, clock.at(0)).time, 4.0 * 2.0 + 3.0 * 0.25);
+
+        let frames = values.new_source(number(0.0)).unwrap();
+        values
+            .animate_keyframes(
+                frames,
+                vec![Some(number(0.0)), Some(number(5.0)), Some(number(0.0))],
+                curve(json!({ "duration": 3, "times": [0, 0.2, 1], "repeat": "Infinity" })),
+                clock.at(0),
+            )
+            .unwrap();
+        assert_eq!(info(&mut values, frames, clock.at(0)).duration, 3.0);
+    }
+
+    #[test]
+    fn a_spring_lasts_as_long_as_it_takes_to_settle() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = values.new_source(number(0.0)).unwrap();
+        values.animate(id, number(100.0), spring(), clock.at(0)).unwrap();
+        let duration = info(&mut values, id, clock.at(0)).duration;
+        assert!(duration > 0.2 && duration < 20.0, "{duration}");
+        assert!(values.is_animating(id, clock.at(100)).unwrap());
+        // At rest by then, at the target.
+        let after = clock.at((duration * 1000.0).ceil() as u64 + 20);
+        assert!(!values.is_animating(id, after).unwrap());
+        assert_eq!(read(&mut values, id, after), 100.0);
+        assert_eq!(info(&mut values, id, after).phase, Phase::Finished);
+
+        let stiff = values.new_source(number(0.0)).unwrap();
+        values
+            .animate(stiff, number(100.0), curve(json!({ "type": "spring", "stiffness": 1000, "damping": 10, "mass": 1000 })), clock.at(0))
+            .unwrap();
+        assert_eq!(info(&mut values, stiff, clock.at(0)).duration, f64::INFINITY);
+    }
+
+    #[test]
+    fn a_new_animation_after_a_pause_starts_from_the_held_value_at_rest() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.pause(id, clock.at(400)).unwrap();
+        values.animate(id, number(0.0), spring(), clock.at(1000)).unwrap();
+        close(read(&mut values, id, clock.at(1000)), 40.0);
+        assert_eq!(rate(&mut values, id, clock.at(1000)), 0.0);
+        assert!(values.sample(id, clock.at(1050)).unwrap().moving);
+        assert_eq!(info(&mut values, id, clock.at(1050)).phase, Phase::Running);
+        assert_eq!(info(&mut values, id, clock.at(1050)).speed, 1.0);
+    }
+
+    #[test]
+    fn stop_on_a_held_animation_keeps_the_value_with_no_speed() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.pause(id, clock.at(400)).unwrap();
+        values.stop(id, clock.at(500)).unwrap();
+        close(read(&mut values, id, clock.at(2000)), 40.0);
+        assert!(!values.is_animating(id, clock.at(2000)).unwrap());
+        assert_eq!(rate(&mut values, id, clock.at(500)), 0.0);
+        assert!(values.playback(id, clock.at(2000)).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_value_with_no_animation_ignores_the_controls() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = values.new_source(number(3.0)).unwrap();
+        values.pause(id, clock.at(0)).unwrap();
+        values.play(id, clock.at(0)).unwrap();
+        values.seek(id, 1.0, clock.at(0)).unwrap();
+        values.set_speed(id, 2.0, clock.at(0)).unwrap();
+        values.complete(id, clock.at(0)).unwrap();
+        assert_eq!(read(&mut values, id, clock.at(0)), 3.0);
+        assert!(values.playback(id, clock.at(0)).unwrap().is_none());
+        assert!(values.seek(id, f64::NAN, clock.at(0)).is_ok());
+    }
+
+    #[test]
+    fn the_controls_refuse_a_time_or_speed_that_is_not_a_number() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        assert!(values.seek(id, f64::NAN, clock.at(0)).is_err());
+        assert!(values.set_speed(id, f64::INFINITY, clock.at(0)).is_err());
+        close(read(&mut values, id, clock.at(500)), 50.0);
+    }
+
+    #[test]
+    fn a_held_animation_gets_the_events_of_one_in_effect() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.pause(id, clock.at(100)).unwrap();
+        for millis in [200, 1500, 9000] {
+            let sample = values.sample(id, clock.at(millis)).unwrap();
+            assert!(sample.active && !sample.moving, "{millis}");
+        }
+        values.play(id, clock.at(9000)).unwrap();
+        assert!(!values.sample(id, clock.at(10_000)).unwrap().active);
     }
 }
