@@ -133,6 +133,8 @@ export {
   DismissableLayer,
 } from "./components/floating.js"
 export * from "@gpuix/native/host"
+export { screen } from "@gpuix/native/screen"
+export type { Display, Rectangle, Size } from "@gpuix/native/screen"
 export { GpuixRenderer } from "@gpuix/native"
 export type { EventModifiers, EventPayload, WindowOptions } from "@gpuix/native"
 export type { JSX, SolidHostProps } from "./jsx-runtime.js"

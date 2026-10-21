@@ -296,6 +296,8 @@ export {
   readMacCpuThrottle,
 } from "./cpu-throttle.js"
 export type { MacCpuThrottle } from "./cpu-throttle.js"
+export { screen } from "@gpuix/native/screen"
+export type { Display, Rectangle, Size } from "@gpuix/native/screen"
 export { collectGarbageWhenIdle } from "./idle-gc.js"
 export type { IdleGcOptions } from "./idle-gc.js"
 export type {

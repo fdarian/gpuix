@@ -19,6 +19,11 @@
       "import": "./dist/host.js",
       "default": "./dist/host.js"
     },
+    "./screen": {
+      "types": "./dist/screen.d.ts",
+      "import": "./dist/screen.js",
+      "default": "./dist/screen.js"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js",

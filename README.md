@@ -754,6 +754,7 @@ terminal.
 | `appName` | string | Name inside the macOS `Hide X` and `Quit X` items. Defaults to `title` |
 | `focus` | boolean, default `true` | `false` opens the window behind the active app, like `open -g` |
 | `show` | boolean, default `true` | `false` opens the window hidden. Call `activateWindow()` to reveal it |
+| `x` / `y` | CSS px | Where the window's top-left opens, in the global space [`screen`](#displays) reports: origin at the primary display's top-left, y down, so a display to the left of or above it is negative. The window opens on the display that contains the point, else the nearest. Both are needed, otherwise the window is centred on the primary display. With `fullscreen: true` it goes fullscreen on that display. As in Electron |
 | `fonts` | string[] | Font files (`.ttf`, `.otf`) read and passed to [`registerFont()`](#custom-fonts) right after the window opens, so `fontFamily: "Inter"` resolves without a system-wide install. GPUIX ships no fonts: the app supplies its own files. Paths resolve against the process's current working directory, so pass absolute ones, e.g. `fileURLToPath(new URL("./fonts/Inter-Regular.ttf", import.meta.url))`. An unreadable path makes `render()` throw. On macOS a variable font follows `fontWeight` and `fontVariationSettings`; elsewhere it only renders its default instance, so pass one static file per weight |
 
 Call it again after a save and it remounts the tree on the same window.
@@ -921,6 +922,45 @@ What the page sees inside a drag region:
 [`examples/titlebar.tsx`](https://github.com/remorses/gpuix/blob/main/examples/titlebar.tsx)
 is the whole pattern: a drag bar with a button and an input cut out of it.
 To test a press in a region, see [Window actions in tests](#window-actions-in-tests).
+
+### Displays
+
+`screen` lists the displays, as Electron's does. It works before the window
+opens, so an app can pick where to open.
+
+```ts
+import { screen } from '@gpuix/react'
+
+screen.getAllDisplays()    // every display, in the order the OS lists them
+screen.getPrimaryDisplay() // the one with the menu bar
+```
+
+A `Display` has `id`, `label` (the OS's name for it), `bounds` and `workArea`
+(`bounds` without the menu bar and Dock), each a `{ x, y, width, height }` in the
+global CSS px space of the `x` / `y` window options, `size` and `workAreaSize`
+(`{ width, height }` of those two), `scaleFactor` (device pixels per CSS px),
+`rotation` (0, 90, 180 or 270), and `internal` (the display built into the
+machine). The primary display's `bounds` start at `(0, 0)`.
+
+Both functions work on macOS only and throw elsewhere.
+
+To open on the second display, centred in its work area:
+
+```tsx
+import { render, screen } from '@gpuix/react'
+
+const primary = screen.getPrimaryDisplay()
+const target = screen.getAllDisplays().find((d) => d.id !== primary.id) ?? primary
+const width = 800
+const height = 600
+
+render(<App />, {
+  width,
+  height,
+  x: target.workArea.x + (target.workArea.width - width) / 2,
+  y: target.workArea.y + (target.workArea.height - height) / 2,
+})
+```
 
 ### Appearance
 
@@ -8461,6 +8501,7 @@ const text = renderer.getAllText()
 | `show` | `false` never orders the window front. |
 | `focus` | `true` makes the offscreen window key and takes the OS's keyboard focus, which is why it defaults to `false`. Focus events come from `setWindowActive`, not from this. |
 | `fullscreen` | **Ignored.** A fullscreen window would leave its offscreen position. |
+| `x`, `y` | **Ignored.** The test window stays offscreen. |
 | `appName`, `appId`, `layerShell` | **Ignored.** The test window has no application menu, and `appId` and `layerShell` are Linux only. |
 
 Simulated input is dispatched the way a window's own input callback does it, so a
