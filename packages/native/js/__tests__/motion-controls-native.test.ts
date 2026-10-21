@@ -137,6 +137,8 @@ const STALE_IS_ANIMATING = new Set([
   "stop while running",
   "stop while paused",
   "cancel while running",
+  "cancel then play at speed 2",
+  "cancel after the finish then play",
   "cancel keyframes",
   "seek while finished",
   "play after the finish",
@@ -184,15 +186,6 @@ const DEVIATIONS: Record<string, { why: string; differs: Array<[step: number, fi
       [8, "c0.state", "finished"],
       [8, "c0.finished", true],
       [8, "animating", false],
-    ],
-  },
-  "cancel while running": {
-    why: "`play()` after `cancel()` does nothing. Motion's cancel does not stop its animation for good, so `play()` starts it again from the start.",
-    differs: [
-      [5, "c0.state", "idle"],
-      [6, "value", 10],
-      [6, "c0.time", 0],
-      [6, "c0.state", "idle"],
     ],
   },
 }

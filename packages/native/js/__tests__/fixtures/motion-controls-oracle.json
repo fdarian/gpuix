@@ -4448,6 +4448,297 @@
    }
   ]
  },
+ "cancel then play at speed 2": {
+  "from": 10,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0,
+    "ops": [
+     [ "speed", 2 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 900
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 46,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 28,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 64,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "cancel after the finish then play": {
+  "from": 10,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 1600,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1700
+   },
+   {
+    "at": 2300
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 10,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 19,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2300,
+    "value": 73,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
  "cancel keyframes": {
   "from": 0,
   "to": [ 20, 60, 30 ],

@@ -100,19 +100,19 @@ export interface AnimationPlaybackControls {
    * once another animation replaced this one.
    */
   readonly state: AnimationPlaybackState
-  /** Ends the animation where it is. `finished` stays pending. */
+  /** Ends the animation where it is, for good. `finished` stays pending. */
   stop(): void
   /**
    * Ends the animation and puts the value back on its first keyframe, or leaves it on the last
-   * if the animation had finished. `finished` stays pending.
+   * if the animation had finished. `finished` stays pending until `play()` runs it again.
    */
   cancel(): void
   /** Jumps to the end and finishes: `finished` resolves. */
   complete(): void
   /**
    * Continues from where `pause()` held the animation. A finished animation starts again, from
-   * its end if the speed is negative, and `finished` is a new promise. Does nothing after `stop()`
-   * and `cancel()`.
+   * its end if the speed is negative, and `finished` is a new promise. After `cancel()` it starts
+   * again from the first keyframe, at the speed it had; after `stop()` it does nothing.
    */
   play(): void
   /** Holds the value and the time. The value keeps `isAnimating()` and its velocity is 0. */
@@ -399,6 +399,8 @@ export class MotionValue<Data extends MotionData = MotionData> {
   #reducers = 0
   #destroyed = false
   #animation: Animation | undefined
+  /** The animation `cancel()` ended last, which `play()` may start again until another one takes the value. */
+  #cancelled: Animation | undefined
   readonly #counts: Record<ListenerKind, number> = {
     change: 0,
     animationStart: 0,
@@ -497,6 +499,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
           : `A ${this.#definition.kind} motion value is computed from other values and cannot be animated`
       )
     }
+    this.#cancelled = undefined
     const animation: Animation = {
       target: target as MotionTarget<MotionData>,
       from: this.get(),
@@ -559,6 +562,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
         if (animation.ended) return
         const finished = playback().state === "finished"
         this.stop()
+        this.#cancelled = animation
         if (finished) return
         this.jump(startOf(animation.target, animation.from) as Data)
         rewound(animation)
@@ -572,12 +576,32 @@ export class MotionValue<Data extends MotionData = MotionData> {
   }
 
   #command(animation: Animation, command: PlaybackCommand): void {
-    if (animation.ended) return
+    if (animation.ended) {
+      if (command.kind === "play") this.#restart(animation)
+      return
+    }
     if (!animation.started) {
       animation.pending.push(command)
       return
     }
     this.#apply(animation, command)
+  }
+
+  /** `play()` after `cancel()`: the animation runs again from its first keyframe, at the speed it had. */
+  #restart(animation: Animation): void {
+    const ended = animation.ended
+    if (this.#destroyed || !ended || this.#cancelled !== animation || this.#animation) return
+    this.#cancelled = undefined
+    animation.ended = undefined
+    animation.started = false
+    animation.done = false
+    animation.last = undefined
+    animation.pending.length = 0
+    if (ended.speed !== 1) animation.pending.push({ kind: "speed", speed: ended.speed })
+    // A cancel that found the animation finished left the value on its end.
+    this.jump(startOf(animation.target, animation.from) as Data)
+    this.#animation = animation
+    if (this.#attachment) this.#start(animation)
   }
 
   /** Runs a control on the renderer, which owns the animation once it has started. */

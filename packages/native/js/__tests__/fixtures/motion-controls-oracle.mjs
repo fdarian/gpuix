@@ -228,6 +228,18 @@ const ROWS = {
     transition: LINEAR,
     steps: [...at(0, 400), withOps(400, ["cancel"]), ...at(500, 2000), withOps(2000, ["play"]), ...at(2100)],
   },
+  "cancel then play at speed 2": {
+    from: 10,
+    to: 100,
+    transition: LINEAR,
+    steps: [withOps(0, ["speed", 2]), ...at(200), withOps(200, ["cancel"]), ...at(300), withOps(300, ["play"]), ...at(400, 600, 900)],
+  },
+  "cancel after the finish then play": {
+    from: 10,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 1200), withOps(1500, ["cancel"]), withOps(1600, ["play"]), ...at(1700, 2300)],
+  },
   "cancel keyframes": {
     from: 0,
     to: [20, 60, 30],
