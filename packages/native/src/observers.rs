@@ -499,15 +499,17 @@ pub(crate) fn prune(
     }
 }
 
-/// A zero-size child that reports, after each draw, what `onLayout` and the observers of the
-/// elements that listen see in the boxes the draw published, and the observed elements that
+/// A zero-size child that reports, after each painted frame, what `onLayout` and the observers of
+/// the elements that listen see in the boxes the frame published, and the observed elements that
 /// did not paint: a virtual list row outside its window, an element that was removed. Nothing
 /// paints for them, so only a sweep can tell they went away.
 ///
-/// The reads are deferred until the draw is over, when every box is in the registry. A pass
-/// that only lays out publishes the same registry at its end (see `automation::bounds_frame_reset`),
-/// and reports what is there; it does not report an element gone, because a bounds read
-/// is not a promise that everything painted.
+/// The reads are deferred until the draw is over, when every box is in the registry. A pass that
+/// only lays out (`draw_if_dirty`, which a bounds read or a `scrollTop` write forces) reports
+/// nothing, as a forced layout in a browser delivers no `ResizeObserver` callbacks: it publishes
+/// the registry the next frame's sweep reads, and the sweep compares against what was last
+/// delivered, so the change is reported once, after that frame's scroll events, with the sizes as
+/// of that frame.
 ///
 /// `active` is whether anything listens, so a page without observers pays nothing. The sweep
 /// also reads the boxes for the elements that skip their content when they are not near
@@ -519,37 +521,27 @@ pub(crate) fn frame_sweep(
     callback: Option<EventCallback>,
     active: bool,
 ) -> impl IntoElement {
-    let sweep_after = move |painted: bool| {
-        let reports = reports.clone();
-        let tree = tree.clone();
-        let relevance = relevance.clone();
-        let callback = callback.clone();
-        move |window: &mut gpui::Window, cx: &mut App| {
-            let relevant = painted && !relevance.is_empty();
+    canvas(
+        |_, _, _| {},
+        move |_, _, window, cx| {
+            let relevant = !relevance.is_empty();
             if !active && !relevant {
                 return;
             }
             let handle = window.window_handle();
             let viewport = window.viewport_size();
+            let reports = reports.clone();
+            let tree = tree.clone();
+            let callback = callback.clone();
             cx.defer(move |cx| {
                 if relevant {
                     sweep_relevance(handle, viewport, &tree, &callback, cx);
                 }
                 if active {
-                    sweep(handle.window_id(), viewport, painted, &reports, &tree, &callback);
+                    sweep(handle.window_id(), viewport, &reports, &tree, &callback);
                 }
             });
-        }
-    };
-    let after_layout = sweep_after(false);
-    let after_paint = sweep_after(true);
-    canvas(
-        move |_, window, cx| {
-            if window.is_layout_pass() {
-                after_layout(window, cx);
-            }
         },
-        move |_, _, window, cx| after_paint(window, cx),
     )
     .absolute()
     .w(px(0.0))
@@ -587,7 +579,6 @@ fn sweep_relevance(
 fn sweep(
     window: WindowId,
     viewport: gpui::Size<Pixels>,
-    painted: bool,
     reports: &SharedPaintReports,
     tree: &Mutex<RetainedTree>,
     callback: &Option<EventCallback>,
@@ -632,18 +623,16 @@ fn sweep(
 
     let mut gone_resize = Vec::new();
     let mut gone_intersection = Vec::new();
-    if painted {
-        for (id, last) in observers.resize.iter_mut() {
-            if crate::automation::get_bounds(window, *id).is_none() && *last != ResizeSample::default() {
-                *last = ResizeSample::default();
-                gone_resize.push(*id);
-            }
+    for (id, last) in observers.resize.iter_mut() {
+        if crate::automation::get_bounds(window, *id).is_none() && *last != ResizeSample::default() {
+            *last = ResizeSample::default();
+            gone_resize.push(*id);
         }
-        for (id, last) in observers.intersection.iter_mut() {
-            if last.present && crate::automation::get_bounds(window, *id).is_none() {
-                last.present = false;
-                gone_intersection.push(*id);
-            }
+    }
+    for (id, last) in observers.intersection.iter_mut() {
+        if last.present && crate::automation::get_bounds(window, *id).is_none() {
+            last.present = false;
+            gone_intersection.push(*id);
         }
     }
     gone_resize.sort_unstable();

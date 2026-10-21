@@ -204,7 +204,9 @@ describeNative("a read on a dirty window", () => {
     }
   })
 
-  it("reports to a ResizeObserver from the pass, without waiting for a paint", () => {
+  it("reports to a ResizeObserver from the frame, not from a pass that only laid out", () => {
+    // The DOM delivers observations in the rendering update, never from a forced layout
+    // (`fixtures/scroll-order-oracle.json`, `forcedLayout`).
     const { render, renderer, unmount } = createTestRoot()
     try {
       renderer.setInlineDraws(false)
@@ -220,10 +222,15 @@ describeNative("a read on a dirty window", () => {
       )
       const painted = renderer.getPaintedFrameCount()
       new ResizeObserver((entries) => sizes.push(entries[0]!.borderBoxSize[0]!.inlineSize)).observe(element)
+      renderer.getElementBounds(element.id)
       renderer.dispatchNativeEvents()
 
+      expect(sizes, "the read laid out and reported nothing").toEqual([])
+      expect(renderer.getPaintedFrameCount()).toBe(painted)
+
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
       expect(sizes).toEqual([120])
-      expect(renderer.getPaintedFrameCount(), "no paint produced the report").toBe(painted)
     } finally {
       renderer.setInlineDraws(true)
       unmount()

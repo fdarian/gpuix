@@ -5147,7 +5147,7 @@ rendering steps: `onScroll` events first, then `onLayout` handlers and the
 created, and the entries of one observer are in the order its targets were observed
 (`observe()` again moves a `ResizeObserver` target to the end), as the specs say.
 Observations are made when a frame is presented, never by a read of layout:
-`getBoundingClientRect` and the other reads lay out and deliver nothing. `observe()` reads no layout: every observation
+`getBoundingClientRect`, a `scrollTop` write and the other reads lay out and deliver nothing, and the change they laid out is reported by the next frame, after that frame's `onScroll` event, as the DOM runs its scroll steps before the resize observations. `observe()` reads no layout: every observation
 started since the last frame is probed together in the next step, so any number
 of observers started by one commit cost one draw. Each observer gets its own
 initial entry for a target, also when another observer already watches it. Observing an element that is not mounted yet is
