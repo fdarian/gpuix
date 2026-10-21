@@ -1413,20 +1413,27 @@ This is a remount, not React Refresh. Keeping hook state needs Bun to inject
 
 Native `.node` edits still need a rebuild. See [Developing the Rust side](#developing-the-rust-side).
 
-On **macOS**, `startFrameLoop` calls `renderer.tick()` when GPUI's display link
-queues a frame, instead of polling every 8 ms. Each tick drains only ready AppKit
-events and Core Foundation sources, then returns without blocking JavaScript I/O.
-Wakes coalesce while JavaScript is busy. A 100 ms fallback timer pumps events
-when no display wake arrives, such as when the window is hidden or occluded.
-Input waits for the next pump, not a separate input wake. This improves frame
-pacing; it does not eliminate idle CPU use while the display link is running.
+On **macOS**, `startFrameLoop` calls `renderer.tick()` when the main run loop has
+work, instead of polling every 8 ms: an input event, a block on the main queue
+(which includes a display-link frame step) or a run-loop timer. The display link
+runs only while a window asks for frames, so an idle window gets no wakes and
+arms no timer. Each tick drains only ready AppKit events and Core Foundation
+sources, then returns without blocking JavaScript I/O. Wakes coalesce while
+JavaScript is busy, and work that arrived meanwhile wakes the next tick. Input
+wakes JavaScript as it arrives, once per batch of events, not at the next vsync.
+
+A visible window that is not the key window animates at the display rate. A
+window that is occluded or minimised gets no frames; animations keep time and
+catch up when it shows.
 
 Pass `{ frameMs }` to `startFrameLoop` to use fixed-rate timer polling instead.
-Call `.stop()` on the returned handle to clear the wake callback and timer.
+Call `.stop()` on the returned handle to clear the wake callback.
 For manual pumping, `renderer.setFrameWakeCallback(() => renderer.tick())`
 registers a weak callback after `init()`. It returns `true` on macOS and `false`
 on other platforms. Pass `null` to unregister; an already queued callback may
-still arrive. Manual callers must also pump when the display link is stopped.
+still arrive. The callback fires when the main run loop has work, not only for
+frames, and fires again after the next `tick()`, so a manual caller needs no
+timer.
 
 A **runtime throw does not freeze the window.** The frame loop catches errors from
 `tick()`, native event callbacks catch throws from React handlers, and `render()`
