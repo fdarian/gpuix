@@ -3674,6 +3674,10 @@ the space that shows.
 - The metrics are those of the font of the block that holds the line. A trimmed
   box is as tall as the metric to the nearest 1/64 of a pixel, as in Chrome, and its edges
   are painted on device pixels.
+- **Baselines.** The baseline of a trimmed text is counted from the top of its trimmed
+  box, as in Chrome, so a cap-trimmed label in an `inline-block`, `inline-flex` or
+  `inline-grid` sits on the baseline of the line around it, and a trimmed flex or grid item
+  with `alignItems: 'baseline'` is on the baseline its row shares.
 
 ### Inline-block, inline-flex, inline-grid and inline-table
 

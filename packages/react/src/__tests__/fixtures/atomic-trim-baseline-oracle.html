@@ -1,0 +1,103 @@
+<!doctype html>
+<!--
+  Oracle for atomic-trim-baseline.test.tsx: where headless Chrome puts a text-box-trimmed label that sits in an atomic
+  inline (an `inline-block`, `inline-flex` or `inline-grid` span) on the line of the block that holds it. The atomic
+  takes its baseline from the label, so a trimmed label has to be seated on the strut's baseline by the baseline of its
+  trimmed box. `atomic-trim-baseline-oracle.sh` regenerates the JSON at device scale 1 and 2.
+
+  The font is Menlo (the system face, so the numbers are exact): ascent 15 and descent 4 at 16px, cap height
+  1493/2048 em and x-height 1120/2048 em. Every case is a block `line` of font 16px/24px (the case may change that)
+  holding the atomic `holder` (or, in a `row-` case, a flex or grid container that holds a plain span as `holder` and the label
+  beside it, baselines aligned); `label` is the trimmed box and `ink` the inline box inside it, whose box is the font's
+  ascent and descent around the baseline. Numbers are [x, y, width, height] relative to the `line` box of the case.
+-->
+<html><head><meta charset="utf-8"><style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 1280px; }
+.line { font: 16px/24px Menlo; color: #000; width: 300px; }
+</style></head><body>
+<script>
+// A case: holder (block | flex | grid), stack (the FF label: a hidden twin in the same cell), trim, edge, line (the
+// block's line-height), labelLine and labelSize (the label's own), align (the holder's vertical-align).
+const CASES = []
+const add = (name, spec) => CASES.push({ name, holder: 'grid', stack: false, trim: 'trim-both', edge: 'cap alphabetic', line: '24px', ...spec })
+
+add('ff', { stack: true })
+for (const line of ['16px', '40px', 'normal']) add(`ff-line-${line}`, { stack: true, line })
+add('ff-label-line-20', { stack: true, labelLine: '20px' })
+add('ff-label-line-40', { stack: true, labelLine: '40px' })
+add('ff-label-13-20', { stack: true, labelSize: '13px', labelLine: '20px' })
+for (const align of ['middle', 'top']) add(`ff-${align}`, { stack: true, align })
+
+for (const holder of ['block', 'flex', 'grid']) {
+  for (const trim of ['trim-both', 'trim-start', 'trim-end']) {
+    for (const edge of ['cap alphabetic', 'ex alphabetic', 'text text']) {
+      add(`${holder}-${trim}-${edge.split(' ')[0]}`, { holder, trim, edge })
+    }
+  }
+  for (const line of ['16px', '40px', 'normal']) add(`${holder}-line-${line}`, { holder, line })
+  add(`${holder}-label-line-40`, { holder, labelLine: '40px' })
+  add(`${holder}-label-13-20`, { holder, labelSize: '13px', labelLine: '20px' })
+  for (const align of ['middle', 'top']) add(`${holder}-${align}`, { holder, align })
+}
+
+// A row: the line is a flex or grid container with align-items: baseline holding a plain span ("Plain") and the trimmed
+// label, which share a baseline; `holder` is the plain span there.
+for (const row of ['flex', 'grid']) {
+  add(`row-${row}-both-cap`, { row })
+  add(`row-${row}-start-ex`, { row, trim: 'trim-start', edge: 'ex alphabetic' })
+  add(`row-${row}-end-cap`, { row, trim: 'trim-end' })
+  add(`row-${row}-label-13-20`, { row, labelSize: '13px', labelLine: '20px' })
+}
+
+const rect = (element, origin) => {
+  const box = element.getBoundingClientRect()
+  return [box.x - origin.x, box.y - origin.y, box.width, box.height]
+}
+
+const results = {}
+document.fonts.load('16px Menlo').then(() => {
+  for (const spec of CASES) {
+    const line = document.createElement('div')
+    line.className = 'line'
+    line.style.lineHeight = spec.line
+    const holder = document.createElement('span')
+    if (spec.row) {
+      line.style.display = spec.row
+      line.style.alignItems = 'baseline'
+      line.style.gridTemplateColumns = 'auto auto'
+      line.style.justifyContent = 'start'
+      holder.textContent = 'Plain'
+    } else {
+      holder.style.display = { block: 'inline-block', flex: 'inline-flex', grid: 'inline-grid' }[spec.holder]
+    }
+    holder.style.whiteSpace = 'nowrap'
+    if (spec.align) holder.style.verticalAlign = spec.align
+    const make = (hidden) => {
+      const label = document.createElement(spec.holder === 'block' ? 'div' : 'span')
+      label.style.textBox = `${spec.trim} ${spec.edge}`
+      if (spec.stack) label.style.gridArea = '1 / 1'
+      if (hidden) label.style.visibility = 'hidden'
+      if (spec.labelLine) label.style.lineHeight = spec.labelLine
+      if (spec.labelSize) label.style.fontSize = spec.labelSize
+      const ink = document.createElement('span')
+      ink.textContent = 'Hello'
+      label.append(ink)
+      return [label, ink]
+    }
+    if (spec.stack) holder.append(make(true)[0])
+    const [label, ink] = make(false)
+    if (spec.row) {
+      line.append(holder, label)
+    } else {
+      holder.append(label)
+      line.append(holder)
+    }
+    document.body.append(line)
+    const origin = line.getBoundingClientRect()
+    results[spec.name] = { line: rect(line, origin), holder: rect(holder, origin), label: rect(label, origin), ink: rect(ink, origin), spec }
+  }
+  document.body.setAttribute('data-rects', JSON.stringify({ scale: window.devicePixelRatio, results }))
+})
+</script>
+</body></html>

@@ -409,8 +409,8 @@ pub fn baseline(
     let from_text = |layout: &TextLayout, last: bool| {
         let layout = layout.clone();
         AtomicBaseline::Measured(Box::new(move |window, root, _| {
-            let top = window.layout_bounds(layout.layout_id()?).origin.y
-                - window.layout_bounds(root).origin.y;
+            let top = window.layout_unsnapped_bounds(layout.layout_id()?).origin.y
+                - window.layout_unsnapped_bounds(root).origin.y;
             Some(top + if last { layout.last_baseline()? } else { layout.first_baseline()? })
         }))
     };
