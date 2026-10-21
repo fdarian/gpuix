@@ -1404,6 +1404,11 @@ impl CssTransitions {
         std::mem::take(&mut self.commanded)
     }
 
+    /// [`Self::take_commanded`], leaving them for the frame that takes them.
+    pub(crate) fn peek_commanded(&self) -> &[u64] {
+        &self.commanded
+    }
+
     /// Finishes and cancels since the last call, for the Web Animations objects.
     pub(crate) fn take_api_events(&mut self) -> Vec<ApiEvent> {
         std::mem::take(&mut self.events.api)

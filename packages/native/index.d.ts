@@ -1139,6 +1139,10 @@ export interface BuildCounters {
   retainableElementsLarge: number
   /** Elements judged unchanged that were built differently. Always 0 unless `setRetainVerify`. */
   retainMismatches: number
+  /** Subtrees built whole as units: running paint-only animations a tick can build again alone. */
+  unitsBuilt: number
+  /** Subtrees that were that but hold more elements than a unit may. */
+  unitsOversized: number
   /**
    * A JSON object: elements by the reason they are, or are not, in a retainable subtree, for
    * the builds since the reset. `retained` is the share that is; every built element is counted

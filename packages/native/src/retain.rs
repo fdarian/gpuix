@@ -206,6 +206,16 @@ impl Exclusion {
         Self::UnstableLayout,
     ];
 
+    /// Whether what the element paints or lays out follows the clock or the arrival of something
+    /// (a caret, a raster, an image, rows measured late), so that a tick which builds only what
+    /// runs on a clock would leave it as it was.
+    pub(crate) fn varies_with_time(self) -> bool {
+        matches!(
+            self,
+            Self::Highlight | Self::CustomElement | Self::Svg | Self::VirtualList | Self::VirtualRow | Self::LayoutAnimation
+        )
+    }
+
     fn name(self) -> &'static str {
         match self {
             Self::PaintReporter => "paint-reporter",
@@ -302,7 +312,7 @@ pub(crate) enum Dynamic {
 impl Dynamic {
     /// The kinds that only ever run on the element they are noted on, so that what the element
     /// is running can be asked of its own state (`Sources::dormant`).
-    const OWN: u8 = Self::Motion as u8 | Self::Transition as u8 | Self::Animation as u8 | Self::MotionValues as u8;
+    pub(crate) const OWN: u8 = Self::Motion as u8 | Self::Transition as u8 | Self::Animation as u8 | Self::MotionValues as u8;
 }
 
 /// What the build of an element is a function of that the retained tree can see.
@@ -396,6 +406,9 @@ struct Record {
     /// The selection the element was built under. The frame that finds a new selection builds
     /// only the elements it visits, so one it did not (under `display: none`) is still of the old.
     selection: u64,
+    /// What runs on the element itself (`Vol::dynamic`) only changes what it paints, see
+    /// [`Retain::paints_only`].
+    paints_only: bool,
 }
 
 const NO_PARENT: u32 = u32::MAX;
@@ -527,6 +540,7 @@ struct Node {
     effects_start: usize,
     effects_end: usize,
     skipped: Option<Skipped>,
+    paints_only: bool,
 }
 
 /// What a node adds up to with what is below it, filled in bottom-up when the build is done.
@@ -599,6 +613,8 @@ pub(crate) struct Sources<'a> {
     /// The frame is built again to be compared with the one that was shown: it is the same frame,
     /// and its roots are planned as that one's were.
     pub reference: bool,
+    /// The pass only lays out (a bounds read): it is not a frame, and its output is thrown away.
+    pub layout_only: bool,
 }
 
 /// What the sources were at the frame before, to tell what changed.
@@ -628,6 +644,76 @@ struct Deltas {
     scrolled: FxHashSet<u64>,
     /// Whether a scroller that the frame before had is somewhere else, as opposed to new.
     scrolling: bool,
+}
+
+/// What the sources differ in from the frame before, see `Retain::compute_deltas`.
+struct Found {
+    all: bool,
+    /// Changed by the pointer, focus, a scroll or a custom element: not by time.
+    sourced: Vec<u64>,
+    scrolled: FxHashSet<u64>,
+    scrolling: bool,
+    scrolls: FxHashMap<u64, (u32, u32)>,
+    customs: FxHashMap<u64, Option<u64>>,
+    motion: FxHashSet<u64>,
+    /// Motions that run or just ended and are not dormant.
+    running: Vec<u64>,
+    /// Elements whose last build found something running on them, that are not dormant.
+    dynamic: Vec<u64>,
+    dormant: FxHashSet<u64>,
+}
+
+/// The most elements a unit holds. A unit is built whole in every frame that is built whole (nothing
+/// inside it is replayed, so that a tick can build it again exactly) and again by every tick that
+/// patches it, so what a patch saves over a frame is the page minus its units: a unit past this
+/// has more to build in each of them than a card does, and the page is left to full frames.
+const UNIT_MAX_ELEMENTS: u32 = 256;
+
+/// A subtree of the last frame built whole that only its running animations change, kept with what
+/// builds it again, see `GpuixView::build_unit`.
+pub(crate) struct Unit {
+    pub id: u64,
+    pub env: crate::renderer::FrameEnv,
+}
+
+/// What the last frame built whole left for a tick to be patched against.
+#[derive(Default)]
+struct Plan {
+    /// Counts the frames and passes that began, for the key of a unit to differ from the one of the
+    /// frame before: a unit is recorded every frame, never replayed.
+    serial: u64,
+    /// A frame was recorded since the sources were last reset.
+    recorded: bool,
+    /// A pass that only lays out ran after it, and took the changes it saw out of the sources.
+    layout_since: bool,
+    /// It built an element whose paint follows the clock or something arriving
+    /// ([`Exclusion::varies_with_time`]), which a patch would leave as it was.
+    unsteady: bool,
+    /// The revision of the root of the tree it was built from.
+    revision: u64,
+    units: Vec<Unit>,
+    ids: FxHashSet<u64>,
+}
+
+/// Why a tick cannot be patched, see `Retain::preview`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Unpatchable {
+    /// No frame built whole is recorded: the retention is off, resting, or was started over.
+    NoFrame,
+    /// A pass that only lays out ran since, and took the changes it saw.
+    LayoutPass,
+    /// The frame built an element whose paint follows the clock, see [`Plan::unsteady`].
+    Unsteady,
+    ScrollAnimation,
+    /// The tree is not the one the frame was built from.
+    Edited,
+    /// The selection changed, or the sources never had a frame to compare with.
+    Everything,
+    /// Something other than time changed: the pointer, focus, a scroll, a custom element, a
+    /// measurement, a link, a command.
+    Sourced,
+    /// A time-driven change outside every unit that is not dormant.
+    Outside(u64),
 }
 
 /// The most frames that follow a recorded frame which found nothing a later frame could skip,
@@ -702,6 +788,12 @@ pub(crate) struct Retain {
     open: bool,
     /// A subtree gpui asked for after the frame was built is being built.
     deferred: bool,
+    /// The pass being built only lays out, or is built again to be compared with the frame shown.
+    layout_only: bool,
+    reference: bool,
+    /// The node a unit began at, while it is being built: nothing inside it is skipped.
+    unit: Option<u32>,
+    plan: Plan,
     /// Above zero while a virtual list builds a row, which is outside any render.
     rows: u32,
     selection: u64,
@@ -792,6 +884,7 @@ enum Kept {
     NotPlain,
     NotBoxed,
     Prekeyed,
+    InUnit,
     Excluded,
     Moved,
     Spine,
@@ -811,6 +904,7 @@ impl Kept {
             Self::NotPlain => "not-plain",
             Self::NotBoxed => "not-boxed",
             Self::Prekeyed => "prekeyed",
+            Self::InUnit => "in-unit",
             Self::Excluded => "excluded-now",
             Self::Moved => "moved",
             Self::Spine => "spine",
@@ -855,6 +949,10 @@ impl Retain {
                 .unwrap_or(MIN_ROOT),
             open: false,
             deferred: false,
+            layout_only: false,
+            reference: false,
+            unit: None,
+            plan: Plan::default(),
             rows: 0,
             selection: 0,
             nodes: Vec::new(),
@@ -931,6 +1029,7 @@ impl Retain {
         self.records.clear();
         self.dynamic.clear();
         self.dormant.clear();
+        self.plan.recorded = false;
         self.backoff = Backoff::default();
     }
 
@@ -983,6 +1082,23 @@ impl Retain {
     pub(crate) fn begin_frame(&mut self, sources: Sources) {
         self.prune(sources.tree);
         self.pass = sources.pass;
+        self.layout_only = sources.layout_only;
+        self.reference = sources.reference;
+        self.unit = None;
+        self.plan.serial += 1;
+        if sources.layout_only {
+            self.plan.layout_since = true;
+        } else if !sources.reference {
+            self.plan = Plan {
+                serial: self.plan.serial,
+                revision: sources
+                    .tree
+                    .root_id
+                    .and_then(|id| sources.tree.elements.get(&id))
+                    .map_or(0, |root| root.subtree_revision),
+                ..Plan::default()
+            };
+        }
         if sources.pass == 1 && !sources.reference {
             self.learn_relocation(sources.lazy_builds, sources.relocations);
         }
@@ -1092,8 +1208,15 @@ impl Retain {
     /// What changed in `sources` since the frame before, as the elements that differ and their
     /// ancestors.
     fn find_deltas(&mut self, sources: &Sources) {
+        let found = self.compute_deltas(sources);
+        self.commit_deltas(sources, found);
+    }
+
+    /// What `sources` differ in from what the frame before saw. Changes nothing, so that a tick can
+    /// ask whether a frame would find something without being that frame.
+    fn compute_deltas(&self, sources: &Sources) -> Found {
         let mut changed: Vec<u64> = Vec::new();
-        let seen = &mut self.seen;
+        let seen = &self.seen;
         let all = !seen.known || seen.selection != sources.selection;
 
         differ(&seen.hovered, sources.hovered, &mut changed);
@@ -1157,8 +1280,6 @@ impl Retain {
         }
         changed.extend(seen.customs.keys().filter(|id| !customs.contains_key(id)));
 
-        self.debug.sources("pointer-focus-scroll-custom", changed.iter().copied());
-        self.debug.sources("motion-just-ended", seen.motion.iter().copied().filter(|id| !sources.motion.contains(id)));
         let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
         // A dormant element is not a change: the roots above it keep their recording, and a frame
         // that shows it builds the root late, with the clock of that frame.
@@ -1180,6 +1301,17 @@ impl Retain {
                 dynamic.push(id);
             }
         }
+        Found { all, sourced: changed, scrolled, scrolling, scrolls, customs, motion, running, dynamic, dormant }
+    }
+
+    /// Makes what `compute_deltas` found the delta of the frame being built, and what the next
+    /// frame is compared with.
+    fn commit_deltas(&mut self, sources: &Sources, found: Found) {
+        let Found { all, sourced, scrolled, scrolling, scrolls, customs, motion, running, dynamic, dormant } = found;
+        let mut changed = sourced;
+        let seen = &mut self.seen;
+        self.debug.sources("pointer-focus-scroll-custom", changed.iter().copied());
+        self.debug.sources("motion-just-ended", seen.motion.iter().copied().filter(|id| !sources.motion.contains(id)));
         self.debug.sources("motion-running", running.iter().copied());
         self.debug.sources("dynamic-last-build", dynamic.iter().copied());
         self.debug.sources("dormant", dormant.iter().copied());
@@ -1234,6 +1366,7 @@ impl Retain {
     pub(crate) fn begin_deferred(&mut self, inside_relocatable: bool) {
         self.open = self.enabled && !self.backoff.resting;
         self.deferred = true;
+        self.unit = None;
         self.inside_relocatable = inside_relocatable;
         self.nodes.clear();
         self.stack.clear();
@@ -1246,9 +1379,195 @@ impl Retain {
         self.inside_relocatable = false;
     }
 
+    /// Stops recording, for a build that is not part of a frame (`GpuixView::build_unit`): nothing
+    /// is entered, skipped or noted until `resume` gives back what it returns.
+    pub(crate) fn suspend(&mut self) -> bool {
+        debug_assert!(self.stack.is_empty(), "a build is not suspended inside another");
+        std::mem::replace(&mut self.open, false)
+    }
+
+    pub(crate) fn resume(&mut self, open: bool) {
+        self.open = open;
+    }
+
     /// Whether the element being built is recorded, so the caller can skip work only the record needs.
     pub(crate) fn recording(&self) -> bool {
         self.open && self.rows == 0
+    }
+
+    /// The element being built (not skipped, just entered) is the root of a unit if the last build
+    /// of it found only paint-only motion running on it, nothing is dormant, and the build
+    /// around it hands it nothing it could not be built again without (`plain`). Nothing inside
+    /// a unit is skipped, and `end_unit` says whether what was built is one. Returns the key the
+    /// element was entered with, for the unit to be built again with.
+    pub(crate) fn begin_unit(&mut self, plain: bool) -> Option<EnterKey> {
+        if !plain
+            || !self.planning
+            || !self.recording()
+            || self.deferred
+            || self.layout_only
+            || self.reference
+            || self.unit.is_some()
+        {
+            return None;
+        }
+        let at = *self.stack.last()?;
+        let node = &self.nodes[at as usize];
+        if node.exclusion.is_some() || node.skipped.is_some() || self.dormant.contains(&node.id) {
+            return None;
+        }
+        let record = self.records.get(&node.id)?;
+        let only_motion = record.vol.dynamic & Dynamic::OWN != 0 && record.vol.dynamic & !Dynamic::OWN == 0;
+        if !record.eligible || record.lifts || record.lift_z.is_some() || !only_motion || !record.paints_only {
+            return None;
+        }
+        if record.size > UNIT_MAX_ELEMENTS {
+            crate::perf_counters::unit_oversized();
+            return None;
+        }
+        self.unit = Some(at);
+        Some(EnterKey(node.enter))
+    }
+
+    /// The build of the element that `begin_unit` made a unit is over: whether what it built is
+    /// one, which is judged by the build and not by the record of the build before. The element
+    /// and what it holds are exactly the nodes since, and a unit holds none that is excluded, that
+    /// scrolls (a scroll bypasses the tape that a patch compares), is lifted out of it, or
+    /// is positioned against something outside it.
+    pub(crate) fn end_unit(&mut self) -> Option<crate::layout::cull::Subtree> {
+        let at = *self.stack.last()?;
+        if self.unit != Some(at) {
+            return None;
+        }
+        self.unit = None;
+        let first = at as usize;
+        let size = self.nodes.len() - first;
+        if size > UNIT_MAX_ELEMENTS as usize {
+            crate::perf_counters::unit_oversized();
+            return None;
+        }
+        if self.nodes[first].absent {
+            return None;
+        }
+        // Children come after their parent, as in `finish_session`.
+        let mut lifts = vec![false; size];
+        let mut escapes = vec![false; size];
+        for index in (0..size).rev() {
+            let node = &self.nodes[first + index];
+            if node.exclusion.is_some() || node.skipped.is_some() || node.vol.scroll != 0 {
+                return None;
+            }
+            let lifts_out = node.lift_z.is_some() || (!node.forms_context && lifts[index]);
+            let escaped = node.absolute || (!node.positioned && escapes[index]);
+            if index == 0 {
+                if lifts_out || escaped {
+                    return None;
+                }
+                break;
+            }
+            let parent = node.parent as usize - first;
+            lifts[parent] |= lifts_out;
+            escapes[parent] |= escaped;
+        }
+        crate::perf_counters::unit_built();
+        Some(self.nodes[first].subtree)
+    }
+
+    /// Keeps the unit built since `begin_unit` for the ticks that follow the frame.
+    pub(crate) fn add_unit(&mut self, unit: Unit) {
+        self.plan.ids.insert(unit.id);
+        self.plan.units.push(unit);
+    }
+
+    /// What differs between the keys of two units of the same element in two frames.
+    pub(crate) fn unit_key(&self) -> u64 {
+        self.plan.serial
+    }
+
+    /// The unit of the last frame built whole that is the element `id`.
+    pub(crate) fn unit(&self, id: u64) -> Option<&Unit> {
+        self.plan.units.iter().find(|unit| unit.id == id)
+    }
+
+    /// The units of the last frame built whole, in the order it built them.
+    pub(crate) fn units(&self) -> &[Unit] {
+        &self.plan.units
+    }
+
+    /// Notes that what runs on the element being built only changes what it paints (or does not):
+    /// the element is the root of a unit in a later frame only if it does.
+    pub(crate) fn paints_only(&mut self, paints_only: bool) {
+        if let Some(node) = self.top() {
+            node.paints_only = paints_only;
+        }
+    }
+
+    /// Whether a tick that finds `sources` can be drawn by building again the units that hold what
+    /// changed, and which they are (by element id, in the order the last frame built them). It
+    /// can when, since the last frame that was built whole, nothing but time changed (the animations
+    /// that run, a motion that ended, an element not yet built), every element it changed is in a
+    /// unit or is dormant, the tree is the one that frame was built from, and that frame built
+    /// nothing that follows the clock outside the units. Changes nothing: a tick that is not drawn
+    /// this way is drawn whole, and finds the same changes.
+    ///
+    /// `scroll_animating` says whether a scroll animation (or a scrollbar fading) has frames to run.
+    /// `sources` is what the tick would be built from, with the peeks of the sources that are taken
+    /// when read (`Measurements::peek_changed`, `links::peek_changed`, `take_commanded`'s peek).
+    pub(crate) fn preview(&self, sources: &Sources, scroll_animating: bool) -> Result<Vec<u64>, Unpatchable> {
+        if !self.planning || !self.plan.recorded || !self.seen.known {
+            return Err(Unpatchable::NoFrame);
+        }
+        if self.plan.layout_since {
+            return Err(Unpatchable::LayoutPass);
+        }
+        if self.plan.unsteady {
+            return Err(Unpatchable::Unsteady);
+        }
+        if scroll_animating {
+            return Err(Unpatchable::ScrollAnimation);
+        }
+        let revision = sources
+            .tree
+            .root_id
+            .and_then(|id| sources.tree.elements.get(&id))
+            .map_or(0, |root| root.subtree_revision);
+        if revision != self.plan.revision {
+            return Err(Unpatchable::Edited);
+        }
+        let found = self.compute_deltas(sources);
+        if found.all {
+            return Err(Unpatchable::Everything);
+        }
+        if !found.sourced.is_empty() || !sources.measured.is_empty() || !sources.links.is_empty() || !sources.commanded.is_empty() {
+            return Err(Unpatchable::Sourced);
+        }
+        let mut touched = FxHashSet::default();
+        for &id in found.running.iter().chain(&found.dynamic).chain(&self.unbuilt) {
+            if found.dormant.contains(&id) {
+                continue;
+            }
+            let mut at = Some(id);
+            let unit = loop {
+                match at {
+                    Some(up) if self.plan.ids.contains(&up) => break Some(up),
+                    Some(up) => at = sources.tree.elements.get(&up).and_then(|element| element.parent),
+                    None => break None,
+                }
+            };
+            match unit {
+                Some(unit) => {
+                    touched.insert(unit);
+                }
+                None => return Err(Unpatchable::Outside(id)),
+            }
+        }
+        Ok(self
+            .plan
+            .units
+            .iter()
+            .map(|unit| unit.id)
+            .filter(|id| touched.contains(id))
+            .collect())
     }
 
     pub(crate) fn enter_row(&mut self) {
@@ -1334,6 +1653,7 @@ impl Retain {
             effects_start: crate::tape::build_effects_len(),
             effects_end: 0,
             skipped: None,
+            paints_only: false,
         };
         let at = self.nodes.len() as u32;
         match self.skippable(&node, &entry) {
@@ -1386,6 +1706,11 @@ impl Retain {
     fn skippable(&self, node: &Node, entry: &Entry) -> Result<&Record, Kept> {
         if !self.planning || self.lifted != 0 {
             return Err(Kept::PlanningOff);
+        }
+        // A unit is built whole, so that a tick can build it again to what it is, not to what is
+        // left of it.
+        if self.unit.is_some() {
+            return Err(Kept::InUnit);
         }
         if self.deltas.all {
             return Err(Kept::Everything);
@@ -1744,6 +2069,7 @@ impl Retain {
         let mut candidates = false;
         let all_effects = crate::tape::build_effects_since(0);
         let mut built_dynamic = FxHashSet::default();
+        let mut unsteady = false;
         let keep_slots = self.debug_wants_slots();
         let mut slots = Vec::new();
         for at in 0..count {
@@ -1811,6 +2137,7 @@ impl Retain {
             if node.skipped.is_some() {
                 continue;
             }
+            unsteady |= node.exclusion.is_some_and(Exclusion::varies_with_time);
             self.unbuilt.remove(&node.id);
             if self.retained[at] && self.verify && !self.planning {
                 check(&self.records, &mut self.mismatches, node.id, own.digest, eligible);
@@ -1844,10 +2171,15 @@ impl Retain {
                     effects,
                     seasoned: self.deferred,
                     selection: self.selection,
+                    paints_only: node.paints_only,
                 },
             );
         }
 
+        if !self.reference && !self.layout_only {
+            self.plan.recorded = true;
+            self.plan.unsteady |= unsteady;
+        }
         if !self.deferred {
             self.forget_unbuilt_dynamic(&built_dynamic);
         }
@@ -2059,6 +2391,7 @@ mod tests {
             lazy_builds: 0,
             relocations: 0,
             reference: false,
+            layout_only: false,
         });
         retain.enter(Entry {
             id: 1,
@@ -2147,6 +2480,7 @@ mod tests {
             lazy_builds: 0,
             relocations: 0,
             reference: false,
+            layout_only: false,
         });
         let inherited = root_inherited();
         let mut skipped = false;
@@ -2259,6 +2593,7 @@ mod tests {
             lazy_builds: 0,
             relocations: 0,
             reference: false,
+            layout_only: false,
         });
         let inherited = root_inherited();
         for id in built {
@@ -2372,6 +2707,7 @@ mod tests {
             lazy_builds: 0,
             relocations: 0,
             reference: false,
+            layout_only: false,
         });
         let inherited = root_inherited();
         let enter = |retain: &mut Retain, id: u64, revision: u64| {
@@ -3479,5 +3815,465 @@ mod tests {
         scene.draw(cx);
         assert_eq!(Scene::counted("excluded:custom-element"), 2);
         assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+    }
+
+    /// The sources of a frame over `tree` in which `motion` runs and `hovered` is under the pointer.
+    fn sources_of<'a>(
+        tree: &'a RetainedTree,
+        focus: &'a crate::focus::FocusStyles,
+        handles: &'a HashMap<u64, gpui::FocusHandle>,
+        scrolls: &'a HashMap<u64, gpui::ScrollHandle>,
+        hovered: &'a [u64],
+        layout_only: bool,
+    ) -> Sources<'a> {
+        Sources {
+            tree,
+            hovered,
+            active: &[],
+            focus,
+            focusable: handles,
+            keyboard: false,
+            scrolls,
+            measured: Vec::new(),
+            links: Vec::new(),
+            commanded: Vec::new(),
+            customs: Vec::new(),
+            motion: Vec::new(),
+            dormant: &|_| false,
+            selection: 0,
+            pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
+            layout_only,
+        }
+    }
+
+    /// A page of `1 > 2 > (3, 4)` and `1 > 5`, with whatever `build` enters in a frame of it.
+    struct Units {
+        tree: RetainedTree,
+        retain: Retain,
+        inherited: Inherited,
+        focus: crate::focus::FocusStyles,
+        handles: HashMap<u64, gpui::FocusHandle>,
+        scrolls: HashMap<u64, gpui::ScrollHandle>,
+        /// The revision each element is entered with, 7 for those not edited.
+        revisions: HashMap<u64, u64>,
+    }
+
+    impl Units {
+        fn new() -> Self {
+            let tree = tree_of(&[
+                (1, None, "div", None),
+                (2, Some(1), "div", None),
+                (3, Some(2), "div", None),
+                (4, Some(2), "div", None),
+                (5, Some(1), "div", None),
+            ]);
+            let mut retain = Retain::new();
+            retain.set_planning(true);
+            Self {
+                tree,
+                retain,
+                inherited: root_inherited(),
+                focus: Default::default(),
+                handles: HashMap::new(),
+                scrolls: HashMap::new(),
+                revisions: HashMap::new(),
+            }
+        }
+
+        /// The next frame finds `id` edited, as one that starts to run something is.
+        fn edit(&mut self, id: u64) {
+            *self.revisions.entry(id).or_insert(7) += 1;
+        }
+
+        /// A frame in which `hovered` is under the pointer, that `build` builds.
+        fn frame(&mut self, hovered: &[u64], layout_only: bool, build: impl FnOnce(&mut Self)) {
+            self.retain
+                .begin_frame(sources_of(&self.tree, &self.focus, &self.handles, &self.scrolls, hovered, layout_only));
+            build(self);
+            self.retain.finish_frame();
+        }
+
+        fn enter(&mut self, id: u64) -> bool {
+            let skipped = self
+                .retain
+                .enter(Entry {
+                    id,
+                    revision: self.revisions.get(&id).copied().unwrap_or(7),
+                    inherited: &self.inherited,
+                    at: 0,
+                    stacking_root: true,
+                    stacking_item: false,
+                    atomic_root: false,
+                    contents_overlay: None,
+                    anchor_scope: false,
+                    text_box_trim: Default::default(),
+                    plain: true,
+                    boxed: true,
+                    container: None,
+                    prekeyed: None,
+                    scroller: None,
+                    costly: true,
+                })
+                .is_some();
+            if !skipped {
+                self.retain.stacking(|| (None, true));
+            }
+            skipped
+        }
+
+        /// Builds the element `id` the way `build_element_in` does, with `inside` building what is
+        /// in it. Says whether the element was begun as a unit, and if so whether what was built
+        /// is one. Nothing if the frame skipped it.
+        fn element(&mut self, id: u64, motion: Option<bool>, inside: impl FnOnce(&mut Self)) -> Option<bool> {
+            if self.enter(id) {
+                return None;
+            }
+            let enter = self.retain.begin_unit(true);
+            if let Some(paints_only) = motion {
+                self.retain.dynamic(Dynamic::Animation);
+                self.retain.paints_only(paints_only);
+            }
+            inside(self);
+            let unit = enter.map(|enter| (enter, self.retain.end_unit().is_some()));
+            if let Some((enter, true)) = unit {
+                let env = crate::renderer::FrameEnv::for_test(self.inherited.clone(), enter, web_time::Instant::now());
+                self.retain.add_unit(Unit { id, env });
+            }
+            self.retain.exit();
+            unit.map(|(_, built)| built)
+        }
+
+        fn leaf(&mut self, id: u64) {
+            self.element(id, None, |_| {});
+        }
+
+        fn ids(&self) -> Vec<u64> {
+            self.retain.units().iter().map(|unit| unit.id).collect()
+        }
+
+        fn preview(&self, hovered: &[u64], scroll_animating: bool) -> Result<Vec<u64>, Unpatchable> {
+            let sources = sources_of(&self.tree, &self.focus, &self.handles, &self.scrolls, hovered, false);
+            self.retain.preview(&sources, scroll_animating)
+        }
+
+        /// The page, with 2 and 4 running something (whether it only paints, if so).
+        fn page(&mut self, hovered: &[u64], two: Option<bool>, four: Option<bool>) {
+            self.pass(hovered, false, two, four);
+        }
+
+        fn pass(&mut self, hovered: &[u64], layout_only: bool, two: Option<bool>, four: Option<bool>) {
+            self.frame(hovered, layout_only, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, two, |page| {
+                        page.leaf(3);
+                        page.element(4, four, |_| {});
+                    });
+                    page.leaf(5);
+                });
+            });
+        }
+    }
+
+    #[test]
+    fn a_tick_that_only_runs_the_animation_of_a_unit_previews_that_unit() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        assert_eq!(page.ids(), Vec::<u64>::new(), "an element is a unit once a build found it running");
+        page.page(&[], Some(true), None);
+        assert_eq!(page.ids(), vec![2]);
+        assert_eq!(page.preview(&[], false), Ok(vec![2]));
+        let (unbuilt, seen) = (sorted(&page.retain.unbuilt), page.retain.seen.hovered.clone());
+        assert_eq!(page.preview(&[], false), Ok(vec![2]), "a preview takes nothing from the next one");
+        assert_eq!((sorted(&page.retain.unbuilt), page.retain.seen.hovered.clone()), (unbuilt, seen));
+        // The frame that follows finds what the preview found.
+        page.page(&[], Some(true), None);
+        assert_eq!(page.ids(), vec![2]);
+    }
+
+    #[test]
+    fn a_unit_is_the_outermost_element_that_runs_something_that_only_paints() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), Some(true));
+        page.page(&[], Some(true), Some(true));
+        assert_eq!(page.ids(), vec![2], "the element inside it is part of it");
+        assert_eq!(page.preview(&[], false), Ok(vec![2]));
+    }
+
+    #[test]
+    fn an_element_whose_animation_moves_what_it_lays_out_is_not_a_unit() {
+        let mut page = Units::new();
+        page.page(&[], Some(false), None);
+        page.page(&[], Some(false), None);
+        assert_eq!(page.ids(), Vec::<u64>::new());
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(2)));
+        // One inside the one that lays out is the unit.
+        page.edit(4);
+        page.page(&[], Some(false), Some(true));
+        page.page(&[], Some(false), Some(true));
+        assert_eq!(page.ids(), vec![4]);
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(2)));
+    }
+
+    #[test]
+    fn an_element_with_more_elements_than_a_unit_may_hold_is_not_one() {
+        let mut page = Units::new();
+        let big = |page: &mut Units| {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |page| {
+                        for id in 100..100 + UNIT_MAX_ELEMENTS as u64 {
+                            page.leaf(id);
+                        }
+                    });
+                });
+            });
+        };
+        crate::perf_counters::reset();
+        big(&mut page);
+        big(&mut page);
+        assert_eq!(page.ids(), Vec::<u64>::new());
+        assert_eq!(crate::perf_counters::snapshot().units_oversized, 1);
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(2)));
+    }
+
+    #[test]
+    fn what_a_patch_could_not_repeat_makes_what_holds_it_no_unit() {
+        let holds: [(&str, fn(&mut Retain)); 4] = [
+            ("an exclusion", |retain| retain.exclude(Exclusion::Scroller)),
+            ("a scroll", |retain| retain.scroll(gpui::point(gpui::px(0.0), gpui::px(-4.0)))),
+            ("a lifted element", |retain| retain.stacking(|| (Some(1), false))),
+            ("an absolute box against a parent outside", |retain| retain.containing_block(false, true)),
+        ];
+        for (what, note) in holds {
+            let mut page = Units::new();
+            page.page(&[], Some(true), None);
+            let mut unit = None;
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    unit = page.element(2, Some(true), |page| {
+                        // Nothing it holds is handed to a stacking context of its own.
+                        page.retain.stacking(|| (None, false));
+                        page.leaf(3);
+                        page.element(4, None, |page| note(&mut page.retain));
+                    });
+                    page.leaf(5);
+                });
+            });
+            assert_eq!(unit, Some(false), "{what}: begun as a unit, and not one when it was built");
+            assert_eq!(page.ids(), Vec::<u64>::new(), "{what}");
+        }
+        // The same page without any of them has its unit.
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        assert_eq!(page.ids(), vec![2]);
+    }
+
+    #[test]
+    fn nothing_inside_a_unit_is_skipped() {
+        let mut page = Units::new();
+        // Frame by frame: the first records, the second sees 3 and 4 unchanged and 2 running.
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        page.frame(&[], false, |page| {
+            page.element(1, None, |page| {
+                assert!(!page.enter(2));
+                assert!(page.retain.begin_unit(true).is_some());
+                page.retain.dynamic(Dynamic::Animation);
+                page.retain.paints_only(true);
+                assert!(!page.enter(3), "3 is unchanged and would be skipped outside a unit");
+                page.retain.exit();
+                assert!(page.retain.end_unit().is_some());
+                page.retain.exit();
+            });
+        });
+        page.frame(&[], false, |page| {
+            page.element(1, None, |page| {
+                assert!(!page.enter(2));
+                page.retain.dynamic(Dynamic::Animation);
+                page.retain.paints_only(true);
+                assert!(page.enter(3), "the same 3 is skipped when 2 is not a unit");
+                page.retain.exit();
+            });
+        });
+    }
+
+    #[test]
+    fn a_tick_that_changes_more_than_time_is_not_previewed() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        assert_eq!(page.preview(&[3], false), Err(Unpatchable::Sourced), "the pointer moved");
+        assert_eq!(page.preview(&[], true), Err(Unpatchable::ScrollAnimation));
+        page.tree.set_text(3, "words".to_owned());
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Edited));
+    }
+
+    #[test]
+    fn a_tick_after_a_pass_that_only_lays_out_is_not_previewed() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        page.pass(&[], true, Some(true), None);
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::LayoutPass));
+        page.page(&[], Some(true), None);
+        assert_eq!(page.preview(&[], false), Ok(vec![2]), "a frame built whole gives a new start");
+    }
+
+    #[test]
+    fn a_frame_that_built_what_follows_the_clock_outside_the_units_is_not_previewed() {
+        let mut page = Units::new();
+        let build = |page: &mut Units, varies: Exclusion| {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |_| {});
+                    page.element(5, None, |page| page.retain.exclude(varies));
+                });
+            });
+        };
+        build(&mut page, Exclusion::Sticky);
+        build(&mut page, Exclusion::Sticky);
+        assert_eq!(page.ids(), vec![2]);
+        assert_eq!(page.preview(&[], false), Ok(vec![2]), "a sticky box follows the scroll, not the clock");
+        for varies in [
+            Exclusion::CustomElement,
+            Exclusion::Highlight,
+            Exclusion::Svg,
+            Exclusion::VirtualList,
+            Exclusion::LayoutAnimation,
+        ] {
+            build(&mut page, varies);
+            assert_eq!(page.preview(&[], false), Err(Unpatchable::Unsteady), "{varies:?}");
+        }
+    }
+
+    #[test]
+    fn an_element_that_runs_outside_the_units_blocks_the_tick_unless_nobody_sees_it() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        // 5 runs something that lays out.
+        let both = |page: &mut Units| {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |_| {});
+                    page.element(5, Some(false), |_| {});
+                });
+            });
+        };
+        page.edit(5);
+        both(&mut page);
+        both(&mut page);
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(5)));
+        let sources = Sources { dormant: &|id| id == 5, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
+        assert_eq!(page.retain.preview(&sources, false), Ok(vec![2]), "dormant: the tick carries its clock without building it");
+    }
+
+    const TINTED: &str = r#"{"height": 60, "animation": "tint 600ms linear infinite"}"#;
+
+    /// A page whose second card runs a colour animation, drawn until its card is a unit.
+    fn tinted(cx: &mut gpui::TestAppContext, verify: bool) -> Scene {
+        let scene = Scene::new(cx, page([CARD, TINTED, CARD]));
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.retain.set_planning(true);
+                view.retain.set_verify(verify);
+                view.keyframes
+                    .define("tint", r##"{"from": {"color": "#ff0000"}, "to": {"color": "#0000ff"}}"##)
+                    .unwrap();
+            })
+            .unwrap();
+        for _ in 0..6 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.notified_draw(cx);
+        }
+        scene
+    }
+
+    fn units_of(scene: &Scene, cx: &mut gpui::TestAppContext) -> Vec<u64> {
+        scene
+            .window
+            .update(cx, |view, _, _| view.retain.units().iter().map(|unit| unit.id).collect())
+            .unwrap()
+    }
+
+    #[gpui::test]
+    fn a_card_that_runs_a_colour_is_a_unit_and_the_other_cards_are_not(cx: &mut gpui::TestAppContext) {
+        crate::perf_counters::reset();
+        let scene = tinted(cx, false);
+        assert_eq!(units_of(&scene, cx), vec![20]);
+        assert!(crate::perf_counters::snapshot().units_built >= 1);
+        // What a frame could reuse is judged as it was without the unit: the lines of the card
+        // are roots beside the cards that are still, though the unit builds them.
+        assert_eq!(scene.roots(cx), vec![10, 21, 22, 23, 30]);
+    }
+
+    #[gpui::test]
+    fn a_frame_built_whole_around_units_is_the_frame_it_was_without_them(cx: &mut gpui::TestAppContext) {
+        // Every frame that replayed something is built again whole and compared with it.
+        let scene = tinted(cx, true);
+        assert_eq!(units_of(&scene, cx), vec![20]);
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+        scene.notified_draw(cx);
+        scene.assert_sound(cx);
+    }
+
+    #[gpui::test]
+    fn a_tick_of_a_colour_is_previewed_and_its_unit_built_alone(cx: &mut gpui::TestAppContext) {
+        let scene = tinted(cx, false);
+        let tapes = scene.window.update(cx, |view, _, _| view.tapes.clone()).unwrap();
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+        let (preview, built) = scene
+            .window
+            .update(cx, |view, window, cx| {
+                let now = view.clock.now();
+                let records = view.retain.record_counts();
+                let preview = view.preview_tick(window, now);
+                let built = view.build_unit(20, now, window, cx);
+                assert!(view.build_unit(10, now, window, cx).is_none(), "10 is not a unit");
+                assert_eq!(view.retain.record_counts(), records, "nothing of the frames is touched");
+                assert_eq!(view.built_at, Some(now));
+                (preview, built)
+            })
+            .unwrap();
+        assert_eq!(preview, Ok(vec![20]));
+        let built = built.expect("20 is a unit");
+        assert_eq!(built.id, crate::renderer::retained_id(20));
+        // It was not painted: it wrote nothing, while the frame wrote the boxes of the card.
+        assert!(!tapes.same_as_recorded(20, &built.tape));
+        // And the tick is still the same tick: nothing was taken by the preview or the build.
+        assert_eq!(
+            scene.window.update(cx, |view, window, _| view.preview_tick(window, view.clock.now())).unwrap(),
+            Ok(vec![20])
+        );
+    }
+
+    #[gpui::test]
+    fn a_card_with_more_elements_than_a_unit_may_hold_is_built_as_before(cx: &mut gpui::TestAppContext) {
+        let mut elements = page([CARD, TINTED, CARD]);
+        for index in 0..UNIT_MAX_ELEMENTS as u64 {
+            elements.push(div(1000 + index, Some(20), r#"{"height": 1}"#));
+        }
+        crate::perf_counters::reset();
+        let scene = Scene::new(cx, elements);
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.retain.set_planning(true);
+                view.keyframes
+                    .define("tint", r##"{"from": {"color": "#ff0000"}, "to": {"color": "#0000ff"}}"##)
+                    .unwrap();
+            })
+            .unwrap();
+        for _ in 0..6 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.notified_draw(cx);
+        }
+        assert_eq!(units_of(&scene, cx), Vec::<u64>::new());
+        assert!(crate::perf_counters::snapshot().units_oversized >= 1);
     }
 }

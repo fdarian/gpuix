@@ -431,6 +431,8 @@ pub(crate) struct State {
     /// Per axis, whether the gutter follows `needed`.
     follows_need: [bool; 2],
     flips: u8,
+    /// The last paint asked for another frame: the bar fades, grows or settles its gutter.
+    animating: bool,
 }
 
 thread_local! {
@@ -456,6 +458,11 @@ pub(crate) fn begin_frame(now: Instant, scroller: ScrollerStyle) {
 
 fn now() -> Instant {
     NOW.get().unwrap_or_else(Instant::now)
+}
+
+/// Whether a bar of the last frame asked for another frame: it fades, grows or settles its gutter.
+pub(crate) fn animating() -> bool {
+    STATES.with(|states| states.borrow().values().any(|state| state.borrow().animating))
 }
 
 pub(crate) fn state_for(id: u64) -> Rc<RefCell<State>> {
@@ -682,7 +689,8 @@ fn prepaint(
     // An `overflow: auto` gutter follows the layout it caused, so it takes one more frame to settle.
     let settling = st.flips < MAX_GUTTER_FLIPS
         && (0..2).any(|axis| st.follows_need[axis] && st.needed[axis] != st.reserved[axis]);
-    if (alpha > 0.0 && !classic) || growing || settling {
+    st.animating = (alpha > 0.0 && !classic) || growing || settling;
+    if st.animating {
         window.request_animation_frame();
     }
 }

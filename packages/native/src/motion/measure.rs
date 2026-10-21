@@ -210,11 +210,15 @@ impl Measurements {
             percent_height_resolves: container.percent_height_resolves,
             flex_main: container.flex_main,
         };
-        if self.by_element.borrow().get(&id) != Some(&measurement) {
-            self.changed.borrow_mut().push(id);
-        }
         let parent_content: ParentContent = Rc::new(Cell::new(measurement.parent_content));
-        self.parents.borrow_mut().insert(id, parent_content.clone());
+        // A subtree that is only captured leaves what the frame before made of it: the tape
+        // it comes out with says whether the measurement is the same.
+        if !crate::tape::is_capturing() {
+            if self.by_element.borrow().get(&id) != Some(&measurement) {
+                self.changed.borrow_mut().push(id);
+            }
+            self.parents.borrow_mut().insert(id, parent_content.clone());
+        }
         crate::tape::write(
             (self.by_element.clone(), id, measurement, parent_content),
             |(by_element, id, measurement, parent_content), _| {
@@ -269,6 +273,11 @@ impl Measurements {
     /// The elements whose measurement changed since this was last called.
     pub(crate) fn take_changed(&self) -> Vec<u64> {
         std::mem::take(&mut *self.changed.borrow_mut())
+    }
+
+    /// [`Self::take_changed`], leaving them for the frame that takes them.
+    pub(crate) fn peek_changed(&self) -> Vec<u64> {
+        self.changed.borrow().clone()
     }
 
     /// Keeps `id` from being pruned as an element that is no longer measured, for a frame that

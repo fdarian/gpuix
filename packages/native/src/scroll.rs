@@ -343,6 +343,11 @@ const SMOOTH_MS_PER_PX: f32 = 0.05;
 /// Material's standard curve: quick to get going, long to settle, like a browser's.
 const SMOOTH_CURVE: [f64; 4] = [0.4, 0.0, 0.2, 1.0];
 
+/// Whether a smooth scroll has frames to run.
+pub(crate) fn animating() -> bool {
+    ANIMATIONS.with(|animations| !animations.borrow().is_empty())
+}
+
 /// Advances the smooth scrolls to `now`. True while one still has frames to run.
 pub(crate) fn advance_animations(now: Instant) -> bool {
     ANIMATIONS.with(|animations| {

@@ -5313,7 +5313,7 @@ pub(crate) struct GpuixView {
     pub(crate) clock: crate::automation::AutomationClock,
     /// The instant the last pass that was not a verifier's reference was built at, or the last
     /// dormant tick ran at.
-    built_at: Option<web_time::Instant>,
+    pub(crate) built_at: Option<web_time::Instant>,
     /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
     dormant_tick_armed: bool,
     /// Resolved `highlight` state, keyed by the element that declared it.
@@ -5328,7 +5328,7 @@ pub(crate) struct GpuixView {
     /// What the last build recorded of each element, for deciding what a replay could reuse.
     pub(crate) retain: crate::retain::Retain,
     /// What the retained roots wrote into the registries the last time they were built.
-    tapes: crate::tape::Tapes,
+    pub(crate) tapes: crate::tape::Tapes,
     /// Where the pointer is and what it is pressing.
     /// Shared with the window's mouse-down listener, which dispatches a press
     /// without reaching the view.
@@ -6373,54 +6373,25 @@ impl GpuixView {
         crate::accessibility::links::sync(&tree);
         let activation = self.activation();
         crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
-        let mut build_ctx = BuildCtx {
-            tree: &tree,
-            event_callback: &callback,
-            activation: &activation,
-            focus_handles: &self.focus_handles,
-            scroll_handles: &mut self.scroll_handles,
-            custom_registry: &mut self.custom_registry,
-            virtual_lists: &mut self.virtual_lists,
-            motion_states: &mut self.motion_states,
-            motion_values: &self.motion_values,
-            css_transitions: &mut self.css_transitions,
-            css_animations: &mut self.css_animations,
-            contents_styles: &mut self.contents_styles,
-            keyframes: &self.keyframes,
-            measurements: &self.measurements,
-            layout_flips: &self.layout_flips,
-            svg_trees: &mut self.svg_trees,
-            now,
-            selection: self.selection.clone(),
-            doc_path: row_path,
-            doc_hosts: list_hosts,
-            inline_line: None,
-            inherited,
-            highlights: &mut self.highlights,
-            paint_reports: &self.paint_reports,
-            containers: &self.containers,
-            highlight_events: &mut highlight_events,
-            focus_styles,
-            control_styles: Default::default(),
-            pointer: &pointer,
-            contents_overlay: None,
-            contents_key: 0,
-            contents_dynamic: 0,
-            anchor_scope: None,
-            stacking_root: true,
-            stacking_item: false,
-            atomic_root: false,
-            atomic_extracted: None,
-            atomic_height_definite: false,
-            containing_heights: Vec::new(),
-            baseline_probe: None,
-            collapsed: Default::default(),
-            text_box_trim: Default::default(),
-            subtree: crate::layout::cull::Subtree::empty(),
-            scroller: None,
-            retain: &mut self.retain,
-            tapes: &self.tapes,
-        };
+        let mut build_ctx = self.build_ctx(
+            &tree,
+            &callback,
+            &activation,
+            &pointer,
+            &mut highlight_events,
+            BuildStart {
+                inherited,
+                doc_path: row_path,
+                doc_hosts: list_hosts,
+                now,
+                stacking_root: true,
+                stacking_item: false,
+                text_box_trim: Default::default(),
+                focus_styles,
+                control_styles: Default::default(),
+                scroller: None,
+            },
+        );
         build_ctx.retain.enter_row();
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
         build_ctx.retain.leave_row();
@@ -7721,6 +7692,66 @@ impl PendingFocus {
 }
 
 impl GpuixView {
+    /// The context a build of elements starts in, with `start` handed down to the first of them.
+    fn build_ctx<'a>(
+        &'a mut self,
+        tree: &'a RetainedTree,
+        callback: &'a Option<EventCallback>,
+        activation: &'a crate::events::activation::Activation,
+        pointer: &'a crate::events::state::PointerState,
+        highlight_events: &'a mut Vec<(u64, usize)>,
+        start: BuildStart,
+    ) -> BuildCtx<'a> {
+        BuildCtx {
+            tree,
+            event_callback: callback,
+            activation,
+            focus_handles: &self.focus_handles,
+            scroll_handles: &mut self.scroll_handles,
+            custom_registry: &mut self.custom_registry,
+            virtual_lists: &mut self.virtual_lists,
+            motion_states: &mut self.motion_states,
+            motion_values: &self.motion_values,
+            css_transitions: &mut self.css_transitions,
+            css_animations: &mut self.css_animations,
+            contents_styles: &mut self.contents_styles,
+            keyframes: &self.keyframes,
+            measurements: &self.measurements,
+            layout_flips: &self.layout_flips,
+            svg_trees: &mut self.svg_trees,
+            now: start.now,
+            selection: self.selection.clone(),
+            doc_path: start.doc_path,
+            doc_hosts: start.doc_hosts,
+            inline_line: None,
+            inherited: start.inherited,
+            highlights: &mut self.highlights,
+            paint_reports: &self.paint_reports,
+            containers: &self.containers,
+            highlight_events,
+            focus_styles: start.focus_styles,
+            control_styles: start.control_styles,
+            pointer,
+            contents_overlay: None,
+            contents_key: 0,
+            contents_dynamic: 0,
+            anchor_scope: None,
+            stacking_root: start.stacking_root,
+            stacking_item: start.stacking_item,
+            atomic_root: false,
+            atomic_extracted: None,
+            atomic_height_definite: false,
+            containing_heights: Vec::new(),
+            baseline_probe: None,
+            collapsed: Default::default(),
+            text_box_trim: start.text_box_trim,
+            subtree: crate::layout::cull::Subtree::empty(),
+            scroller: start.scroller,
+            retain: &mut self.retain,
+            tapes: &self.tapes,
+        }
+    }
+
     /// Builds the subtree of `id` for gpui, which asked for it while it laid out or prepainted the
     /// frame: it could not use what it recorded of the subtree, or never had. `env` is the build
     /// of the frame around the subtree as it was when the frame skipped it.
@@ -7744,54 +7775,7 @@ impl GpuixView {
         // The parent that spliced the element out of its wrappers is not there to say what they hand down.
         let splice = crate::layout::contents::splice_parent(&tree, id);
         let element = {
-            let mut ctx = BuildCtx {
-                tree: &tree,
-                event_callback: &callback,
-                activation: &activation,
-                focus_handles: &self.focus_handles,
-                scroll_handles: &mut self.scroll_handles,
-                custom_registry: &mut self.custom_registry,
-                virtual_lists: &mut self.virtual_lists,
-                motion_states: &mut self.motion_states,
-                motion_values: &self.motion_values,
-                css_transitions: &mut self.css_transitions,
-                css_animations: &mut self.css_animations,
-                contents_styles: &mut self.contents_styles,
-                keyframes: &self.keyframes,
-                measurements: &self.measurements,
-                layout_flips: &self.layout_flips,
-                svg_trees: &mut self.svg_trees,
-                now: env.now,
-                selection: self.selection.clone(),
-                doc_path: env.doc_path,
-                doc_hosts: Arc::from([]),
-                inline_line: None,
-                inherited: env.inherited,
-                highlights: &mut self.highlights,
-                paint_reports: &self.paint_reports,
-                containers: &self.containers,
-                highlight_events: &mut highlight_events,
-                focus_styles: env.focus_styles,
-                control_styles: env.control_styles,
-                pointer: &pointer,
-                contents_overlay: None,
-                contents_key: 0,
-                contents_dynamic: 0,
-                anchor_scope: None,
-                stacking_root: env.stacking_root,
-                stacking_item: env.stacking_item,
-                atomic_root: false,
-                atomic_extracted: None,
-                atomic_height_definite: false,
-                containing_heights: Vec::new(),
-                baseline_probe: None,
-                collapsed: Default::default(),
-                text_box_trim: env.text_box_trim,
-                subtree: crate::layout::cull::Subtree::empty(),
-                scroller: env.scroller,
-                retain: &mut self.retain,
-                tapes: &self.tapes,
-            };
+            let mut ctx = self.build_ctx(&tree, &callback, &activation, &pointer, &mut highlight_events, env.start);
             if let Some(parent) = splice {
                 splice_overlay(&mut ctx, window, parent, id);
             }
@@ -7821,6 +7805,119 @@ impl GpuixView {
         crate::tape::Taped::new(element, tape).into_any_element()
     }
 
+    /// Builds the unit `id` of the last frame built whole (see `Retain::begin_unit`) as it is at
+    /// `now`, to be painted again in place of what that frame made of it (`Window::repaint_in_place`).
+    /// It is an element to prepaint and paint onto the nodes the unit has, whose tape holds what it
+    /// would write into the registries without writing it: `Tapes::same_as_recorded` says whether
+    /// that is what the frame wrote. None if `id` is not a unit.
+    ///
+    /// Nothing of the frames is touched: not the records, the dynamic elements, the elements not yet
+    /// built, the tapes, and no frame is asked for (the animations that still run are noted in
+    /// `take_active`, for the caller). What the build does to the clocks of the animations and the
+    /// events it emits are those of a frame, and `built_at` is `now`.
+    pub(crate) fn build_unit(
+        &mut self,
+        id: u64,
+        now: web_time::Instant,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> Option<ScratchUnit> {
+        use gpui::IntoElement;
+
+        let mut env = self.retain.unit(id)?.env.clone();
+        env.start.now = now;
+        let effects = crate::tape::build_effects_len();
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        let callback = self.event_callback.clone();
+        let activation = self.activation();
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
+        let mut highlight_events = Vec::new();
+        let recording = self.retain.suspend();
+        let splice = crate::layout::contents::splice_parent(&tree, id);
+        let element = {
+            let mut ctx = self.build_ctx(&tree, &callback, &activation, &pointer, &mut highlight_events, env.start);
+            if let Some(parent) = splice {
+                splice_overlay(&mut ctx, window, parent, id);
+            }
+            build_element_in(id, &mut ctx, window, cx, None)
+        };
+        self.retain.resume(recording);
+        crate::tape::truncate_build_effects(effects);
+        drop(pointer);
+        debug_assert!(highlight_events.is_empty(), "a highlight is never inside a unit");
+        self.built_at = Some(now);
+        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
+        emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        emit_layout_events(&callback, &tree, self.layout_flips.take_events());
+        let tape = crate::tape::Tape::capturing();
+        Some(ScratchUnit {
+            id: retained_id(id),
+            element: crate::tape::Taped::new(element, tape.clone()).into_any_element(),
+            tape,
+        })
+    }
+
+    /// Whether the tick at `now` can be drawn by building the units that hold what changed, and
+    /// which they are, see `Retain::preview`. Changes nothing: what the frame takes when it reads
+    /// the measurements, links and commands of the animations stays for it.
+    ///
+    /// The motions run as `sync_motion_states` last left them: a patcher steps them before it
+    /// builds a unit, which nothing here depends on, since a motion starts or retargets only
+    /// with a change of the tree or the pointer.
+    pub(crate) fn preview_tick(
+        &self,
+        window: &gpui::Window,
+        now: web_time::Instant,
+    ) -> std::result::Result<Vec<u64>, crate::retain::Unpatchable> {
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
+        let pointer_state = self.pointer.clone();
+        let pointer = pointer_state.borrow();
+        let dormancy = Dormancy {
+            tree: &tree,
+            window: window.window_handle().window_id(),
+            animations: &self.css_animations,
+            transitions: &self.css_transitions,
+            motion_states: &self.motion_states,
+            keyframes: &self.keyframes,
+        };
+        let commanded: Vec<u64> = self
+            .css_transitions
+            .peek_commanded()
+            .iter()
+            .chain(self.css_animations.peek_commanded())
+            .copied()
+            .collect();
+        let sources = crate::retain::Sources {
+            tree: &tree,
+            hovered: pointer.chains().0,
+            active: pointer.chains().1,
+            focus: &focus_styles,
+            focusable: &self.focus_handles,
+            keyboard: window.last_input_was_keyboard(),
+            scrolls: &self.scroll_handles,
+            measured: self.measurements.peek_changed(),
+            links: crate::accessibility::links::peek_changed(),
+            commanded,
+            customs: self.custom_registry.retain_states(),
+            motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
+            dormant: &|id| dormancy.holds(id),
+            selection: self.selection.lock().identity(),
+            pass: window.draw_pass(),
+            lazy_builds: window.retained_counters().lazy_builds,
+            relocations: window.retained_counters().relocations,
+            reference: false,
+            layout_only: false,
+        };
+        self.retain
+            .preview(&sources, crate::scroll::animating() || crate::scrollbar::animating())
+    }
+
     pub(crate) fn activation(&self) -> crate::events::activation::Activation {
         crate::events::activation::Activation {
             tree: self.tree.clone(),
@@ -7828,6 +7925,31 @@ impl GpuixView {
             routing: self.routing.clone(),
         }
     }
+}
+
+/// The elements with a motion that runs at `now`, see `retain::Sources::motion`.
+fn running_motion(
+    motion_states: &HashMap<u64, crate::motion::MotionState>,
+    animations: &crate::motion::CssAnimations,
+    keyframes: &crate::motion::KeyframesRegistry,
+    now: web_time::Instant,
+) -> Vec<u64> {
+    motion_states
+        .iter()
+        .filter(|(_, state)| state.is_animating(now))
+        .map(|(id, _)| *id)
+        .chain(animations.svg_shapes(keyframes))
+        .collect()
+}
+
+/// A unit built to be painted again, see `GpuixView::build_unit`.
+pub(crate) struct ScratchUnit {
+    /// The id the retained root of the unit has in the frame.
+    pub id: gpui::ElementId,
+    pub element: gpui::AnyElement,
+    /// What the element writes into the registries when it is prepainted and painted, see
+    /// `Tapes::same_as_recorded`.
+    pub tape: crate::tape::SharedTape,
 }
 
 /// Whether an element can be left alone while nobody sees it, see `retain::Sources::dormant`.
@@ -7842,28 +7964,46 @@ struct Dormancy<'a> {
 
 impl Dormancy<'_> {
     fn holds(&self, id: u64) -> bool {
-        if !crate::automation::was_culled(self.window, id) {
-            return false;
-        }
-        let Some(element) = self.tree.elements.get(&id) else {
-            return false;
-        };
-        // A span is painted by its paragraph, an `<svg>` and its shapes by a raster, and a `layout`
-        // element glides between boxes: none is an element whose frame is only paint.
-        if element.element_type == "span"
-            || crate::custom_elements::svg_tree::is_svg_element(self.tree, element)
-            || element.custom_props().contains_key("layout")
-        {
-            return false;
-        }
-        self.animations.paints_only(id, self.keyframes)
-            && self.transitions.paints_only(id)
-            && self.motion_states.get(&id).is_none_or(crate::motion::MotionState::paints_only)
-            && element
-                .custom_props()
-                .get("motionValues")
-                .is_none_or(crate::motion::MotionValueStore::binding_paints_only)
+        crate::automation::was_culled(self.window, id)
+            && self.tree.elements.get(&id).is_some_and(|element| {
+                runs_paint_only(
+                    self.tree,
+                    element,
+                    self.animations,
+                    self.transitions,
+                    self.motion_states,
+                    self.keyframes,
+                )
+            })
     }
+}
+
+/// Whether everything that runs on the element only changes what it paints, so that a frame
+/// that builds it again in place of the one before changes nothing it lays out.
+fn runs_paint_only(
+    tree: &crate::retained_tree::RetainedTree,
+    element: &crate::retained_tree::RetainedElement,
+    animations: &crate::motion::CssAnimations,
+    transitions: &crate::motion::CssTransitions,
+    motion_states: &HashMap<u64, crate::motion::MotionState>,
+    keyframes: &crate::motion::KeyframesRegistry,
+) -> bool {
+    let id = element.id;
+    // A span is painted by its paragraph, an `<svg>` and its shapes by a raster, and a `layout`
+    // element glides between boxes: none is an element whose frame is only paint.
+    if element.element_type == "span"
+        || crate::custom_elements::svg_tree::is_svg_element(tree, element)
+        || element.custom_props().contains_key("layout")
+    {
+        return false;
+    }
+    animations.paints_only(id, keyframes)
+        && transitions.paints_only(id)
+        && motion_states.get(&id).is_none_or(crate::motion::MotionState::paints_only)
+        && element
+            .custom_props()
+            .get("motionValues")
+            .is_none_or(crate::motion::MotionValueStore::binding_paints_only)
 }
 
 impl GpuixView {
@@ -8096,19 +8236,14 @@ impl gpui::Render for GpuixView {
             links: crate::accessibility::links::take_changed(),
             commanded,
             customs: self.custom_registry.retain_states(),
-            motion: self
-                .motion_states
-                .iter()
-                .filter(|(_, state)| state.is_animating(now))
-                .map(|(id, _)| *id)
-                .chain(self.css_animations.svg_shapes(&self.keyframes))
-                .collect(),
+            motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
             lazy_builds: window.retained_counters().lazy_builds,
             relocations: window.retained_counters().relocations,
             reference: window.is_retention_reference(),
+            layout_only: window.is_layout_pass(),
         });
         // The elements left dormant keep their animations on time without a build: their clocks
         // move here, and what they ask of the window goes to a tick that draws nothing.
@@ -8122,59 +8257,30 @@ impl gpui::Render for GpuixView {
         }
         let result = match tree.root_id {
             Some(root_id) => {
-                let mut ctx = BuildCtx {
-                    tree: &tree,
-                    event_callback: &callback,
-                    activation: &activation,
-                    focus_handles: &self.focus_handles,
-                    scroll_handles: &mut self.scroll_handles,
-                    custom_registry: &mut self.custom_registry,
-                    virtual_lists: &mut self.virtual_lists,
-                    motion_states: &mut self.motion_states,
-                    motion_values: &self.motion_values,
-                    css_transitions: &mut self.css_transitions,
-                    css_animations: &mut self.css_animations,
-                    contents_styles: &mut self.contents_styles,
-                    keyframes: &self.keyframes,
-                    measurements: &self.measurements,
-                    layout_flips: &self.layout_flips,
-                    svg_trees: &mut self.svg_trees,
-                    now,
-                    selection: self.selection.clone(),
-                    doc_path: Vec::new(),
-                    doc_hosts: Arc::from([]),
-                    inline_line: None,
-                    inherited: Inherited::root(
-                        &theme,
-                        window.appearance(),
-                        self.frameless,
-                        window.viewport_size(),
-                    ),
-                    highlights: &mut self.highlights,
-                    paint_reports: &self.paint_reports,
-                    containers: &self.containers,
-                    highlight_events: &mut highlight_events,
-                    focus_styles,
-                    control_styles: Default::default(),
-                    pointer: &pointer,
-                    contents_overlay: None,
-                    contents_key: 0,
-                    contents_dynamic: 0,
-                    anchor_scope: None,
-                    stacking_root: true,
-                    stacking_item: false,
-                    atomic_root: false,
-                    atomic_extracted: None,
-                    atomic_height_definite: false,
-                    containing_heights: Vec::new(),
-                    baseline_probe: None,
-                    collapsed: Default::default(),
-                    text_box_trim: Default::default(),
-                    subtree: crate::layout::cull::Subtree::empty(),
-                    scroller: None,
-                    retain: &mut self.retain,
-                    tapes: &self.tapes,
-                };
+                let mut ctx = self.build_ctx(
+                    &tree,
+                    &callback,
+                    &activation,
+                    &pointer,
+                    &mut highlight_events,
+                    BuildStart {
+                        inherited: Inherited::root(
+                            &theme,
+                            window.appearance(),
+                            self.frameless,
+                            window.viewport_size(),
+                        ),
+                        doc_path: Vec::new(),
+                        doc_hosts: Arc::from([]),
+                        now,
+                        stacking_root: true,
+                        stacking_item: false,
+                        text_box_trim: Default::default(),
+                        focus_styles,
+                        control_styles: Default::default(),
+                        scroller: None,
+                    },
+                );
                 build_element(root_id, &mut ctx, window, cx)
             }
             None => gpui::Empty.into_any_element(),
@@ -8330,6 +8436,7 @@ fn build_element_in(
     cx: &mut gpui::Context<GpuixView>,
     prekeyed: Option<crate::retain::EnterKey>,
 ) -> gpui::AnyElement {
+    let mut unit = None;
     if let Some(known) = ctx.tree.elements.get(&id) {
         let plain = ctx.baseline_probe.is_none()
             && ctx.inline_line.is_none()
@@ -8337,6 +8444,15 @@ fn build_element_in(
             && ctx.containing_heights.is_empty()
             && ctx.atomic_extracted.is_none()
             && !crate::text::atomic::is_collecting();
+        let boxed = !matches!(
+            crate::layout::table::part(known),
+            Some(
+                crate::layout::table::Part::RowGroup(_)
+                    | crate::layout::table::Part::Row
+                    | crate::layout::table::Part::Column
+                    | crate::layout::table::Part::ColumnGroup
+            )
+        );
         let skip = ctx.retain.enter(crate::retain::Entry {
             id,
             revision: known.subtree_revision,
@@ -8354,15 +8470,7 @@ fn build_element_in(
                 .as_deref()
                 .filter(|style| style.container_rules.is_some() || crate::layout::container::declared(style).is_some())
                 .map(|_| ctx.containers.key(id)),
-            boxed: !matches!(
-                crate::layout::table::part(known),
-                Some(
-                    crate::layout::table::Part::RowGroup(_)
-                        | crate::layout::table::Part::Row
-                        | crate::layout::table::Part::Column
-                        | crate::layout::table::Part::ColumnGroup
-                )
-            ),
+            boxed,
             prekeyed,
             scroller: ctx.scroller,
             costly: known.content.is_some()
@@ -8375,6 +8483,11 @@ fn build_element_in(
             ctx.anchor_scope = None;
             return retained_root(id, skip, ctx, window, cx);
         }
+        unit = ctx.retain.begin_unit(plain && boxed && prekeyed.is_none()).map(|enter| FrameEnv {
+            start: BuildStart::of(ctx),
+            enter,
+            relocatable: false,
+        });
     }
     // After the retained decision: what the `display: contents` ancestors pass down is covered by
     // `contents_key`, and a deferred build of the subtree enters it again.
@@ -8383,29 +8496,83 @@ fn build_element_in(
     if let Some(outside) = outside {
         ctx.inherited = outside;
     }
+    let unit = unit.and_then(|env| ctx.retain.end_unit().map(|subtree| (env, subtree)));
     if ctx.tree.elements.contains_key(&id) {
         ctx.retain.exit();
     }
     // Every style resolves while its element is built, and a virtual-list row is
     // built in list layout, so this is the one place that sees both.
     crate::background_images::pump(window, cx);
-    element
+    match unit {
+        Some((env, subtree)) => unit_root(id, env, subtree, element, ctx),
+        None => element,
+    }
 }
 
-/// What a deferred build needs of the build around the element, which is over by then.
-pub(crate) struct FrameEnv {
+/// What the build of an element starts from, as the build around it hands it down.
+#[derive(Clone)]
+pub(crate) struct BuildStart {
     inherited: Inherited,
     doc_path: Vec<u32>,
+    doc_hosts: Arc<[crate::text::selection::Host]>,
     now: web_time::Instant,
     stacking_root: bool,
     stacking_item: bool,
     text_box_trim: gpui::TextBoxTrim,
-    enter: crate::retain::EnterKey,
     focus_styles: crate::focus::FocusStyles,
     control_styles: crate::retained_tree::ControlStyles,
     scroller: Option<crate::retain::Scroller>,
+}
+
+impl BuildStart {
+    /// What `ctx` hands the element it is about to build, left as it is: the element takes the
+    /// flags itself.
+    fn of(ctx: &BuildCtx) -> Self {
+        Self {
+            inherited: ctx.inherited.clone(),
+            doc_path: ctx.doc_path.clone(),
+            doc_hosts: ctx.doc_hosts.clone(),
+            now: ctx.now,
+            stacking_root: ctx.stacking_root,
+            stacking_item: ctx.stacking_item,
+            text_box_trim: ctx.text_box_trim,
+            focus_styles: ctx.focus_styles.clone(),
+            control_styles: ctx.control_styles.clone(),
+            scroller: ctx.scroller,
+        }
+    }
+}
+
+/// What a build of a subtree after the frame needs of the build around the element, which is
+/// over by then.
+#[derive(Clone)]
+pub(crate) struct FrameEnv {
+    start: BuildStart,
+    enter: crate::retain::EnterKey,
     /// Whether the subtree is recorded to be put elsewhere by its scroller.
     relocatable: bool,
+}
+
+#[cfg(test)]
+impl FrameEnv {
+    pub(crate) fn for_test(inherited: Inherited, enter: crate::retain::EnterKey, now: web_time::Instant) -> Self {
+        Self {
+            start: BuildStart {
+                inherited,
+                doc_path: Vec::new(),
+                doc_hosts: Arc::from([]),
+                now,
+                stacking_root: false,
+                stacking_item: false,
+                text_box_trim: Default::default(),
+                focus_styles: Default::default(),
+                control_styles: Default::default(),
+                scroller: None,
+            },
+            enter,
+            relocatable: false,
+        }
+    }
 }
 
 /// The element standing for a subtree the frame found unchanged. gpui builds the subtree from
@@ -8434,31 +8601,43 @@ fn retained_root(
     }
     crate::background_images::pump(window, cx);
     ctx.subtree.merge(skip.subtree);
-    let env = FrameEnv {
-        inherited: ctx.inherited.clone(),
-        doc_path: ctx.doc_path.clone(),
-        now: ctx.now,
-        stacking_root: std::mem::take(&mut ctx.stacking_root),
-        stacking_item: std::mem::take(&mut ctx.stacking_item),
-        text_box_trim: std::mem::take(&mut ctx.text_box_trim),
-        enter: skip.enter,
-        focus_styles: ctx.focus_styles.clone(),
-        control_styles: ctx.control_styles.clone(),
-        scroller: ctx.scroller,
-        relocatable: skip.overscan.is_some(),
-    };
+    let start = BuildStart::of(ctx);
+    ctx.stacking_root = false;
+    ctx.stacking_item = false;
+    ctx.text_box_trim = Default::default();
+    let env = FrameEnv { start, enter: skip.enter, relocatable: skip.overscan.is_some() };
     let view = cx.weak_entity();
-    let tapes = ctx.tapes.clone();
-    let measurements = ctx.measurements.clone();
     let mut retained = gpui::retained(
-        gpui::ElementId::NamedInteger(gpui::SharedString::new_static("gpuix-retained"), id),
+        retained_id(id),
         skip.token,
         move |window, cx| {
             view.update(cx, |view, cx| view.build_subtree(id, env, window, cx))
                 .expect("the view of a window lives as long as the window draws")
         },
     )
-    .on_replay_translated(move |phase, delta, window, _| {
+    .on_replay_translated(replay_hook(id, ctx.tapes.clone(), ctx.measurements.clone()));
+    if let Some(overscan) = skip.overscan {
+        retained = retained.relocatable(overscan);
+    }
+    retained = retained.cull_outset(skip.subtree.outset());
+    if let Some(z) = skip.lift_z {
+        retained = retained.lift_z(z);
+    }
+    retained.into_any_element()
+}
+
+pub(crate) fn retained_id(id: u64) -> gpui::ElementId {
+    gpui::ElementId::NamedInteger(gpui::SharedString::new_static("gpuix-retained"), id)
+}
+
+/// What a replay of the retained root `id` does outside the frame: the registries it wrote are
+/// written again from its tape.
+fn replay_hook(
+    id: u64,
+    tapes: crate::tape::Tapes,
+    measurements: crate::motion::measure::Measurements,
+) -> impl Fn(gpui::RetainedPhase, gpui::Point<gpui::Pixels>, &mut gpui::Window, &mut gpui::App) + 'static {
+    move |phase, delta, window, _| {
         let phase = match phase {
             gpui::RetainedPhase::Prepaint => {
                 measurements.republish_parent_content(id, window);
@@ -8475,14 +8654,36 @@ fn retained_root(
             gpui::RetainedPhase::LiftedPaint(rel) => crate::tape::Phase::Lifted(rel),
         };
         tapes.replay(id, phase, delta);
-    });
-    if let Some(overscan) = skip.overscan {
-        retained = retained.relocatable(overscan);
     }
-    retained = retained.cull_outset(skip.subtree.outset());
-    if let Some(z) = skip.lift_z {
-        retained = retained.lift_z(z);
-    }
+}
+
+/// `element`, just built whole as the unit `id` (see `Retain::begin_unit`), as a patchable retained
+/// root that is recorded in every frame and replayed in none, for gpui to leave what a tick needs
+/// to repaint it alone: its key is not the one of the frame before. The root hands over the
+/// element built, and keeps `env` for building it again.
+fn unit_root(
+    id: u64,
+    env: FrameEnv,
+    subtree: crate::layout::cull::Subtree,
+    element: gpui::AnyElement,
+    ctx: &mut BuildCtx,
+) -> gpui::AnyElement {
+    use gpui::IntoElement;
+
+    let tapes = ctx.tapes.clone();
+    let hook = replay_hook(id, tapes.clone(), ctx.measurements.clone());
+    let retained = gpui::retained(retained_id(id), ctx.retain.unit_key(), move |window, _| {
+        if !window.retention_records() {
+            return element;
+        }
+        let tape = crate::tape::SharedTape::default();
+        tapes.set(id, tape.clone());
+        crate::tape::Taped::new(element, tape).into_any_element()
+    })
+    .on_replay_translated(hook)
+    .cull_outset(subtree.outset())
+    .patchable();
+    ctx.retain.add_unit(crate::retain::Unit { id, env });
     retained.into_any_element()
 }
 
@@ -8923,6 +9124,16 @@ fn build_element_unpumped(
     );
     ctx.retain.measurement(animated.measurement.as_ref());
     ctx.retain.dynamic_bits(animated.dynamic);
+    if animated.dynamic & crate::retain::Dynamic::OWN != 0 {
+        ctx.retain.paints_only(runs_paint_only(
+            tree,
+            element,
+            ctx.css_animations,
+            ctx.css_transitions,
+            ctx.motion_states,
+            ctx.keyframes,
+        ));
+    }
     if layout_source.is_some() {
         ctx.retain.exclude(crate::retain::Exclusion::LayoutAnimation);
     }

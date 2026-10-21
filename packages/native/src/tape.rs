@@ -18,7 +18,7 @@
 //! those are [`BuildEffect`]s, kept by `retain` with the record of the subtree and applied when a
 //! frame plans to skip it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Bounds, Edges, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Point, Window};
@@ -84,9 +84,33 @@ pub(crate) struct Tape {
     prepaint: Vec<Entry>,
     paint: Vec<Entry>,
     lifted: Vec<Vec<Entry>>,
+    /// The writes made while it records are kept and not made, see [`Tape::capturing`].
+    capture_only: bool,
 }
 
 impl Tape {
+    /// A tape for a subtree that is prepainted and painted only to see what it would write: the
+    /// writes are on the tape and not in the registries, which hold what the frame before made of
+    /// the subtree. [`Tape::same_writes`] says whether the frame would have made the same.
+    pub(crate) fn capturing() -> SharedTape {
+        Rc::new(RefCell::new(Tape { capture_only: true, ..Tape::default() }))
+    }
+
+    /// Whether `other` holds the writes this does, phase by phase, in the same order, at the same
+    /// places.
+    pub(crate) fn same_writes(&self, other: &Tape) -> bool {
+        fn same(left: &[Entry], right: &[Entry]) -> bool {
+            left.len() == right.len()
+                && left.iter().zip(right).all(|((left, left_offset), (right, right_offset))| {
+                    left.in_layout() == right.in_layout() && left.describe(*left_offset) == right.describe(*right_offset)
+                })
+        }
+        same(&self.prepaint, &other.prepaint)
+            && same(&self.paint, &other.paint)
+            && self.lifted.len() == other.lifted.len()
+            && self.lifted.iter().zip(&other.lifted).all(|(left, right)| same(left, right))
+    }
+
     fn of(&mut self, phase: Phase) -> &mut Vec<Entry> {
         match phase {
             Phase::Prepaint => &mut self.prepaint,
@@ -107,6 +131,7 @@ impl Tape {
     /// Writes again what `phase` of the subtree wrote, `delta` from where it wrote it. A subtree
     /// inside another that is being recorded is part of its tape too.
     pub(crate) fn replay(&self, phase: Phase, delta: Point<Pixels>) {
+        debug_assert!(!is_capturing(), "a subtree that is only captured holds no subtree to replay");
         let effects = match phase {
             // A pass that only lays out records no tape, so this is not part of one. It makes the
             // writes of prepaint, and those of paint and of the elements handed to the stacking
@@ -203,6 +228,15 @@ pub(crate) type Tapes = Rc<TapeStore>;
 impl TapeStore {
     pub(crate) fn set(&self, root: u64, tape: SharedTape) {
         self.tapes.borrow_mut().insert(root, tape);
+    }
+
+    /// Whether `captured`, the tape of a subtree prepainted and painted again, holds the writes
+    /// that the tape of the build of `root` the frame was recorded from holds.
+    pub(crate) fn same_as_recorded(&self, root: u64, captured: &SharedTape) -> bool {
+        self.tapes
+            .borrow()
+            .get(&root)
+            .is_some_and(|recorded| captured.borrow().same_writes(&recorded.borrow()))
     }
 
     /// Replays what the last build of `root` wrote in `phase`, `delta` from where it wrote it.
@@ -304,6 +338,14 @@ thread_local! {
     /// The subtrees being prepainted or painted, innermost last. A write belongs to the tape of
     /// each: a subtree inside another is part of it.
     static RECORDING: RefCell<Vec<Recording>> = const { RefCell::new(Vec::new()) };
+    /// How many of them are on a tape that [captures](Tape::capturing).
+    static CAPTURING: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Whether the writes being made are only noted, see [`Tape::capturing`]. For a registry that is
+/// written beside the tape, outside [`write`], to leave alone what the frame before made.
+pub(crate) fn is_capturing() -> bool {
+    CAPTURING.get() > 0
 }
 
 /// Makes a registry write with `apply`, and notes it on the tape of the subtree being prepainted
@@ -332,7 +374,9 @@ fn write_with<D: 'static>(
     describe: fn(&D, Point<Pixels>) -> String,
     in_layout: bool,
 ) {
-    apply(&data, Point::default());
+    if !is_capturing() {
+        apply(&data, Point::default());
+    }
     RECORDING.with(|recordings| {
         let recordings = recordings.borrow();
         if recordings.is_empty() {
@@ -347,15 +391,21 @@ fn write_with<D: 'static>(
 
 /// Puts `tape` under `phase` for as long as it lives. A guard, so that an unwinding paint does not
 /// leave a stale tape for the next frame's unrelated writes.
-struct Recorder;
+struct Recorder {
+    capturing: bool,
+}
 
 impl Recorder {
     fn begin(tape: &SharedTape, phase: Phase) -> Self {
+        let capturing = tape.borrow().capture_only;
         tape.borrow_mut().of(phase).clear();
         RECORDING.with(|recordings| {
             recordings.borrow_mut().push(Recording { tape: tape.clone(), phase });
         });
-        Self
+        if capturing {
+            CAPTURING.set(CAPTURING.get() + 1);
+        }
+        Self { capturing }
     }
 }
 
@@ -364,6 +414,9 @@ impl Drop for Recorder {
         RECORDING.with(|recordings| {
             recordings.borrow_mut().pop();
         });
+        if self.capturing {
+            CAPTURING.set(CAPTURING.get() - 1);
+        }
     }
 }
 
@@ -485,9 +538,83 @@ pub(crate) fn build_effects_since(start: usize) -> Vec<BuildEffect> {
     BUILD_EFFECTS.with(|effects| effects.borrow().get(start..).map_or_else(Vec::new, <[BuildEffect]>::to_vec))
 }
 
+/// Forgets the notes made from `len`: a build that is not a session's (see
+/// `GpuixView::build_unit`) leaves the list as it found it.
+pub(crate) fn truncate_build_effects(len: usize) {
+    BUILD_EFFECTS.with(|effects| effects.borrow_mut().truncate(len));
+}
+
 /// Forgets every note: the frame (or the deferred build) that started a session starts the list
 /// over, since a record keeps its own slice.
 pub(crate) fn clear_build_effects() {
     BUILD_EFFECTS.with(|effects| effects.borrow_mut().clear());
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    thread_local! {
+        static REGISTRY: Cell<i32> = const { Cell::new(0) };
+    }
+
+    fn add(amount: i32) {
+        write(amount, |amount, _| REGISTRY.set(REGISTRY.get() + amount), |amount, _| format!("add {amount}"));
+    }
+
+    fn record(tape: &SharedTape, writes: &[i32]) {
+        let _recording = Recorder::begin(tape, Phase::Paint);
+        for amount in writes {
+            add(*amount);
+        }
+    }
+
+    #[test]
+    fn a_tape_that_captures_notes_the_writes_and_makes_none() {
+        REGISTRY.set(0);
+        let recorded = SharedTape::default();
+        record(&recorded, &[2, 3]);
+        assert_eq!(REGISTRY.get(), 5);
+
+        let captured = Tape::capturing();
+        record(&captured, &[2, 3]);
+        assert_eq!(REGISTRY.get(), 5, "a capture leaves the registry as the frame made it");
+        assert!(!is_capturing(), "and only while it records");
+        assert!(captured.borrow().same_writes(&recorded.borrow()));
+
+        let other = Tape::capturing();
+        record(&other, &[2, 4]);
+        assert!(!other.borrow().same_writes(&recorded.borrow()), "a write that differs");
+        let fewer = Tape::capturing();
+        record(&fewer, &[2]);
+        assert!(!fewer.borrow().same_writes(&recorded.borrow()), "a write that is missing");
+        add(1);
+        assert_eq!(REGISTRY.get(), 6, "a write outside any capture is made");
+    }
+
+    #[test]
+    fn the_tape_of_a_root_is_compared_with_the_capture_of_a_build_of_it() {
+        let tapes = TapeStore::default();
+        let recorded = SharedTape::default();
+        record(&recorded, &[7]);
+        tapes.set(1, recorded);
+        let same = Tape::capturing();
+        record(&same, &[7]);
+        assert!(tapes.same_as_recorded(1, &same));
+        let different = Tape::capturing();
+        record(&different, &[8]);
+        assert!(!tapes.same_as_recorded(1, &different));
+        assert!(!tapes.same_as_recorded(2, &same), "a root with no recording has nothing to be the same as");
+    }
+
+    #[test]
+    fn the_notes_of_a_build_that_is_not_a_frames_are_taken_back() {
+        clear_build_effects();
+        note_build(BuildEffect::Measured(1));
+        let start = build_effects_len();
+        note_build(BuildEffect::Measured(2));
+        truncate_build_effects(start);
+        assert_eq!(build_effects_len(), 1);
+    }
+}

@@ -48,6 +48,10 @@ pub struct BuildCounters {
     pub retainable_elements_large: f64,
     /// Elements judged unchanged that were built differently. Always 0 unless `setRetainVerify`.
     pub retain_mismatches: f64,
+    /// Subtrees built whole as units: running paint-only animations a tick can build again alone.
+    pub units_built: f64,
+    /// Subtrees that were that but hold more elements than a unit may.
+    pub units_oversized: f64,
     /// A JSON object: elements by the reason they are, or are not, in a retainable subtree, for
     /// the builds since the reset. `retained` is the share that is; every built element is counted
     /// once.
@@ -796,6 +800,8 @@ impl TestGpuixRenderer {
             retainable_elements: counts.retainable_elements as f64,
             retainable_elements_large: counts.retainable_elements_large as f64,
             retain_mismatches: counts.retain_mismatches as f64,
+            units_built: counts.units_built as f64,
+            units_oversized: counts.units_oversized as f64,
             retain_reasons: serde_json::Value::Object(
                 crate::perf_counters::retain_reasons()
                     .into_iter()

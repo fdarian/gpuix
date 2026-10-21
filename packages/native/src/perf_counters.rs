@@ -15,6 +15,8 @@ thread_local! {
     static RETAINABLE_ROOTS: Cell<u64> = const { Cell::new(0) };
     static RETAINABLE_ELEMENTS_LARGE: Cell<u64> = const { Cell::new(0) };
     static RETAIN_MISMATCHES: Cell<u64> = const { Cell::new(0) };
+    static UNITS_BUILT: Cell<u64> = const { Cell::new(0) };
+    static UNITS_OVERSIZED: Cell<u64> = const { Cell::new(0) };
     /// Elements by the reason they are, or are not, in a subtree a retained replay could reuse.
     static RETAIN_SLOTS: RefCell<[u64; crate::retain::SLOTS]> = const { RefCell::new([0; crate::retain::SLOTS]) };
 }
@@ -33,6 +35,10 @@ pub(crate) struct Counts {
     pub retainable_elements_large: u64,
     /// Elements judged unchanged that were built differently; none unless `retain` is verifying.
     pub retain_mismatches: u64,
+    /// Units built whole (subtrees a tick could build again alone), see `retain::Unit`.
+    pub units_built: u64,
+    /// Elements that would have been the root of a unit, but hold more elements than a unit may.
+    pub units_oversized: u64,
 }
 
 /// A frame left `elements` unbuilt because it found them unchanged.
@@ -51,6 +57,14 @@ pub(crate) fn retained(roots: u64, large_elements: u64) {
 
 pub(crate) fn retain_mismatch() {
     RETAIN_MISMATCHES.with(|count| count.set(count.get() + 1));
+}
+
+pub(crate) fn unit_built() {
+    UNITS_BUILT.with(|count| count.set(count.get() + 1));
+}
+
+pub(crate) fn unit_oversized() {
+    UNITS_OVERSIZED.with(|count| count.set(count.get() + 1));
 }
 
 pub(crate) fn retain_slot(slot: usize, elements: u64) {
@@ -90,6 +104,8 @@ pub(crate) fn snapshot() -> Counts {
         retainable_elements: RETAIN_SLOTS.with(|slots| slots.borrow()[crate::retain::RETAINED]),
         retainable_elements_large: RETAINABLE_ELEMENTS_LARGE.with(Cell::get),
         retain_mismatches: RETAIN_MISMATCHES.with(Cell::get),
+        units_built: UNITS_BUILT.with(Cell::get),
+        units_oversized: UNITS_OVERSIZED.with(Cell::get),
     }
 }
 
@@ -101,6 +117,8 @@ pub(crate) fn reset() {
     RETAINABLE_ROOTS.with(|count| count.set(0));
     RETAINABLE_ELEMENTS_LARGE.with(|count| count.set(0));
     RETAIN_MISMATCHES.with(|count| count.set(0));
+    UNITS_BUILT.with(|count| count.set(0));
+    UNITS_OVERSIZED.with(|count| count.set(0));
     RETAIN_SLOTS.with(|slots| *slots.borrow_mut() = [0; crate::retain::SLOTS]);
 }
 

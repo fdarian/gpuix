@@ -106,6 +106,11 @@ pub(crate) fn take_changed() -> Vec<u64> {
     CHANGED.with(|changed| std::mem::take(&mut *changed.borrow_mut()))
 }
 
+/// [`take_changed`], leaving them for the frame that takes them.
+pub(crate) fn peek_changed() -> Vec<u64> {
+    CHANGED.with(|changed| changed.borrow().clone())
+}
+
 /// Recompute the links when the tree changed since the last call. Call before
 /// building a frame, and again before any later build of part of the same
 /// tree (virtual list rows), which may see a newer tree.
