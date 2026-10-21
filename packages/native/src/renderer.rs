@@ -8615,7 +8615,7 @@ fn build_element_in(
     if let Some(outside) = outside {
         ctx.inherited = outside;
     }
-    let unit = unit.and_then(|env| ctx.retain.end_unit().map(|subtree| (env, subtree)));
+    let unit = unit.and_then(|env| ctx.retain.end_unit().map(|(subtree, lift_z)| (env, subtree, lift_z)));
     if ctx.tree.elements.contains_key(&id) {
         ctx.retain.exit();
     }
@@ -8623,7 +8623,7 @@ fn build_element_in(
     // built in list layout, so this is the one place that sees both.
     crate::background_images::pump(window, cx);
     match unit {
-        Some((env, subtree)) => unit_root(id, env, subtree, element, ctx),
+        Some((env, subtree, lift_z)) => unit_root(id, env, subtree, lift_z, element, ctx),
         None => element,
     }
 }
@@ -8784,6 +8784,7 @@ fn unit_root(
     id: u64,
     env: FrameEnv,
     subtree: crate::layout::cull::Subtree,
+    lift_z: Option<i32>,
     element: gpui::AnyElement,
     ctx: &mut BuildCtx,
 ) -> gpui::AnyElement {
@@ -8791,7 +8792,7 @@ fn unit_root(
 
     let tapes = ctx.tapes.clone();
     let hook = replay_hook(id, tapes.clone(), ctx.measurements.clone());
-    let retained = gpui::retained(retained_id(id), ctx.retain.unit_key(), move |window, _| {
+    let mut retained = gpui::retained(retained_id(id), ctx.retain.unit_key(), move |window, _| {
         if !window.retention_records() {
             return element;
         }
@@ -8800,8 +8801,11 @@ fn unit_root(
         crate::tape::Taped::new(element, tape).into_any_element()
     })
     .on_replay_translated(hook)
-    .cull_outset(subtree.outset())
-    .patchable();
+    .cull_outset(subtree.outset());
+    if let Some(z) = lift_z {
+        retained = retained.lift_z(z);
+    }
+    retained = retained.patchable();
     ctx.retain.add_unit(crate::retain::Unit { id, env });
     retained.into_any_element()
 }

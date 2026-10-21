@@ -1421,7 +1421,10 @@ impl Retain {
         }
         let record = self.records.get(&node.id)?;
         let only_motion = record.vol.dynamic & Dynamic::OWN != 0 && record.vol.dynamic & !Dynamic::OWN == 0;
-        if !record.eligible || record.lifts || record.lift_z.is_some() || !only_motion || !record.paints_only {
+        // `Record::lifts` is true of every lifted element: whether it holds a descendant that lifts
+        // out of it is for `end_unit` to find in the build.
+        let lifts_out = record.lifts && record.lift_z.is_none();
+        if !record.eligible || lifts_out || !only_motion || !record.paints_only {
             return None;
         }
         if record.size > UNIT_MAX_ELEMENTS {
@@ -1435,9 +1438,13 @@ impl Retain {
     /// The build of the element that `begin_unit` made a unit is over: whether what it built is
     /// one, which is judged by the build and not by the record of the build before. The element
     /// and what it holds are exactly the nodes since, and a unit holds none that is excluded, that
-    /// scrolls (a scroll bypasses the tape that a patch compares), is lifted out of it, or
-    /// is positioned against something outside it.
-    pub(crate) fn end_unit(&mut self) -> Option<crate::layout::cull::Subtree> {
+    /// scrolls (a scroll bypasses the tape that a patch compares), lifts something out of it, or
+    /// is positioned against something outside it. The element itself may be lifted, into the
+    /// stacking context around it, as an element with an opacity is: the `z` it is lifted at is
+    /// returned with the subtree, for the unit to be handed over as gpui wants it, and what it holds
+    /// must be consumed by the context it forms, or there is none (a positioned element
+    /// without a `z-index`), and nothing in it is lifted.
+    pub(crate) fn end_unit(&mut self) -> Option<(crate::layout::cull::Subtree, Option<i32>)> {
         let at = *self.stack.last()?;
         if self.unit != Some(at) {
             return None;
@@ -1460,10 +1467,11 @@ impl Retain {
             if node.exclusion.is_some() || node.skipped.is_some() || node.vol.scroll != 0 {
                 return None;
             }
-            let lifts_out = node.lift_z.is_some() || (!node.forms_context && lifts[index]);
+            let lifts_below = !node.forms_context && lifts[index];
+            let lifts_out = node.lift_z.is_some() || lifts_below;
             let escaped = node.absolute || (!node.positioned && escapes[index]);
             if index == 0 {
-                if lifts_out || escaped {
+                if lifts_below || escaped {
                     return None;
                 }
                 break;
@@ -1473,7 +1481,7 @@ impl Retain {
             escapes[parent] |= escaped;
         }
         crate::perf_counters::unit_built();
-        Some(self.nodes[first].subtree)
+        Some((self.nodes[first].subtree, self.nodes[first].lift_z))
     }
 
     /// Keeps the unit built since `begin_unit` for the ticks that follow the frame.
@@ -4083,6 +4091,38 @@ mod tests {
         page.page(&[], Some(true), None);
         page.page(&[], Some(true), None);
         assert_eq!(page.ids(), vec![2]);
+    }
+
+    #[test]
+    fn a_lifted_element_is_a_unit_unless_it_lifts_what_is_in_it_out_with_it() {
+        // (the element forms a stacking context, something in it is lifted, whether it is a unit)
+        let cases = [
+            (true, false, true),
+            (false, false, true),
+            (true, true, true),
+            (false, true, false),
+        ];
+        for (forms_context, child_lifted, is_unit) in cases {
+            let mut page = Units::new();
+            let mut unit = None;
+            for _ in 0..3 {
+                page.frame(&[], false, |page| {
+                    page.element(1, None, |page| {
+                        unit = page.element(2, Some(true), |page| {
+                            page.retain.stacking(|| (Some(0), forms_context));
+                            page.element(4, None, |page| {
+                                if child_lifted {
+                                    page.retain.stacking(|| (Some(1), false));
+                                }
+                            });
+                        });
+                    });
+                });
+            }
+            let expected = is_unit.then_some(2);
+            assert_eq!(page.ids().first().copied(), expected, "context {forms_context}, lifted child {child_lifted}");
+            assert_eq!(unit, Some(is_unit), "context {forms_context}, lifted child {child_lifted}");
+        }
     }
 
     #[test]

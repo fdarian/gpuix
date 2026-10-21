@@ -10,6 +10,12 @@
  * built alone and its raster made again in the patched frame, when the document is small enough to be
  * rasterised in paint. A large one is rasterised by a job and is drawn whole, as before.
  *
+ * An element that is lifted into the stacking context around it is a unit too: one with an opacity
+ * below 1 (a skeleton pulse, a motion fade), a positioned one, one with a `z-index`, as long as nothing
+ * in it is lifted out of it. A loop that passes through opacity 1 is not lifted there, and the ticks
+ * that change that are drawn whole. A `position: absolute` element is placed against a containing block
+ * that gpui cannot tell is its parent, so it is drawn whole.
+ *
  * What cannot be patched is drawn whole, as before: an animation that moves a box, a large `<svg>`,
  * a tick in which the pointer moved or the tree was committed.
  *
@@ -41,6 +47,16 @@ defineKeyframes("afw-spin", {
   "0%": { strokeDasharray: "1 100", strokeDashoffset: 0 },
   "50%": { strokeDasharray: "60 100", strokeDashoffset: -20 },
   "100%": { strokeDasharray: "60 100", strokeDashoffset: -100 },
+})
+defineKeyframes("afw-breathe", {
+  "0%": { opacity: 0.8 },
+  "50%": { opacity: 0.3 },
+  "100%": { opacity: 0.8 },
+})
+defineKeyframes("afw-skeleton", {
+  "0%": { opacity: 1 },
+  "50%": { opacity: 0.4 },
+  "100%": { opacity: 1 },
 })
 defineKeyframes("afw-grow", { from: { width: 40 }, to: { width: 80 } })
 defineKeyframes("afw-fade-in", {
@@ -168,11 +184,87 @@ const motionHead = (
   </motion.div>
 )
 
-/** Below 1 an element is a stacking context: gpui lifts it out of the recording around it, which a unit cannot be. */
-const opacityHead = (
-  <motion.div testId="animated" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.5, ease: "linear", repeat: Infinity }}>
-    <text style={{ fontSize: 20, color: "#222222" }}>animated</text>
+const motionOpacity = (
+  opacity: number[],
+  duration = 1.5,
+  children: React.ReactNode = <text style={{ fontSize: 20, color: "#222222" }}>animated</text>,
+) => (
+  <motion.div
+    testId="animated"
+    style={{ height: 24, backgroundColor: "#99ccff" }}
+    animate={{ opacity }}
+    transition={{ duration, ease: "linear", repeat: Infinity }}
+  >
+    {children}
   </motion.div>
+)
+
+/** Below 1 an element is a stacking context, lifted at 0 into the one around it. Between 0.3 and 0.8 it never leaves that. */
+const opacityHead = motionOpacity([0.8, 0.3, 0.8])
+
+/**
+ * The loop that passes through 1, where the element is no stacking context: the ticks at its ends are drawn whole.
+ * 1.6 s is 100 ticks of 16 ms, so that a tick lands on the instant the opacity is 1.
+ */
+const opacityDipHead = motionOpacity([1, 0.4, 1], 1.6)
+
+/** What a stacking context takes in is its own: a positioned child with a z-index is painted in it. */
+const opacityHoldingHead = motionOpacity(
+  [0.8, 0.3, 0.8],
+  1.5,
+  <div style={{ position: "relative", zIndex: 2, width: 60, height: 12, backgroundColor: "#cc3333" }}>
+    <text style={{ fontSize: 10, color: "#222222" }}>inside</text>
+  </div>,
+)
+
+const breatheHead = (
+  <div testId="animated" style={{ height: 24, backgroundColor: "#99ccff", animation: "afw-breathe 1.5s linear infinite" }}>
+    <text style={{ fontSize: 20, color: "#222222" }}>animated</text>
+  </div>
+)
+
+/** A skeleton placeholder: Tailwind's `animate-pulse` is this, opacity 1 at its ends. */
+const skeletonHead = (
+  <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 4 }}>
+    <div testId="animated" style={{ height: 16, width: 240, borderRadius: 4, backgroundColor: "#cccccc", animation: "afw-skeleton 1.6s linear infinite" }} />
+    <div style={{ height: 16, width: 180, borderRadius: 4, backgroundColor: "#cccccc" }} />
+  </div>
+)
+
+/** A box that is positioned without an index is lifted at 0 into the context around it, with nothing of its own to keep what is in it. */
+const relativeHead = (
+  <div testId="animated" style={{ position: "relative", height: 24, animation: "afw-pulse 1.5s linear infinite", color: "#000000" }}>
+    <text style={{ fontSize: 20 }}>animated</text>
+  </div>
+)
+
+const relativeIndexedHead = (
+  <div
+    testId="animated"
+    style={{ position: "relative", zIndex: 3, height: 24, animation: "afw-pulse 1.5s linear infinite", color: "#000000" }}
+  >
+    <text style={{ fontSize: 20 }}>animated</text>
+  </div>
+)
+
+/** An absolute badge in a relative card: the card is no unit, the badge is placed outside what it records. */
+const badgeHead = (
+  <div style={{ position: "relative", height: 40, width: 200, backgroundColor: "#eeeeee" }}>
+    <text style={{ fontSize: 16, color: "#222222" }}>card</text>
+    <div
+      testId="animated"
+      style={{
+        position: "absolute",
+        top: 4,
+        right: 4,
+        width: 20,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: "#cc3333",
+        animation: "afw-breathe 1.5s linear infinite",
+      }}
+    />
+  </div>
 )
 
 const widthHead = (
@@ -235,6 +327,11 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "a keyframes colour": colourHead(),
     "a native motion colour loop": motionHead,
     "an svg stroke dash loop": spinnerHead,
+    "a native motion opacity loop": opacityHead,
+    "a native motion opacity loop holding a positioned child": opacityHoldingHead,
+    "a keyframes opacity loop": breatheHead,
+    "a keyframes colour loop of a relative box": relativeHead,
+    "a keyframes colour loop of a relative box with a z-index": relativeIndexedHead,
   }
   for (const [name, head] of Object.entries(heads)) {
     counted(`does the work of one text on any page: ${name}`, async () => {
@@ -266,6 +363,11 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "a keyframes colour": colourHead(),
     "a native motion colour loop": motionHead,
     "an svg stroke dash loop": spinnerHead,
+    "a native motion opacity loop": opacityHead,
+    "a native motion opacity loop holding a positioned child": opacityHoldingHead,
+    "a keyframes opacity loop": breatheHead,
+    "a keyframes colour loop of a relative box": relativeHead,
+    "a keyframes colour loop of a relative box with a z-index": relativeIndexedHead,
   }
   for (const [name, head] of Object.entries(pictures)) {
     it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
@@ -325,8 +427,66 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     }
   })
 
-  counted("does not patch a native motion opacity loop, which is drawn whole as before", async () => {
-    const done = await ticksOf(opacityHead, 500)
+  // Opacity 1 is no stacking context, and a unit is lifted in the frame that recorded it or it is not. The tick at
+  // which the opacity is 1 is drawn whole, and so is the one after it, which records the lifted element again.
+  const dips = {
+    "a native motion opacity loop through 1": opacityDipHead,
+    "a keyframes skeleton pulse through 1": skeletonHead,
+  }
+  const LOOP_TICKS = 200
+  // 1.6 s loops of 16 ms ticks, 12 of them before the first counted: the instants of opacity 1 are the 88th and the 188th.
+  const WHOLE = [87, 88, 187, 188]
+  for (const [name, head] of Object.entries(dips)) {
+    counted(`patches every tick of a loop through opacity 1 but the two at 1: ${name}`, async () => {
+      const run = async (nodes: number) => {
+        const page = await mount(head, nodes)
+        try {
+          for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+          const done: Work[] = []
+          for (let frame = 0; frame < LOOP_TICKS; frame++) done.push(tick(page.renderer))
+          return done
+        } finally {
+          page.root.unmount()
+        }
+      }
+      const small = await run(500)
+      const large = await run(5000)
+      const whole = (done: Work[]) => done.flatMap((one, index) => (one.patchedFrames === 0 ? [index] : []))
+      expect(whole(small)).toEqual(WHOLE)
+      expect(whole(large)).toEqual(WHOLE)
+      for (const index of WHOLE) expect(small[index].elementsBuilt, `tick ${index} is built`).toBeGreaterThan(0)
+      for (let index = 0; index < LOOP_TICKS; index++) {
+        if (!WHOLE.includes(index)) expect(large[index], `tick ${index}`).toEqual(small[index])
+      }
+      expect(small[0].elementsBuilt).toBeLessThanOrEqual(3)
+    })
+
+    it.skipIf(!patching)(`shows the picture of a frame built whole at every instant around opacity 1: ${name}`, async () => {
+      const page = await mount(head, 500)
+      try {
+        const renderer = page.renderer
+        const file = name.replace(/\W+/g, "-")
+        for (let warm = 0; warm < WARM; warm++) tick(renderer)
+        for (let step = 0; step < 110; step++) {
+          tick(renderer)
+          if (step % 10 !== 0 && (step < 84 || step > 91)) continue
+          const patched = shot(renderer, `${file}-patched`)
+          renderer.setPatchEnabled(false)
+          tick(renderer, 0)
+          const whole = shot(renderer, `${file}-whole`)
+          renderer.setPatchEnabled(true)
+          expect(patched.equals(whole), `tick ${step}`).toBe(true)
+        }
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        page.root.unmount()
+      }
+    })
+  }
+
+  // gpuix puts `position: absolute` on gpui as absolute in an ancestor, which gpui keeps out of a recording.
+  counted("draws the opacity loop of an absolute badge in a relative card whole, as before", async () => {
+    const done = await ticksOf(badgeHead, 500)
     for (let index = 0; index < TICKS; index++) {
       expect(done[index].patchedFrames, `tick ${index}`).toBe(0)
       expect(done[index].elementsBuilt, `tick ${index}`).toBeGreaterThan(0)
