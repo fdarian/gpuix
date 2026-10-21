@@ -7993,6 +7993,7 @@ impl GpuixView {
             measured: self.measurements.peek_changed(),
             links: crate::accessibility::links::peek_changed(),
             commanded,
+            relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
@@ -8334,6 +8335,7 @@ impl gpui::Render for GpuixView {
         self.virtual_lists
             .retain(|id, _| tree.elements.contains_key(id));
         self.containers.retain(|id| tree.elements.contains_key(&id));
+        tree.relevance.retain(|id| tree.elements.contains_key(&id));
         // Only a destroyed element leaves these maps, and a sweep is a pass over every element in
         // them: one with a tape, one with an animation.
         let destroyed = tree.removals() != self.swept_at;
@@ -8387,6 +8389,7 @@ impl gpui::Render for GpuixView {
         self.measurements
             .prune(|id| tree.elements.contains_key(&id));
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
+        tree.relevance.set_focus_within(&focus_styles.within);
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let (motion_animating, motion_settled) =
@@ -8454,6 +8457,7 @@ impl gpui::Render for GpuixView {
             measured: self.measurements.take_changed(),
             links: crate::accessibility::links::take_changed(),
             commanded,
+            relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
@@ -8588,6 +8592,7 @@ impl gpui::Render for GpuixView {
                 .child(crate::observers::frame_sweep(
                     self.paint_reports.clone(),
                     tree_arc.clone(),
+                    tree.relevance.clone(),
                     callback.clone(),
                     observing,
                 ))
@@ -8690,11 +8695,7 @@ fn build_element_in(
             anchor_scope: ctx.anchor_scope.is_some(),
             text_box_trim: ctx.text_box_trim,
             plain,
-            container: known
-                .style
-                .as_deref()
-                .filter(|style| style.container_rules.is_some() || crate::layout::container::declared(style).is_some())
-                .map(|_| ctx.containers.key(id)),
+            container: container_key(known, ctx),
             boxed,
             prekeyed,
             scroller: ctx.scroller,
@@ -9951,6 +9952,25 @@ fn is_text_node(element: &crate::retained_tree::RetainedElement) -> bool {
         && element.events().is_empty()
 }
 
+/// What the build of `element` reads of the layout and the frames before that its key has to
+/// carry: the size layout gave it as a query container, and whether its `content-visibility`
+/// skips. Nothing above the element has them.
+fn container_key(element: &crate::retained_tree::RetainedElement, ctx: &BuildCtx) -> Option<u64> {
+    let container = element
+        .style
+        .as_deref()
+        .filter(|style| style.container_rules.is_some() || crate::layout::container::declared(style).is_some())
+        .map(|_| ctx.containers.key(element.id));
+    let auto = element.style.as_deref().is_some_and(|style| {
+        style.content_visibility == Some(crate::layout::content_visibility::ContentVisibility::Auto)
+    });
+    let visibility = ctx.tree.relevance.key(element.id, auto);
+    match (container, visibility) {
+        (Some(container), Some(visibility)) => Some(container ^ visibility.rotate_left(32)),
+        (container, visibility) => container.or(visibility),
+    }
+}
+
 /// The one builder for `<div>`, `<text>` and `<span>`.
 ///
 /// Both get the same stable GPUI id, so gpui keeps their interactive element
@@ -10006,20 +10026,34 @@ pub(crate) fn build_host_container(
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
     // After the container, whose size containment may leave an axis out: a skipped box has both.
-    let skipping_style = style.filter(|style| {
-        style
-            .content_visibility
-            .is_some_and(|value| crate::layout::content_visibility::skips(value, element.id))
-    });
-    let skipped = skipping_style.is_some();
-    if let Some(style) = skipping_style {
-        el = crate::layout::content_visibility::contain_skipped(el, element.id, style, &ctx.inherited.lengths);
+    let content_visibility = style.and_then(|style| style.content_visibility).unwrap_or_default();
+    let remembers_size = style.is_some_and(crate::layout::content_visibility::remembers_size);
+    let skipped = crate::layout::content_visibility::skips(&ctx.tree.relevance, content_visibility, element.id);
+    ctx.tree.relevance.built(
+        element.id,
+        content_visibility == crate::layout::content_visibility::ContentVisibility::Auto,
+        remembers_size,
+        skipped,
+    );
+    if skipped {
+        if let Some(style) = style {
+            el = crate::layout::content_visibility::contain_skipped(
+                el,
+                element.id,
+                style,
+                &ctx.inherited.lengths,
+                &ctx.tree.relevance,
+            );
+        }
         for id in ctx.retain.skip_content(ctx.tree, element.id) {
             ctx.css_animations.leave_dormant(id);
             ctx.css_transitions.leave_dormant(id);
         }
     } else {
         ctx.retain.show_content(element.id);
+    }
+    if remembers_size {
+        el = crate::layout::content_visibility::watch(el, element.id, ctx.tree.relevance.clone());
     }
 
     let collapsed_table = ctx.inherited.table.collapse
@@ -10181,6 +10215,14 @@ pub(crate) fn build_host_container(
     // The borders of a collapsed table are painted by the table over its cells.
     if ctx.inherited.table.collapse {
         ctx.subtree.block();
+    }
+    if content_visibility == crate::layout::content_visibility::ContentVisibility::Auto {
+        // An `auto` element in a culled subtree is known not to be near because the subtree is
+        // culled: that holds if the subtree is culled only past the margin.
+        ctx.subtree.reach(crate::layout::content_visibility::proximity_reach(
+            ctx.inherited.lengths.viewport_width,
+            ctx.inherited.lengths.viewport_height,
+        ));
     }
     if let Some(outset) = ctx.subtree.outset() {
         host = host.cullable(outset);

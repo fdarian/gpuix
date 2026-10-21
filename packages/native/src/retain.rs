@@ -623,6 +623,9 @@ pub(crate) struct Sources<'a> {
     /// The elements a Web Animations command touched since the frame before. A transition that had
     /// finished runs again after `play()`, and nothing in its last build said it could.
     pub commanded: Vec<u64>,
+    /// The elements with `content-visibility: auto` that are to show or skip their content
+    /// otherwise than their last build did (`layout::content_visibility::Relevance::pending`).
+    pub relevance: Vec<u64>,
     /// The state each custom element says it keeps for itself, see `CustomElement::retain_state`.
     pub customs: Vec<(u64, Option<u64>)>,
     /// The elements with a motion that is running.
@@ -1423,10 +1426,12 @@ impl Retain {
         self.debug.sources("measurement", sources.measured.iter().copied());
         self.debug.sources("link", sources.links.iter().copied());
         self.debug.sources("web-animation-command", sources.commanded.iter().copied());
+        self.debug.sources("content-visibility", sources.relevance.iter().copied());
         changed.extend(running);
         changed.extend(&sources.measured);
         changed.extend(&sources.links);
         changed.extend(&sources.commanded);
+        changed.extend(&sources.relevance);
         changed.extend(dynamic);
 
         seen.known = true;
@@ -1695,7 +1700,7 @@ impl Retain {
         if found.all {
             return Err(Unpatchable::Everything);
         }
-        if !found.sourced.is_empty() || !sources.measured.is_empty() || !sources.links.is_empty() || !sources.commanded.is_empty() {
+        if !found.sourced.is_empty() || !sources.measured.is_empty() || !sources.links.is_empty() || !sources.commanded.is_empty() || !sources.relevance.is_empty() {
             return Err(Unpatchable::Sourced);
         }
         let mut touched = FxHashSet::default();
@@ -2625,6 +2630,7 @@ mod tests {
             measured: Vec::new(),
             links: Vec::new(),
             commanded: Vec::new(),
+            relevance: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
@@ -2693,6 +2699,7 @@ mod tests {
         measured: Vec<u64>,
         links: Vec<u64>,
         commanded: Vec<u64>,
+        relevance: Vec<u64>,
         selection: u64,
     }
 
@@ -2715,6 +2722,7 @@ mod tests {
             measured: changes.measured,
             links: changes.links,
             commanded: changes.commanded,
+            relevance: changes.relevance,
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
@@ -2760,13 +2768,14 @@ mod tests {
 
     #[test]
     fn what_changed_in_a_pass_that_did_not_visit_an_element_is_found_by_the_pass_that_does() {
-        let changes: [(&str, fn() -> Changes); 6] = [
+        let changes: [(&str, fn() -> Changes); 7] = [
             ("hovered", || Changes { hovered: vec![1], ..Default::default() }),
             ("active", || Changes { active: vec![1], ..Default::default() }),
             ("focus within", || Changes { within: vec![1], ..Default::default() }),
             ("measured", || Changes { measured: vec![1], ..Default::default() }),
             ("links", || Changes { links: vec![1], ..Default::default() }),
             ("commanded", || Changes { commanded: vec![1], ..Default::default() }),
+            ("content-visibility", || Changes { relevance: vec![1], ..Default::default() }),
         ];
         for (name, change) in changes {
             let mut retain = Retain::new();
@@ -2829,6 +2838,7 @@ mod tests {
             measured: Vec::new(),
             links: Vec::new(),
             commanded: Vec::new(),
+            relevance: Vec::new(),
             customs: Vec::new(),
             motion: motion.to_vec(),
             dormant: &|_| false,
@@ -2944,6 +2954,7 @@ mod tests {
             measured: Vec::new(),
             links: Vec::new(),
             commanded: Vec::new(),
+            relevance: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
@@ -4083,6 +4094,7 @@ mod tests {
             measured: Vec::new(),
             links: Vec::new(),
             commanded: Vec::new(),
+            relevance: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,

@@ -572,6 +572,9 @@ pub struct RetainedTree {
     pub styles: StyleTable,
     /// What each built element was painted with, for the walks that read the tree.
     pub(crate) resolved: std::cell::RefCell<crate::resolved_style::ResolvedStyles>,
+    /// Whether the elements with `content-visibility: auto` skip their content, and the sizes
+    /// elements remember.
+    pub(crate) relevance: crate::layout::content_visibility::Relevance,
     /// The style layer under every element's own style, a CSS `* { ... }` rule.
     universal: Option<Arc<StyleDesc>>,
     /// The root element ID set by appendChildToContainer.
@@ -613,6 +616,7 @@ impl RetainedTree {
             container_rule_count: 0,
             styles: StyleTable::default(),
             resolved: Default::default(),
+            relevance: Default::default(),
             universal: None,
             root_id: None,
             keyboard_focus_dim: true,

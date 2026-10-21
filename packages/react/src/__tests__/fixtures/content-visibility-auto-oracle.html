@@ -1,0 +1,249 @@
+<!doctype html>
+<!--
+  Oracle for content-visibility-auto.test.tsx: which elements headless Chrome skips for `content-visibility: auto`, in what
+  order it tells them, and the size it gives the box it skips, in the scenes the test builds. `content-visibility-auto-oracle.ts`
+  drives the page over the DevTools protocol (a 900x780 viewport, no device scale) and writes `content-visibility-auto-oracle.json`:
+  {scene: [{step, skipped: [index...], height, events: [[index, skipped]...], ...}]}. A scene is built after the page has
+  settled, since the first frame of a page is not a frame like the others: Chrome tells every `auto` element it is skipped
+  there, and then that it is not.
+
+  Every box is made of fixed sizes, so no font is involved. An entry is 37px: 8px padding, a 16px bar, a 4px gap, a 1px rule
+  and 8px padding.
+-->
+<html><head><meta charset="utf-8"><style>
+html, body { margin: 0 }
+* { box-sizing: border-box }
+.page { width: 900px; height: 780px; display: flex; flex-direction: column; overflow: hidden }
+.scroller { overflow-y: scroll; flex-grow: 1; display: flex; flex-direction: column; overflow-anchor: none }
+.entry { display: flex; flex-direction: column; padding: 8px; gap: 4px; flex-shrink: 0 }
+.bar { height: 16px }
+.rule { height: 1px }
+</style></head><body>
+<script>
+const frames = async (count = 4) => {
+  for (let index = 0; index < count; index++) await new Promise((resolve) => requestAnimationFrame(resolve))
+  await new Promise((resolve) => setTimeout(resolve, 60))
+}
+
+const made = (tag, className, style = {}) => {
+  const element = document.createElement(tag)
+  if (className) element.className = className
+  Object.assign(element.style, style)
+  return element
+}
+
+const entry = (index, style, events) => {
+  const element = made('div', 'entry', style)
+  element.dataset.index = index
+  element.tabIndex = -1
+  element.append(made('div', 'bar'), made('div', 'rule'))
+  element.addEventListener('contentvisibilityautostatechange', (event) => events.push([index, event.skipped]))
+  return element
+}
+
+/** Which entries have their content skipped, by whether the bar can be seen by `checkVisibility`. */
+const skippedOf = (entries) =>
+  entries.flatMap((element, index) => (element.firstChild.checkVisibility({ contentVisibilityAuto: true }) ? [] : [index]))
+
+const scenes = {
+  // The r11 shape: a scroller of entries that are `auto` with an intrinsic size that is not the size they have.
+  async list() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller')
+    const entries = Array.from({ length: 190 }, (_, index) => entry(index, { contentVisibility: 'auto', containIntrinsicSize: 'auto 40px' }, events))
+    scroller.append(...entries)
+    page.append(scroller)
+    const steps = []
+    const step = async (name, action) => {
+      events.length = 0
+      await action()
+      await frames()
+      const read = { step: name, skipped: skippedOf(entries), height: scroller.scrollHeight, top: scroller.scrollTop, events: events.slice() }
+      steps.push(read)
+    }
+    await step('mounted', async () => document.body.append(page))
+    for (const top of [1000, 4000, 7000, 0]) await step(`scrolled to ${top}`, async () => (scroller.scrollTop = top))
+    return steps
+  },
+
+  // The same entries where the intrinsic size is the size they have.
+  async exact() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller')
+    const entries = Array.from({ length: 190 }, (_, index) => entry(index, { contentVisibility: 'auto', containIntrinsicSize: 'auto 21px' }, events))
+    scroller.append(...entries)
+    page.append(scroller)
+    const steps = []
+    const step = async (name, action) => {
+      events.length = 0
+      await action()
+      await frames()
+      steps.push({ step: name, skipped: skippedOf(entries), height: scroller.scrollHeight, top: scroller.scrollTop, events: events.slice() })
+    }
+    await step('mounted', async () => document.body.append(page))
+    for (const top of [1000, 4000, 7000, 0]) await step(`scrolled to ${top}`, async () => (scroller.scrollTop = top))
+    return steps
+  },
+}
+
+
+/** Runs `actions` one after the other, reading `read()` after each has settled; `events` is what was told since the last. */
+const run = async (events, actions, read) => {
+  const steps = []
+  for (const [name, action] of actions) {
+    events.length = 0
+    await action()
+    await frames()
+    steps.push({ step: name, ...read(), events: events.slice() })
+  }
+  return steps
+}
+
+const listPage = (heightOfScroller, intrinsic, events, entryStyle = {}) => {
+  const page = made('div', 'page')
+  const scroller = made('div', 'scroller', heightOfScroller ? { height: heightOfScroller, flexGrow: 0 } : {})
+  const entries = Array.from({ length: 190 }, (_, index) => entry(index, { contentVisibility: 'auto', containIntrinsicSize: intrinsic, ...entryStyle }, events))
+  scroller.append(...entries)
+  page.append(scroller)
+  return { page, scroller, entries }
+}
+
+Object.assign(scenes, {
+  // A scroller shorter than the viewport: what clips the entry cuts the margin short.
+  async clipped() {
+    const events = []
+    const { page, scroller, entries } = listPage('400px', 'auto 21px', events)
+    return run(
+      events,
+      [['mounted', async () => document.body.append(page)], ...[2000, 0].map((top) => [`scrolled to ${top}`, async () => (scroller.scrollTop = top)])],
+      () => ({ skipped: skippedOf(entries), height: scroller.scrollHeight, top: scroller.scrollTop })
+    )
+  },
+
+  // A row of items scrolled along the x axis: the margin is a viewport width and a half there.
+  async horizontal() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller', { flexDirection: 'row', overflowX: 'scroll', overflowY: 'hidden', flexGrow: 0, height: '100px' })
+    const entries = Array.from({ length: 120 }, (_, index) => {
+      const item = made('div', '', { width: '100px', height: '100px', flex: 'none', contentVisibility: 'auto', containIntrinsicSize: 'auto 100px 100px' })
+      item.append(made('div', 'bar'))
+      item.addEventListener('contentvisibilityautostatechange', (event) => events.push([index, event.skipped]))
+      return item
+    })
+    scroller.append(...entries)
+    page.append(scroller)
+    return run(
+      events,
+      [['mounted', async () => document.body.append(page)], ...[5000, 0].map((left) => [`scrolled to ${left}`, async () => (scroller.scrollLeft = left)])],
+      () => ({ skipped: skippedOf(entries), height: scroller.scrollWidth, top: scroller.scrollLeft })
+    )
+  },
+
+  // `auto` inside `auto`: 24 sections of 20 rows each. A row is clipped by its section, so it is near only where the section
+  // is on screen.
+  async nested() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller')
+    const outers = Array.from({ length: 24 }, (_, o) => {
+      const outer = made('div', '', { flexShrink: 0, contentVisibility: 'auto', containIntrinsicSize: 'auto 800px' })
+      outer.addEventListener('contentvisibilityautostatechange', (event) => events.push([o, event.skipped]))
+      for (let i = 0; i < 20; i++) {
+        const inner = made('div', '', { height: '40px', contentVisibility: 'auto', containIntrinsicSize: 'auto 40px' })
+        inner.append(made('div', 'bar'))
+        outer.append(inner)
+      }
+      return outer
+    })
+    scroller.append(...outers)
+    page.append(scroller)
+    const read = () => ({
+      skipped: skippedOf(outers),
+      rows: outers.map((outer) => (outer.firstChild.checkVisibility({ contentVisibilityAuto: true }) ? [...outer.children].filter((inner) => inner.firstChild.checkVisibility({ contentVisibilityAuto: true })).length : 0)),
+      height: scroller.scrollHeight,
+      top: scroller.scrollTop,
+    })
+    return run(
+      events,
+      [['mounted', async () => document.body.append(page)], ...[6000, 12000, 0].map((top) => [`scrolled to ${top}`, async () => (scroller.scrollTop = top)])],
+      read
+    )
+  },
+
+  // The focus inside an entry that is far away keeps it.
+  async focus() {
+    const events = []
+    const { page, scroller, entries } = listPage(null, 'auto 21px', events)
+    for (const element of entries) element.firstChild.tabIndex = -1
+    return run(
+      events,
+      [
+        ['mounted', async () => document.body.append(page)],
+        ['focused 180', async () => entries[180].firstChild.focus({ preventScroll: true })],
+        ['scrolled to 4000', async () => (scroller.scrollTop = 4000)],
+        ['scrolled to 0', async () => (scroller.scrollTop = 0)],
+        ['blurred', async () => document.activeElement.blur()],
+      ],
+      () => ({ skipped: skippedOf(entries), height: scroller.scrollHeight, top: scroller.scrollTop, focused: entries.findIndex((element) => element.contains(document.activeElement)) })
+    )
+  },
+
+  // No `contain-intrinsic-size` at all: `auto` is in effect for an element that is skipped, so it keeps the size it had.
+  async bare() {
+    const events = []
+    const { page, scroller, entries } = listPage(null, 'none', events)
+    return run(
+      events,
+      [['mounted', async () => document.body.append(page)], ...[3000, 0].map((top) => [`scrolled to ${top}`, async () => (scroller.scrollTop = top)])],
+      () => ({ skipped: skippedOf(entries), height: scroller.scrollHeight, top: scroller.scrollTop })
+    )
+  },
+
+  // The size `auto` in `contain-intrinsic-size` stands for.
+  async remember() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller')
+    const make = (value) => {
+      const target = made('div', '', { flexShrink: 0, contentVisibility: value, containIntrinsicSize: 'auto 60px', width: '200px' })
+      const child = made('div', '', { height: '100px', width: '50px', flexShrink: 0 })
+      target.append(child)
+      return { target, child }
+    }
+    const shown = make('visible')
+    const far = make('auto')
+    const never = make('hidden')
+    const spacer = made('div', '', { height: '3000px', flexShrink: 0 })
+    scroller.append(shown.target, never.target, spacer, far.target)
+    page.append(scroller)
+    far.target.addEventListener('contentvisibilityautostatechange', (event) => events.push([0, event.skipped]))
+    const read = () => ({
+      sizes: [shown.target, never.target, far.target].map((target) => target.getBoundingClientRect().height),
+      top: scroller.scrollTop,
+      height: scroller.scrollHeight,
+    })
+    return run(
+      events,
+      [
+        ['mounted', async () => document.body.append(page)],
+        ['hidden', async () => (shown.target.style.contentVisibility = 'hidden')],
+        ['child grew while hidden', async () => (shown.child.style.height = '200px')],
+        ['visible', async () => (shown.target.style.contentVisibility = 'visible')],
+        ['hidden again', async () => (shown.target.style.contentVisibility = 'hidden')],
+        ['scrolled to 3000', async () => (scroller.scrollTop = 3000)],
+        ['scrolled to 0', async () => (scroller.scrollTop = 0)],
+      ],
+      read
+    )
+  },
+})
+
+window.__run = async (name) => {
+  await frames(6)
+  return scenes[name]()
+}
+</script>
+</body></html>

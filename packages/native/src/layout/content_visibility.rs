@@ -12,10 +12,22 @@
 //! Only the host elements (`div`, `span`, `text`, `label`, `form`) skip their content. Any other
 //! element has the containment and builds as it did.
 //!
+//! `auto` skips while the element is not relevant to the user: near the viewport (its border box,
+//! outset by 150% of the viewport on each side, clipped by what clips it and by the viewport,
+//! still shows something) or holding the focus. [`Relevance`] keeps what is known of each such
+//! element. The first answer comes in the frame that builds the element, from its prepaint, which
+//! asks for the frame to be built again when the element is relevant; later answers come from the
+//! boxes a frame painted ([`Relevance::sweep`]) and take effect in the next frame.
+//!
 //! Not modelled: the element is not an independent formatting context (a margin of its first or
 //! last child still collapses through it), and a `position: fixed` descendant is placed against
 //! the viewport, where a contained element would be its containing block.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+use gpui::{Bounds, Pixels};
+use rustc_hash::FxHashMap;
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -107,40 +119,364 @@ pub(crate) fn contained(style: &StyleDesc) -> Option<StyleDesc> {
     Some(contained)
 }
 
-/// Whether an element whose `content-visibility` is `value` skips its content. The one place
-/// that decides, so that the build and the walks over the tree cannot disagree.
-pub(crate) fn skips(value: ContentVisibility, _id: u64) -> bool {
+/// Whether an element whose `content-visibility` is `value` skips its content in the build about
+/// to be made. The one place that decides, so that the build and the walks over the tree cannot
+/// disagree.
+pub(crate) fn skips(relevance: &Relevance, value: ContentVisibility, id: u64) -> bool {
     match value {
         ContentVisibility::Hidden => true,
-        // Relevance to the user decides it, and nothing says an element is not relevant yet.
-        ContentVisibility::Auto | ContentVisibility::Visible => false,
+        ContentVisibility::Auto => relevance.is_skipped(id),
+        ContentVisibility::Visible => false,
     }
 }
 
-/// The content-box size `auto` in `contain-intrinsic-size` stands for: the size the element had
-/// when it was last laid out while it was not skipped. Nothing records it yet, so `auto` is its
-/// length.
-pub(crate) fn remembered_size(_id: u64) -> Option<(f64, f64)> {
-    None
+/// [`skips`] as the last build of the element did it, which is what the walks over the tree that
+/// say what is built read.
+fn skipped_as_built(relevance: &Relevance, value: ContentVisibility, id: u64) -> bool {
+    match value {
+        ContentVisibility::Hidden => true,
+        ContentVisibility::Auto => relevance.was_skipped(id),
+        ContentVisibility::Visible => false,
+    }
 }
 
 /// Gives the box of a skipped element its size: size containment on both axes, and the content
-/// box `contain-intrinsic-size` says.
+/// box `contain-intrinsic-size` says. An `auto` element has `auto` on both axes whatever its
+/// `contain-intrinsic-size` says.
 pub(crate) fn contain_skipped<E: gpui::Styled>(
     element: E,
     id: u64,
     style: &StyleDesc,
     lengths: &LengthContext,
+    relevance: &Relevance,
 ) -> E {
     let mut element = crate::layout::container::contain_size(element, crate::layout::container::ContainerType::Size);
-    let axes = crate::css::contain_intrinsic::axes(style);
-    let remembered = remembered_size(id);
+    // The automatic minimum size of a flex or grid item that is size contained is nothing, not the
+    // size it is given in place of its content: Chrome shrinks a skipped item down to its padding.
+    let minimum = &mut element.style().min_size;
+    if matches!(minimum.width, None | Some(gpui::Length::Auto)) {
+        minimum.width = Some(gpui::px(0.0).into());
+    }
+    if matches!(minimum.height, None | Some(gpui::Length::Auto)) {
+        minimum.height = Some(gpui::px(0.0).into());
+    }
+    let mut axes = crate::css::contain_intrinsic::axes(style);
+    if style.content_visibility == Some(ContentVisibility::Auto) {
+        axes.width.auto = true;
+        axes.height.auto = true;
+    }
+    let remembered = relevance.remembered(id);
     let size = |px: f64| gpui::px(px as f32);
     element.style().contain_intrinsic_width =
         axes.width.skipped_size(remembered.map(|size| size.0), lengths).map(size);
     element.style().contain_intrinsic_height =
         axes.height.skipped_size(remembered.map(|size| size.1), lengths).map(size);
     element
+}
+
+/// Whether the size an element has when it is not skipped is to be remembered: it is `auto` or
+/// its `contain-intrinsic-size` has `auto` on an axis.
+pub(crate) fn remembers_size(style: &StyleDesc) -> bool {
+    style.content_visibility == Some(ContentVisibility::Auto) || {
+        let axes = crate::css::contain_intrinsic::axes(style);
+        axes.width.auto || axes.height.auto
+    }
+}
+
+/// How far past the viewport an element is still near it, as a fraction of the viewport's side.
+const NEAR: f32 = 1.5;
+
+/// How far past the viewport the box of an element can be and be near, the same on every side:
+/// the largest of the margins, so that a subtree this far from what shows is certainly not near.
+pub(crate) fn proximity_reach(viewport_width: f64, viewport_height: f64) -> f32 {
+    NEAR * viewport_width.max(viewport_height) as f32
+}
+
+/// Asks, when the element is prepainted, whether an `auto` element that has not been asked is
+/// near, and remembers the content box of one that is laid out without being skipped. An element in
+/// a culled subtree is not near, see [`proximity_reach`].
+pub(crate) fn watch<E: gpui::InteractiveElement>(element: E, id: u64, relevance: Relevance) -> E {
+    element.on_prepainted_layout(move |bounds, layout_id, window, _| {
+        if relevance.wants_answer(id) {
+            let near = !window.is_culling()
+                && is_near(bounds, [window.content_mask().bounds], window.viewport_size());
+            if relevance.answer(id, near) {
+                window.request_redraw_before_present();
+            }
+        }
+        let content = crate::layout::container::content_box(bounds, layout_id, window);
+        relevance.remember(id, content.width, content.height);
+    })
+}
+
+/// Whether the border box `border_box`, outset by [`NEAR`] of the viewport on each side and cut
+/// by `clips` (the boxes of what clips it) and by the viewport, has an area left. An element at
+/// the very edge of the margin is not near, as it is not in Chrome.
+pub(crate) fn is_near(
+    border_box: Bounds<Pixels>,
+    clips: impl IntoIterator<Item = Bounds<Pixels>>,
+    viewport: gpui::Size<Pixels>,
+) -> bool {
+    let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
+    let (margin_x, margin_y) = (NEAR * width, NEAR * height);
+    let edges = |bounds: Bounds<Pixels>| {
+        let (left, top) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+        (left, top, left + f32::from(bounds.size.width), top + f32::from(bounds.size.height))
+    };
+    let (mut left, mut top, mut right, mut bottom) = edges(border_box);
+    left -= margin_x;
+    right += margin_x;
+    top -= margin_y;
+    bottom += margin_y;
+    let viewport_edges = (0.0, 0.0, width, height);
+    for (clip_left, clip_top, clip_right, clip_bottom) in clips.into_iter().map(edges).chain([viewport_edges]) {
+        left = left.max(clip_left);
+        top = top.max(clip_top);
+        right = right.min(clip_right);
+        bottom = bottom.min(clip_bottom);
+    }
+    left < right && top < bottom
+}
+
+/// What is known of the elements that skip their content depending on where they are, and of the
+/// size elements remember for `contain-intrinsic-size: auto`. Shared by the tree, which answers the
+/// walks over it, the build, which asks it and tells it what it built, and the prepaint of the
+/// elements, which answer whether they are near.
+#[derive(Clone, Default)]
+pub(crate) struct Relevance(Arc<Shared>);
+
+#[derive(Default)]
+struct Shared {
+    /// How many elements `known` has, readable without the lock: almost every element of a page
+    /// asks and has nothing to ask about.
+    count: AtomicUsize,
+    known: Mutex<Known>,
+}
+
+impl Shared {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Known> {
+        self.known.lock().unwrap()
+    }
+
+    fn counted(&self, known: &Known) {
+        self.count.store(known.elements.len(), Ordering::Relaxed);
+    }
+}
+
+#[derive(Default)]
+struct Known {
+    elements: FxHashMap<u64, Element>,
+    /// Which draw the build in progress belongs to: the passes of one draw share it.
+    /// The focused element and its ancestors, which hold the focus.
+    focus_within: Arc<[u64]>,
+    clips: Option<Clips>,
+}
+
+#[derive(Default)]
+struct Element {
+    /// Whether the element is `content-visibility: auto`.
+    auto: bool,
+    /// Whether the element is near the viewport as far as the last answer knows, or `None` while
+    /// nothing has answered. An element nothing has answered for is skipped.
+    near: Option<bool>,
+    /// What the last build did with the content of the element.
+    skipped_in_build: bool,
+    /// The state the last `contentvisibilityautostatechange` told, or `None` before the first.
+    notified: Option<bool>,
+    /// The content box the element had when it was last laid out without being skipped.
+    remembered: Option<(f64, f64)>,
+    /// A frame was asked for because the state it wants is not the one it was built with.
+    rebuild_requested: bool,
+}
+
+impl Element {
+    fn wanted_skipped(&self, focus_within: &[u64], id: u64) -> bool {
+        !(self.near == Some(true) || focus_within.contains(&id))
+    }
+}
+
+/// The ancestors that clip each element, for one revision of one tree.
+struct Clips {
+    stamp: (u64, u64),
+    ancestors: FxHashMap<u64, Vec<crate::observers::ClippingAncestor>>,
+}
+
+/// What a sweep over the painted boxes found.
+#[derive(Default)]
+pub(crate) struct Swept {
+    /// A frame has to be built, because the content of an element is to be skipped or shown.
+    pub rebuild: bool,
+    /// The elements whose state is not the one last told, with the state, in no order.
+    pub changes: Vec<(u64, bool)>,
+}
+
+impl Relevance {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.count.load(Ordering::Relaxed) == 0
+    }
+
+    /// The build of `id` is about to decide, for an `auto` element: whether it skips.
+    pub(crate) fn is_skipped(&self, id: u64) -> bool {
+        let known = self.0.lock();
+        known.elements.get(&id).is_none_or(|element| element.wanted_skipped(&known.focus_within, id))
+    }
+
+    /// Whether the last build of `id` skipped its content. An element never built is skipped.
+    pub(crate) fn was_skipped(&self, id: u64) -> bool {
+        self.0.lock().elements.get(&id).is_none_or(|element| element.skipped_in_build)
+    }
+
+    pub(crate) fn remembered(&self, id: u64) -> Option<(f64, f64)> {
+        self.0.lock().elements.get(&id)?.remembered
+    }
+
+    /// What the state of an `auto` element adds to the key of the element: whether it is to skip
+    /// when it is built, which builds it again when that changes. `declared` is whether its style
+    /// says `auto`, for an element no build has seen yet.
+    pub(crate) fn key(&self, id: u64, declared: bool) -> Option<u64> {
+        if !declared && self.is_empty() {
+            return None;
+        }
+        let known = self.0.lock();
+        let skipped = match known.elements.get(&id) {
+            Some(element) if element.auto => element.wanted_skipped(&known.focus_within, id),
+            _ if declared => true,
+            _ => return None,
+        };
+        Some(4 | u64::from(skipped) << 1)
+    }
+
+    /// The build of `id` has decided: `skipped` is what it does with the content. `auto` and
+    /// `remembers` are what its style says. An element that is neither is forgotten.
+    pub(crate) fn built(&self, id: u64, auto: bool, remembers: bool, skipped: bool) {
+        if !auto && !remembers && self.is_empty() {
+            return;
+        }
+        let mut known = self.0.lock();
+        if !auto && !remembers {
+            known.elements.remove(&id);
+            self.0.counted(&known);
+            return;
+        }
+        let element = known.elements.entry(id).or_default();
+        if element.auto != auto {
+            element.near = None;
+            element.notified = None;
+            element.rebuild_requested = false;
+        }
+        element.auto = auto;
+        element.skipped_in_build = skipped;
+        element.rebuild_requested = false;
+        self.0.counted(&known);
+    }
+
+    /// Whether prepaint is to answer for `id`: nothing has. Later answers are the sweep's, which
+    /// reads the layout the frame ended with: an answer from a pass that is built again would
+    /// chase the layout the passes change as the entries are laid out, a pass at a time.
+    pub(crate) fn wants_answer(&self, id: u64) -> bool {
+        self.0.lock().elements.get(&id).is_some_and(|element| element.auto && element.near.is_none())
+    }
+
+    /// Prepaint found out whether `id` is near. True if the build has to be made again because it
+    /// skipped an element that is near.
+    pub(crate) fn answer(&self, id: u64, near: bool) -> bool {
+        let mut known = self.0.lock();
+        let focus_within = known.focus_within.clone();
+        let Some(element) = known.elements.get_mut(&id).filter(|element| element.auto) else {
+            return false;
+        };
+        element.near = Some(near);
+        element.wanted_skipped(&focus_within, id) != element.skipped_in_build
+    }
+
+    /// `id` was laid out without being skipped, with this content box.
+    pub(crate) fn remember(&self, id: u64, width: f64, height: f64) {
+        if let Some(element) = self.0.lock().elements.get_mut(&id) {
+            if !element.skipped_in_build {
+                element.remembered = Some((width, height));
+            }
+        }
+    }
+
+    /// The ids that hold the focus: the focused element and its ancestors.
+    pub(crate) fn set_focus_within(&self, within: &Arc<[u64]>) {
+        let mut known = self.0.lock();
+        if !Arc::ptr_eq(&known.focus_within, within) && *known.focus_within != **within {
+            known.focus_within = within.clone();
+        }
+    }
+
+    /// The `auto` elements that are to skip or show their content otherwise than their last build
+    /// did, which that build has to be made again for.
+    pub(crate) fn pending(&self) -> Vec<u64> {
+        let known = self.0.lock();
+        known
+            .elements
+            .iter()
+            .filter(|(id, element)| element.auto && element.wanted_skipped(&known.focus_within, **id) != element.skipped_in_build)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Drops what is known of elements the tree no longer has.
+    pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
+        if self.is_empty() {
+            return;
+        }
+        let mut known = self.0.lock();
+        known.elements.retain(|id, _| keep(*id));
+        self.0.counted(&known);
+    }
+
+    /// Reads the boxes the last frame painted: remembers the size of the elements that were not
+    /// skipped, decides whether each `auto` element is near, and says which have a state that was
+    /// not told and which are to be built again.
+    pub(crate) fn sweep(
+        &self,
+        window: gpui::WindowId,
+        viewport: gpui::Size<Pixels>,
+        tree: &crate::retained_tree::RetainedTree,
+    ) -> Swept {
+        let mut known = self.0.lock();
+        let known = &mut *known;
+        let mut swept = Swept::default();
+        if known.elements.is_empty() {
+            return swept;
+        }
+        let stamp = (tree.id(), tree.revision());
+        if known.clips.as_ref().is_none_or(|clips| clips.stamp != stamp) {
+            known.clips = Some(Clips { stamp, ancestors: FxHashMap::default() });
+        }
+        let clips = known.clips.as_mut().expect("the clips were just made");
+        for (id, element) in known.elements.iter_mut() {
+            let Some(painted) = crate::automation::get_bounds(window, *id) else {
+                continue;
+            };
+            if !element.skipped_in_build {
+                let width = painted.width - painted.padding_left - painted.padding_right - painted.client_left - painted.border_right;
+                let height = painted.height - painted.padding_top - painted.padding_bottom - painted.client_top - painted.border_bottom;
+                element.remembered = Some((width.max(0.0), height.max(0.0)));
+            }
+            if !element.auto {
+                continue;
+            }
+            // Found when the element is first swept: an element that is built does not change the tree's revision.
+            let ancestors = clips.ancestors.entry(*id).or_insert_with(|| crate::observers::clipping_ancestors(tree, *id, None));
+            let boxes = crate::observers::clip_rects(window, ancestors).into_iter().map(|(_, bounds)| bounds);
+            element.near = Some(is_near(crate::observers::border_box(&painted), boxes, viewport));
+            let wanted = element.wanted_skipped(&known.focus_within, *id);
+            if wanted != element.skipped_in_build {
+                swept.rebuild |= !std::mem::replace(&mut element.rebuild_requested, true);
+            } else {
+                element.rebuild_requested = false;
+                if element.notified != Some(wanted) {
+                    element.notified = Some(wanted);
+                    swept.changes.push((*id, wanted));
+                }
+            }
+        }
+        swept
+    }
 }
 
 /// What `element` was last built with, the declared value for one that never was.
@@ -152,7 +488,7 @@ fn value_of(tree: &RetainedTree, element: &RetainedElement) -> ContentVisibility
 pub(crate) fn skips_content(tree: &RetainedTree, element: &RetainedElement) -> bool {
     crate::text::inline::is_host_container(element)
         && !crate::layout::contents::is_display_contents(element)
-        && skips(value_of(tree, element), element.id)
+        && skipped_as_built(&tree.relevance, value_of(tree, element), element.id)
 }
 
 /// Whether a strict ancestor of `element` skips its content, so nothing is built for it.
@@ -244,10 +580,109 @@ mod tests {
         assert!(resolved.overflow.x.clips() && resolved.overflow.y.clips());
     }
 
+    fn square(left: f32, top: f32, side: f32) -> Bounds<Pixels> {
+        Bounds {
+            origin: gpui::point(gpui::px(left), gpui::px(top)),
+            size: gpui::size(gpui::px(side), gpui::px(side)),
+        }
+    }
+
+    const VIEWPORT: gpui::Size<Pixels> = gpui::Size { width: gpui::px(1000.0), height: gpui::px(800.0) };
+
     #[test]
-    fn only_hidden_skips_for_now() {
-        assert!(skips(ContentVisibility::Hidden, 1));
-        assert!(!skips(ContentVisibility::Auto, 1));
-        assert!(!skips(ContentVisibility::Visible, 1));
+    fn an_element_is_near_up_to_a_viewport_and_a_half_past_each_edge() {
+        let near = |left, top, clips: &[Bounds<Pixels>]| is_near(square(left, top, 50.0), clips.iter().copied(), VIEWPORT);
+        assert!(near(100.0, 100.0, &[]));
+        // The margin is 1.5 times the side of the axis: 1200 below, 1500 to the right.
+        assert!(near(0.0, 1999.0, &[]));
+        assert!(!near(0.0, 2000.0, &[]));
+        assert!(near(0.0, -1249.0, &[]));
+        assert!(!near(0.0, -1250.0, &[]));
+        assert!(near(2499.0, 0.0, &[]));
+        assert!(!near(2500.0, 0.0, &[]));
+        assert!(!near(-1550.0, 0.0, &[]));
+    }
+
+    #[test]
+    fn what_clips_an_element_cuts_the_margin_short() {
+        let far = square(0.0, 1900.0, 50.0);
+        assert!(is_near(far, [], VIEWPORT));
+        // A scroller whose visible part ends before the margin of the element begins.
+        assert!(!is_near(far, [square(0.0, 0.0, 400.0)], VIEWPORT));
+        assert!(is_near(far, [square(0.0, 300.0, 600.0)], VIEWPORT));
+        // The margin does not reach past the viewport, whatever the clip lets through.
+        assert!(!is_near(far, [square(0.0, 1500.0, 400.0)], VIEWPORT));
+    }
+
+    #[test]
+    fn auto_skips_until_something_says_it_is_near() {
+        let relevance = Relevance::default();
+        assert!(skips(&relevance, ContentVisibility::Hidden, 1));
+        assert!(!skips(&relevance, ContentVisibility::Visible, 1));
+        // Never built: skipped.
+        assert!(skips(&relevance, ContentVisibility::Auto, 1));
+        relevance.built(1, true, true, true);
+        assert!(relevance.wants_answer(1));
+        assert!(skips(&relevance, ContentVisibility::Auto, 1));
+        assert!(relevance.answer(1, true), "near and skipped: build again");
+        assert!(!skips(&relevance, ContentVisibility::Auto, 1));
+        assert!(relevance.was_skipped(1), "the last build skipped it still");
+        relevance.built(1, true, true, false);
+        assert!(!relevance.was_skipped(1));
+        // The first answer is the only one prepaint gives.
+        assert!(!relevance.wants_answer(1));
+    }
+
+    #[test]
+    fn an_answer_that_is_far_asks_for_nothing() {
+        let relevance = Relevance::default();
+        relevance.built(1, true, true, true);
+        assert!(!relevance.answer(1, false));
+        assert!(!relevance.wants_answer(1));
+        assert!(skips(&relevance, ContentVisibility::Auto, 1));
+    }
+
+    #[test]
+    fn the_focus_keeps_an_element_from_skipping() {
+        let relevance = Relevance::default();
+        relevance.built(1, true, true, true);
+        relevance.answer(1, false);
+        assert!(skips(&relevance, ContentVisibility::Auto, 1));
+        relevance.set_focus_within(&Arc::from([5_u64, 1, 0]));
+        assert!(!skips(&relevance, ContentVisibility::Auto, 1));
+        relevance.set_focus_within(&Arc::from([]));
+        assert!(skips(&relevance, ContentVisibility::Auto, 1));
+    }
+
+    #[test]
+    fn an_element_that_stops_being_auto_is_forgotten() {
+        let relevance = Relevance::default();
+        relevance.built(1, true, true, true);
+        relevance.answer(1, true);
+        relevance.built(1, false, false, false);
+        assert!(relevance.is_empty());
+        relevance.built(1, true, true, true);
+        assert!(relevance.wants_answer(1));
+    }
+
+    #[test]
+    fn the_size_is_only_remembered_while_the_content_is_built() {
+        let relevance = Relevance::default();
+        relevance.built(1, true, true, false);
+        relevance.remember(1, 30.0, 40.0);
+        assert_eq!(relevance.remembered(1), Some((30.0, 40.0)));
+        relevance.built(1, true, true, true);
+        relevance.remember(1, 1.0, 1.0);
+        assert_eq!(relevance.remembered(1), Some((30.0, 40.0)));
+    }
+
+    #[test]
+    fn auto_in_the_intrinsic_size_is_remembered_by_any_value() {
+        let remembers = |json| remembers_size(&style(json));
+        assert!(remembers(r#"{"contentVisibility":"auto"}"#));
+        assert!(remembers(r#"{"contentVisibility":"hidden","containIntrinsicSize":"auto 40px"}"#));
+        assert!(remembers(r#"{"containIntrinsicHeight":"auto 40px"}"#));
+        assert!(!remembers(r#"{"contentVisibility":"hidden","containIntrinsicSize":"40px"}"#));
+        assert!(!remembers("{}"));
     }
 }

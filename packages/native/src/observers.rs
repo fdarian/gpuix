@@ -19,7 +19,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use gpui::{canvas, px, App, Bounds, IntoElement, Pixels, Styled, WindowId};
+use gpui::{canvas, px, App, AppContext as _, Bounds, IntoElement, Pixels, Styled, WindowId};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
 
@@ -30,6 +30,7 @@ use crate::retained_tree::RetainedTree;
 pub(crate) const LAYOUT_EVENT: &str = "layout";
 pub(crate) const RESIZE_EVENT: &str = "resizeObserve";
 pub(crate) const INTERSECTION_EVENT: &str = "intersectObserve";
+pub(crate) const CONTENT_VISIBILITY_EVENT: &str = "contentvisibilityautostatechange";
 
 /// Whether a listener of this type is answered from the published boxes.
 pub(crate) fn reports_geometry(event: &str) -> bool {
@@ -230,7 +231,7 @@ struct Insets {
 }
 
 /// An ancestor that clips its descendants, as gpui's `overflow_mask` does.
-struct ClippingAncestor {
+pub(crate) struct ClippingAncestor {
     id: u64,
     clip_x: bool,
     clip_y: bool,
@@ -239,7 +240,7 @@ struct ClippingAncestor {
 /// Only the ancestors that reach `id` clip it: an absolute element is clipped by its containing
 /// block and what clips that, a fixed one by nothing. `first` is the box `id` paints in when that
 /// is not its parent, an inline element's paragraph container, which clips it and what reaches it.
-fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<ClippingAncestor> {
+pub(crate) fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<ClippingAncestor> {
     let mut found = Vec::new();
     // The ancestors were built before this element, so their resolved style is this frame's.
     let reaching = match first {
@@ -271,7 +272,7 @@ fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64>) -> Vec<C
 
 /// The clip edge is the padding box: the border is outside it. The border is the
 /// one the ancestor painted with, so a state style that changes it moves the clip.
-fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
+pub(crate) fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
     ancestors
         .iter()
         .filter_map(|ancestor| {
@@ -321,7 +322,7 @@ fn same_bounds(left: Bounds<Pixels>, right: Bounds<Pixels>) -> bool {
 }
 
 /// The border box a published element has, which is what the payload of every report carries.
-fn border_box(painted: &ElementBounds) -> Bounds<Pixels> {
+pub(crate) fn border_box(painted: &ElementBounds) -> Bounds<Pixels> {
     Bounds {
         origin: gpui::point(px(painted.x as f32), px(painted.y as f32)),
         size: gpui::size(px(painted.width as f32), px(painted.height as f32)),
@@ -508,24 +509,36 @@ pub(crate) fn prune(
 /// and reports what is there; it does not report an element gone, because a bounds read
 /// is not a promise that everything painted.
 ///
-/// `active` is whether anything listens, so a page without observers pays nothing.
+/// `active` is whether anything listens, so a page without observers pays nothing. The sweep
+/// also reads the boxes for the elements that skip their content when they are not near
+/// (`content-visibility: auto`), which are known once the draw has built them.
 pub(crate) fn frame_sweep(
     reports: SharedPaintReports,
     tree: Arc<Mutex<RetainedTree>>,
+    relevance: crate::layout::content_visibility::Relevance,
     callback: Option<EventCallback>,
     active: bool,
 ) -> impl IntoElement {
     let sweep_after = move |painted: bool| {
         let reports = reports.clone();
         let tree = tree.clone();
+        let relevance = relevance.clone();
         let callback = callback.clone();
         move |window: &mut gpui::Window, cx: &mut App| {
-            if !active {
+            let relevant = painted && !relevance.is_empty();
+            if !active && !relevant {
                 return;
             }
-            let id = window.window_handle().window_id();
+            let handle = window.window_handle();
             let viewport = window.viewport_size();
-            cx.defer(move |_| sweep(id, viewport, painted, &reports, &tree, &callback));
+            cx.defer(move |cx| {
+                if relevant {
+                    sweep_relevance(handle, viewport, &tree, &callback, cx);
+                }
+                if active {
+                    sweep(handle.window_id(), viewport, painted, &reports, &tree, &callback);
+                }
+            });
         }
     };
     let after_layout = sweep_after(false);
@@ -541,6 +554,32 @@ pub(crate) fn frame_sweep(
     .absolute()
     .w(px(0.0))
     .h(px(0.0))
+}
+
+/// Reads the boxes of the elements with `content-visibility: auto` to see which are near the
+/// viewport, asks for a frame when one is to show or skip its content, and tells the elements
+/// whose state a frame has applied (`contentvisibilityautostatechange`).
+fn sweep_relevance(
+    window: gpui::AnyWindowHandle,
+    viewport: gpui::Size<Pixels>,
+    tree: &Mutex<RetainedTree>,
+    callback: &Option<EventCallback>,
+    cx: &mut App,
+) {
+    let rebuild = {
+        let tree = tree.lock().unwrap();
+        let mut swept = tree.relevance.sweep(window.window_id(), viewport, &tree);
+        swept.changes.sort_by_cached_key(|(id, _)| document_order(&tree, *id));
+        for (id, skipped) in swept.changes {
+            crate::renderer::emit_bubbling_event(callback, &tree, id, CONTENT_VISIBILITY_EVENT, |payload| {
+                payload.skipped = Some(skipped);
+            });
+        }
+        swept.rebuild
+    };
+    if rebuild {
+        cx.update_window(window, |_, window, _| window.refresh()).ok();
+    }
 }
 
 fn sweep(
