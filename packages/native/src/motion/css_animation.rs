@@ -11,7 +11,8 @@
 //! [`CssAnimations::update`], which returns the values to lay over it. Those
 //! win over everything else the element declares, as animations do in CSS.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -1321,8 +1322,27 @@ pub(crate) struct CssAnimations {
     /// animations going is a tick that builds nothing, so they do not ask for a drawn frame.
     dormant: HashSet<u64>,
     dormant_active: bool,
+    sleepers: Sleepers,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
+}
+
+/// When the clocks of the dormant elements have something due, so that a tick looks at those and
+/// not at every dormant element.
+#[derive(Default)]
+struct Sleepers {
+    /// The instants at which an element's runs next have something to report, earliest first.
+    due: BinaryHeap<Reverse<(Instant, u64)>>,
+    /// The instant of the entry of each element that is live in `due`; an entry with another
+    /// instant, or of an element that is not here, is left from a time it was.
+    scheduled: HashMap<u64, Instant>,
+    /// Elements to look at in the next tick whatever `due` says: one just dormant, one a build or a
+    /// command touched, one with a run that cannot say when it is due.
+    next: HashSet<u64>,
+    /// The dormant elements with a run that is still moving, as of the last tick or build.
+    moving: HashSet<u64>,
+    #[cfg(test)]
+    visits: u64,
 }
 
 impl CssAnimations {
@@ -1356,6 +1376,11 @@ impl CssAnimations {
         let state = self.states.entry(id).or_insert_with(ElementState::new);
         state.sync_config(id, declared);
         state.reconcile(id, registry, now, &mut self.events, &mut self.api_events);
+        // A build moves the clocks and the parameters of the runs, which the instants a dormant
+        // element's clock was due at were taken from.
+        if !self.dormant.is_empty() && self.dormant.contains(&id) {
+            self.sleepers.next.insert(id);
+        }
 
         let mut covered = Vec::new();
         for run in &mut state.runs {
@@ -1420,6 +1445,7 @@ impl CssAnimations {
         if state.runs.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
             self.states.remove(&id);
         }
+        self.note_moving(id);
         let mut animated = AnimationStyle { style: Vec::new(), svg: Vec::new() };
         for (key, value) in values {
             let Some(value) = value else {
@@ -1455,6 +1481,7 @@ impl CssAnimations {
             state.moving = state.runs.iter().any(|run| run.wants_frame(now));
         }
         self.dormant_active |= state.moving;
+        self.note_moving(id);
     }
 
     /// Whether everything running on `id` only changes what it paints: every property its
@@ -1480,10 +1507,86 @@ impl CssAnimations {
             })
     }
 
-    /// The elements the frame being built leaves dormant.
-    pub(crate) fn set_dormant(&mut self, ids: impl IntoIterator<Item = u64>) {
-        self.dormant.clear();
-        self.dormant.extend(ids);
+    /// `id` is left dormant by the frame being built: its clock is carried on by
+    /// `advance_dormant`, and what it asks of the window goes to a tick that draws nothing.
+    pub(crate) fn enter_dormant(&mut self, id: u64) {
+        self.dormant.insert(id);
+        self.sleepers.next.insert(id);
+        self.note_moving(id);
+    }
+
+    pub(crate) fn leave_dormant(&mut self, id: u64) {
+        if !self.dormant.remove(&id) {
+            return;
+        }
+        self.sleepers.next.remove(&id);
+        self.sleepers.scheduled.remove(&id);
+        self.sleepers.moving.remove(&id);
+    }
+
+    fn note_moving(&mut self, id: u64) {
+        if self.dormant.is_empty() {
+            return;
+        }
+        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(|state| state.moving) {
+            self.sleepers.moving.insert(id);
+        } else {
+            self.sleepers.moving.remove(&id);
+        }
+    }
+
+    /// `advance_clock` for the dormant elements whose runs have something due at `now`: the ones
+    /// that are new, that a build or a command touched, or whose next boundary has come. The rest
+    /// would report nothing and change nothing, and are not looked at.
+    pub(crate) fn advance_dormant(&mut self, now: Instant) {
+        let sleepers = &mut self.sleepers;
+        let mut visit: HashSet<u64> = std::mem::take(&mut sleepers.next);
+        while let Some(&Reverse((at, id))) = sleepers.due.peek() {
+            if at > now {
+                break;
+            }
+            sleepers.due.pop();
+            if sleepers.scheduled.get(&id) == Some(&at) {
+                sleepers.scheduled.remove(&id);
+                visit.insert(id);
+            }
+        }
+        for id in visit {
+            if !self.dormant.contains(&id) {
+                continue;
+            }
+            #[cfg(test)]
+            {
+                self.sleepers.visits += 1;
+            }
+            self.advance_clock(id, now);
+            self.schedule(id);
+        }
+        let sleepers = &mut self.sleepers;
+        if sleepers.due.len() > 2 * sleepers.scheduled.len() + 64 {
+            sleepers.due = sleepers.scheduled.iter().map(|(id, at)| Reverse((*at, *id))).collect();
+        }
+        self.dormant_active |= !self.sleepers.moving.is_empty();
+    }
+
+    /// Notes when `id` is next due: at the earliest instant one of its runs is quiet until, or in
+    /// the next tick if a run cannot say.
+    fn schedule(&mut self, id: u64) {
+        let Some(state) = self.states.get(&id) else {
+            return;
+        };
+        let mut earliest: Option<Instant> = None;
+        for run in &state.runs {
+            let Some(until) = run.quiet_until else {
+                self.sleepers.next.insert(id);
+                return;
+            };
+            earliest = Some(earliest.map_or(until, |earliest| earliest.min(until)));
+        }
+        if let Some(at) = earliest {
+            self.sleepers.due.push(Reverse((at, id)));
+            self.sleepers.scheduled.insert(id, at);
+        }
     }
 
     /// Whether a dormant element still has a run that moves, as of the last frame or tick.
@@ -1547,6 +1650,7 @@ impl CssAnimations {
             let Some(mut state) = self.states.remove(&hidden) else {
                 continue;
             };
+            self.sleepers.moving.remove(&hidden);
             for run in &mut state.runs {
                 run.cancel(hidden, now, &mut self.events, &mut self.api_events);
             }
@@ -1602,6 +1706,9 @@ impl CssAnimations {
         run.quiet_until = None;
         let outcome = run.clock.apply(command, now, end);
         self.commanded.push(element);
+        if self.dormant.contains(&element) {
+            self.sleepers.next.insert(element);
+        }
         Some(outcome)
     }
 
@@ -3981,7 +4088,7 @@ mod tests {
         frames.frame(0, &animated);
         frames.events();
         frames.animations.take_active();
-        frames.animations.set_dormant([1]);
+        frames.animations.enter_dormant(1);
         frames.animations.advance_clock(1, frames.at(1100));
         assert_eq!(frames.events(), [named(Iteration, "fade", 1.0)]);
         assert!(frames.animations.take_dormant_active());
@@ -4002,7 +4109,7 @@ mod tests {
         let animated = fading("fade 1s linear 3");
         frames.frame(0, &animated);
         frames.events();
-        frames.animations.set_dormant([1]);
+        frames.animations.enter_dormant(1);
         let mut reported = Vec::new();
         let mut ms = 0;
         while ms < 3200 {
@@ -4020,12 +4127,97 @@ mod tests {
         let mut frames = Frames::new();
         frames.define("fade", FADE);
         frames.frame(0, &animated);
-        frames.animations.set_dormant([1]);
+        frames.animations.enter_dormant(1);
         frames.animations.advance_clock(1, frames.at(16));
         let run = &frames.animations.states[&1].runs[0];
         assert!(run.quiet_until.is_some_and(|until| until > frames.at(900)), "nothing is due before the second");
         frames.animations.advance_clock(1, frames.at(32));
         assert!(frames.animations.take_dormant_active(), "a run that is not ticked still asks for ticks");
+    }
+
+    #[test]
+    fn dormant_elements_are_looked_at_only_when_something_is_due_and_report_at_the_frames_a_tick_of_every_one_does() {
+        let styles = [
+            (1u64, fading("fade 700ms linear infinite")),
+            (2, fading("fade 1300ms linear 2")),
+            (3, fading("fade 2s linear 500ms infinite")),
+            (4, fading("fade 1s linear 4 paused")),
+        ];
+        let build = |frames: &mut Frames, id: u64, millis: u64, declared: &StyleDesc| {
+            let now = frames.at(millis);
+            frames.animations.advance(id, declared, &frames.registry, Scope::Element, now);
+            frames.animations.update(
+                id,
+                declared,
+                &Subject::element(declared),
+                &frames.parent_colors,
+                &frames.parent_font,
+                None,
+                frames.inherited,
+                Scope::Element,
+                now,
+            );
+        };
+        let events = |frames: &mut Frames| {
+            frames.animations.take_events().into_iter().map(|event| (event.id, event.kind, event.elapsed)).collect::<Vec<_>>()
+        };
+        // Both are built at 0, left dormant, and rebuilt at 800 ms (2 gets a shorter duration, as a style that retunes it).
+        let rebuilt = fading("fade 900ms linear 2");
+        let mut every = Frames::new();
+        let mut due = Frames::new();
+        for frames in [&mut every, &mut due] {
+            frames.define("fade", FADE);
+            for (id, declared) in &styles {
+                build(frames, *id, 0, declared);
+                frames.animations.enter_dormant(*id);
+            }
+            events(frames);
+        }
+        let (mut every_reported, mut due_reported) = (Vec::new(), Vec::new());
+        let mut ms = 0;
+        while ms < 6000 {
+            ms += 16;
+            if ms == 800 {
+                build(&mut every, 2, ms, &rebuilt);
+                build(&mut due, 2, ms, &rebuilt);
+            }
+            for id in 1..=4 {
+                every.animations.advance_clock(id, every.at(ms));
+            }
+            due.animations.advance_dormant(due.at(ms));
+            every_reported.extend(events(&mut every).into_iter().map(|event| (ms, event)));
+            due_reported.extend(events(&mut due).into_iter().map(|event| (ms, event)));
+            assert_eq!(
+                due.animations.take_dormant_active(),
+                every.animations.take_dormant_active(),
+                "asks for ticks as long as a run moves, at {ms} ms"
+            );
+        }
+        assert!(every_reported.len() >= 10, "{every_reported:?}");
+        assert_eq!(due_reported, every_reported, "the same events at the same frames");
+        // 375 ticks of 4 elements look at them once each at the start and a few times at each boundary.
+        assert!(due.animations.sleepers.visits < 60, "{} visits", due.animations.sleepers.visits);
+    }
+
+    #[test]
+    fn a_dormant_element_that_leaves_is_not_looked_at_and_one_that_comes_back_is() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear infinite");
+        frames.frame(0, &animated);
+        frames.events();
+        frames.animations.enter_dormant(1);
+        frames.animations.advance_dormant(frames.at(16));
+        let visits = frames.animations.sleepers.visits;
+        frames.animations.advance_dormant(frames.at(32));
+        assert_eq!(frames.animations.sleepers.visits, visits, "nothing is due before the second");
+        frames.animations.leave_dormant(1);
+        frames.animations.advance_dormant(frames.at(1100));
+        assert_eq!(frames.animations.sleepers.visits, visits, "an element that left is not ticked");
+        assert!(frames.events().is_empty());
+        frames.animations.enter_dormant(1);
+        frames.animations.advance_dormant(frames.at(1116));
+        assert_eq!(frames.animations.sleepers.visits, visits + 1);
     }
 
     #[test]

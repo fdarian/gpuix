@@ -587,6 +587,8 @@ pub struct RetainedTree {
     /// How many elements this tree has ever destroyed, for caches keyed by element id to know when
     /// to look for the ones that are gone.
     removals: u64,
+    /// How many times an element was put under a parent other than the one it had.
+    reparents: u64,
 }
 
 impl RetainedTree {
@@ -616,6 +618,7 @@ impl RetainedTree {
             dirty: false,
             auto_focus_requested: false,
             removals: 0,
+            reparents: 0,
         }
     }
 
@@ -625,6 +628,11 @@ impl RetainedTree {
 
     pub fn removals(&self) -> u64 {
         self.removals
+    }
+
+    /// What an element's place in the tree can make of it that its own props do not tell.
+    pub fn reparents(&self) -> u64 {
+        self.reparents
     }
 
     /// Whether a frame drawn now would differ from the last one, clearing the
@@ -894,6 +902,9 @@ impl RetainedTree {
         if let Some(child) = self.elements.get_mut(&child_id) {
             child.parent = Some(parent_id);
         }
+        if old_parent_id.is_some_and(|old| old != parent_id) {
+            self.reparents += 1;
+        }
         // Add to new parent's children
         if let Some(parent) = self.elements.get_mut(&parent_id) {
             parent.children.push(child_id);
@@ -918,6 +929,9 @@ impl RetainedTree {
         // Set new parent
         if let Some(child) = self.elements.get_mut(&child_id) {
             child.parent = Some(parent_id);
+        }
+        if old_parent_id.is_some_and(|old| old != parent_id) {
+            self.reparents += 1;
         }
         // Insert before the target
         if let Some(parent) = self.elements.get_mut(&parent_id) {

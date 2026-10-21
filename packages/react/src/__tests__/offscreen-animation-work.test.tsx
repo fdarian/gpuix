@@ -27,10 +27,11 @@ const TIMEOUT = 120_000
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-defineKeyframes("offscreen-pulse", {
+const PULSE = {
   "0%": { color: "#ff0000", backgroundColor: "#ff0000" },
   "100%": { color: "#0000ff", backgroundColor: "#0000ff" },
-})
+}
+defineKeyframes("offscreen-pulse", PULSE)
 defineKeyframes("offscreen-grow", { from: { width: 40 }, to: { width: 80 } })
 
 type Work = Record<string, number>
@@ -296,6 +297,81 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
       for (const [, at] of mine) expect(at % 1000).toBeLessThan(16)
       if (!verifying) expect(seen.length).toBe(40 * mine.length)
     } finally {
+      page.root.unmount()
+    }
+  })
+
+  /** Loops of different lengths, one finite, one with a delay: the boundaries of each fall on other frames. */
+  const LOOPS = ["700ms linear infinite", "1300ms linear 2", "2s linear 500ms infinite", "600ms linear 3", "5s linear infinite"]
+
+  function TimedPage({ shown, onEvent }: { shown: boolean; onEvent: (event: string) => void }) {
+    return (
+      <div style={{ width: SIZE.width, height: SIZE.height, flexDirection: "column" }}>
+        {shown ? null : <div style={{ height: SIZE.height + BEFORE, flexShrink: 0 }} />}
+        {LOOPS.map((loop, index) => (
+          <text
+            key={index}
+            testId={`timed-${index}`}
+            onAnimationIteration={(event) => onEvent(`iteration:${index}:${event.elapsedTime}`)}
+            onAnimationEnd={(event) => onEvent(`end:${index}:${event.elapsedTime}`)}
+            style={{ fontSize: 14, color: "#ff0000", animation: `offscreen-pulse ${loop}` }}
+          >{`timed ${index}`}</text>
+        ))}
+      </div>
+    )
+  }
+
+  it("reports the iterations and ends of loops that are not due for a while at the ticks that pass their boundaries, as when they are shown", async () => {
+    const run = async (shown: boolean) => {
+      const reported: Array<[number, string]> = []
+      let step = 0
+      const root = createTestRoot({ width: SIZE.width, height: SIZE.height })
+      const renderer = root.renderer
+      try {
+        renderer.clockPause()
+        root.render(<TimedPage shown={shown} onEvent={(event) => reported.push([step, event])} />)
+        await settle(renderer)
+        renderer.setInlineDraws(false)
+        renderer.setA11yActive(false)
+        reported.length = 0
+        const offset = renderer.getAnimations(renderer.findByTestId("timed-0").id)[0].currentTime
+        for (step = 1; step <= 400; step++) {
+          tick(renderer)
+          renderer.dispatchNativeEvents()
+        }
+        if (retained && !verifying) {
+          const built = work(renderer, () => renderer.clockFastForward(16)).elementsBuilt
+          expect(shown ? built > 0 : built, shown ? "the shown loops are built" : "the culled loops are not").toBe(shown ? true : 0)
+        }
+        return { reported, offset }
+      } finally {
+        root.unmount()
+      }
+    }
+    const culled = await run(false)
+    const shown = await run(true)
+    // 6.4 s: five boundaries of the 700 ms loop, a finish of the 1300 ms and the 600 ms ones, ...
+    expect(shown.reported.filter(([, event]) => event.startsWith("end")).length).toBe(2)
+    expect(shown.reported.length).toBeGreaterThan(12)
+    expect(culled.reported).toEqual(shown.reported)
+  })
+
+  it.skipIf(!retained || verifying)("builds the loops again when their keyframes are redefined to move a box, and leaves them be when they paint again", async () => {
+    const page = await mount({ cards: 40, kind: "colour", place: "hidden" })
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < 8; warm++) tick(renderer)
+      expect(tick(renderer).elementsBuilt, "dormant").toBe(0)
+      defineKeyframes("offscreen-pulse", { from: { width: 40 }, to: { width: 80 } })
+      renderer.flush()
+      for (let step = 0; step < 3; step++) tick(renderer)
+      expect(tick(renderer).elementsBuilt, "a loop that moves a box is built in every tick").toBeGreaterThan(40)
+      defineKeyframes("offscreen-pulse", PULSE)
+      renderer.flush()
+      for (let step = 0; step < 4; step++) tick(renderer)
+      expect(tick(renderer).elementsBuilt, "dormant again").toBe(0)
+    } finally {
+      defineKeyframes("offscreen-pulse", PULSE)
       page.root.unmount()
     }
   })

@@ -158,10 +158,8 @@ impl GpuixView {
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
         self.built_at = Some(now);
-        for &id in self.retain.dormant() {
-            self.css_animations.advance_clock(id, now);
-            self.css_transitions.advance_clock(id, now);
-        }
+        self.css_animations.advance_dormant(now);
+        self.css_transitions.advance_dormant(now);
         let (animating, settled) = if tree.motion_ids.is_empty() {
             (Vec::new(), Vec::new())
         } else {
@@ -183,10 +181,9 @@ impl GpuixView {
         let motion_values = crate::renderer::sync_motion_values(&tree, &mut self.motion_values, now);
         crate::renderer::emit_motion_settled(&callback, &tree, &settled);
         crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
-        let dormant = self.retain.dormant();
         Stepped {
-            motion: animating.iter().any(|id| !dormant.contains(id)),
-            dormant_motion: animating.iter().any(|id| dormant.contains(id)),
+            motion: animating.iter().any(|id| !self.retain.is_dormant(*id)),
+            dormant_motion: animating.iter().any(|id| self.retain.is_dormant(*id)),
             motion_values: motion_values.active,
         }
     }

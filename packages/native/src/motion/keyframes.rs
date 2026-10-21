@@ -247,6 +247,8 @@ pub(crate) fn validate_keyframes(name: &str, frames_json: &str) -> Result<(), St
 #[derive(Default)]
 pub(crate) struct KeyframesRegistry {
     definitions: HashMap<String, Arc<Keyframes>>,
+    /// Counts the definitions, for whoever kept an answer that depends on them.
+    epoch: u64,
 }
 
 impl KeyframesRegistry {
@@ -255,7 +257,12 @@ impl KeyframesRegistry {
     pub(crate) fn define(&mut self, name: &str, frames_json: &str) -> Result<(), String> {
         let keyframes = Keyframes::parse_named(name, frames_json)?;
         self.definitions.insert(name.to_string(), Arc::new(keyframes));
+        self.epoch += 1;
         Ok(())
+    }
+
+    pub(crate) fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     pub(super) fn get(&self, name: &str) -> Option<&Arc<Keyframes>> {

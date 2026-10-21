@@ -1171,6 +1171,8 @@ pub(crate) struct CssTransitions {
     /// See `CssAnimations::dormant`.
     dormant: HashSet<u64>,
     dormant_active: bool,
+    /// The dormant elements with a transition running, the only ones a tick has anything to do for.
+    running_dormant: HashSet<u64>,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
 }
@@ -1269,6 +1271,7 @@ impl CssTransitions {
             self.active |= wants;
         }
         let values = state.values(now);
+        self.note_running(id);
         (!values.is_empty()).then_some(TransitionStyle(values))
     }
 
@@ -1289,9 +1292,38 @@ impl CssTransitions {
         self.states.get(&id).is_none_or(|state| state.running.keys().all(|prop| prop.paints_only()))
     }
 
-    pub(crate) fn set_dormant(&mut self, ids: impl IntoIterator<Item = u64>) {
-        self.dormant.clear();
-        self.dormant.extend(ids);
+    pub(crate) fn enter_dormant(&mut self, id: u64) {
+        self.dormant.insert(id);
+        self.note_running(id);
+    }
+
+    pub(crate) fn leave_dormant(&mut self, id: u64) {
+        if self.dormant.remove(&id) {
+            self.running_dormant.remove(&id);
+        }
+    }
+
+    fn note_running(&mut self, id: u64) {
+        if self.dormant.is_empty() {
+            return;
+        }
+        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(|state| !state.running.is_empty()) {
+            self.running_dormant.insert(id);
+        } else {
+            self.running_dormant.remove(&id);
+        }
+    }
+
+    /// `advance_clock` for the dormant elements that have a transition running.
+    pub(crate) fn advance_dormant(&mut self, now: Instant) {
+        if self.running_dormant.is_empty() {
+            return;
+        }
+        let running: Vec<u64> = self.running_dormant.iter().copied().collect();
+        for id in running {
+            self.advance_clock(id, now);
+            self.note_running(id);
+        }
     }
 
     pub(crate) fn take_dormant_active(&mut self) -> bool {
@@ -1311,6 +1343,7 @@ impl CssTransitions {
             let Some(mut state) = self.states.remove(&hidden) else {
                 continue;
             };
+            self.running_dormant.remove(&hidden);
             let running: Vec<AnimProp> = state.running.keys().copied().collect();
             for prop in running {
                 state.cancel(hidden, prop, now, &mut self.events);
@@ -1393,6 +1426,9 @@ impl CssTransitions {
                 // The next step puts it back if it is still at its end.
                 state.running.insert(prop, revived);
                 self.commanded.push(*element);
+                if self.dormant.contains(element) {
+                    self.running_dormant.insert(*element);
+                }
                 return Some(outcome);
             }
         }

@@ -606,6 +606,10 @@ pub(crate) struct Sources<'a> {
     /// under an empty content mask). Chrome paints no frame for such a change, and a frame that
     /// builds it again when it shows reads the clock, so nothing it would have built is lost.
     pub dormant: &'a dyn Fn(u64) -> bool,
+    /// Everything `dormant` reads that no build of an element tells the frame about: it changes
+    /// when the answer may have changed for an element nothing built, so the elements that were
+    /// found dormant are asked again.
+    pub verdicts: u64,
     pub selection: u64,
     /// The pass of the draw the frame is built in, counted from 1, or 0 for a frame built outside
     /// a draw. Only the first pass of a draw is a frame to the back-off.
@@ -637,6 +641,14 @@ struct Seen {
     selection: u64,
 }
 
+/// The elements that became dormant and the ones that stopped being, for whoever keeps their
+/// clocks (`CssAnimations::enter_dormant`).
+#[derive(Default)]
+pub(crate) struct DormantMoves {
+    pub entered: Vec<u64>,
+    pub left: Vec<u64>,
+}
+
 /// What the frame found different from the frame before.
 #[derive(Default)]
 struct Deltas {
@@ -664,7 +676,10 @@ struct Found {
     running: Vec<u64>,
     /// Elements whose last build found something running on them, that are not dormant.
     dynamic: Vec<u64>,
-    dormant: FxHashSet<u64>,
+    /// The elements that were asked whether they are dormant and are.
+    entered: FxHashSet<u64>,
+    /// The verdicts of the elements that were dormant are not the ones they were found with.
+    stale: bool,
 }
 
 /// The most elements a unit holds. A unit is built whole in every frame that is built whole (nothing
@@ -809,9 +824,19 @@ pub(crate) struct Retain {
     records: FxHashMap<u64, Record>,
     /// The elements whose last build found a motion, transition or animation running.
     dynamic: FxHashMap<u64, u8>,
-    /// The elements the frame being built left out of `changed` because they are dormant
-    /// (`Sources::dormant`). Their records stay as they are: the roots above them are replayed.
-    dormant: FxHashSet<u64>,
+    /// The elements the frames left out of `changed` because they are dormant (`Sources::dormant`),
+    /// with the kinds that were running on them when they fell asleep. Their records stay as they
+    /// are: the roots above them are replayed. An element is asked once, and sleeps until
+    /// something can have changed its answer: a build of it (`woken`), or what `dormant` reads
+    /// that no build tells (`verdicts`). Not in `dynamic`, so a frame looks at none of them.
+    dormant: FxHashMap<u64, u8>,
+    /// The dormant elements a build reached since the frame that last asked about them. They are
+    /// still in `dormant` until that frame, which is what the frame that built them saw.
+    woken: FxHashSet<u64>,
+    /// `Sources::verdicts` when the dormant elements were last asked about.
+    verdicts: u64,
+    /// The elements that fell asleep or woke up since `take_dormant_moves`.
+    moves: DormantMoves,
     /// `RetainedTree::removals` when `records` and `dynamic` last dropped the destroyed elements.
     pruned_at: u64,
     seen: Seen,
@@ -966,7 +991,10 @@ impl Retain {
             moved: Vec::new(),
             records: FxHashMap::default(),
             dynamic: FxHashMap::default(),
-            dormant: FxHashSet::default(),
+            dormant: FxHashMap::default(),
+            woken: FxHashSet::default(),
+            verdicts: 0,
+            moves: DormantMoves::default(),
             pruned_at: 0,
             seen: Seen::default(),
             deltas: Deltas::default(),
@@ -1032,7 +1060,7 @@ impl Retain {
         self.seen = Seen { scrolls, ..Seen::default() };
         self.records.clear();
         self.dynamic.clear();
-        self.dormant.clear();
+        self.release_dormant(false);
         self.plan.recorded = false;
         self.backoff = Backoff::default();
     }
@@ -1064,12 +1092,29 @@ impl Retain {
     }
 
     pub(crate) fn record_counts(&self) -> [usize; 2] {
-        [self.records.len(), self.dynamic.len()]
+        [self.records.len(), self.dynamic.len() + self.dormant.len()]
     }
 
-    /// The elements the frame being built (or the last one) leaves dormant, see `Sources::dormant`.
-    pub(crate) fn dormant(&self) -> &FxHashSet<u64> {
-        &self.dormant
+    /// Whether the frame being built (or the last one) leaves `id` dormant, see `Sources::dormant`.
+    pub(crate) fn is_dormant(&self, id: u64) -> bool {
+        self.dormant.contains_key(&id)
+    }
+
+    /// The elements that fell asleep or woke up in the frames since the last call.
+    pub(crate) fn take_dormant_moves(&mut self) -> DormantMoves {
+        std::mem::take(&mut self.moves)
+    }
+
+    /// Every dormant element wakes. `restore` puts what ran on them back among the dynamic
+    /// elements, for the frame after to ask about them as one that was never dormant.
+    fn release_dormant(&mut self, restore: bool) {
+        for (id, bits) in std::mem::take(&mut self.dormant) {
+            self.moves.left.push(id);
+            if restore && bits != 0 {
+                self.dynamic.entry(id).or_insert(bits);
+            }
+        }
+        self.woken.clear();
     }
 
     pub(crate) fn mismatches(&self) -> &[String] {
@@ -1119,8 +1164,8 @@ impl Retain {
         self.stack.clear();
         // The pass that rebuilds a frame to compare it plans nothing, and builds the elements the
         // frame left dormant, which must stay dormant for what they ask of the window.
-        if !sources.reference {
-            self.dormant.clear();
+        if !sources.reference && !(self.open && self.planning) {
+            self.release_dormant(true);
         }
         self.debug.begin_frame(sources.pass);
         crate::tape::clear_build_effects();
@@ -1164,6 +1209,15 @@ impl Retain {
         self.records.retain(|id, _| tree.elements.contains_key(id));
         self.dynamic.retain(|id, _| tree.elements.contains_key(id));
         self.unbuilt.retain(|id| tree.elements.contains_key(id));
+        let moves = &mut self.moves;
+        self.dormant.retain(|id, _| {
+            let exists = tree.elements.contains_key(id);
+            if !exists {
+                moves.left.push(*id);
+            }
+            exists
+        });
+        self.woken.retain(|id| tree.elements.contains_key(id));
     }
 
     /// Whether the frame about to be built is one that is not recorded, see [`Backoff`].
@@ -1286,39 +1340,52 @@ impl Retain {
 
         let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
         // A dormant element is not a change: the roots above it keep their recording, and a frame
-        // that shows it builds the root late, with the clock of that frame.
-        let mut dormant = FxHashSet::default();
+        // that shows it builds the root late, with the clock of that frame. One that was found
+        // dormant is not asked about again until a build reaches it or `verdicts` moves.
+        let stale = sources.verdicts != self.verdicts;
+        let sleeps = |id: u64| !stale && self.dormant.contains_key(&id) && !self.woken.contains(&id);
+        let mut entered = FxHashSet::default();
         let mut running = Vec::new();
         for &id in &motion {
+            if sleeps(id) {
+                continue;
+            }
             if (sources.dormant)(id) {
-                dormant.insert(id);
+                entered.insert(id);
             } else {
                 running.push(id);
             }
         }
         running.extend(seen.motion.iter().filter(|id| !motion.contains(id)));
         let mut dynamic = Vec::new();
-        for (&id, &bits) in &self.dynamic {
-            if dormant.contains(&id) || (bits & !Dynamic::OWN == 0 && (sources.dormant)(id)) {
-                dormant.insert(id);
+        // Everything that is asleep is asked again when the answers may have moved.
+        let sleepers = self.dormant.iter().filter(|(id, bits)| stale && **bits != 0 && !self.dynamic.contains_key(id));
+        for (&id, &bits) in self.dynamic.iter().chain(sleepers) {
+            if entered.contains(&id) || (bits & !Dynamic::OWN == 0 && (sources.dormant)(id)) {
+                entered.insert(id);
             } else {
                 dynamic.push(id);
             }
         }
-        Found { all, sourced: changed, scrolled, scrolling, scrolls, customs, motion, running, dynamic, dormant }
+        Found { all, sourced: changed, scrolled, scrolling, scrolls, customs, motion, running, dynamic, entered, stale }
+    }
+
+    /// Whether `id` is dormant in the frame `found` is the delta of.
+    fn asleep_in(&self, found: &Found, id: u64) -> bool {
+        found.entered.contains(&id) || (!found.stale && self.dormant.contains_key(&id) && !self.woken.contains(&id))
     }
 
     /// Makes what `compute_deltas` found the delta of the frame being built, and what the next
     /// frame is compared with.
     fn commit_deltas(&mut self, sources: &Sources, found: Found) {
-        let Found { all, sourced, scrolled, scrolling, scrolls, customs, motion, running, dynamic, dormant } = found;
+        let Found { all, sourced, scrolled, scrolling, scrolls, customs, motion, running, dynamic, entered, stale } = found;
         let mut changed = sourced;
         let seen = &mut self.seen;
         self.debug.sources("pointer-focus-scroll-custom", changed.iter().copied());
         self.debug.sources("motion-just-ended", seen.motion.iter().copied().filter(|id| !sources.motion.contains(id)));
         self.debug.sources("motion-running", running.iter().copied());
         self.debug.sources("dynamic-last-build", dynamic.iter().copied());
-        self.debug.sources("dormant", dormant.iter().copied());
+        self.debug.sources("dormant", entered.iter().copied());
         self.debug.sources("measurement", sources.measured.iter().copied());
         self.debug.sources("link", sources.links.iter().copied());
         self.debug.sources("web-animation-command", sources.commanded.iter().copied());
@@ -1327,7 +1394,6 @@ impl Retain {
         changed.extend(&sources.links);
         changed.extend(&sources.commanded);
         changed.extend(dynamic);
-        self.dormant = dormant;
 
         seen.known = true;
         seen.hovered = sources.hovered.to_vec();
@@ -1340,6 +1406,7 @@ impl Retain {
         seen.customs = customs;
         seen.motion = motion;
         seen.selection = sources.selection;
+        self.settle_dormant(sources.verdicts, stale, entered);
 
         // Closed under parent, which is what makes stopping at the first id already in it right:
         // every id it holds had its whole chain walked. Seeding it with `unbuilt` as it is would
@@ -1363,6 +1430,43 @@ impl Retain {
             .filter(|id| sources.tree.elements.get(id).is_none_or(|element| !element.is_built_by_ancestor(sources.tree)))
             .collect();
         self.deltas = Deltas { all, spine, scrolled, scrolling };
+    }
+
+    /// Makes the elements `compute_deltas` found dormant the dormant ones, and wakes those it asked
+    /// about again and found otherwise.
+    fn settle_dormant(&mut self, verdicts: u64, stale: bool, entered: FxHashSet<u64>) {
+        let asked: Vec<u64> = if stale {
+            self.dormant.keys().copied().collect()
+        } else {
+            self.woken.iter().copied().filter(|id| self.dormant.contains_key(id)).collect()
+        };
+        for id in asked {
+            if entered.contains(&id) {
+                continue;
+            }
+            let bits = self.dormant.remove(&id).expect("asked about the dormant");
+            self.moves.left.push(id);
+            // One that a build reached has what ran on it from that build.
+            if bits != 0 && !self.woken.contains(&id) {
+                self.dynamic.entry(id).or_insert(bits);
+            }
+        }
+        for id in entered {
+            let running = self.dynamic.remove(&id);
+            match self.dormant.entry(id) {
+                std::collections::hash_map::Entry::Occupied(mut asleep) => {
+                    if let Some(bits) = running {
+                        *asleep.get_mut() = bits;
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(slot) => {
+                    slot.insert(running.unwrap_or(0));
+                    self.moves.entered.push(id);
+                }
+            }
+        }
+        self.woken.clear();
+        self.verdicts = verdicts;
     }
 
     /// Starts the build of a subtree that gpui asked for after the frame was built, because the
@@ -1416,7 +1520,7 @@ impl Retain {
         }
         let at = *self.stack.last()?;
         let node = &self.nodes[at as usize];
-        if node.exclusion.is_some() || node.skipped.is_some() || self.dormant.contains(&node.id) {
+        if node.exclusion.is_some() || node.skipped.is_some() || self.dormant.contains_key(&node.id) {
             return None;
         }
         let record = self.records.get(&node.id)?;
@@ -1564,7 +1668,7 @@ impl Retain {
         }
         let mut touched = FxHashSet::default();
         for &id in found.running.iter().chain(&found.dynamic).chain(&self.unbuilt) {
-            if found.dormant.contains(&id) {
+            if self.asleep_in(&found, id) {
                 continue;
             }
             let mut at = Some(id);
@@ -2163,6 +2267,9 @@ impl Retain {
             if self.retained[at] && self.verify && !self.planning {
                 check(&self.records, &mut self.mismatches, node.id, own.digest, eligible);
             }
+            if !self.dormant.is_empty() && self.dormant.contains_key(&node.id) {
+                self.woken.insert(node.id);
+            }
             if node.vol.dynamic != 0 {
                 self.dynamic.insert(node.id, node.vol.dynamic);
                 built_dynamic.insert(node.id);
@@ -2224,7 +2331,7 @@ impl Retain {
             .dynamic
             .keys()
             .copied()
-            .filter(|id| !built.contains(id) && !self.dormant.contains(id))
+            .filter(|id| !built.contains(id) && !self.dormant.contains_key(id))
             .collect();
         for id in stale {
             self.dynamic.remove(&id);
@@ -2407,6 +2514,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            verdicts: 0,
             selection: 0,
             pass: 1,
             lazy_builds: 0,
@@ -2496,6 +2604,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            verdicts: 0,
             selection: changes.selection,
             pass: 1,
             lazy_builds: 0,
@@ -2609,6 +2718,7 @@ mod tests {
             customs: Vec::new(),
             motion: motion.to_vec(),
             dormant: &|_| false,
+            verdicts: 0,
             selection: 0,
             pass: 1,
             lazy_builds: 0,
@@ -2723,6 +2833,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            verdicts: 0,
             selection: 0,
             pass: 1,
             lazy_builds: 0,
@@ -3861,6 +3972,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            verdicts: 0,
             selection: 0,
             pass: 1,
             lazy_builds: 0,
@@ -4223,6 +4335,97 @@ mod tests {
         assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(5)));
         let sources = Sources { dormant: &|id| id == 5, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
         assert_eq!(page.retain.preview(&sources, false), Ok(vec![2]), "dormant: the tick carries its clock without building it");
+    }
+
+    /// A frame of the page in which 3 and 4 run something that paints, and `culled` says which
+    /// of them the frame finds dormant. Gives the ids it was asked about and what moved.
+    fn dormancy_frame(page: &mut Units, culled: &dyn Fn(u64) -> bool, verdicts: u64) -> (Vec<u64>, DormantMoves) {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let ask = |id: u64| {
+            asked.borrow_mut().push(id);
+            culled(id)
+        };
+        let mut sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
+        sources.dormant = &ask;
+        sources.verdicts = verdicts;
+        page.retain.begin_frame(sources);
+        let moves = page.retain.take_dormant_moves();
+        page.element(1, None, |page| {
+            page.element(2, None, |page| {
+                page.element(3, Some(true), |_| {});
+                page.element(4, Some(true), |_| {});
+            });
+            page.leaf(5);
+        });
+        page.retain.finish_frame();
+        let mut asked = asked.into_inner();
+        asked.sort_unstable();
+        (asked, moves)
+    }
+
+    #[test]
+    fn a_dormant_element_is_asked_about_once_and_again_only_when_something_can_have_changed_the_answer() {
+        let mut page = Units::new();
+        let culled = |_: u64| true;
+        // The first frame builds everything, and the elements that run something are asked about.
+        dormancy_frame(&mut page, &culled, 0);
+        let (asked, moves) = dormancy_frame(&mut page, &culled, 0);
+        assert_eq!(asked, vec![3, 4]);
+        assert_eq!((in_order(moves.entered), moves.left), (vec![3, 4], vec![]));
+        assert!(page.retain.is_dormant(3) && page.retain.is_dormant(4));
+        for _ in 0..3 {
+            let (asked, moves) = dormancy_frame(&mut page, &culled, 0);
+            assert_eq!(asked, Vec::<u64>::new(), "a frame in which nothing changed asks about no one");
+            assert!(moves.entered.is_empty() && moves.left.is_empty());
+        }
+
+        // A build that reaches 4 (with the elements above it, as an edit does) wakes it for the frame after.
+        for id in [1, 2, 4] {
+            page.edit(id);
+        }
+        let (asked, _) = dormancy_frame(&mut page, &culled, 0);
+        assert_eq!(asked, Vec::<u64>::new(), "the frame that builds it still sees what the frame before found");
+        assert!(page.retain.is_dormant(4));
+        let shown = |id: u64| id != 4;
+        let (asked, moves) = dormancy_frame(&mut page, &shown, 0);
+        assert_eq!(asked, vec![4], "only the element that was built is asked about");
+        assert_eq!((moves.entered, moves.left), (vec![], vec![4]));
+        assert!(page.retain.is_dormant(3) && !page.retain.is_dormant(4));
+
+        // What the answers are read from moves with no build of an element: all that sleep are asked.
+        let (asked, moves) = dormancy_frame(&mut page, &shown, 1);
+        assert_eq!(asked, vec![3, 4], "4 runs something and is asked about in every frame, 3 is asked again");
+        assert!(moves.entered.is_empty() && moves.left.is_empty());
+        let none = |_: u64| false;
+        let (asked, moves) = dormancy_frame(&mut page, &none, 2);
+        assert_eq!(asked, vec![3, 4]);
+        assert_eq!(moves.left, vec![3]);
+        assert!(!page.retain.is_dormant(3));
+        let (asked, _) = dormancy_frame(&mut page, &none, 2);
+        assert_eq!(asked, vec![3, 4], "what runs on an element that is not dormant is asked about in every frame");
+    }
+
+    fn in_order(mut ids: Vec<u64>) -> Vec<u64> {
+        ids.sort_unstable();
+        ids
+    }
+
+    #[test]
+    fn dormant_elements_wake_when_retention_stops_and_when_they_are_destroyed() {
+        let mut page = Units::new();
+        let culled = |_: u64| true;
+        dormancy_frame(&mut page, &culled, 0);
+        dormancy_frame(&mut page, &culled, 0);
+        assert!(page.retain.is_dormant(3) && page.retain.is_dormant(4));
+        page.tree.destroy_element(4);
+        page.retain.begin_frame(sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false));
+        let moves = page.retain.take_dormant_moves();
+        assert_eq!(moves.left, vec![4], "the clock of a destroyed element is let go");
+        assert!(page.retain.is_dormant(3) && !page.retain.is_dormant(4));
+        page.retain.finish_frame();
+        page.retain.set_planning(false);
+        assert!(!page.retain.is_dormant(3));
+        assert_eq!(page.retain.take_dormant_moves().left, vec![3]);
     }
 
     const TINTED: &str = r#"{"height": 60, "animation": "tint 600ms linear infinite"}"#;

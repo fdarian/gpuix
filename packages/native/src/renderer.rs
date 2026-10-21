@@ -5328,6 +5328,8 @@ pub(crate) struct GpuixView {
     /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
     dormant_tick_armed: bool,
     paint_statics: PaintStatics,
+    /// `RetainedTree::removals` when the per-element maps last dropped the destroyed elements.
+    swept_at: u64,
     /// Whether a tick of paint-only animations is drawn by patching the frame before it.
     pub(crate) patch: crate::retain::Patching,
     /// Resolved `highlight` state, keyed by the element that declared it.
@@ -5888,6 +5890,7 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             built_at: None,
             dormant_tick_armed: false,
+            swept_at: 0,
             paint_statics: PaintStatics::default(),
             patch: crate::retain::Patching::new(),
             highlights: HashMap::new(),
@@ -7924,6 +7927,7 @@ impl GpuixView {
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
+            verdicts: self.dormancy_verdicts(&tree, window),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
             lazy_builds: window.retained_counters().lazy_builds,
@@ -7933,6 +7937,21 @@ impl GpuixView {
         };
         self.retain
             .preview(&sources, crate::scroll::animating() || crate::scrollbar::animating())
+    }
+
+    /// Everything `Dormancy::holds` reads that a build of the element is not the only way to move,
+    /// as one number that differs when any of it did: a frame asks the elements it found dormant
+    /// again when it does, and never otherwise.
+    fn dormancy_verdicts(&self, tree: &crate::retained_tree::RetainedTree, window: &gpui::Window) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = rustc_hash::FxHasher::default();
+        self.keyframes.epoch().hash(&mut hasher);
+        tree.reparents().hash(&mut hasher);
+        let viewport = window.viewport_size();
+        f32::from(viewport.width).to_bits().hash(&mut hasher);
+        f32::from(viewport.height).to_bits().hash(&mut hasher);
+        hasher.finish()
     }
 
     pub(crate) fn activation(&self) -> crate::events::activation::Activation {
@@ -8157,10 +8176,8 @@ impl GpuixView {
         let callback = self.event_callback.clone();
         let now = self.clock.now();
         self.built_at = Some(now);
-        for &id in self.retain.dormant() {
-            self.css_animations.advance_clock(id, now);
-            self.css_transitions.advance_clock(id, now);
-        }
+        self.css_animations.advance_dormant(now);
+        self.css_transitions.advance_dormant(now);
         let (animating, settled) = if tree.motion_ids.is_empty() {
             (Vec::new(), Vec::new())
         } else {
@@ -8182,9 +8199,8 @@ impl GpuixView {
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
-        let dormant = self.retain.dormant();
         let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        if animating.iter().any(|id| !dormant.contains(id)) {
+        if animating.iter().any(|id| !self.retain.is_dormant(*id)) {
             // A motion that no frame has seen run: a frame of its own sets it going.
             cx.notify();
         } else if dormant_active || !animating.is_empty() {
@@ -8249,7 +8265,12 @@ impl gpui::Render for GpuixView {
         self.virtual_lists
             .retain(|id, _| tree.elements.contains_key(id));
         self.containers.retain(|id| tree.elements.contains_key(&id));
-        self.tapes.retain(|id| tree.elements.contains_key(&id));
+        // Only a destroyed element leaves these maps, and a sweep is a pass over every element in
+        // them: one with a tape, one with an animation.
+        let destroyed = tree.removals() != self.swept_at;
+        if destroyed {
+            self.tapes.retain(|id| tree.elements.contains_key(&id));
+        }
         self.paint_statics.prune(|id| tree.elements.contains_key(&id));
         // Pruned by listener, not existence: dropping `onLayout` and adding it
         // back reports the size again, like a fresh observer.
@@ -8316,10 +8337,13 @@ impl gpui::Render for GpuixView {
         self.motion_values
             .set_appearance(color_scheme_of(window.appearance()));
         let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
-        self.css_transitions
-            .retain(|id| tree.elements.contains_key(&id));
-        self.css_animations
-            .retain(|id| tree.elements.contains_key(&id));
+        if destroyed {
+            self.css_transitions
+                .retain(|id| tree.elements.contains_key(&id));
+            self.css_animations
+                .retain(|id| tree.elements.contains_key(&id));
+            self.swept_at = tree.removals();
+        }
         self.contents_styles.clear();
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
         self.layout_flips.retain(|id| {
@@ -8368,6 +8392,7 @@ impl gpui::Render for GpuixView {
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
+            verdicts: self.dormancy_verdicts(&tree, window),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
             lazy_builds: window.retained_counters().lazy_builds,
@@ -8377,13 +8402,18 @@ impl gpui::Render for GpuixView {
         });
         // The elements left dormant keep their animations on time without a build: their clocks
         // move here, and what they ask of the window goes to a tick that draws nothing.
-        self.css_animations.set_dormant(self.retain.dormant().iter().copied());
-        self.css_transitions.set_dormant(self.retain.dormant().iter().copied());
+        let moves = self.retain.take_dormant_moves();
+        for &id in &moves.left {
+            self.css_animations.leave_dormant(id);
+            self.css_transitions.leave_dormant(id);
+        }
+        for &id in &moves.entered {
+            self.css_animations.enter_dormant(id);
+            self.css_transitions.enter_dormant(id);
+        }
         if !window.is_retention_reference() {
-            for &id in self.retain.dormant() {
-                self.css_animations.advance_clock(id, now);
-                self.css_transitions.advance_clock(id, now);
-            }
+            self.css_animations.advance_dormant(now);
+            self.css_transitions.advance_dormant(now);
         }
         let result = match tree.root_id {
             Some(root_id) => {
@@ -8432,8 +8462,8 @@ impl gpui::Render for GpuixView {
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
         let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        let motion_active = motion_animating.iter().any(|id| !self.retain.dormant().contains(id));
-        let dormant_motion = motion_animating.iter().any(|id| self.retain.dormant().contains(id));
+        let motion_active = motion_animating.iter().any(|id| !self.retain.is_dormant(*id));
+        let dormant_motion = motion_animating.iter().any(|id| self.retain.is_dormant(*id));
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
