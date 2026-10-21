@@ -2653,7 +2653,7 @@ function ProgrammaticScroll() {
 
 | Member | |
 |---|---|
-| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range, which ends where Chrome's does: the extent (with the padding after the content) and the client size, each rounded half up to a device pixel, apart from where the box sits. At scale 1 the farthest offset is `scrollHeight - clientHeight`; at scale 2 it can be half a pixel more, and `scrollTo(0, scrollHeight - clientHeight)` stops short of it, as in Chrome. |
+| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range, which ends where Chrome's does: the extent (with the padding after the content) and the client size, each rounded half up to a device pixel, apart from where the box sits. At scale 1 the farthest offset is `scrollHeight - clientHeight`; at scale 2 it can be half a pixel more, and `scrollTo(0, scrollHeight - clientHeight)` stops short of it, as in Chrome. A write lays out only what is pending, then clamps against that layout, so any number of writes in a task cost no layout, and a write after a style change in the same task is clamped to the new extent. |
 | `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. A whole number: the extent as layout measured it, rounded half up, as Chrome does. |
 | `clientWidth`, `clientHeight` | The padding box less the scrollbar. Overlay scrollbars take nothing from it; classic ones (see [Scrollbars](#scrollbars)) take 15 px, or 11 with `scrollbarWidth: "thin"`. A whole number: the size as layout measured it, rounded half up, as Chrome does, so a box 33.328125 px wide has a `clientWidth` of 33. |
 | `scrollTo({ top, left, behavior })`, `scrollTo(x, y)` | An axis you leave out stays where it is. |
@@ -4934,7 +4934,12 @@ sends in a microtask, React at commit) and the window is laid out synchronously
 if anything changed, without painting, as a browser forces layout. The first
 read after a mount, or a read right after a style change in the same turn,
 answers for the tree as it is, and the next frame draws once however many reads
-came before it. An
+came before it. A layout a read forces does not advance time: it samples
+animations, transitions and motion values at the instant of the last draw, as a
+browser's animation clock stands still between frames, so a handler that reads
+layout from a `change` event cannot make the animation it listens to run ahead.
+A scroll offset write does not make a read of `scrollTop` or `scrollHeight` lay
+out (a read of bounds does, the children moved). An
 element with no box (not mounted, not painted) returns a zero
 rect, as in the DOM.
 

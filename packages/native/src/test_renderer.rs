@@ -1712,7 +1712,8 @@ impl TestGpuixRenderer {
 
     /// Scroll an element to a DOM scroll position: `left` and `top` are `scrollLeft` and
     /// `scrollTop`, zero or more, so scrolling down is a larger `top`.
-    /// Call flush() after to apply the offset and re-render.
+    /// The offset is clamped to the layout of the tree as it is, which is laid out first if
+    /// it changed. The window draws it with the next frame.
     #[napi]
     pub fn scroll_to(
         &self,
@@ -1725,13 +1726,23 @@ impl TestGpuixRenderer {
         let behavior =
             crate::scroll::Behavior::parse(behavior.as_deref()).map_err(Error::from_reason)?;
         let offset = crate::scroll::gpui_offset(left, top);
-        update_view_or_defer(move |view, _window, _cx| {
-            if view.set_virtual_list_offset(id, offset) {
-                return;
-            }
-            if let Some(handle) = view.scrollable_handle(id) {
-                crate::scroll::scroll_to(id, handle, offset, behavior);
-            }
+        // A browser's setter lays out what is dirty first, so the offset is clamped to the
+        // tree as it is. A scroll write is not a layout invalidation for a metrics read.
+        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
+            self.flush()?;
+        }
+        window_call(|window, cx| window.draw_if_scroll_metrics_dirty(cx))?;
+        update_view_or_defer(move |view, _window, cx| {
+            let write = if view.set_virtual_list_offset(id, offset) {
+                crate::renderer::ScrollWrite::Layout
+            } else {
+                if let Some(handle) = view.scrollable_handle(id) {
+                    crate::scroll::scroll_to(id, handle, offset, behavior);
+                }
+                crate::renderer::ScrollWrite::Offset
+            };
+            let entity = cx.entity_id();
+            crate::renderer::invalidate_after_scroll(cx, entity, write);
         })
     }
 
@@ -2058,7 +2069,10 @@ impl TestGpuixRenderer {
         if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
             self.flush()?;
         }
-        let window = draw_pending_changes()?;
+        let window = window_call(|window, cx| {
+            window.draw_if_scroll_metrics_dirty(cx);
+            window.window_handle().window_id()
+        })?;
         Ok(crate::renderer::scroll_metrics(window, id).map(|metrics| metrics.to_vec()))
     }
 

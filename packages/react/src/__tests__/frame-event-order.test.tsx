@@ -62,8 +62,10 @@ function run() {
     }
 
     log.length = 0
-    render(page(true))
+    // The scroll comes first: a scroll write after a style change forces the layout, and its `onLayout`
+    // reports would go out ahead of the frame's scroll event.
     renderer.scrollTo(refs.get("scroller")!.id, 0, 200)
+    render(page(true))
     frame()
     renderer.dispatchNativeEvents()
     return log

@@ -295,15 +295,19 @@ pub(crate) fn dom_position(offset: gpui::Point<gpui::Pixels>) -> [f64; 2] {
 }
 
 /// Moves a scroller to `target` (an offset: zero, then negative), instantly or by a smooth
-/// animation. A new call replaces the animation in flight. The offset is not clamped here: the
-/// next layout clamps it against the content as it is by then, which a caller that has just
-/// changed the content needs.
+/// animation. A new call replaces the animation in flight.
+///
+/// `target` is held to the range of the last layout, as `scrollTop = n` is in a browser, which
+/// lays out first when the tree changed: a caller that has just changed the content lays out
+/// before it calls (`draw_if_dirty`), and a scroller that shrinks later is clamped by the layout
+/// that shrank it.
 pub(crate) fn scroll_to(
     id: u64,
     handle: &gpui::ScrollHandle,
     target: gpui::Point<gpui::Pixels>,
     behavior: Behavior,
 ) {
+    let target = clamp_offset(target, handle.max_offset());
     ANIMATIONS.with(|animations| animations.borrow_mut().remove(&id));
     if !is_smooth(id, behavior) {
         handle.set_offset(target);

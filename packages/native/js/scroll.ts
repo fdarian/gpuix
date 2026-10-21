@@ -131,6 +131,13 @@ function scrollTo(
   relative: boolean
 ): void {
   if (!renderer.scrollTo) throw new Error("This renderer cannot scroll")
+  if (!relative && options.left !== undefined && options.top !== undefined) {
+    // Both axes are named, so there is nothing to read back. Native lays out what is dirty
+    // before it clamps, as a browser's setter does.
+    flushPendingMutations(renderer)
+    renderer.scrollTo(id, options.left, options.top, options.behavior)
+    return
+  }
   const current = readScrollMetrics(renderer, id)
   const left = options.left === undefined ? current.scrollLeft : options.left + (relative ? current.scrollLeft : 0)
   const top = options.top === undefined ? current.scrollTop : options.top + (relative ? current.scrollTop : 0)

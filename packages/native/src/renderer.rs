@@ -237,8 +237,24 @@ fn scroll_element_position(id: u64) -> Option<[f64; 2]> {
         .map(crate::scroll::dom_position)
 }
 
+/// What a scroll write invalidates.
+#[derive(Clone, Copy)]
+pub(crate) enum ScrollWrite {
+    /// A `div` scroller's offset, clamped to its range: it moves the boxes of what it holds and
+    /// nothing a scroll query reads, as in a browser, where a scroll offset is a paint property.
+    Offset,
+    /// A virtual list's offset decides which rows exist, and so how much it measures.
+    Layout,
+}
+
 /// Scrolls the virtual list or scroll container `id` to the DOM scroll position `left`, `top`.
-fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Behavior) {
+/// A `div` scroller is clamped to the range of the layout, which the caller made current first.
+fn scroll_element_to(
+    id: u64,
+    left: f64,
+    top: f64,
+    behavior: crate::scroll::Behavior,
+) -> ScrollWrite {
     let offset = crate::scroll::gpui_offset(left, top);
     if VIRTUAL_LIST_STATES.with(|cell| {
         let states = cell.borrow();
@@ -248,13 +264,14 @@ fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Beha
         state.set_offset_from_scrollbar(offset);
         true
     }) {
-        return;
+        return ScrollWrite::Layout;
     }
     SCROLL_HANDLES.with(|cell| {
         if let Some(handle) = cell.borrow().get(&id) {
             crate::scroll::scroll_to(id, handle, offset, behavior);
         }
     });
+    ScrollWrite::Offset
 }
 
 /// `Element.scrollTop` and friends, from the last layout. See `scroll::metrics`.
@@ -482,6 +499,18 @@ impl Repaint {
             }
             Self::MotionWrite(_) | Self::Layout => invalidate_after_commit(cx, view),
         }
+    }
+}
+
+/// [`invalidate_after_commit`] for a scroll write.
+pub(crate) fn invalidate_after_scroll(
+    cx: &mut gpui::App,
+    view: gpui::EntityId,
+    write: ScrollWrite,
+) {
+    match write {
+        ScrollWrite::Offset => cx.notify_scroll_only(view),
+        ScrollWrite::Layout => invalidate_after_commit(cx, view),
     }
 }
 
@@ -807,10 +836,12 @@ async fn run_ui_commands(
                 left,
                 top,
                 behavior,
-            } => {
-                scroll_element_to(id, left, top, behavior);
-                invalidate_ui_window(window, cx)
-            }
+            } => window.update(cx, move |_view, window, cx| {
+                window.draw_if_scroll_metrics_dirty(cx);
+                let write = scroll_element_to(id, left, top, behavior);
+                let view = cx.entity_id();
+                invalidate_after_scroll(cx, view, write);
+            }),
             UiCommand::ScrollToItem { id, index, offset } => {
                 if !VIRTUAL_LIST_STATES.with(|cell| {
                     if !cell.borrow().contains_key(&id) {
@@ -840,7 +871,7 @@ async fn run_ui_commands(
             }
             UiCommand::GetScrollMetrics { id, response } => {
                 gpui::AnyWindowHandle::from(window).update(cx, move |_view, window, cx| {
-                    window.draw_if_dirty(cx);
+                    window.draw_if_scroll_metrics_dirty(cx);
                     response.send(scroll_metrics(window.window_handle().window_id(), id)).ok();
                 })
             }
@@ -1422,6 +1453,13 @@ impl GpuixRenderer {
     #[cfg(target_os = "macos")]
     fn draw_pending_changes(&self) -> Result<Option<gpui::WindowId>> {
         self.with_initialized_window(|window, cx| window.draw_if_dirty(cx))
+    }
+
+    /// Like `draw_pending_changes`, for a read of the size and extent of a scroller and its
+    /// offset: a scroll write does not make it lay out.
+    #[cfg(target_os = "macos")]
+    fn draw_pending_scroll_metrics(&self) -> Result<Option<gpui::WindowId>> {
+        self.with_initialized_window(|window, cx| window.draw_if_scroll_metrics_dirty(cx))
     }
 
     /// Like `draw_pending_changes`, for a read of what a frame painted (the painted text), which
@@ -3173,10 +3211,15 @@ impl GpuixRenderer {
         let behavior =
             crate::scroll::Behavior::parse(behavior.as_deref()).map_err(Error::from_reason)?;
         #[cfg(target_os = "macos")]
-        {
-            scroll_element_to(id, left, top, behavior);
-            return invalidate_window();
-        }
+        return update_window_without_view(move |window, cx| {
+            // Like a browser's setter: lay out what is dirty so the range is the tree's, then
+            // clamp and write. The write itself invalidates the draw and nothing a read lays out for.
+            window.draw_if_scroll_metrics_dirty(cx);
+            let write = scroll_element_to(id, left, top, behavior);
+            let view = crate::events::sync_dispatch::root_view(window).map_err(Error::from_reason)?;
+            invalidate_after_scroll(cx, view.entity_id(), write);
+            Ok(())
+        })?;
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::ScrollTo {
@@ -3393,7 +3436,7 @@ impl GpuixRenderer {
         #[cfg(target_os = "macos")]
         {
             return Ok(self
-                .draw_pending_changes()?
+                .draw_pending_scroll_metrics()?
                 .and_then(|window| scroll_metrics(window, id))
                 .map(|metrics| metrics.to_vec()));
         }

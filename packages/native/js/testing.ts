@@ -1278,12 +1278,10 @@ export class TestRenderer implements NativeRenderer {
 
   /** Scroll an element (overflow: "scroll", or a `<virtual-list>`) to a DOM scroll
    *  position: `left` and `top` are `scrollLeft` and `scrollTop`, zero or more, so
-   *  scrolling down is a larger `top`. Call flush() internally to apply. */
+   *  scrolling down is a larger `top`. Like a browser's, the write forces a layout only if
+   *  one is pending, and the window draws the new offset with its next frame. */
   scrollTo(elementId: number, left: number, top: number, behavior?: string): void {
-    this.native.flush()
     this.native.scrollTo(elementId, left, top, behavior)
-    // Flush again to re-render with the new offset
-    this.native.flush()
   }
 
   /** Scroll a child into view by its index in the children list.

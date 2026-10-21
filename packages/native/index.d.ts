@@ -855,7 +855,8 @@ export declare class TestGpuixRenderer {
   /**
    * Scroll an element to a DOM scroll position: `left` and `top` are `scrollLeft` and
    * `scrollTop`, zero or more, so scrolling down is a larger `top`.
-   * Call flush() after to apply the offset and re-render.
+   * The offset is clamped to the layout of the tree as it is, which is laid out first if
+   * it changed. The window draws it with the next frame.
    */
   scrollTo(elementId: number, left: number, top: number, behavior?: string | undefined | null): void
   /**
