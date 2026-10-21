@@ -52,6 +52,7 @@ pub struct RunStyle {
     pub family: Option<SharedString>,
     pub features: Option<gpui::FontFeatures>,
     pub variations: Option<gpui::FontVariations>,
+    pub font_smoothing: Option<gpui::FontSmoothing>,
     /// The decoration lines of a run keep the colour, style and thickness of the
     /// box that declared them, so a descendant that changes `color` does not
     /// recolour them. The innermost box's line of a kind is the field, the lines
@@ -313,6 +314,9 @@ pub fn styles(
             }
             if let Some(settings) = &declared.font_variation_settings {
                 style.variations = Some(settings.variations());
+            }
+            if let Some(smoothing) = declared.webkit_font_smoothing {
+                style.font_smoothing = Some(smoothing.to_gpui());
             }
             // Inherited by what is inside whether the box has a box or not.
             let declared_wraps = crate::css::text_wrap::declared_wraps(declared);
@@ -625,6 +629,9 @@ impl InlineText {
         }
         if let Some(variations) = &style.variations {
             run.font.variations = variations.clone();
+        }
+        if let Some(smoothing) = style.font_smoothing {
+            run.font_smoothing = smoothing;
         }
         run.line_height = run_line_height(style, &run.font, run.font_size, base, rem_size, heights);
         // The lines the text inherits from the boxes around the paragraph

@@ -1053,6 +1053,12 @@ export interface StyleDesc {
    *  transition runs that only with `transitionBehavior: "allow-discrete"`. Not
    *  available inside a state style. */
   fontVariationSettings?: string
+  /** CSS `-webkit-font-smoothing`, inherited, as Chrome has it on macOS. `"antialiased"` draws glyphs
+   *  as plain coverage, the same ink for dark and light text; `"auto"` (default) keeps the platform's
+   *  CoreGraphics smoothing, which thickens strokes (light text most). `"subpixel-antialiased"` is
+   *  `"auto"`: current macOS has no subpixel text. A value CSS does not have is ignored. Does not
+   *  animate. */
+  WebkitFontSmoothing?: "auto" | "antialiased" | "subpixel-antialiased"
 
   /** `"visible"` (default); `"clip"` clips; `"hidden"` clips and is a scroll container that
    *  only code scrolls (`scrollTo`, `scrollTop`, `scrollIntoView`), not the wheel or the keys;

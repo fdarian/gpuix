@@ -134,6 +134,7 @@ pub fn flatten_runs(runs: &[InlineRun], theme: &Theme, base_weight: FontWeight) 
             } else {
                 theme.text
             },
+            font_smoothing: Default::default(),
             background_color: None,
             underline: run.style.link.is_some().then_some(UnderlineStyle {
                 color: Some(theme.text_muted),

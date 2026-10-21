@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>font smoothing ink oracle</title>
+<style>
+@font-face{font-family:'Inter Variable';src:url('inter-subset.ttf') format('truetype');font-weight:100 900}
+html,body{margin:0;width:1200px;height:1160px;overflow:hidden;background:#fff}
+.mode[data-smoothing=antialiased]{-webkit-font-smoothing:antialiased}
+.mode[data-smoothing=auto]{-webkit-font-smoothing:auto}
+.panel{position:absolute;width:400px;height:400px}
+.s{position:absolute;width:368px;white-space:nowrap;font-family:'Inter Variable'}
+</style>
+<body>
+<script>
+// Samples as in r8-font-weight.html: 24 per smoothing mode, three polarities, two sizes, four weight/opsz pairs.
+const TEXT='Hamburgefonstiv 0123';
+const sizes=[{px:14,line:24,step:32},{px:24,line:36,step:44}];
+const weights=[{w:400,opsz:14},{w:500,opsz:16},{w:550,opsz:18},{w:700,opsz:25}];
+const pols=[{id:'dark',fg:'#000000',bg:'#ffffff',left:0},{id:'light',fg:'#ffffff',bg:'#000000',left:400},{id:'dim',fg:'#a1a1a1',bg:'#0a0a0a',left:800}];
+// The auto mode sits 400px below the antialiased one; each sample box is 368 x line at an integer position.
+const modes=[{id:'antialiased',top:0},{id:'auto',top:400}];
+
+const samples=[];
+for(const mode of modes){
+  const wrap=document.createElement('div');
+  wrap.className='mode';
+  wrap.dataset.smoothing=mode.id;
+  document.body.append(wrap);
+  for(const pol of pols){
+    const panel=document.createElement('div');
+    panel.className='panel';
+    Object.assign(panel.style,{left:pol.left+'px',top:mode.top+'px',background:pol.bg});
+    wrap.append(panel);
+    let top=mode.top+8;
+    for(const size of sizes)for(const wt of weights){
+      const id=`${mode.id}-${pol.id}-${size.px}-${wt.w}`;
+      const d=document.createElement('div');
+      d.className='s';
+      d.id=id;
+      Object.assign(d.style,{left:(pol.left+16)+'px',top:top+'px',height:size.line+'px',lineHeight:size.line+'px',fontSize:size.px+'px',color:pol.fg,fontVariationSettings:`'wght' ${wt.w}, 'opsz' ${wt.opsz}`});
+      const span=document.createElement('span');
+      span.textContent=TEXT;
+      d.append(span);
+      wrap.append(d);
+      samples.push({id,smoothing:mode.id,polarity:pol.id,size:size.px,wght:wt.w,opsz:wt.opsz,box:{x:pol.left+16,y:top,w:368,h:size.line}});
+      top+=size.step;
+    }
+  }
+}
+document.body.dataset.samples=JSON.stringify(samples.map(s=>({id:s.id,smoothing:s.smoothing,polarity:s.polarity,size:s.size,wght:s.wght,opsz:s.opsz,box:s.box})));
+
+document.fonts.load("14px 'Inter Variable'")
+  .then(()=>document.fonts.load("24px 'Inter Variable'"))
+  .then(()=>document.fonts.ready)
+  .then(()=>{
+    const out={
+      fontsLoaded:document.fonts.check("14px 'Inter Variable'")&&document.fonts.check("24px 'Inter Variable'"),
+      samples:samples.map(s=>({id:s.id,advance:document.getElementById(s.id).querySelector('span').getBoundingClientRect().width}))
+    };
+    const el=document.createElement('script');
+    el.type='application/json';
+    el.id='result';
+    el.textContent=JSON.stringify(out);
+    document.body.append(el);
+  });
+</script>

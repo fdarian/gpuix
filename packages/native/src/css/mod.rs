@@ -18,6 +18,7 @@ pub(crate) mod direction;
 pub(crate) mod filter;
 pub(crate) mod flex;
 pub(crate) mod font_features;
+pub(crate) mod font_smoothing;
 pub(crate) mod font_variations;
 pub(crate) mod gradient;
 pub(crate) mod length;

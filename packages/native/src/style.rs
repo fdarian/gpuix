@@ -942,6 +942,14 @@ pub struct StyleDesc {
     /// A value CSS does not have is ignored, as `fontFeatureSettings` is.
     #[serde(default, deserialize_with = "crate::css::font_variations::deserialize_ignoring_invalid")]
     pub font_variation_settings: Option<crate::css::font_variations::VariationSettings>,
+    /// CSS `-webkit-font-smoothing`: `auto`, `antialiased` or `subpixel-antialiased` (which is
+    /// `auto`, as on current macOS). Inherited. A value CSS does not have is ignored.
+    #[serde(
+        rename = "WebkitFontSmoothing",
+        default,
+        deserialize_with = "crate::css::font_smoothing::deserialize_ignoring_invalid"
+    )]
+    pub webkit_font_smoothing: Option<crate::css::font_smoothing::FontSmoothing>,
 
     // Overflow
     pub overflow: Option<String>,

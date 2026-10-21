@@ -1827,6 +1827,7 @@ impl TextEditorState {
             len,
             font: style.font(),
             color,
+            font_smoothing: style.font_smoothing,
             background_color: None,
             underline: underline.then_some(UnderlineStyle {
                 color: Some(color),

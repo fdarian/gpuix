@@ -11207,6 +11207,9 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     if let Some(font_style) = style.font_style.as_deref().and_then(parse_font_style) {
         el.text_style().font_style = Some(font_style);
     }
+    if let Some(smoothing) = style.webkit_font_smoothing {
+        el.text_style().font_smoothing = Some(smoothing.to_gpui());
+    }
     // `textAlign` was in the style type but implemented nowhere.
     match style.text_align.as_deref() {
         Some("center") => el = el.text_center(),

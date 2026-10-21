@@ -69,6 +69,13 @@ is in two-face's
 | fancy-regex | MIT | https://github.com/fancy-regex/fancy-regex |
 | two-face crate | MIT OR Apache-2.0 | https://codeberg.org/CosmicHarper/two-face |
 
+## Test fixtures
+
+`packages/react/src/__tests__/fixtures/inter-subset.ttf` is **[Inter](https://github.com/rsms/inter)**
+Variable (SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors) cut down with
+`pyftsubset` to the glyphs of the font smoothing test. Only the tests load it, and the package does
+not ship it. The licence is next to it in `inter-subset-OFL.txt`.
+
 ## Other dependencies
 
 | Component | License | Source |

@@ -142,6 +142,7 @@ macro_rules! inheritable_fields {
             font_size,
             font_family,
             font_weight,
+            webkit_font_smoothing,
             text_align,
             direction,
             line_height,
