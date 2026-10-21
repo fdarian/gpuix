@@ -38,7 +38,8 @@ pub(crate) fn is_display_none(element: &RetainedElement) -> bool {
     declares_display_none(element) && !DISPLAY_HELD.with(|held| held.borrow().contains(&element.id))
 }
 
-/// Whether `element` or an ancestor is `display: none`, so no box is built for it.
+/// Whether `element` or an ancestor is `display: none`, or an ancestor skips its content
+/// (`content-visibility`), so no box is built for it.
 pub(crate) fn is_hidden(tree: &RetainedTree, element: &RetainedElement) -> bool {
     let mut current = Some(element);
     while let Some(element) = current {
@@ -47,7 +48,7 @@ pub(crate) fn is_hidden(tree: &RetainedTree, element: &RetainedElement) -> bool 
         }
         current = element.parent.and_then(|parent| tree.elements.get(&parent));
     }
-    false
+    crate::layout::content_visibility::is_skipped_by_ancestor(tree, element)
 }
 
 #[cfg(test)]

@@ -177,8 +177,9 @@ impl RetainedElement {
 
     /// Whether no build ever enters the element, because the element that builds what is around it
     /// takes it in: a `display: contents` element (a root builds as a host) is spliced out of its
-    /// parent's children, an `<svg>` paints what is below it as one image, and an inline box or
-    /// text is a part of the paragraph of its container.
+    /// parent's children, an `<svg>` paints what is below it as one image, an inline box or
+    /// text is a part of the paragraph of its container, and an element below one that skips its
+    /// content (`content-visibility`) is not built at all.
     pub fn is_built_by_ancestor(&self, tree: &RetainedTree) -> bool {
         if self.parent.is_some() && crate::layout::contents::is_display_contents(self) {
             return true;
@@ -190,7 +191,8 @@ impl RetainedElement {
             }
             above = element.parent;
         }
-        crate::text::inline::is_part_of_paragraph(tree, self)
+        crate::layout::content_visibility::is_skipped_by_ancestor(tree, self)
+            || crate::text::inline::is_part_of_paragraph(tree, self)
     }
 
     /// Whether the element must own a gpui focus handle, which is what DOM calls

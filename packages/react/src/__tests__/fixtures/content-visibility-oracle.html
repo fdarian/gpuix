@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+  Oracle for content-visibility.test.tsx: the boxes headless Chrome lays out for `content-visibility: hidden` elements
+  (whose children would be much taller) and for `content-visibility: auto` elements that are on screen, under the
+  parents a box is sized by differently: block, flex, grid, shrink-to-fit. `content-visibility-cases.json` holds the
+  cases both pages are made from, and `content-visibility-oracle.sh` regenerates `content-visibility-oracle.json`
+  ({case: {outer, before, target, after, child?}}, each [x, y, width, height] from the top left of the case). Run it
+  from headless Chrome with --allow-file-access-from-files, so the page can read the cases.
+
+  A case is `outer` (the parent), `before`, `target` and `after` (its children), and inside the target the `child`, a
+  150x300 box unless the case says otherwise. Every element starts from BASE, so what a case sets is all that differs
+  from a plain block. gpuix has no `box-sizing`: its boxes are border boxes, so the page says the same.
+-->
+<html><head><meta charset="utf-8"><style>
+body { margin: 0; width: 1280px; }
+</style></head><body>
+<script>
+const BASE = { display: 'block', boxSizing: 'border-box', margin: '0', padding: '0', flexGrow: 0, flexShrink: 1 }
+const CASE = { position: 'relative', width: '400px', fontFamily: 'Menlo', fontSize: '16px', lineHeight: '20px', color: '#000' }
+const mark = (size) => ({ width: size[0], height: size[1] })
+const made = (id, ...styles) => {
+  const element = document.createElement('div')
+  Object.assign(element.style, BASE, ...styles)
+  element.dataset.id = id
+  return element
+}
+const rect = (element, origin) => {
+  const box = element.getBoundingClientRect()
+  return [box.x - origin.x, box.y - origin.y, box.width, box.height]
+}
+
+// Headless Chrome never fires requestAnimationFrame here, and runs one rendering update, the first, before a timer: a
+// `content-visibility: auto` case is only told whether it is on screen if it is the first to be added to the page, so
+// the `auto` cases are run one to a page (`?case=<name>`), and the page without a name runs the others.
+const frame = () => new Promise((resolve) => setTimeout(resolve, 50))
+const only = new URLSearchParams(location.search).get('case')
+
+// The cases are read synchronously, as the first rendering update of the page comes as soon as the script is done. One case
+// is on the page at a time, at the top.
+const request = new XMLHttpRequest()
+request.open('GET', 'content-visibility-cases.json', false)
+request.send()
+;(async ({ cases }) => {
+  const results = {}
+  for (const spec of cases.filter((spec) => (only ? spec.name === only : spec.target.contentVisibility !== 'auto'))) {
+    const holder = made('case', CASE)
+    const outer = made('outer', spec.outer)
+    const before = made('before', mark(['20px', '11px']), spec.before)
+    const target = made('target', spec.target)
+    const child = made('child', mark(['150px', '300px']), spec.child)
+    const after = made('after', mark(['30px', '13px']), spec.after)
+    target.append(child)
+    outer.append(before, target, after)
+    holder.append(outer)
+    document.body.append(holder)
+    await frame()
+    const origin = holder.getBoundingClientRect()
+    const found = { outer: rect(outer, origin), before: rect(before, origin), target: rect(target, origin), after: rect(after, origin) }
+    if (spec.measureChild) found.child = rect(child, origin)
+    results[spec.name] = found
+    holder.remove()
+  }
+  document.body.setAttribute('data-rects', JSON.stringify(results))
+})(JSON.parse(request.responseText))
+</script>
+</body></html>

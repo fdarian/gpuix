@@ -10005,6 +10005,22 @@ pub(crate) fn build_host_container(
     if let Some(scope) = ctx.inherited.self_container.clone().filter(|scope| scope.is_sized()) {
         el = crate::layout::container::contain(el, scope, ctx.containers.clone());
     }
+    // After the container, whose size containment may leave an axis out: a skipped box has both.
+    let skipping_style = style.filter(|style| {
+        style
+            .content_visibility
+            .is_some_and(|value| crate::layout::content_visibility::skips(value, element.id))
+    });
+    let skipped = skipping_style.is_some();
+    if let Some(style) = skipping_style {
+        el = crate::layout::content_visibility::contain_skipped(el, element.id, style, &ctx.inherited.lengths);
+        for id in ctx.retain.skip_content(ctx.tree, element.id) {
+            ctx.css_animations.leave_dormant(id);
+            ctx.css_transitions.leave_dormant(id);
+        }
+    } else {
+        ctx.retain.show_content(element.id);
+    }
 
     let collapsed_table = ctx.inherited.table.collapse
         && crate::layout::table::part(element) == Some(crate::layout::table::Part::Table);
@@ -10094,13 +10110,15 @@ pub(crate) fn build_host_container(
     el = apply_accessibility(el, element.id, element.custom_props(), default_role);
     // Planned once: the label below and the children further down read the same
     // paragraphs. A node with no children paints its own `content` instead.
-    crate::layout::container::settle_children(
-        ctx.tree,
-        element,
-        &ctx.inherited.chain(),
-        window,
-    );
-    let plan = if element.children.is_empty() {
+    if !skipped {
+        crate::layout::container::settle_children(
+            ctx.tree,
+            element,
+            &ctx.inherited.chain(),
+            window,
+        );
+    }
+    let plan = if element.children.is_empty() || skipped {
         Vec::new()
     } else {
         crate::text::inline::plan_children_at(ctx.tree, element)
@@ -10128,7 +10146,13 @@ pub(crate) fn build_host_container(
     // and focus events come from `GpuixView::observe_focus`. The wheel is a window-level
     // input like the pointer's (`events::listeners`).
 
-    let (content, placements, containing_heights) = build_content(element, plan, ctx, window, cx);
+    let (content, placements, containing_heights) = if skipped {
+        // The trim passed down is meant for what is built below.
+        ctx.text_box_trim = Default::default();
+        Default::default()
+    } else {
+        build_content(element, plan, ctx, window, cx)
+    };
     if collapsed_table {
         let key = crate::layout::table_grid::BoxKey::Element(element.id);
         settle_collapsed_borders(ctx, key, used_from, window);

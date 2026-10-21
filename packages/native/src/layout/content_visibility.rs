@@ -19,7 +19,9 @@
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::css::length::LengthContext;
 use crate::layout::containing_block::Position;
+use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::scroll::{Axes, Overflow};
 use crate::style::StyleDesc;
 
@@ -105,11 +107,69 @@ pub(crate) fn contained(style: &StyleDesc) -> Option<StyleDesc> {
     Some(contained)
 }
 
+/// Whether an element whose `content-visibility` is `value` skips its content. The one place
+/// that decides, so that the build and the walks over the tree cannot disagree.
+pub(crate) fn skips(value: ContentVisibility, _id: u64) -> bool {
+    match value {
+        ContentVisibility::Hidden => true,
+        // Relevance to the user decides it, and nothing says an element is not relevant yet.
+        ContentVisibility::Auto | ContentVisibility::Visible => false,
+    }
+}
+
+/// The content-box size `auto` in `contain-intrinsic-size` stands for: the size the element had
+/// when it was last laid out while it was not skipped. Nothing records it yet, so `auto` is its
+/// length.
+pub(crate) fn remembered_size(_id: u64) -> Option<(f64, f64)> {
+    None
+}
+
+/// Gives the box of a skipped element its size: size containment on both axes, and the content
+/// box `contain-intrinsic-size` says.
+pub(crate) fn contain_skipped<E: gpui::Styled>(
+    element: E,
+    id: u64,
+    style: &StyleDesc,
+    lengths: &LengthContext,
+) -> E {
+    let mut element = crate::layout::container::contain_size(element, crate::layout::container::ContainerType::Size);
+    let axes = crate::css::contain_intrinsic::axes(style);
+    let remembered = remembered_size(id);
+    let size = |px: f64| gpui::px(px as f32);
+    element.style().contain_intrinsic_width =
+        axes.width.skipped_size(remembered.map(|size| size.0), lengths).map(size);
+    element.style().contain_intrinsic_height =
+        axes.height.skipped_size(remembered.map(|size| size.1), lengths).map(size);
+    element
+}
+
+/// What `element` was last built with, the declared value for one that never was.
+fn value_of(tree: &RetainedTree, element: &RetainedElement) -> ContentVisibility {
+    tree.content_visibility_of(element)
+}
+
+/// Whether `element` is a host element that skips its content, as it was last built.
+pub(crate) fn skips_content(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    crate::text::inline::is_host_container(element)
+        && !crate::layout::contents::is_display_contents(element)
+        && skips(value_of(tree, element), element.id)
+}
+
+/// Whether a strict ancestor of `element` skips its content, so nothing is built for it.
+pub(crate) fn is_skipped_by_ancestor(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    let mut current = element.parent.and_then(|parent| tree.elements.get(&parent));
+    while let Some(ancestor) = current {
+        if skips_content(tree, ancestor) {
+            return true;
+        }
+        current = ancestor.parent.and_then(|parent| tree.elements.get(&parent));
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::css::length::LengthContext;
-    use crate::retained_tree::RetainedTree;
 
     fn style(json: &str) -> StyleDesc {
         serde_json::from_str(json).unwrap_or_else(|error| panic!("{json}: {error}"))
@@ -184,4 +244,10 @@ mod tests {
         assert!(resolved.overflow.x.clips() && resolved.overflow.y.clips());
     }
 
+    #[test]
+    fn only_hidden_skips_for_now() {
+        assert!(skips(ContentVisibility::Hidden, 1));
+        assert!(!skips(ContentVisibility::Auto, 1));
+        assert!(!skips(ContentVisibility::Visible, 1));
+    }
 }

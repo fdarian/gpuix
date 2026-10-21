@@ -867,6 +867,8 @@ pub(crate) struct Retain {
     verdicts: u64,
     /// The elements that fell asleep or woke up since `take_dormant_moves`.
     moves: DormantMoves,
+    /// The elements that skip their content (`content-visibility`) as of their last build.
+    skipping: FxHashSet<u64>,
     /// `RetainedTree::removals` when `records` and `dynamic` last dropped the destroyed elements.
     pruned_at: u64,
     seen: Seen,
@@ -1022,6 +1024,7 @@ impl Retain {
             records: FxHashMap::default(),
             dynamic: FxHashMap::default(),
             dormant: FxHashMap::default(),
+            skipping: FxHashSet::default(),
             woken: FxHashSet::default(),
             verdicts: 0,
             moves: DormantMoves::default(),
@@ -1248,6 +1251,7 @@ impl Retain {
             exists
         });
         self.woken.retain(|id| tree.elements.contains_key(id));
+        self.skipping.retain(|id| tree.elements.contains_key(id));
     }
 
     /// Whether the frame about to be built is one that is not recorded, see [`Backoff`].
@@ -1982,6 +1986,41 @@ impl Retain {
                 Some(first) if first != Exclusion::CollapsedTable => {}
                 _ => node.exclusion = Some(reason),
             }
+        }
+    }
+
+    /// The element being built skips its content (`content-visibility`): nothing below it is built,
+    /// and what the frames before recorded of what is below is of builds no frame replays. A
+    /// subtree that shows again is built whole, and nothing of it keeps a frame busy while it is
+    /// skipped: no record, no running motion, no sleep. Returns the elements that were dormant, for
+    /// whoever keeps their clocks. Does its work when the element begins to skip, and is cheap
+    /// while it goes on.
+    pub(crate) fn skip_content(&mut self, tree: &crate::retained_tree::RetainedTree, id: u64) -> Vec<u64> {
+        if !self.skipping.insert(id) {
+            return Vec::new();
+        }
+        let mut asleep = Vec::new();
+        let mut pending: Vec<u64> = tree.elements.get(&id).map(|element| element.children.clone()).unwrap_or_default();
+        while let Some(below) = pending.pop() {
+            self.records.remove(&below);
+            self.dynamic.remove(&below);
+            self.unbuilt.remove(&below);
+            self.woken.remove(&below);
+            if self.dormant.remove(&below).is_some() {
+                self.moves.left.push(below);
+                asleep.push(below);
+            }
+            if let Some(element) = tree.elements.get(&below) {
+                pending.extend(&element.children);
+            }
+        }
+        asleep
+    }
+
+    /// The element being built shows its content.
+    pub(crate) fn show_content(&mut self, id: u64) {
+        if !self.skipping.is_empty() {
+            self.skipping.remove(&id);
         }
     }
 

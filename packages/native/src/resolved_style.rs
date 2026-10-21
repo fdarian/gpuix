@@ -227,6 +227,14 @@ impl RetainedTree {
         }
     }
 
+    /// The `content-visibility` `element` is painted with.
+    pub(crate) fn content_visibility_of(&self, element: &RetainedElement) -> ContentVisibility {
+        match self.resolved.borrow().get(element.id) {
+            Some(resolved) => resolved.content_visibility,
+            None => element.style.as_deref().and_then(|style| style.content_visibility).unwrap_or_default(),
+        }
+    }
+
     /// The `overflow` `element` is painted with.
     pub(crate) fn overflow_of(&self, element: &RetainedElement) -> Axes {
         match self.resolved.borrow().get(element.id) {
