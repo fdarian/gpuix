@@ -89,11 +89,6 @@ for (const border of ["1px", "2px", "3px", "5px", "3px width 100", "0.5px", "1.5
   KNOWN[`table collapse ${border} client`] = "gpuix takes the outer halves of the borders off the client size of a collapsed table, Chrome does not"
 }
 
-/** The rows whose boxes are compared to some 64ths of a pixel and not exactly: the number of them, and the reason. */
-const NEAR: Record<string, [number, string]> = {
-  "flex-basis 50.5 shrink": [1, "the shrink of three equal items goes out in LayoutUnits of the free space in Chrome"],
-}
-
 type Colors = Record<string, { bg: string; bd?: string }>
 
 /** The colours the oracle page gives the elements of its painted cases: one counter over all of them, `bg` and then
@@ -268,10 +263,7 @@ function differences(name: string, scale: 1 | 2) {
         continue
       }
       const rect = [bounds.x - holder.x, bounds.y - holder.y, bounds.width, bounds.height]
-      const near = NEAR[name]
-      const apart = near
-        ? rect.some((value, index) => Math.abs(value - want.rect[index]!) > near[0] / 64)
-        : !same(rect, want.rect)
+      const apart = !same(rect, want.rect)
       if (apart) found.rect!.push(`${id}: ${JSON.stringify(rect)} != Chrome's ${JSON.stringify(want.rect)}`)
       const metrics = root.renderer.getScrollMetrics(element)
       const client = [metrics?.[4], metrics?.[5], bounds.clientLeft, bounds.clientTop]

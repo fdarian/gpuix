@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 CHROME=${CHROME:-$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell}
 PAGE="file://$PWD/fractional-lengths-oracle.html"
 WIDTH=${WIDTH:-2400}
-HEIGHT=${HEIGHT:-2100}
+HEIGHT=${HEIGHT:-2500}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 for scale in 1 2; do
