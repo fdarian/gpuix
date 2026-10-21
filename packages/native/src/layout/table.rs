@@ -178,8 +178,10 @@ fn span_prop(element: &RetainedElement, name: &str, default: u16, min: u16, max:
 pub(crate) struct Collapsed {
     cells: HashMap<BoxKey, [f32; 4]>,
     tables: HashMap<BoxKey, ([f32; 4], Arc<gpui::CollapsedBorders>)>,
+    /// Whose border each edge of a table has, for [`Self::repaint`].
+    owners: HashMap<BoxKey, super::collapse::Owners>,
     /// The borders of the parts of a table, as it resolved the edges with them. A part that is painted
-    /// with others afterwards (it moves in a transition) makes the table resolve again.
+    /// with other widths or styles afterwards (it moves in a transition) makes the table resolve again.
     used: Vec<(u64, [crate::css::border::SideBorder; 4])>,
 }
 
@@ -200,6 +202,16 @@ impl Collapsed {
     pub(crate) fn insert(&mut self, table: BoxKey, resolved: super::collapse::Resolved) {
         self.cells.extend(resolved.cells);
         self.tables.insert(table, (resolved.table, resolved.borders));
+        self.owners.insert(table, resolved.owners);
+    }
+
+    /// Gives the edges of `table` the colours their owners were painted with: the parts of a table are built
+    /// after it resolved the edges with the colours of their last build, which a transition has moved.
+    pub(crate) fn repaint(&mut self, table: BoxKey, painted: &dyn Fn(u64) -> Option<[crate::css::border::SideBorder; 4]>) {
+        let (Some((_, borders)), Some(owners)) = (self.tables.get_mut(&table), self.owners.get(&table)) else {
+            return;
+        };
+        *borders = Arc::new(super::collapse::recolored(borders, owners, painted));
     }
 
     pub(crate) fn table(&self, key: BoxKey) -> Option<&([f32; 4], Arc<gpui::CollapsedBorders>)> {
@@ -311,6 +323,14 @@ fn collapsed_table<E: Styled + gpui::InteractiveElement>(
     style.corner_radii =
         gpui::CornersRefinement { top_left: square, top_right: square, bottom_right: square, bottom_left: square };
     el.collapsed_borders(borders.clone())
+}
+
+/// The table `key` with the borders [`Collapsed::repaint`] gave it, once its parts are built.
+pub(crate) fn repainted<E: gpui::InteractiveElement>(el: E, collapsed: &Collapsed, key: BoxKey) -> E {
+    match collapsed.tables.get(&key) {
+        Some((_, borders)) => el.collapsed_borders(borders.clone()),
+        None => el,
+    }
 }
 
 /// The border widths of a box of a table with collapsed borders, which the table paints.

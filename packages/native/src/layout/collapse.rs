@@ -18,6 +18,11 @@
 //! of its outer borders, so the grid starts where they are centred. As in Chrome, the halves are exact: a 3px border
 //! leaves 1.5px each side. Nothing but the table paints a border: the borders of the edges, which `gpui` paints once
 //! each, centred on the lines the layout recorded, see `gpui::CollapsedBorders`.
+//!
+//! The colour of a border takes no part in which one wins, so it is not what the grid is resolved with: the parts of
+//! a table are built after it, and their colours (transitions and animations included) are the ones they were built
+//! with in the frame that paints them. Each painted edge keeps the box whose border it is ([`Owners`]), and
+//! [`recolored`] gives the borders of the colours the owners were painted with.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,6 +36,17 @@ pub(crate) struct Resolved {
     pub table: [f32; 4],
     pub cells: HashMap<BoxKey, [f32; 4]>,
     pub borders: Arc<gpui::CollapsedBorders>,
+    pub owners: Owners,
+}
+
+/// The element whose border each edge of a [`gpui::CollapsedBorders`] has, in the order of the screen: the
+/// horizontal edges, then the vertical ones. `None` where the edge has no border, or the box has no element.
+pub(crate) type Owners = Vec<Option<u64>>;
+
+/// A box of the table, with the borders it declares.
+struct Part {
+    id: Option<u64>,
+    borders: [SideBorder; 4],
 }
 
 /// A border at an edge, with what ranks it against the others there.
@@ -46,6 +62,8 @@ struct Candidate {
     /// The slot whose box the border is on, which ranks the borders of equal strength where they cross: the
     /// one nearer the top left covers the others.
     owner: (usize, usize),
+    /// The element whose border it is.
+    element: Option<u64>,
 }
 
 /// What kind of box a border is on, the weakest first.
@@ -64,13 +82,16 @@ const RIGHT: usize = 1;
 const BOTTOM: usize = 2;
 const LEFT: usize = 3;
 
+const SIDES: [gpui::BorderSide; 4] =
+    [gpui::BorderSide::Top, gpui::BorderSide::Right, gpui::BorderSide::Bottom, gpui::BorderSide::Left];
+
 fn side_of(index: usize) -> gpui::BorderSide {
-    [gpui::BorderSide::Top, gpui::BorderSide::Right, gpui::BorderSide::Bottom, gpui::BorderSide::Left][index]
+    SIDES[index]
 }
 
 impl Candidate {
-    fn of(borders: &[SideBorder; 4], side: usize, class: Class, order: u8, owner: (usize, usize), scale: f32) -> Self {
-        let border = &borders[side];
+    fn of(part: &Part, side: usize, class: Class, order: u8, owner: (usize, usize), scale: f32) -> Self {
+        let border = &part.borders[side];
         Candidate {
             style: border.style,
             width: snap(f32::from(border.width), scale),
@@ -79,6 +100,7 @@ impl Candidate {
             class,
             order,
             owner,
+            element: part.id,
         }
     }
 
@@ -152,10 +174,11 @@ impl Slots<'_> {
 }
 
 /// The borders of the table whose cells `grid` places, or `None` for a table without a slot. `own` is the borders of
-/// the table itself. `borders_of` has the borders of every other box of the table. `scale` is the device pixels to a
+/// the table itself, of the element `table`. `borders_of` has the borders of every other box of the table. `scale` is the device pixels to a
 /// pixel.
 pub(crate) fn resolve(
     grid: Grid,
+    table: Option<u64>,
     own: [SideBorder; 4],
     scale: f32,
     rtl: bool,
@@ -174,25 +197,26 @@ pub(crate) fn resolve(
         }
     }
 
-    let element_borders = |id: Option<u64>| id.map(borders_of);
-    let cell_borders: Vec<Option<[SideBorder; 4]>> = grid
+    let element_part = |id: u64| Part { id: Some(id), borders: borders_of(id) };
+    let optional_part = |id: Option<u64>| id.map(element_part);
+    let cell_borders: Vec<Option<Part>> = grid
         .cells
         .iter()
         .map(|cell| match cell.key {
-            BoxKey::Element(id) => Some(borders_of(id)),
+            BoxKey::Element(id) => Some(element_part(id)),
             BoxKey::Anonymous { .. } => None,
         })
         .collect();
-    let row_borders: Vec<Option<[SideBorder; 4]>> = grid.rows.iter().map(|row| element_borders(row.element)).collect();
-    let section_borders: Vec<Option<[SideBorder; 4]>> =
-        grid.sections.iter().map(|section| element_borders(section.element)).collect();
-    let column_borders: Vec<[SideBorder; 4]> = grid.column_nodes.iter().map(|node| borders_of(node.element)).collect();
-    let group_borders: Vec<[SideBorder; 4]> = grid.column_groups.iter().map(|node| borders_of(node.element)).collect();
+    let row_borders: Vec<Option<Part>> = grid.rows.iter().map(|row| optional_part(row.element)).collect();
+    let section_borders: Vec<Option<Part>> = grid.sections.iter().map(|section| optional_part(section.element)).collect();
+    let column_borders: Vec<Part> = grid.column_nodes.iter().map(|node| element_part(node.element)).collect();
+    let group_borders: Vec<Part> = grid.column_groups.iter().map(|node| element_part(node.element)).collect();
+    let own = Part { id: table, borders: own };
     let column_at = |nodes: &[crate::layout::table_grid::Columns], col: usize| {
         nodes.iter().position(|node| col >= node.first && col < node.first + node.span)
     };
-    let candidate = |borders: &[SideBorder; 4], side: usize, class: Class, order: u8, owner: (usize, usize)| {
-        Candidate::of(borders, side, class, order, owner, scale)
+    let candidate = |part: &Part, side: usize, class: Class, order: u8, owner: (usize, usize)| {
+        Candidate::of(part, side, class, order, owner, scale)
     };
     // The side of a box that faces the end of the row, and the one that faces its start
     let (end_side, start_side) = if rtl { (LEFT, RIGHT) } else { (RIGHT, LEFT) };
@@ -340,14 +364,52 @@ pub(crate) fn resolve(
     // The edges are for gpui in the order of the screen: the first column of an rtl table is the last of its lines
     let horizontal_painted: Vec<_> = (0..=rows)
         .flat_map(|row| (0..columns).map(move |col| (row, if rtl { columns - 1 - col } else { col })))
-        .map(|(row, col)| border(h(row, col)))
+        .map(|(row, col)| h(row, col))
         .collect();
     let vertical_painted: Vec<_> = (0..rows)
         .flat_map(|row| (0..=columns).map(move |line| (row, if rtl { columns - line } else { line })))
-        .map(|(row, line)| border(v(row, line)))
+        .map(|(row, line)| v(row, line))
         .collect();
-    let borders = gpui::CollapsedBorders::new(columns, rows, horizontal_painted, vertical_painted);
-    Some(Resolved { table: table_halves, cells, borders: Arc::new(borders) })
+    let owners = horizontal_painted.iter().chain(&vertical_painted).map(|edge| edge.and_then(|candidate| candidate.element)).collect();
+    let borders = gpui::CollapsedBorders::new(
+        columns,
+        rows,
+        horizontal_painted.into_iter().map(border).collect(),
+        vertical_painted.into_iter().map(border).collect(),
+    );
+    Some(Resolved { table: table_halves, cells, borders: Arc::new(borders), owners })
+}
+
+/// Whether `a` and `b` are borders of the same lines and widths, which is what the grid of a table is resolved with
+/// and its layout depends on: the colours may differ.
+pub(crate) fn same_geometry(a: &[SideBorder; 4], b: &[SideBorder; 4]) -> bool {
+    a.iter().zip(b).all(|(a, b)| a.style == b.style && a.width == b.width)
+}
+
+/// `borders` with the colour of every edge that has an owner read from the borders `painted` has of it, `None` for an
+/// owner that has not been painted: its edge keeps the colour it was resolved with.
+pub(crate) fn recolored(
+    borders: &gpui::CollapsedBorders,
+    owners: &Owners,
+    painted: &dyn Fn(u64) -> Option<[SideBorder; 4]>,
+) -> gpui::CollapsedBorders {
+    let (columns, rows) = (borders.columns(), borders.rows());
+    let recolor = |border: Option<&gpui::CollapsedBorder>, owner: Option<u64>| {
+        border.map(|border| {
+            let side = SIDES.iter().position(|side| *side == border.side).expect("a side of a box");
+            let color = owner.and_then(painted).map_or(border.color, |painted| painted[side].color);
+            gpui::CollapsedBorder { color, ..border.clone() }
+        })
+    };
+    let horizontal = (0..=rows).flat_map(|row| (0..columns).map(move |col| (row, col)));
+    let vertical = (0..rows).flat_map(|row| (0..=columns).map(move |col| (row, col)));
+    let horizontal_edges: Vec<_> = horizontal.map(|(row, col)| borders.horizontal(row, col)).collect();
+    let vertical_edges: Vec<_> = vertical.map(|(row, col)| borders.vertical(row, col)).collect();
+    let mut owners = owners.iter().copied();
+    let mut recolor_next = |edge: Option<&gpui::CollapsedBorder>| recolor(edge, owners.next().expect("an owner per edge"));
+    let horizontal = horizontal_edges.into_iter().map(&mut recolor_next).collect();
+    let vertical = vertical_edges.into_iter().map(&mut recolor_next).collect();
+    gpui::CollapsedBorders::new(columns, rows, horizontal, vertical)
 }
 
 #[cfg(test)]
@@ -415,7 +477,7 @@ mod tests {
         fn resolve(&self) -> Resolved {
             let borders_of = |id: u64| self.borders.get(&id).copied().unwrap_or(NONE);
             let grid = Grid::build(&self.tree, &self.tree.elements[&1], true);
-            resolve(grid, borders_of(1), SCALE, false, &borders_of).expect("a table with cells")
+            resolve(grid, Some(1), borders_of(1), SCALE, false, &borders_of).expect("a table with cells")
         }
     }
 
@@ -456,6 +518,44 @@ mod tests {
             let rgba = gpui::Rgba::from(border.color);
             ((rgba.r * 255.0).round() as u32) << 16 | ((rgba.g * 255.0).round() as u32) << 8 | (rgba.b * 255.0).round() as u32
         })
+    }
+
+    #[test]
+    fn the_colour_of_an_edge_is_the_one_its_owner_is_painted_with_and_decides_nothing_else() {
+        let resolved = two_by_two().resolve();
+        // The edge between the cells of 3px and 5px is the 5px one, of cell 5, the left side of it.
+        assert_eq!(color(resolved.borders.vertical(0, 1)), Some(0x0000ff));
+
+        // Cell 5 is painted green now (mid-transition), cell 4 something else.
+        let mut painted = two_by_two();
+        painted.borders(5, solid(5.0, 0x00ff00)).borders(4, solid(3.0, 0x123456));
+        let recolored = recolored(&resolved.borders, &resolved.owners, &|id| painted.borders.get(&id).copied());
+        assert_eq!(color(recolored.vertical(0, 1)), Some(0x00ff00));
+        assert_eq!(color(recolored.vertical(0, 0)), Some(0x000000), "the table's own edge was not painted again");
+        assert_eq!(color(recolored.vertical(1, 1)), Some(0xffa500), "the edge of cell 7 was not repainted");
+
+        // The same lines and widths: resolving with the new colours is the same grid.
+        let again = painted.resolve();
+        assert_eq!(halves(&again, 5), halves(&resolved, 5));
+        assert_eq!(color(again.borders.vertical(0, 1)), color(recolored.vertical(0, 1)));
+        assert_eq!(again.borders.vertical(0, 1).map(|border| border.strength), resolved.borders.vertical(0, 1).map(|border| border.strength));
+    }
+
+    #[test]
+    fn an_owner_that_is_not_painted_keeps_the_colour_it_was_resolved_with() {
+        let resolved = two_by_two().resolve();
+        let recolored = recolored(&resolved.borders, &resolved.owners, &|_| None);
+        assert_eq!(recolored, *resolved.borders);
+    }
+
+    #[test]
+    fn only_the_width_and_the_style_of_a_border_are_geometry() {
+        let solid_red = solid(2.0, 0xff0000);
+        assert!(same_geometry(&solid_red, &solid(2.0, 0x0000ff)));
+        assert!(!same_geometry(&solid_red, &solid(3.0, 0xff0000)));
+        let mut dashed = solid_red;
+        dashed[2].style = LineStyle::Dashed;
+        assert!(!same_geometry(&solid_red, &dashed));
     }
 
     #[test]

@@ -163,7 +163,8 @@ impl ResolvedStyles {
 
     /// The borders `id`, a part of a table with collapsed borders, declares as painted this pass:
     /// transitions, animations and `motion` included. The table is built first, so it reads
-    /// the last pass's and builds again when a part has moved since.
+    /// the last pass's and builds again when a part has moved in width or style since. It paints
+    /// the colours its parts have by the time they are built.
     pub(crate) fn record_borders(&mut self, id: u64, borders: [crate::css::border::SideBorder; 4]) {
         self.borders.insert(id, borders);
     }

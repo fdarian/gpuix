@@ -10127,7 +10127,9 @@ pub(crate) fn build_host_container(
 
     let (content, placements, containing_heights) = build_content(element, plan, ctx, window, cx);
     if collapsed_table {
-        rebuild_if_borders_moved(ctx, used_from, window);
+        let key = crate::layout::table_grid::BoxKey::Element(element.id);
+        settle_collapsed_borders(ctx, key, used_from, window);
+        el = crate::layout::table::repainted(el, &ctx.collapsed, key);
     }
     ctx.scroller = outer_scroller;
     crate::text::atomic::report_containing_height(el, containing_heights);
@@ -10201,7 +10203,8 @@ fn resolve_collapsed_borders(ctx: &mut BuildCtx, table: CollapsedTable, scale: f
     /// The borders of `element` and, below a table, row group, row or column group, of its children, each read
     /// with the colours and lengths it inherits. A child is built after the table, so its borders are the ones
     /// its last build painted, transitions, animations and `motion` included, else the ones it declares with the
-    /// pointer's states folded in. The table builds again when a child is painted with others.
+    /// pointer's states folded in. The table builds again when a child is painted with other widths or styles, and
+    /// paints the colours its children were painted with (`settle_collapsed_borders`).
     fn walk(
         ctx: &BuildCtx,
         element: &crate::retained_tree::RetainedElement,
@@ -10275,26 +10278,31 @@ fn resolve_collapsed_borders(ctx: &mut BuildCtx, table: CollapsedTable, scale: f
             (key, Grid::build_anonymous(ctx.tree, parts, true), [none(); 4])
         }
     };
-    let resolved = crate::layout::collapse::resolve(grid, own, scale, ctx.inherited.direction.direction.is_rtl(), &|id| sides.get(&id).copied().unwrap_or([none(); 4]));
-    if let Some(resolved) = resolved {
-        ctx.collapsed.insert(key, resolved);
-    }
     let table_id = match table {
         CollapsedTable::Element(element, _) => Some(element.id),
         CollapsedTable::Anonymous(..) => None,
     };
+    let resolved = crate::layout::collapse::resolve(grid, table_id, own, scale, ctx.inherited.direction.direction.is_rtl(), &|id| sides.get(&id).copied().unwrap_or([none(); 4]));
+    if let Some(resolved) = resolved {
+        ctx.collapsed.insert(key, resolved);
+    }
     ctx.collapsed.note_used(sides.into_iter().filter(|(id, _)| Some(*id) != table_id));
 }
 
-/// Builds the table again before it is presented when a part of it, built after it, was painted with other borders than
-/// the ones the table shared the edges of the grid by: `used_from` is [`Collapsed::used_len`](crate::layout::table::Collapsed)
-/// before the table resolved them.
-fn rebuild_if_borders_moved(ctx: &mut BuildCtx, used_from: usize, window: &mut gpui::Window) {
+/// Settles the collapsed borders of the table `key` once its parts are built, which came after the table resolved them
+/// with the borders their last build painted. The colours are the ones they are painted with now: the table paints the
+/// edges with them. A part painted with other widths or styles has moved the lines the table laid out by, so the table
+/// builds again before it is presented. `used_from` is [`Collapsed::used_len`](crate::layout::table::Collapsed) before
+/// the table resolved them.
+fn settle_collapsed_borders(ctx: &mut BuildCtx, key: crate::layout::table_grid::BoxKey, used_from: usize, window: &mut gpui::Window) {
     let used = ctx.collapsed.used_since(used_from);
     let resolved = ctx.tree.resolved.borrow();
-    if used.iter().any(|(id, used)| resolved.borders_of(*id).is_some_and(|painted| painted != *used)) {
+    if used.iter().any(|(id, used)| {
+        resolved.borders_of(*id).is_some_and(|painted| !crate::layout::collapse::same_geometry(&painted, used))
+    }) {
         window.request_redraw_before_present();
     }
+    ctx.collapsed.repaint(key, &|id| resolved.borders_of(id));
 }
 
 /// Where a child of a host element paints, and where it sits in the document.
@@ -10440,7 +10448,7 @@ fn build_plan(
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = (Some(key.token()), None);
                 build_plan(element, blocks, gpui::TextBoxTrim::default(), probe, &mut 0, &mut inside, &mut inside_placements, ctx, window, cx);
                 (ctx.inherited.table_row, ctx.inherited.table_cell) = outside;
-                rebuild_if_borders_moved(ctx, used_from, window);
+                settle_collapsed_borders(ctx, key, used_from, window);
                 let mut table = crate::layout::table::anonymous_table(&ctx.inherited.table, ctx.collapsed.table(key));
                 ctx.inherited.direction.apply(&mut table);
                 if inside_placements.iter().any(|placement| placement.rank != 0) {
