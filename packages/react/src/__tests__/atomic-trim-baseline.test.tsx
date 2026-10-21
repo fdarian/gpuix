@@ -3,7 +3,10 @@
 /// trimmed text is counted from the top of its trimmed box, so the label is seated on the baseline of the strut and
 /// not 5 to 6 px too high (#66: the stable label of a tab, an `inline-grid` of two stacked cap-trimmed spans in a
 /// 16px/24px block). The same baseline puts the label in a flex or grid row with `alignItems: "baseline"` (the `row-`
-/// cases).
+/// cases). The `chip`, `flex-badge` and `block-badge` cases are the other half of the same rule: a 20px badge (`inline-flex`
+/// or `inline-block`, trimmed text or not) in a block line sits on the strut's baseline, and the strut is the wrapper's
+/// own font and line height (#72: Chrome's 13px/20px wrapper is 21px with the badge at +1, a wrapper that inherits the
+/// default 16px/24px is 24px with it at +4, in both browsers, the `-16-24` cases).
 ///
 /// `fixtures/atomic-trim-baseline-oracle.html` is the page, `fixtures/atomic-trim-baseline-oracle.json` the boxes
 /// headless Chrome reports for it at device scale 1 and 2 (`getBoundingClientRect` relative to the line,
@@ -26,12 +29,19 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 type Rect = [number, number, number, number]
 
 interface Spec {
-  holder: "block" | "flex" | "grid"
+  /** A badge case: a 20px `display` span holding the text "x.com" in a wrapper of `size` / `line`, see `badgeOf`. */
+  badge?: true
+  display?: "inline-flex" | "inline-block"
+  /** The wrapper is a span in a flex-wrap row (`item`) or a block (`div`). */
+  wrap?: "item" | "div"
+  size?: string
+  holder?: "block" | "flex" | "grid"
   /** The line is a flex or grid container with `alignItems: "baseline"` holding a plain span and the label. */
   row?: "flex" | "grid"
-  stack: boolean
-  trim: string
-  edge: string
+  stack?: boolean
+  /** The `text-box-trim` of a label (`trim-both`), or whether a badge's text is trimmed. */
+  trim?: string | boolean
+  edge?: string
   line: string
   labelLine?: string
   labelSize?: string
@@ -82,6 +92,44 @@ function labelOf(spec: Spec, ref: (name: string) => (instance: PublicInstance | 
   )
 }
 
+/** The chip of a design system: `inline-flex` (or `inline-block`) and 20px tall, 8px of padding and an 11px/14px text in
+ *  a span of its own, cap-trimmed (a block, as a flex item) or not, in a wrapper of the spec's font size and line height
+ *  (#72: the ThinkingSteps source chip). The label and the ink are the span of the text. */
+function badgeOf(spec: Spec, ref: (name: string) => (instance: PublicInstance | null) => void) {
+  const wrapper = { fontFamily: "Menlo", fontSize: Number.parseFloat(spec.size!), lineHeight: spec.line, width: 300, color: "#000000" }
+  const label = (
+    <span ref={ref("label")} style={spec.trim ? { display: "block", textBox: "trim-both cap alphabetic" } : undefined}>
+      x.com
+    </span>
+  )
+  const badge = (
+    <span
+      ref={ref("holder")}
+      style={{
+        display: spec.display,
+        alignItems: "center",
+        whiteSpace: "nowrap",
+        height: 20,
+        paddingLeft: 8,
+        paddingRight: 8,
+        fontSize: 11,
+        lineHeight: "14px",
+      }}
+    >
+      {label}
+    </span>
+  )
+  return spec.wrap === "item" ? (
+    <div style={{ ...wrapper, display: "flex", flexWrap: "wrap" }}>
+      <span ref={ref("line")}>{badge}</span>
+    </div>
+  ) : (
+    <div ref={ref("line")} style={wrapper}>
+      {badge}
+    </div>
+  )
+}
+
 /** The boxes of the case `name` in a window of `scale`, relative to its line. */
 function laidOut(name: string, scale: 1 | 2) {
   const root = createTestRoot()
@@ -96,7 +144,9 @@ function laidOut(name: string, scale: 1 | 2) {
     const spec = expected!.spec
     const line = { width: 300, fontFamily: "Menlo", fontSize: 16, lineHeight: spec.line, color: "#000000" }
     root.render(
-      spec.row ? (
+      spec.badge ? (
+        badgeOf(spec, ref)
+      ) : spec.row ? (
         <div
           ref={ref("line")}
           style={{ ...line, display: spec.row, alignItems: "baseline", gridTemplateColumns: "auto auto", justifyContent: "start" }}
@@ -132,7 +182,12 @@ function laidOut(name: string, scale: 1 | 2) {
     return {
       scale,
       expected: expected!,
-      actual: { line: rect("line"), holder: rect("holder"), label: rect("label"), ink: rect("ink") },
+      actual: {
+        line: rect("line"),
+        holder: rect("holder"),
+        label: rect("label"),
+        ink: rect(spec.badge ? "label" : "ink"),
+      },
     }
   } finally {
     root.unmount()
@@ -159,7 +214,20 @@ function expectCase(name: string, scale: 1 | 2) {
     // a trim-start or trim-end label has the height of the line less the trim, so it has the half-leading too.
     within(actual[key][2], expected[key][2], UNIT, `${key} width`)
     within(actual[key][0], expected[key][0], UNIT, `${key} x`)
-    within(actual[key][3], expected[key][3], UNIT + (key === "line" || key === "ink" ? 0 : leading), `${key} height`)
+    // A badge has the device-pixel rounding of the font's metrics at scale 2 in its heights as well: the content area of
+    // an 11px or 13px text is whole device pixels in Chrome (12.5 for the 13px, the wrapper 20.49 round a badge on its
+    // strut) and whole CSS pixels here, the same limit as the half-leading, and not the trim's.
+    const rounded = expected.spec.badge || !(key === "line" || key === "ink")
+    within(actual[key][3], expected[key][3], UNIT + (rounded ? leading : 0), `${key} height`)
+  }
+  if (expected.spec.badge) {
+    // The wrapper is as tall as the strut and the badge make it, the badge sits on the baseline of the strut, and the
+    // text is in the badge where Chrome has it: the same tolerances as the labels below.
+    const place = UNIT + leading + 0.5 / scale
+    within(actual.holder[1], expected.holder[1], place, "holder y")
+    within(actual.label[1], expected.label[1], place, "label y")
+    within(actual.label[1] - actual.holder[1], expected.label[1] - expected.holder[1], UNIT + leading, "label in the badge")
+    return
   }
   if (expected.spec.row) {
     // A flex or grid item is placed where layout puts it, the fraction included, so the label is where Chrome has it

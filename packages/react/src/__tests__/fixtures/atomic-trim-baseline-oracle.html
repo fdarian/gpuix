@@ -10,6 +10,7 @@
   holding the atomic `holder` (or, in a `row-` case, a flex or grid container that holds a plain span as `holder` and the label
   beside it, baselines aligned); `label` is the trimmed box and `ink` the inline box inside it, whose box is the font's
   ascent and descent around the baseline. Numbers are [x, y, width, height] relative to the `line` box of the case.
+  The BADGES at the end are the cases of a 20px chip in a block line, see the comment there.
 -->
 <html><head><meta charset="utf-8"><style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -49,6 +50,34 @@ for (const row of ['flex', 'grid']) {
   add(`row-${row}-end-cap`, { row, trim: 'trim-end' })
   add(`row-${row}-label-13-20`, { row, labelSize: '13px', labelLine: '20px' })
 }
+
+// A badge: the chip of a design system, a 20px-tall `inline-flex` (or `inline-block`) span with 8px of padding and an 11px/14px
+// text, in a block line of `size`/`line` (13px/20px unless the case says) ("x.com" is in a span of its own, trimmed or not). `wrap` says what the line is: a
+// `div`, or a span in a flex-wrap row (the wrapper of a flex item, whose `display` is `block` in Chrome). Numbers are
+// relative to the line: `holder` is the badge, `label` the span of the text and `ink` the same span.
+const BADGES = []
+const badge = (name, spec) => BADGES.push({ name, display: 'inline-flex', trim: true, line: '20px', wrap: 'item', size: '13px', ...spec })
+badge('chip')
+badge('chip-line-24', { line: '24px' })
+// The line of a wrapper that inherits nothing is the default 16px/24px, whose strut sits 4px above the badge's baseline
+// where the 13px/20px one sits 1px above it (FF's ThinkingSteps chip: Chrome's 21px wrapper with the badge at +1 is the
+// 13px/20px; 24px with the badge at +4 is the 16px/24px, and is what gpuix puts there when nothing sets the size).
+badge('chip-16-24', { size: '16px', line: '24px' })
+badge('chip-div-16-24', { size: '16px', line: '24px', wrap: 'div' })
+badge('chip-div', { wrap: 'div' })
+badge('chip-div-line-24', { wrap: 'div', line: '24px' })
+badge('flex-badge', { trim: false })
+badge('flex-badge-line-24', { trim: false, line: '24px' })
+badge('flex-badge-item', { trim: false, wrap: 'item' })
+badge('flex-badge-div', { trim: false, wrap: 'div' })
+badge('flex-badge-div-line-24', { trim: false, wrap: 'div', line: '24px' })
+badge('block-badge', { display: 'inline-block', trim: false, wrap: 'div' })
+badge('block-badge-line-24', { display: 'inline-block', trim: false, wrap: 'div', line: '24px' })
+badge('block-badge-item', { display: 'inline-block', trim: false })
+badge('block-badge-trim', { display: 'inline-block', wrap: 'div' })
+badge('block-badge-trim-line-24', { display: 'inline-block', wrap: 'div', line: '24px' })
+badge('flex-badge-16-24', { trim: false, size: '16px', line: '24px' })
+badge('block-badge-16-24', { display: 'inline-block', trim: false, wrap: 'div', size: '16px', line: '24px' })
 
 const rect = (element, origin) => {
   const box = element.getBoundingClientRect()
@@ -96,6 +125,23 @@ document.fonts.load('16px Menlo').then(() => {
     document.body.append(line)
     const origin = line.getBoundingClientRect()
     results[spec.name] = { line: rect(line, origin), holder: rect(holder, origin), label: rect(label, origin), ink: rect(ink, origin), spec }
+  }
+  for (const spec of BADGES) {
+    const row = document.createElement('div')
+    row.style.cssText = `font: ${spec.size}/${spec.line} Menlo; width: 300px; color: #000`
+    const line = document.createElement(spec.wrap === 'item' ? 'span' : 'div')
+    if (spec.wrap === 'item') row.style.cssText += '; display: flex; flex-wrap: wrap'
+    const holder = document.createElement('span')
+    holder.style.cssText = `display: ${spec.display}; align-items: center; white-space: nowrap; height: 20px; padding: 0 8px; font-size: 11px; line-height: 14px`
+    const label = document.createElement('span')
+    if (spec.trim) label.style.cssText = 'display: block; text-box: trim-both cap alphabetic'
+    label.textContent = 'x.com'
+    holder.append(label)
+    line.append(holder)
+    row.append(line)
+    document.body.append(row)
+    const origin = line.getBoundingClientRect()
+    results[spec.name] = { line: rect(line, origin), holder: rect(holder, origin), label: rect(label, origin), ink: rect(label, origin), spec: { badge: true, ...spec } }
   }
   document.body.setAttribute('data-rects', JSON.stringify({ scale: window.devicePixelRatio, results }))
 })
