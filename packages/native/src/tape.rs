@@ -124,6 +124,9 @@ enum Entry {
 }
 
 thread_local! {
+    /// The list each list that was nested in another was last nested in, and by how much: how a
+    /// list is found to be put back by a replay of the lists around it, see [`Live::delta_of`].
+    static PARENTS: RefCell<rustc_hash::FxHashMap<u64, (u64, Point<Pixels>)>> = RefCell::new(rustc_hash::FxHashMap::default());
     static SERIAL: Cell<u64> = const { Cell::new(1) };
     /// The serial of the list the write being made is recorded into, see [`owner`].
     static OWNER: Cell<u64> = const { Cell::new(0) };
@@ -137,7 +140,6 @@ pub(crate) struct Entries {
     /// without holding the list (see [`owner`]).
     serial: u64,
     list: Vec<Entry>,
-    children: Vec<(Rc<Entries>, Point<Pixels>)>,
     /// Of the writes in the list and in the lists nested in it.
     kinds: Kinds,
     layout_kinds: Kinds,
@@ -147,13 +149,13 @@ pub(crate) struct Entries {
 /// already holds, so that the replay is left as it was.
 impl Clone for Entries {
     fn clone(&self) -> Self {
-        Self {
-            serial: next_serial(),
-            list: self.list.clone(),
-            children: self.children.clone(),
-            kinds: self.kinds,
-            layout_kinds: self.layout_kinds,
+        let serial = next_serial();
+        for entry in &self.list {
+            if let Entry::Nested(child, by) = entry {
+                PARENTS.with(|parents| parents.borrow_mut().insert(child.serial, (serial, *by)));
+            }
         }
+        Self { serial, list: self.list.clone(), kinds: self.kinds, layout_kinds: self.layout_kinds }
     }
 }
 
@@ -161,12 +163,18 @@ fn next_serial() -> u64 {
     SERIAL.replace(SERIAL.get() + 1)
 }
 
+impl Drop for Entries {
+    fn drop(&mut self) {
+        // The thread may be on its way out, with nothing left to forget.
+        PARENTS.try_with(|parents| parents.borrow_mut().remove(&self.serial)).ok();
+    }
+}
+
 impl Entries {
     fn new() -> Rc<Self> {
         Rc::new(Self {
             serial: next_serial(),
             list: Vec::new(),
-            children: Vec::new(),
             kinds: Kinds::default(),
             layout_kinds: Kinds::default(),
         })
@@ -186,7 +194,7 @@ impl Entries {
         }
         self.kinds = self.kinds.union(child.kinds);
         self.layout_kinds = self.layout_kinds.union(child.layout_kinds);
-        self.children.push((child.clone(), by));
+        PARENTS.with(|parents| parents.borrow_mut().insert(child.serial, (self.serial, by)));
         self.list.push(Entry::Nested(child, by));
     }
 
@@ -206,13 +214,6 @@ impl Entries {
                     }
                 }
             }
-        }
-    }
-
-    fn mark(&self, offset: Point<Pixels>, live: &mut rustc_hash::FxHashMap<u64, Point<Pixels>>) {
-        live.insert(self.serial, offset);
-        for (child, by) in &self.children {
-            child.mark(offset + *by, live);
         }
     }
 
@@ -259,11 +260,27 @@ impl Live {
         });
     }
 
-    /// Notes the lists that the replay puts back as live, with how far from where they were
-    /// written they are, for [`owner`] to be looked up in.
+    /// Notes the list that the replay puts back as live, with how far from where it was written
+    /// it is, for [`owner`] to be looked up in with [`delta_of`].
     pub(crate) fn mark(&self, live: &mut rustc_hash::FxHashMap<u64, Point<Pixels>>) {
-        self.entries.mark(self.delta, live);
+        live.insert(self.entries.serial, self.delta);
     }
+}
+
+/// How far from where it was written the list `owner` is put back, if a replay in `live` puts it
+/// back: the replay of the list or of one that it was nested in, however deep.
+pub(crate) fn delta_of(owner: u64, live: &rustc_hash::FxHashMap<u64, Point<Pixels>>) -> Option<Point<Pixels>> {
+    PARENTS.with(|parents| {
+        let parents = parents.borrow();
+        let (mut list, mut offset) = (owner, Point::default());
+        loop {
+            if let Some(delta) = live.get(&list) {
+                return Some(*delta + offset);
+            }
+            let (parent, by) = parents.get(&list)?;
+            (list, offset) = (*parent, offset + *by);
+        }
+    })
 }
 
 /// Tells the registries that read in order, and the one that answers by element, that a replay
@@ -973,6 +990,27 @@ mod tests {
 
         crate::automation::forget_window(window);
         assert_eq!(x_of(window, 7), None);
+    }
+
+    #[test]
+    fn a_box_of_a_subtree_inside_another_is_put_back_by_the_replay_of_either() {
+        let window = WindowId::from(908);
+        let (outer, inner) = (SharedTape::default(), SharedTape::default());
+        {
+            let _outer = Recorder::begin(&outer, Phase::Paint);
+            box_at(window, 1, 5.0);
+            let _inner = Recorder::begin(&inner, Phase::Paint);
+            box_at(window, 2, 20.0);
+        }
+        let by = gpui::point(gpui::px(3.0), gpui::px(0.0));
+
+        crate::automation::forget_window(window);
+        outer.borrow().replay(window, Phase::Paint, by);
+        assert_eq!((x_of(window, 1), x_of(window, 2)), (Some(8.0), Some(23.0)), "the replay moves what is nested in it");
+
+        crate::automation::forget_window(window);
+        inner.borrow().replay(window, Phase::Paint, by);
+        assert_eq!((x_of(window, 1), x_of(window, 2)), (None, Some(23.0)), "and the replay of what is nested only what it holds");
     }
 
     #[test]

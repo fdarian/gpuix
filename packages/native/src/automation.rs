@@ -183,15 +183,16 @@ impl WindowBounds {
             return Some(stored.bounds);
         }
         let (bounds, owner) = stored.recorded.as_ref()?;
-        let delta = self.live.get(owner)?;
-        Some(bounds.translated(*delta))
+        let delta = crate::tape::delta_of(*owner, &self.live)?;
+        Some(bounds.translated(delta))
     }
 
     fn reset(&mut self) {
         if self.boxes.len() > self.purge_at {
             let (frame, live) = (self.frame, &self.live);
             self.boxes.retain(|_, stored| {
-                stored.frame == frame || stored.recorded.as_ref().is_some_and(|(_, owner)| live.contains_key(owner))
+                stored.frame == frame
+                    || stored.recorded.as_ref().is_some_and(|(_, owner)| crate::tape::delta_of(*owner, live).is_some())
             });
             self.purge_at = (self.boxes.len() * 2).max(4096);
         }
