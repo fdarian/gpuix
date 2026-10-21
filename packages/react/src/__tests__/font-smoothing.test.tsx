@@ -1,6 +1,7 @@
 /// `WebkitFontSmoothing` against Chrome on macOS (#67). `antialiased` draws glyphs as plain coverage, the same ink for
-/// dark text and for light text; `auto` keeps CoreGraphics' smoothing, which thickens the strokes (light text most).
-/// gpuix drew every text the `auto` way, 9-17 % heavier than Chrome's `antialiased` for dark text and 22-42 % for light.
+/// dark text and for light text; `auto` is CoreGraphics' smoothing, which thickens the strokes, as Skia turns it into a
+/// mask for a text colour. gpuix drew every text the `auto` way, 9-17 % heavier than Chrome's `antialiased` for dark
+/// text and 22-42 % for light.
 ///
 /// `fixtures/font-smoothing-oracle.html` is the page and `fixtures/font-smoothing-oracle.json` what headless Chrome
 /// paints from it (regenerate with `font-smoothing-oracle.sh`): "Hamburgefonstiv 0123" in Inter Variable at 14 and 24
@@ -12,13 +13,15 @@
 /// the subset and the whole font by 8-44 px squared, so the oracle and the test load the same file.
 ///
 /// Where a sample is compared with Chrome:
-///  - `antialiased`, dark and light text: equal to the pixel, so the bound is 0.2 % of the ink. That holds for the `opsz` 16
-///    samples too (font-optical-size.test.tsx).
-///  - `antialiased`, #a1a1a1 on #0a0a0a: up to 0.9 % heavier at scale 1 and 0.4 % at scale 2, not traced. The glyph
-///    coverage is the same as for black; the blend of a grey on a near black differs a little between gpui's shader
-///    and Skia's.
-///  - `auto`: not changed by #67; it is 1-6.5 % from Chrome's `auto` (lighter text at scale 2, heavier at scale 1), and
-///    bound at 7 %.
+///  - Dark and light text, `antialiased` and `auto`: equal to the pixel, so the bound is 0.2 % of the ink (`auto` is
+///    within 0.07 %, `antialiased` 0.00 % but for the `opsz` 16 samples). That holds for the `opsz` 16 samples too
+///    (font-optical-size.test.tsx).
+///  - #a1a1a1 on #0a0a0a: `antialiased` up to 0.9 % heavier at scale 1 and 0.4 % at scale 2, `auto` up to 0.62 % and
+///    0.32 %, not traced. The glyph coverage is the same as for black; the blend of a grey on a near black differs a
+///    little between gpui's shader and Skia's.
+///  - `auto` is the mask Skia makes of CoreGraphics' black on white output (its gamma of 2.0 taken out, then the mask
+///    gamma table of the text colour's luminance, `smoothing_table` in gpui_macos). It was up to 5.3 % from Chrome's `auto`
+///    with a grey fill per luminance level (lighter at scale 2 for light text, heavier at scale 1).
 
 import fs from "fs"
 import path from "path"
@@ -196,8 +199,8 @@ function relative(painted: number, chrome: number) {
   return Math.abs(painted - chrome) / chrome
 }
 
-/** The tolerance of a sample against Chrome's `antialiased` ink, see the header. */
-function antialiasedBound(sample: Sample, scale: number) {
+/** The tolerance of a sample against Chrome's ink, see the header. */
+function inkBound(sample: Sample, scale: number) {
   if (sample.polarity === "dim") return scale === 1 ? 0.01 : 0.005
   return 0.002
 }
@@ -211,18 +214,20 @@ describeNative("-webkit-font-smoothing against Chrome", () => {
       for (const sample of samples) {
         const own = got(painted.get(sample.id), sample.id)
         expect(relative(own, sample.ink), `${sample.id}: ${own} against Chrome's ${sample.ink}`).toBeLessThan(
-          antialiasedBound(sample, scale)
+          inkBound(sample, scale)
         )
       }
     })
 
-    it(`auto stays near Chrome's auto and heavier than antialiased, at scale ${scale}`, () => {
+    it(`auto draws the ink of Chrome's auto, heavier than antialiased, at scale ${scale}`, () => {
       const painted = paintedInk(scale, (mode) => mode)
       const samples = ORACLE[`x${scale}`].samples.filter((sample) => sample.smoothing === "auto")
       expect(samples).toHaveLength(24)
       for (const sample of samples) {
         const own = got(painted.get(sample.id), sample.id)
-        expect(relative(own, sample.ink), `${sample.id}: ${own} against Chrome's ${sample.ink}`).toBeLessThan(0.07)
+        expect(relative(own, sample.ink), `${sample.id}: ${own} against Chrome's ${sample.ink}`).toBeLessThan(
+          inkBound(sample, scale)
+        )
         const bare = got(painted.get(sample.id.replace("auto-", "antialiased-")), sample.id)
         expect(own, `${sample.id} is thicker than antialiased`).toBeGreaterThan(bare * 1.005)
       }
@@ -276,8 +281,8 @@ describeNative("-webkit-font-smoothing", () => {
   }
 
   it("draws a glyph both ways in one frame without sharing an atlas tile", () => {
-    // Dark text has no dilation either way: the two copies differ in nothing but the value, so the tile is told
-    // apart by it alone. Each copy has the ink it has when it is alone in the window.
+    // The two copies have the same colour and differ in nothing but the value, so the tile is told apart by it
+    // alone. Each copy has the ink it has when it is alone in the window.
     const alone = rowsInk("dark", { antialiased: "antialiased" }).antialiased
     const aloneAuto = rowsInk("dark", { auto: "auto" }).auto
     expect(aloneAuto).toBeGreaterThan(alone * 1.05)
@@ -306,7 +311,7 @@ describeNative("-webkit-font-smoothing", () => {
       expect(measure("frames-auto-again")).toBeCloseTo(auto, 6)
       expect(auto).toBeGreaterThan(antialiased * 1.05)
       expect(relative(antialiased, ANTIALIASED)).toBeLessThan(0.002)
-      expect(relative(auto, AUTO)).toBeLessThan(0.07)
+      expect(relative(auto, AUTO)).toBeLessThan(0.002)
     } finally {
       root.unmount()
     }
@@ -343,7 +348,7 @@ describeNative("-webkit-font-smoothing", () => {
         </div>
       ),
     })
-    expect(relative(inks.plain, AUTO)).toBeLessThan(0.07)
+    expect(relative(inks.plain, AUTO)).toBeLessThan(0.002)
     for (const antialiased of [inks.inheriting, inks.nested, inks.throughContents]) {
       expect(relative(antialiased, ANTIALIASED)).toBeLessThan(0.002)
     }
@@ -363,7 +368,7 @@ describeNative("-webkit-font-smoothing", () => {
     )
     expect(relative(inks.block, ANTIALIASED)).toBeLessThan(0.002)
     expect(relative(inks.span, ANTIALIASED)).toBeLessThan(0.002)
-    expect(relative(inks.overriddenSpan, AUTO)).toBeLessThan(0.07)
+    expect(relative(inks.overriddenSpan, AUTO)).toBeLessThan(0.002)
   })
 
   it("paints a span of one value inside text of the other", () => {
@@ -377,7 +382,7 @@ describeNative("-webkit-font-smoothing", () => {
       autoInAntialiased: around("auto", "antialiased"),
     })
     expect(relative(inks.antialiasedInAuto, ANTIALIASED)).toBeLessThan(0.002)
-    expect(relative(inks.autoInAntialiased, AUTO)).toBeLessThan(0.07)
+    expect(relative(inks.autoInAntialiased, AUTO)).toBeLessThan(0.002)
   })
 
   it("draws subpixel-antialiased as auto, and ignores a value CSS does not have", () => {
