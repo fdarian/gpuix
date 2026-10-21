@@ -340,6 +340,8 @@ struct TextEditorElement {
     pending_selection: Option<SelectionRequest>,
     /// What `TextEditorState::paint_epoch` counts, for `retain_state` to read without the entity.
     paint_epoch: Rc<Cell<u64>>,
+    /// What `TextEditorState::caret_due` says, for `clock_due` to read without the entity.
+    caret_due: Rc<Cell<bool>>,
 }
 
 impl TextEditorElement {
@@ -363,6 +365,7 @@ impl TextEditorElement {
             inert_focus: None,
             pending_selection: None,
             paint_epoch: Rc::new(Cell::new(0)),
+            caret_due: Rc::new(Cell::new(false)),
         }
     }
 
@@ -469,6 +472,7 @@ impl CustomElement for TextEditorElement {
                     };
                 let state_focus_handle = focus_handle.clone();
                 let paint_epoch = self.paint_epoch.clone();
+                let caret_due = self.caret_due.clone();
                 cx.new(move |cx| TextEditorState {
                     entity_id: cx.entity_id(),
                     element_id: id,
@@ -509,6 +513,7 @@ impl CustomElement for TextEditorElement {
                     display_is_placeholder: false,
                     caret_color,
                     paint_epoch,
+                    caret_due,
                     blink_anchor: cx.background_executor().now(),
                     caret_was_shown: false,
                     blink_armed: false,
@@ -699,6 +704,10 @@ impl CustomElement for TextEditorElement {
         self.state
             .as_ref()
             .is_some_and(|state| state.read(cx).shows_caret(window))
+    }
+
+    fn clock_due(&self) -> bool {
+        self.caret_due.get()
     }
 
     fn text_selection(&mut self, cx: &mut App) -> Option<TextSelection> {
@@ -944,6 +953,8 @@ struct TextEditorState {
     caret_color: gpui::Hsla,
     /// Counts the changes of everything the editor paints but the blink, see `retain_state`.
     paint_epoch: Rc<Cell<u64>>,
+    /// The caret changed phase after it was painted last: only a paint of the editor clears it.
+    caret_due: Rc<Cell<bool>>,
     blink_anchor: Instant,
     /// Whether the last render found the caret shown, to start its phase over when focus comes.
     caret_was_shown: bool,
@@ -1032,6 +1043,7 @@ impl TextEditorState {
             self.blink_armed = false;
             return false;
         }
+        self.caret_due.set(true);
         window.request_tick();
         true
     }
@@ -2426,6 +2438,7 @@ impl gpui::Element for EditorTextElement {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.input.read(cx).caret_due.set(false);
         let focus_handle = self.input.read(cx).focus_handle.clone();
         if !self.input.read(cx).disabled {
             window.handle_input(

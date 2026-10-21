@@ -1018,6 +1018,63 @@ describeNative("the caret of a focused input", { timeout: TIMEOUT }, () => {
     }
   })
 
+  // Chrome paints a caret again when it blinks, and a loop elsewhere does not blink it: the ticks of the loop leave the
+  // input as it was painted, and the tick of the phase builds it once.
+  counted("is built by the tick of its phase and by no tick of a loop elsewhere", async () => {
+    const run = async (focused: boolean) => {
+      const page = await mount(withProbe(blinking("some text")), 500)
+      try {
+        const renderer = page.renderer
+        if (focused) await focusProbe(renderer)
+        wholeFrame(renderer)
+        wholeFrame(renderer)
+        const before = renderer.getPatchCounters()
+        const within: Work[] = []
+        for (let frame = 0; frame < 20; frame++) within.push(tick(renderer))
+        const phases = [work(renderer, () => renderer.advanceTime(500)), work(renderer, () => renderer.advanceTime(500))]
+        const after = renderer.getPatchCounters()
+        expect(after.patchedFrames - before.patchedFrames, "every tick is patched").toBe(22)
+        expect(gained(after.declines, before.declines)).toEqual({})
+        expect(gained(after.unpatchable, before.unpatchable)).toEqual({})
+        return { within, phases }
+      } finally {
+        page.root.unmount()
+      }
+    }
+    const idle = await run(false)
+    const focused = await run(true)
+    for (const [index, done] of focused.within.entries())
+      expect(done.elementsBuilt, `tick ${index} builds what an idle input leaves alone`).toBe(idle.within[index].elementsBuilt)
+    for (const [index, done] of focused.phases.entries()) {
+      const input = done.elementsBuilt - idle.phases[index].elementsBuilt
+      expect(input, `the change of phase ${index} builds the input once`).toBeGreaterThan(0)
+      expect(input).toBeLessThanOrEqual(6)
+    }
+  })
+
+  it.skipIf(!patching)("shows the picture of a frame built whole across the ticks of a loop and a change of phase", async () => {
+    const page = await mount(withProbe(blinking("some text")), 500)
+    try {
+      const renderer = page.renderer
+      await focusProbe(renderer)
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      for (let phase = 0; phase < 3; phase++) {
+        for (let frame = 0; frame < 20; frame++) tick(renderer)
+        const patched = shot(renderer, `loop-phase-${phase}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        const whole = shot(renderer, `loop-phase-${phase}-whole`)
+        renderer.setPatchEnabled(true)
+        expect(patched.equals(whole), `phase ${phase}`).toBe(true)
+        work(renderer, () => renderer.advanceTime(500))
+      }
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
   counted("asks for no frame while nothing is focused, and none once it is blurred or the window is not key", async () => {
     const page = await mount(blinking("some text"), 500)
     try {

@@ -684,6 +684,9 @@ pub(crate) struct Sources<'a> {
     /// under an empty content mask). Chrome paints no frame for such a change, and a frame that
     /// builds it again when it shows reads the clock, so nothing it would have built is lost.
     pub dormant: &'a dyn Fn(u64) -> bool,
+    /// Whether the element that follows the clock (`Dynamic::Blink`) is to paint otherwise than it
+    /// was painted, see `CustomElement::clock_due`. One that is not is left as it is by a tick.
+    pub clock_due: &'a dyn Fn(u64) -> bool,
     /// Everything `dormant` reads that no build of an element tells the frame about: it changes
     /// when the answer may have changed for an element nothing built, so the elements that were
     /// found dormant are asked again.
@@ -1466,6 +1469,13 @@ impl Retain {
         Found { all, sourced: changed, scrolled, scrolling, scrolls, customs, motion, running, dynamic, entered, stale }
     }
 
+    /// Whether the only thing that runs on `id` is the clock of a caret, and it has not changed
+    /// phase since it was painted: a tick of any other loop leaves it as it is, as Chrome paints
+    /// the caret again only when it blinks.
+    fn between_changes(&self, sources: &Sources, id: u64) -> bool {
+        self.dynamic.get(&id) == Some(&(Dynamic::Blink as u8)) && !(sources.clock_due)(id)
+    }
+
     /// Whether `id` is dormant in the frame `found` is the delta of.
     fn asleep_in(&self, found: &Found, id: u64) -> bool {
         found.entered.contains(&id) || (!found.stale && self.dormant.contains_key(&id) && !self.woken.contains(&id))
@@ -1768,7 +1778,7 @@ impl Retain {
         }
         let mut touched = FxHashSet::default();
         for &id in found.running.iter().chain(&found.dynamic).chain(&self.unbuilt) {
-            if self.asleep_in(&found, id) {
+            if self.asleep_in(&found, id) || self.between_changes(sources, id) {
                 continue;
             }
             let mut at = Some(id);
@@ -2788,6 +2798,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            clock_due: &|_| false,
             verdicts: 0,
             selection: 0,
             pass: 1,
@@ -2884,6 +2895,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            clock_due: &|_| false,
             verdicts: 0,
             selection: changes.selection,
             pass: 1,
@@ -3019,6 +3031,7 @@ mod tests {
             customs: Vec::new(),
             motion: motion.to_vec(),
             dormant: &|_| false,
+            clock_due: &|_| false,
             verdicts: 0,
             selection: 0,
             pass: 1,
@@ -3136,6 +3149,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            clock_due: &|_| false,
             verdicts: 0,
             selection: 0,
             pass: 1,
@@ -4276,6 +4290,7 @@ mod tests {
             customs: Vec::new(),
             motion: Vec::new(),
             dormant: &|_| false,
+            clock_due: &|_| false,
             verdicts: 0,
             selection: 0,
             pass: 1,
@@ -4737,12 +4752,43 @@ mod tests {
                 });
             }
             assert_eq!(page.ids(), if is_unit { vec![2] } else { Vec::new() }, "{runs:?}");
+            let due = Sources { clock_due: &|_| true, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
             assert_eq!(
-                page.preview(&[], false),
+                page.retain.preview(&due, false),
                 if is_unit { Ok(vec![2]) } else { Err(Unpatchable::Refused(Refusal::LayoutAnimation)) },
                 "{runs:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_caret_is_touched_by_the_tick_of_its_phase_and_by_no_other() {
+        let mut page = Units::new();
+        for _ in 0..3 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, None, |page| page.retain.blinks());
+                    page.element(4, Some(true), |_| {});
+                });
+            });
+        }
+        assert_eq!(page.ids(), vec![2, 4]);
+        assert_eq!(page.preview(&[], false), Ok(vec![4]), "a tick of the animation leaves the caret as painted");
+        let due = Sources { clock_due: &|id| id == 2, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
+        assert_eq!(page.retain.preview(&due, false), Ok(vec![2, 4]), "the tick of the phase paints it too");
+    }
+
+    #[test]
+    fn a_caret_that_runs_beside_another_clock_is_touched_by_every_tick() {
+        let mut page = Units::new();
+        for _ in 0..3 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |page| page.retain.blinks());
+                });
+            });
+        }
+        assert_eq!(page.preview(&[], false), Ok(vec![2]));
     }
 
     #[test]
