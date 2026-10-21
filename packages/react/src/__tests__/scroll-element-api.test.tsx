@@ -1,4 +1,7 @@
+import fs from "fs"
+import path from "path"
 import { useLayoutEffect, useRef, useState } from "react"
+import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
 import { readScrollMetrics } from "@gpuix/native/host"
 import type { PublicInstance } from "../types/host.js"
@@ -297,6 +300,80 @@ describeNative("scroll reads are never stale", () => {
       expect(scroller!.scrollTop).toBe(420)
     } finally {
       unmount()
+    }
+  })
+})
+
+/// What the scroll members make of a value that is not a finite number, against `fixtures/scroll-order-oracle.html`
+/// in headless Chrome (regenerate with `bun fixtures/scroll-order-oracle.ts`): the scroller there is 100 by 100 over
+/// 500 by 1000 of content (`scroll()` is not an element member here), starts at (left 0, top 50) and reads `[scrollTop, scrollLeft]` after each write. NaN and
+/// both infinities are 0 for every setter, `scrollTo` and `scroll` option or argument (the other axis stays), and a
+/// `scrollBy` of one is a move of 0.
+describeNative("scroll offsets that are not finite numbers", () => {
+  const oracle: { nonFinite: Record<string, [number, number]> } = JSON.parse(
+    fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/scroll-order-oracle.json"),
+      "utf8"
+    )
+  )
+  const writes: Record<string, (scroller: PublicInstance, value: unknown) => void> = {
+    "scrollTop = $": (scroller, value) => void (scroller.scrollTop = value as number),
+    "scrollLeft = $": (scroller, value) => void (scroller.scrollLeft = value as number),
+    "scrollTo({top: $})": (scroller, value) => scroller.scrollTo({ top: value as number }),
+    "scrollTo({left: $})": (scroller, value) => scroller.scrollTo({ left: value as number }),
+    "scrollTo({top: $, left: $})": (scroller, value) => scroller.scrollTo({ top: value as number, left: value as number }),
+    "scrollTo($, $)": (scroller, value) => scroller.scrollTo(value as number, value as number),
+    "scrollTo($, 10)": (scroller, value) => scroller.scrollTo(value as number, 10),
+    "scrollTo(10, $)": (scroller, value) => scroller.scrollTo(10, value as number),
+    "scrollBy({top: $})": (scroller, value) => scroller.scrollBy({ top: value as number }),
+    "scrollBy({left: $})": (scroller, value) => scroller.scrollBy({ left: value as number }),
+    "scrollBy($, $)": (scroller, value) => scroller.scrollBy(value as number, value as number),
+    "scrollBy($, 10)": (scroller, value) => scroller.scrollBy(value as number, 10),
+    "scrollBy(10, $)": (scroller, value) => scroller.scrollBy(10, value as number),
+  }
+  const values: [string, unknown][] = [
+    ["NaN", NaN],
+    ["Infinity", Infinity],
+    ["-Infinity", -Infinity],
+  ]
+  const cases = values.flatMap(([label, value]) =>
+    Object.entries(writes).map(([template, write]) => ({
+      name: template.replaceAll("$", label),
+      write: (scroller: PublicInstance) => write(scroller, value),
+    }))
+  )
+  cases.push(
+    { name: "scrollTop = undefined", write: (scroller) => void (scroller.scrollTop = undefined as never) },
+    { name: "scrollTop = null", write: (scroller) => void (scroller.scrollTop = null as never) },
+    { name: "scrollTop = '20abc'", write: (scroller) => void (scroller.scrollTop = "20abc" as never) },
+    { name: "scrollTop = '20'", write: (scroller) => void (scroller.scrollTop = "20" as never) }
+  )
+
+  it("are read as Chrome reads them", () => {
+    const refs: Record<string, PublicInstance> = {}
+    const root = createTestRoot()
+    try {
+      root.render(
+        <div
+          ref={(instance) => {
+            if (instance) refs.scroller = instance
+          }}
+          style={{ width: 100, height: 100, overflow: "auto" }}
+        >
+          <div style={{ width: 500, height: 1000, flexShrink: 0 }} />
+        </div>
+      )
+      const scroller = refs.scroller!
+      const found: Record<string, [number, number]> = {}
+      for (const scenario of cases) {
+        scroller.scrollTop = 50
+        scroller.scrollLeft = 0
+        scenario.write(scroller)
+        found[scenario.name] = [scroller.scrollTop, scroller.scrollLeft]
+      }
+      expect(found).toEqual(Object.fromEntries(cases.map((scenario) => [scenario.name, oracle.nonFinite[scenario.name]])))
+    } finally {
+      root.unmount()
     }
   })
 })

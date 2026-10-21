@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<body style="margin:0">
+<div id="scroller" style="overflow:auto;width:100px;height:100px"><div style="width:50px;height:1000px"></div></div>
+<div id="target" style="width:30px;height:20px"></div>
+<script>
+const log = []
+const scroller = document.getElementById("scroller")
+const target = document.getElementById("target")
+scroller.addEventListener("scroll", () => log.push("scroll"))
+// Marks each frame: scroll events run before the animation frame callbacks of their frame, resize observers after.
+const tick = () => { log.push("raf"); requestAnimationFrame(tick) }
+requestAnimationFrame(tick)
+const ro = new ResizeObserver((entries) => log.push("resize " + entries.map((e) => e.target.id).join(" ")))
+// What happened up to the last report: the frame callbacks that follow it say nothing.
+const upToLastReport = () => log.slice(0, Math.max(...["scroll", "resize target"].map((name) => log.lastIndexOf(name))) + 1)
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50))))
+const result = { cases: {}, nonFinite: {} }
+
+async function main() {
+  ro.observe(target)
+  await frame()
+  await frame()
+
+  // Style change, then a scrollTop write in the same task: the write forces layout.
+  log.length = 0
+  target.style.width = "40px"
+  scroller.scrollTop = 200
+  const afterWrite = log.slice()
+  await frame()
+  await frame()
+  result.cases.styleThenScrollTopWrite = { syncAfterWrite: afterWrite, afterFrames: upToLastReport() }
+
+  // Scroll write first, then the style change.
+  log.length = 0
+  scroller.scrollTop = 0
+  await frame()
+  await frame()
+  log.length = 0
+  scroller.scrollTop = 300
+  target.style.width = "50px"
+  await frame()
+  await frame()
+  result.cases.scrollTopWriteThenStyle = { afterFrames: upToLastReport() }
+
+  // A forced layout (getBoundingClientRect) delivers nothing until the frame.
+  log.length = 0
+  target.style.width = "60px"
+  const width = target.getBoundingClientRect().width
+  const afterRead = log.slice()
+  await Promise.resolve()
+  const afterMicrotask = log.slice()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const afterTask = log.slice()
+  await frame()
+  await frame()
+  result.cases.forcedLayout = { width, syncAfterRead: afterRead, afterMicrotask, afterTask, afterFrames: upToLastReport() }
+
+  // Non-finite values.
+  const read = (name, write) => {
+    scroller.scrollTop = 50
+    scroller.scrollLeft = 0
+    write()
+    result.nonFinite[name] = [scroller.scrollTop, scroller.scrollLeft]
+  }
+  scroller.style.overflow = "auto"
+  scroller.firstElementChild.style.width = "500px"
+  for (const [name, value] of [["NaN", NaN], ["Infinity", Infinity], ["-Infinity", -Infinity]]) {
+    read(`scrollTop = ${name}`, () => { scroller.scrollTop = value })
+    read(`scrollLeft = ${name}`, () => { scroller.scrollLeft = value })
+    read(`scrollTo({top: ${name}})`, () => scroller.scrollTo({ top: value }))
+    read(`scrollTo({left: ${name}})`, () => scroller.scrollTo({ left: value }))
+    read(`scrollTo({top: ${name}, left: ${name}})`, () => scroller.scrollTo({ top: value, left: value }))
+    read(`scrollTo(${name}, ${name})`, () => scroller.scrollTo(value, value))
+    read(`scrollTo(${name}, 10)`, () => scroller.scrollTo(value, 10))
+    read(`scrollTo(10, ${name})`, () => scroller.scrollTo(10, value))
+    read(`scroll({top: ${name}})`, () => scroller.scroll({ top: value }))
+    read(`scrollBy({top: ${name}})`, () => scroller.scrollBy({ top: value }))
+    read(`scrollBy({left: ${name}})`, () => scroller.scrollBy({ left: value }))
+    read(`scrollBy(${name}, ${name})`, () => scroller.scrollBy(value, value))
+    read(`scrollBy(${name}, 10)`, () => scroller.scrollBy(value, 10))
+    read(`scrollBy(10, ${name})`, () => scroller.scrollBy(10, value))
+  }
+  read("scrollTo({top: undefined})", () => scroller.scrollTo({ top: undefined }))
+  read("scrollTo({})", () => scroller.scrollTo({}))
+  read("scrollTop = undefined", () => { scroller.scrollTop = undefined })
+  read("scrollTop = null", () => { scroller.scrollTop = null })
+  read("scrollTop = '20abc'", () => { scroller.scrollTop = "20abc" })
+  read("scrollTop = '20'", () => { scroller.scrollTop = "20" })
+  return result
+}
+window.__run = main
+</script>

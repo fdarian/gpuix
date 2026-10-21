@@ -1,0 +1,223 @@
+{
+  "cases": {
+    "styleThenScrollTopWrite": {
+      "syncAfterWrite": [],
+      "afterFrames": [
+        "scroll",
+        "raf",
+        "resize target"
+      ]
+    },
+    "scrollTopWriteThenStyle": {
+      "afterFrames": [
+        "scroll",
+        "raf",
+        "resize target"
+      ]
+    },
+    "forcedLayout": {
+      "width": 60,
+      "syncAfterRead": [],
+      "afterMicrotask": [],
+      "afterTask": [],
+      "afterFrames": [
+        "raf",
+        "resize target"
+      ]
+    }
+  },
+  "nonFinite": {
+    "scrollTop = NaN": [
+      0,
+      0
+    ],
+    "scrollLeft = NaN": [
+      50,
+      0
+    ],
+    "scrollTo({top: NaN})": [
+      0,
+      0
+    ],
+    "scrollTo({left: NaN})": [
+      50,
+      0
+    ],
+    "scrollTo({top: NaN, left: NaN})": [
+      0,
+      0
+    ],
+    "scrollTo(NaN, NaN)": [
+      0,
+      0
+    ],
+    "scrollTo(NaN, 10)": [
+      10,
+      0
+    ],
+    "scrollTo(10, NaN)": [
+      0,
+      10
+    ],
+    "scroll({top: NaN})": [
+      0,
+      0
+    ],
+    "scrollBy({top: NaN})": [
+      50,
+      0
+    ],
+    "scrollBy({left: NaN})": [
+      50,
+      0
+    ],
+    "scrollBy(NaN, NaN)": [
+      50,
+      0
+    ],
+    "scrollBy(NaN, 10)": [
+      60,
+      0
+    ],
+    "scrollBy(10, NaN)": [
+      50,
+      10
+    ],
+    "scrollTop = Infinity": [
+      0,
+      0
+    ],
+    "scrollLeft = Infinity": [
+      50,
+      0
+    ],
+    "scrollTo({top: Infinity})": [
+      0,
+      0
+    ],
+    "scrollTo({left: Infinity})": [
+      50,
+      0
+    ],
+    "scrollTo({top: Infinity, left: Infinity})": [
+      0,
+      0
+    ],
+    "scrollTo(Infinity, Infinity)": [
+      0,
+      0
+    ],
+    "scrollTo(Infinity, 10)": [
+      10,
+      0
+    ],
+    "scrollTo(10, Infinity)": [
+      0,
+      10
+    ],
+    "scroll({top: Infinity})": [
+      0,
+      0
+    ],
+    "scrollBy({top: Infinity})": [
+      50,
+      0
+    ],
+    "scrollBy({left: Infinity})": [
+      50,
+      0
+    ],
+    "scrollBy(Infinity, Infinity)": [
+      50,
+      0
+    ],
+    "scrollBy(Infinity, 10)": [
+      60,
+      0
+    ],
+    "scrollBy(10, Infinity)": [
+      50,
+      10
+    ],
+    "scrollTop = -Infinity": [
+      0,
+      0
+    ],
+    "scrollLeft = -Infinity": [
+      50,
+      0
+    ],
+    "scrollTo({top: -Infinity})": [
+      0,
+      0
+    ],
+    "scrollTo({left: -Infinity})": [
+      50,
+      0
+    ],
+    "scrollTo({top: -Infinity, left: -Infinity})": [
+      0,
+      0
+    ],
+    "scrollTo(-Infinity, -Infinity)": [
+      0,
+      0
+    ],
+    "scrollTo(-Infinity, 10)": [
+      10,
+      0
+    ],
+    "scrollTo(10, -Infinity)": [
+      0,
+      10
+    ],
+    "scroll({top: -Infinity})": [
+      0,
+      0
+    ],
+    "scrollBy({top: -Infinity})": [
+      50,
+      0
+    ],
+    "scrollBy({left: -Infinity})": [
+      50,
+      0
+    ],
+    "scrollBy(-Infinity, -Infinity)": [
+      50,
+      0
+    ],
+    "scrollBy(-Infinity, 10)": [
+      60,
+      0
+    ],
+    "scrollBy(10, -Infinity)": [
+      50,
+      10
+    ],
+    "scrollTo({top: undefined})": [
+      50,
+      0
+    ],
+    "scrollTo({})": [
+      50,
+      0
+    ],
+    "scrollTop = undefined": [
+      0,
+      0
+    ],
+    "scrollTop = null": [
+      0,
+      0
+    ],
+    "scrollTop = '20abc'": [
+      0,
+      0
+    ],
+    "scrollTop = '20'": [
+      20,
+      0
+    ]
+  }
+}

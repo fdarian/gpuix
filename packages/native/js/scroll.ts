@@ -124,6 +124,12 @@ function scrollToOptions(
   return xOrOptions ?? {}
 }
 
+/** CSSOM View converts a scroll offset to a number and reads NaN and the infinities as 0, as Chrome does. */
+function finiteOffset(value: number): number {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 0
+}
+
 function scrollTo(
   renderer: NativeRenderer,
   id: number,
@@ -131,16 +137,18 @@ function scrollTo(
   relative: boolean
 ): void {
   if (!renderer.scrollTo) throw new Error("This renderer cannot scroll")
-  if (!relative && options.left !== undefined && options.top !== undefined) {
+  const requestedLeft = options.left === undefined ? undefined : finiteOffset(options.left)
+  const requestedTop = options.top === undefined ? undefined : finiteOffset(options.top)
+  if (!relative && requestedLeft !== undefined && requestedTop !== undefined) {
     // Both axes are named, so there is nothing to read back. Native lays out what is dirty
     // before it clamps, as a browser's setter does.
     flushPendingMutations(renderer)
-    renderer.scrollTo(id, options.left, options.top, options.behavior)
+    renderer.scrollTo(id, requestedLeft, requestedTop, options.behavior)
     return
   }
   const current = readScrollMetrics(renderer, id)
-  const left = options.left === undefined ? current.scrollLeft : options.left + (relative ? current.scrollLeft : 0)
-  const top = options.top === undefined ? current.scrollTop : options.top + (relative ? current.scrollTop : 0)
+  const left = requestedLeft === undefined ? current.scrollLeft : requestedLeft + (relative ? current.scrollLeft : 0)
+  const top = requestedTop === undefined ? current.scrollTop : requestedTop + (relative ? current.scrollTop : 0)
   renderer.scrollTo(id, left, top, options.behavior)
 }
 
@@ -190,14 +198,14 @@ export function defineScrollMembers<This extends object>(
       ...metric("scrollTop"),
       set(this: This, top: number) {
         const bound = resolve(this)
-        scrollTo(bound.renderer, bound.id, { top, behavior: "instant" }, false)
+        scrollTo(bound.renderer, bound.id, { top: finiteOffset(top), behavior: "instant" }, false)
       },
     },
     scrollLeft: {
       ...metric("scrollLeft"),
       set(this: This, left: number) {
         const bound = resolve(this)
-        scrollTo(bound.renderer, bound.id, { left, behavior: "instant" }, false)
+        scrollTo(bound.renderer, bound.id, { left: finiteOffset(left), behavior: "instant" }, false)
       },
     },
     scrollWidth: metric("scrollWidth"),
