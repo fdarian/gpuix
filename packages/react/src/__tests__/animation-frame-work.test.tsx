@@ -15,11 +15,14 @@
  * in it is lifted out of it. An element whose opacity is animated is lifted, and paints as a group, for
  * as long as the animation or transition is current, whatever opacity it samples (Chrome's
  * `will-change: opacity` of an animation's side effects): a loop through exactly 1 and exactly 0 is
- * patched at every tick, those included. A `position: absolute` element is placed against a containing
- * block that gpui cannot tell is its parent, so it is drawn whole.
+ * patched at every tick, those included. A loop under a positioned, translucent or lifted ancestor, however
+ * many deep, is a unit as one under none is: gpui paints its operations inside the ancestor's. An element
+ * that is itself `position: absolute` is placed against a containing block that gpui cannot tell is its
+ * parent, so it is drawn whole.
  *
  * What cannot be patched is drawn whole, as before: an animation that moves a box, a large `<svg>`,
- * a tick in which the pointer moved or the tree was committed.
+ * a tick in which the pointer moved or the tree was committed. Every tick drawn whole while something runs
+ * is counted under the reason (`getPatchCounters().unpatchable`), also on a page with no unit.
  *
  * The counters are `getBuildCounters`, `getLayoutCounters`, `getFrameWorkCounters`,
  * `getRetainedCounters` and `getPatchCounters`.
@@ -285,6 +288,24 @@ const badgeHead = (
   </div>
 )
 
+const wrapped = (style: React.CSSProperties, child: React.ReactNode) => (
+  <div style={{ display: "flex", flexDirection: "row", alignItems: "center", ...style }}>{child}</div>
+)
+
+/** The loop of r18 under an ancestor that gpuix lifts: the ancestor is positioned or translucent, the loop is not. */
+const underRelative = (child: React.ReactNode) => wrapped({ position: "relative" }, child)
+const underAbsolute = (child: React.ReactNode) => wrapped({ position: "absolute", left: 0, top: 0 }, child)
+const underOpacity = (child: React.ReactNode) => wrapped({ opacity: 0.5 }, child)
+const underNested = (child: React.ReactNode) => underRelative(underOpacity(underRelative(child)))
+const selfAbsoluteHead = (
+  <text
+    testId="animated"
+    style={{ fontSize: 14, color: "#000000", position: "absolute", left: 0, top: 0, animation: "afw-pulse 1.5s linear infinite" }}
+  >
+    animated
+  </text>
+)
+
 const widthHead = (
   <div testId="animated" style={{ height: 20, backgroundColor: "#336699", animation: "afw-grow 1.5s linear infinite" }} />
 )
@@ -365,6 +386,15 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "a keyframes opacity loop": breatheHead,
     "a keyframes colour loop of a relative box": relativeHead,
     "a keyframes colour loop of a relative box with a z-index": relativeIndexedHead,
+    "a keyframes colour under a relative box": underRelative(colourHead()),
+    "a keyframes colour under an absolute box": underAbsolute(colourHead()),
+    "a keyframes colour under a box with opacity below 1": underOpacity(colourHead()),
+    "a keyframes colour under a relative box in a group in a relative box": underNested(colourHead()),
+    "an svg stroke dash loop under a relative box": underRelative(spinnerHead),
+    "an svg stroke dash loop under an absolute box": underAbsolute(spinnerHead),
+    "an svg stroke dash loop under a box with opacity below 1": underOpacity(spinnerHead),
+    "a native motion colour loop under a relative box": underRelative(motionHead),
+    "a native motion opacity loop under a relative box": underRelative(opacityHead),
   }
   for (const [name, head] of Object.entries(heads)) {
     counted(`does the work of one text on any page: ${name}`, async () => {
@@ -401,6 +431,13 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "a keyframes opacity loop": breatheHead,
     "a keyframes colour loop of a relative box": relativeHead,
     "a keyframes colour loop of a relative box with a z-index": relativeIndexedHead,
+    "a keyframes colour under a relative box": underRelative(colourHead()),
+    "a keyframes colour under an absolute box": underAbsolute(colourHead()),
+    "a keyframes colour under a box with opacity below 1": underOpacity(colourHead()),
+    "a keyframes colour under a relative box in a group in a relative box": underNested(colourHead()),
+    "an svg stroke dash loop under a relative box": underRelative(spinnerHead),
+    "an svg stroke dash loop under an absolute box": underAbsolute(spinnerHead),
+    "an svg stroke dash loop under a box with opacity below 1": underOpacity(spinnerHead),
   }
   for (const [name, head] of Object.entries(pictures)) {
     it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
@@ -561,7 +598,8 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     }
   })
 
-  // gpuix puts `position: absolute` on gpui as absolute in an ancestor, which gpui keeps out of a recording.
+  // gpuix puts `position: absolute` on gpui as absolute in an ancestor, whose layout gpui rewrites against a box the
+  // unit does not hold: an element that is itself absolute is no unit.
   counted("draws the opacity loop of an absolute badge in a relative card whole, as before", async () => {
     const done = await ticksOf(badgeHead, 500)
     for (let index = 0; index < TICKS; index++) {
@@ -687,6 +725,103 @@ describeNative("a tick that cannot be patched", { timeout: TIMEOUT }, () => {
     } finally {
       page.root.unmount()
     }
+  })
+})
+
+/** The counts of `after` over `before`, of the reasons that gained. */
+function gained(after: string, before: string): Record<string, number> {
+  const was = JSON.parse(before) as Record<string, number>
+  const out: Record<string, number> = {}
+  for (const [reason, count] of Object.entries(JSON.parse(after) as Record<string, number>)) {
+    if (count > (was[reason] ?? 0)) out[reason] = count - (was[reason] ?? 0)
+  }
+  return out
+}
+
+/** What `TICKS` ticks of a page after its warm-up did to the patch counters. */
+async function patchesOf(head: React.ReactNode, nodes = 500) {
+  const page = await mount(head, nodes)
+  try {
+    const renderer = page.renderer
+    for (let warm = 0; warm < WARM; warm++) tick(renderer)
+    const before = renderer.getPatchCounters()
+    for (let frame = 0; frame < TICKS; frame++) tick(renderer)
+    const after = renderer.getPatchCounters()
+    return {
+      patched: after.patchedFrames - before.patchedFrames,
+      declines: gained(after.declines, before.declines),
+      unpatchable: gained(after.unpatchable, before.unpatchable),
+    }
+  } finally {
+    page.root.unmount()
+  }
+}
+
+describeNative("a loop under a lifted ancestor", { timeout: TIMEOUT }, () => {
+  const under = {
+    "relative": underRelative,
+    "absolute": underAbsolute,
+    "opacity below 1": underOpacity,
+    "a relative box in a group in a relative box": underNested,
+  }
+  for (const [name, around] of Object.entries(under)) {
+    for (const nodes of [500, 5000]) {
+      counted(`patches every tick, with no decline of either kind: a text, an svg, ${name}, ${nodes} nodes`, async () => {
+        for (const head of [colourHead(), spinnerHead]) {
+          const done = await patchesOf(around(head), nodes)
+          expect(done).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+        }
+      })
+    }
+  }
+})
+
+describeNative("a tick drawn whole says why", { timeout: TIMEOUT }, () => {
+  const pulse = "afw-pulse 1.5s linear infinite"
+  const children = (count: number) => Array.from({ length: count }, (_, index) => <div key={index} style={{ width: 2, height: 2 }} />)
+  const reasons: Record<string, [React.ReactNode, string]> = {
+    "an animation that moves a box": [widthHead, "LayoutAnimation"],
+    "an element that is itself absolute": [selfAbsoluteHead, "Escapes"],
+    "an absolute badge in a relative card": [badgeHead, "Escapes"],
+    "a scroller that runs a loop": [
+      <div testId="animated" style={{ overflow: "scroll", width: 100, height: 24, color: "#000000", animation: pulse }}>
+        <text style={{ fontSize: 12 }}>scroller</text>
+      </div>,
+      "Excluded:scroller",
+    ],
+    "a loop on an element that holds a scroller": [
+      <div testId="animated" style={{ height: 24, color: "#000000", animation: pulse }}>
+        <div style={{ overflow: "scroll", width: 100, height: 20 }}>
+          <text style={{ fontSize: 12 }}>scroller</text>
+        </div>
+      </div>,
+      "ExcludedBelow:scroller",
+    ],
+    "a loop on an element that lifts a box out of it": [
+      <div testId="animated" style={{ height: 24, color: "#000000", animation: pulse }}>
+        <div style={{ position: "relative", zIndex: 2, width: 20, height: 12, backgroundColor: "#cc3333" }} />
+      </div>,
+      "Lifts",
+    ],
+    "a loop on an element with more elements than a unit holds": [
+      <div testId="animated" style={{ display: "flex", flexDirection: "row", width: 600, height: 24, color: "#000000", animation: pulse }}>
+        {children(300)}
+      </div>,
+      "TooLarge",
+    ],
+  }
+  for (const [name, [head, reason]] of Object.entries(reasons)) {
+    counted(`counts every tick under ${reason}, on a page with no unit: ${name}`, async () => {
+      const done = await patchesOf(head)
+      expect(done.patched).toBe(0)
+      expect(done.declines).toEqual({})
+      expect(done.unpatchable).toEqual({ [reason]: TICKS })
+    })
+  }
+
+  counted("counts nothing for a page that patches", async () => {
+    const done = await patchesOf(colourHead())
+    expect(done).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
   })
 })
 

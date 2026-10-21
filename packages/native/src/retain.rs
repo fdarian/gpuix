@@ -417,6 +417,43 @@ struct Record {
     unit_eligible: bool,
     /// What runs where a unit of the element would be rebuilt, see [`Motion`].
     motion: Motion,
+    /// Why the element is no unit though something runs on it, if the build says.
+    refusal: Option<Refusal>,
+}
+
+/// Why an element something runs on is no unit: the first of these that holds of its last build.
+/// What a tick that is drawn whole for it is counted under (`getPatchCounters().unpatchable`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// The element is of a kind a patch cannot repeat, see [`Exclusion`].
+    Excluded(Exclusion),
+    /// Something in it is.
+    ExcludedBelow(Exclusion),
+    /// It is absolutely positioned against a containing block outside it, or holds something that is:
+    /// gpui keeps no root whose layout is rewritten against a box it does not hold.
+    Escapes,
+    /// Something in it is lifted out of it into a stacking context it does not form.
+    Lifts,
+    /// Something in it scrolls, which a scroll bypasses the tape a patch compares with.
+    Scrolls,
+    /// What runs on it moves what it lays out.
+    LayoutAnimation,
+    /// It holds more elements than a unit may.
+    TooLarge,
+}
+
+impl Refusal {
+    pub(crate) fn key(self) -> String {
+        match self {
+            Self::Excluded(kind) => format!("Excluded:{}", kind.name()),
+            Self::ExcludedBelow(kind) => format!("ExcludedBelow:{}", kind.name()),
+            Self::Escapes => "Escapes".to_owned(),
+            Self::Lifts => "Lifts".to_owned(),
+            Self::Scrolls => "Scrolls".to_owned(),
+            Self::LayoutAnimation => "LayoutAnimation".to_owned(),
+            Self::TooLarge => "TooLarge".to_owned(),
+        }
+    }
 }
 
 /// The motion a unit would repaint: what runs on the element, or for a table with collapsed
@@ -765,8 +802,12 @@ pub(crate) enum Unpatchable {
     /// Something other than time changed: the pointer, focus, a scroll, a custom element, a
     /// measurement, a link, a command.
     Sourced,
-    /// A time-driven change outside every unit that is not dormant.
+    /// A time-driven change outside every unit that is not dormant, on an element the last build
+    /// gives no reason for.
     Outside(u64),
+    /// A time-driven change outside every unit that is not dormant, on an element that is no unit
+    /// for this reason.
+    Refused(Refusal),
     /// A unit that the last frame found nothing left running on (the animation ended in it, while
     /// a source goes on listing it): the frame built whole in the tick's place does not make it a
     /// unit, so a patch would repaint a root that frame does not have.
@@ -1657,12 +1698,8 @@ impl Retain {
         self.plan.units.iter().find(|unit| unit.id == id)
     }
 
-    /// Whether the last frame built whole made units, so that a tick after it could be patched.
-    pub(crate) fn has_units(&self) -> bool {
-        self.planning && !self.plan.units.is_empty()
-    }
-
     /// The units of the last frame built whole, in the order it built them.
+    #[cfg(test)]
     pub(crate) fn units(&self) -> &[Unit] {
         &self.plan.units
     }
@@ -1712,7 +1749,15 @@ impl Retain {
             return Err(Unpatchable::Everything);
         }
         if !found.sourced.is_empty() || !sources.measured.is_empty() || !sources.links.is_empty() || !sources.commanded.is_empty() || !sources.relevance.is_empty() {
-            return Err(Unpatchable::Sourced);
+            // The boxes a layout animation moves are measured, which is a source of its own in the
+            // ticks they land in: the tick is whole because of the animation.
+            let lays_out = found
+                .running
+                .iter()
+                .chain(&found.dynamic)
+                .filter(|id| !self.asleep_in(&found, **id))
+                .any(|id| self.records.get(id).is_some_and(|record| record.refusal == Some(Refusal::LayoutAnimation)));
+            return Err(if lays_out { Unpatchable::Refused(Refusal::LayoutAnimation) } else { Unpatchable::Sourced });
         }
         let mut touched = FxHashSet::default();
         for &id in found.running.iter().chain(&found.dynamic).chain(&self.unbuilt) {
@@ -1731,7 +1776,12 @@ impl Retain {
                 Some(unit) => {
                     touched.insert(unit);
                 }
-                None => return Err(Unpatchable::Outside(id)),
+                None => {
+                    return Err(match self.records.get(&id).and_then(|record| record.refusal) {
+                        Some(refusal) => Unpatchable::Refused(refusal),
+                        None => Unpatchable::Outside(id),
+                    });
+                }
             }
         }
         let units: Vec<u64> = self
@@ -2216,6 +2266,57 @@ impl Retain {
         (eligible || only_parts, motion)
     }
 
+    /// Why the node `at`, which something runs on, is no unit, in the order `begin_unit` and `end_unit`
+    /// refuse: what they judge of the build is judged here of the same facts.
+    fn refusal(&self, at: usize, own: Below, escaped: bool, unit_eligible: bool, motion: Motion) -> Option<Refusal> {
+        let node = &self.nodes[at];
+        if !unit_eligible {
+            // The parts of a collapsed table are excluded for the table to paint over: what is.
+            let below = if node.collapsed_table {
+                self.nodes[at + 1..node.end as usize]
+                    .iter()
+                    .find_map(|inner| inner.exclusion.filter(|kind| *kind != Exclusion::CollapsedTable))
+            } else {
+                own.excluded
+            };
+            return Some(match (node.exclusion, below) {
+                (Some(kind), _) => Refusal::Excluded(kind),
+                (None, Some(kind)) => Refusal::ExcludedBelow(kind),
+                (None, None) => {
+                    debug_assert!(escaped, "an element that is not eligible is excluded or escaped");
+                    Refusal::Escapes
+                }
+            });
+        }
+        if !motion.paints_only {
+            return Some(Refusal::LayoutAnimation);
+        }
+        if !node.forms_context && own.lifts {
+            return Some(Refusal::Lifts);
+        }
+        if own.size > UNIT_MAX_ELEMENTS {
+            return Some(Refusal::TooLarge);
+        }
+        if self.nodes[at..node.end as usize].iter().any(|inner| inner.vol.scroll != 0) {
+            return Some(Refusal::Scrolls);
+        }
+        None
+    }
+
+    /// Why the part of a collapsed table at `at` is no unit: the table is the unit of what runs on
+    /// its parts, so it is the table's reason.
+    fn table_refusal(&self, at: usize) -> Option<Refusal> {
+        let mut up = self.nodes[at].parent;
+        while up != NO_PARENT {
+            let table = &self.nodes[up as usize];
+            if table.collapsed_table {
+                return self.records.get(&table.id).and_then(|record| record.refusal);
+            }
+            up = table.parent;
+        }
+        None
+    }
+
     /// Plans the frames that follow a recorded one that found `candidates`, or none, to skip.
     fn back_off(&mut self, candidates: bool) {
         if candidates || self.nodes.is_empty() {
@@ -2420,6 +2521,13 @@ impl Retain {
             }
             let (epoch, token, holes) = (own.epoch, own.token, own.holes);
             let (unit_eligible, motion) = self.unit_facts(at, eligible, escaped);
+            let refusal = if node.exclusion == Some(Exclusion::CollapsedTable) {
+                self.table_refusal(at)
+            } else if motion.dynamic & Dynamic::OWN != 0 {
+                self.refusal(at, own, escaped, unit_eligible, motion)
+            } else {
+                None
+            };
             let effects = (node.effects_end > node.effects_start)
                 .then(|| Rc::<[BuildEffect]>::from(&all_effects[node.effects_start..node.effects_end]));
             self.records.insert(
@@ -2445,6 +2553,7 @@ impl Retain {
                     selection: self.selection,
                     unit_eligible,
                     motion,
+                    refusal,
                 },
             );
         }
@@ -4336,13 +4445,13 @@ mod tests {
         page.page(&[], Some(false), None);
         page.page(&[], Some(false), None);
         assert_eq!(page.ids(), Vec::<u64>::new());
-        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(2)));
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
         // One inside the one that lays out is the unit.
         page.edit(4);
         page.page(&[], Some(false), Some(true));
         page.page(&[], Some(false), Some(true));
         assert_eq!(page.ids(), vec![4]);
-        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(2)));
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
     }
 
     #[test]
@@ -4364,18 +4473,18 @@ mod tests {
         big(&mut page);
         assert_eq!(page.ids(), Vec::<u64>::new());
         assert_eq!(crate::perf_counters::snapshot().units_oversized, 1);
-        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(2)));
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::TooLarge)));
     }
 
     #[test]
     fn what_a_patch_could_not_repeat_makes_what_holds_it_no_unit() {
-        let holds: [(&str, fn(&mut Retain)); 4] = [
-            ("an exclusion", |retain| retain.exclude(Exclusion::Scroller)),
-            ("a scroll", |retain| retain.scroll(gpui::point(gpui::px(0.0), gpui::px(-4.0)))),
-            ("a lifted element", |retain| retain.stacking(|| (Some(1), false))),
-            ("an absolute box against a parent outside", |retain| retain.containing_block(false, true)),
+        let holds: [(&str, fn(&mut Retain), Refusal); 4] = [
+            ("an exclusion", |retain| retain.exclude(Exclusion::Scroller), Refusal::ExcludedBelow(Exclusion::Scroller)),
+            ("a scroll", |retain| retain.scroll(gpui::point(gpui::px(0.0), gpui::px(-4.0))), Refusal::Scrolls),
+            ("a lifted element", |retain| retain.stacking(|| (Some(1), false)), Refusal::Lifts),
+            ("an absolute box against a parent outside", |retain| retain.containing_block(false, true), Refusal::Escapes),
         ];
-        for (what, note) in holds {
+        for (what, note, refusal) in holds {
             let mut page = Units::new();
             page.page(&[], Some(true), None);
             let mut unit = None;
@@ -4392,12 +4501,52 @@ mod tests {
             });
             assert_eq!(unit, Some(false), "{what}: begun as a unit, and not one when it was built");
             assert_eq!(page.ids(), Vec::<u64>::new(), "{what}");
+            assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(refusal)), "{what}: the tick says why");
         }
         // The same page without any of them has its unit.
         let mut page = Units::new();
         page.page(&[], Some(true), None);
         page.page(&[], Some(true), None);
         assert_eq!(page.ids(), vec![2]);
+    }
+
+    #[test]
+    fn an_element_that_is_excluded_or_absolute_itself_is_no_unit_and_a_tick_says_why() {
+        let own: [(&str, fn(&mut Retain), Refusal); 2] = [
+            ("an excluded kind", |retain| retain.exclude(Exclusion::AtomicInline), Refusal::Excluded(Exclusion::AtomicInline)),
+            ("absolute against a containing block outside", |retain| retain.containing_block(false, true), Refusal::Escapes),
+        ];
+        for (what, note, refusal) in own {
+            let mut page = Units::new();
+            for _ in 0..2 {
+                page.frame(&[], false, |page| {
+                    page.element(1, None, |page| {
+                        page.element(2, Some(true), |page| note(&mut page.retain));
+                    });
+                });
+            }
+            assert_eq!(page.ids(), Vec::<u64>::new(), "{what}");
+            assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(refusal)), "{what}");
+        }
+    }
+
+    #[test]
+    fn a_refusal_is_counted_under_a_key_that_names_it() {
+        let keys: Vec<String> = [
+            Refusal::Excluded(Exclusion::AtomicInline),
+            Refusal::ExcludedBelow(Exclusion::Svg),
+            Refusal::Escapes,
+            Refusal::Lifts,
+            Refusal::Scrolls,
+            Refusal::LayoutAnimation,
+            Refusal::TooLarge,
+        ]
+        .map(Refusal::key)
+        .to_vec();
+        assert_eq!(
+            keys,
+            ["Excluded:atomic-inline", "ExcludedBelow:svg", "Escapes", "Lifts", "Scrolls", "LayoutAnimation", "TooLarge"]
+        );
     }
 
     impl Units {
@@ -4443,7 +4592,7 @@ mod tests {
         page.table(Some(false), |_| {});
         page.table(Some(false), |_| {});
         assert_eq!(page.ids(), Vec::<u64>::new());
-        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(3)));
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
     }
 
     #[test]
@@ -4588,7 +4737,7 @@ mod tests {
         page.edit(5);
         both(&mut page);
         both(&mut page);
-        assert_eq!(page.preview(&[], false), Err(Unpatchable::Outside(5)));
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
         let sources = Sources { dormant: &|id| id == 5, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
         assert_eq!(page.retain.preview(&sources, false), Ok(vec![2]), "dormant: the tick carries its clock without building it");
     }

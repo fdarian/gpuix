@@ -8845,8 +8845,16 @@ Counters you read off the renderer:
   link can tell a patched tick from one drawn whole: `patchedFrames` and
   `patchedUnits`, and two JSON objects keyed by reason, `declines` (ticks GPUI drew
   whole after trying to patch them) and `unpatchable` (ticks gpuix did not try to
-  patch, such as `Sourced` for a pointer move and `Edited` for a commit). A loop
-  that is patched has `patchedFrames` equal to its ticks.
+  patch, such as `Sourced` for a pointer move and `Edited` for a commit). While
+  something runs, every tick drawn whole is counted in one of the two, on a page with
+  no patched unit too. A running element that is no unit is counted under the reason
+  it is none: `LayoutAnimation` (what runs moves a box), `Escapes` (it is
+  `position: absolute` against a containing block outside it, or holds such a box),
+  `Lifts` (it lifts a box out of itself), `TooLarge` (more than 256 elements),
+  `Scrolls`, `Excluded:<kind>` (it is a scroller, an input and so on) and
+  `ExcludedBelow:<kind>` (something it holds is). A loop that is patched has
+  `patchedFrames` equal to its ticks, whatever positioned or translucent ancestor it
+  sits under.
 - `getBuiltElementBounds(id)` (test renderer only): the box of the last layout, `null`
   for an element that is not built. `getElementBounds` lays out a skipped
   `contentVisibility` subtree to answer; this one does not, so a test uses it to tell

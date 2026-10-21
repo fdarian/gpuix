@@ -19,7 +19,7 @@ pub(crate) struct Patching {
     /// `GPUIX_PATCH_OFF` and `setPatchEnabled` turn patching off, to time a run without it.
     enabled: bool,
     installed: bool,
-    declines: BTreeMap<&'static str, u64>,
+    declines: BTreeMap<String, u64>,
 }
 
 impl Patching {
@@ -36,27 +36,28 @@ impl Patching {
     }
 
     /// How many ticks were not patched by gpuix, by kind (gpui counts its own declines).
-    pub(crate) fn declines(&self) -> &BTreeMap<&'static str, u64> {
+    pub(crate) fn declines(&self) -> &BTreeMap<String, u64> {
         &self.declines
     }
 
-    fn decline(&mut self, kind: &'static str) {
+    fn decline(&mut self, kind: String) {
         *self.declines.entry(kind).or_default() += 1;
     }
 }
 
 impl Unpatchable {
-    fn kind(self) -> &'static str {
+    fn kind(self) -> String {
         match self {
-            Unpatchable::NoFrame => "NoFrame",
-            Unpatchable::LayoutPass => "LayoutPass",
-            Unpatchable::Unsteady => "Unsteady",
-            Unpatchable::ScrollAnimation => "ScrollAnimation",
-            Unpatchable::Edited => "Edited",
-            Unpatchable::Everything => "Everything",
-            Unpatchable::Sourced => "Sourced",
-            Unpatchable::Outside(_) => "Outside",
-            Unpatchable::Ended(_) => "Ended",
+            Unpatchable::NoFrame => "NoFrame".to_owned(),
+            Unpatchable::LayoutPass => "LayoutPass".to_owned(),
+            Unpatchable::Unsteady => "Unsteady".to_owned(),
+            Unpatchable::ScrollAnimation => "ScrollAnimation".to_owned(),
+            Unpatchable::Edited => "Edited".to_owned(),
+            Unpatchable::Everything => "Everything".to_owned(),
+            Unpatchable::Sourced => "Sourced".to_owned(),
+            Unpatchable::Outside(_) => "Outside".to_owned(),
+            Unpatchable::Ended(_) => "Ended".to_owned(),
+            Unpatchable::Refused(refusal) => refusal.key(),
         }
     }
 }
@@ -104,9 +105,11 @@ impl GpuixView {
         window.set_frame_patcher(Some(Rc::new(patcher)));
     }
 
-    /// Whether the frames of what runs are asked for as ticks that can be patched.
+    /// Whether the frames of what runs are asked for as ticks, which are patched when they can be
+    /// and counted under the reason when they cannot. A page with no unit asks for them too: a tick
+    /// that is drawn whole there would otherwise leave nothing to say why.
     fn patches_ticks(&self) -> bool {
-        self.patch.enabled && self.retain.has_units()
+        self.patch.enabled
     }
 
     /// Asks for the next frame of an animation that runs. A tick is drawn by patching the frame
@@ -135,7 +138,7 @@ impl GpuixView {
             }
         };
         if ids.is_empty() {
-            self.patch.decline("NoUnits");
+            self.patch.decline("NoUnits".to_owned());
             return None;
         }
         let stepped = self.step_clocks(window, now);
@@ -143,7 +146,7 @@ impl GpuixView {
         let mut tapes = Vec::with_capacity(ids.len());
         for id in ids {
             let Some(unit) = self.build_unit(id, now, window, cx) else {
-                self.patch.decline("NotAUnit");
+                self.patch.decline("NotAUnit".to_owned());
                 return None;
             };
             tapes.push((id, unit.tape));
