@@ -64,6 +64,7 @@ defineKeyframes("afw-skeleton", {
   "100%": { opacity: 1 },
 })
 defineKeyframes("afw-grow", { from: { width: 40 }, to: { width: 80 } })
+defineKeyframes("afw-slide", { from: { top: 0 }, to: { top: 20 } })
 defineKeyframes("afw-fade-in", {
   from: { backgroundColor: "rgba(255, 0, 0, 0)" },
   to: { backgroundColor: "rgba(255, 0, 0, 1)" },
@@ -304,6 +305,16 @@ const selfAbsoluteHead = (
   >
     animated
   </text>
+)
+
+/** The `top-abs` loop of r13: the animation moves an absolute box. */
+const topAbsoluteHead = (
+  <div style={{ position: "relative", width: 200, height: 40 }}>
+    <div
+      testId="animated"
+      style={{ position: "absolute", left: 0, width: 20, height: 12, backgroundColor: "#336699", animation: "afw-slide 1.5s linear infinite" }}
+    />
+  </div>
 )
 
 const widthHead = (
@@ -781,6 +792,7 @@ describeNative("a tick drawn whole says why", { timeout: TIMEOUT }, () => {
   const children = (count: number) => Array.from({ length: count }, (_, index) => <div key={index} style={{ width: 2, height: 2 }} />)
   const reasons: Record<string, [React.ReactNode, string]> = {
     "an animation that moves a box": [widthHead, "LayoutAnimation"],
+    "an animation that moves an absolute box": [topAbsoluteHead, "LayoutAnimation"],
     "an element that is itself absolute": [selfAbsoluteHead, "Escapes"],
     "an absolute badge in a relative card": [badgeHead, "Escapes"],
     "a scroller that runs a loop": [

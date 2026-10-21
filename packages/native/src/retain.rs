@@ -2270,6 +2270,10 @@ impl Retain {
     /// refuse: what they judge of the build is judged here of the same facts.
     fn refusal(&self, at: usize, own: Below, escaped: bool, unit_eligible: bool, motion: Motion) -> Option<Refusal> {
         let node = &self.nodes[at];
+        // First: what moves a box is a layout animation, whatever else the element is.
+        if !motion.paints_only {
+            return Some(Refusal::LayoutAnimation);
+        }
         if !unit_eligible {
             // The parts of a collapsed table are excluded for the table to paint over: what is.
             let below = if node.collapsed_table {
@@ -2287,9 +2291,6 @@ impl Retain {
                     Refusal::Escapes
                 }
             });
-        }
-        if !motion.paints_only {
-            return Some(Refusal::LayoutAnimation);
         }
         if !node.forms_context && own.lifts {
             return Some(Refusal::Lifts);
@@ -4528,6 +4529,19 @@ mod tests {
             assert_eq!(page.ids(), Vec::<u64>::new(), "{what}");
             assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(refusal)), "{what}");
         }
+    }
+
+    #[test]
+    fn an_absolute_element_whose_animation_moves_a_box_is_refused_as_a_layout_animation() {
+        let mut page = Units::new();
+        for _ in 0..2 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(false), |page| page.retain.containing_block(false, true));
+                });
+            });
+        }
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
     }
 
     #[test]
