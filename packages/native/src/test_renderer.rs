@@ -77,6 +77,9 @@ pub struct LayoutCounters {
     pub wrapped_layouts: f64,
     /// Line layout lookups that found a layout of this frame or the frame before.
     pub line_layout_hits: f64,
+    /// Line layout lookups that neither frame had but the window's shape store did: a layout shaped
+    /// some frames ago, found again without shaping. Not counted in `shapes`.
+    pub shape_cache_hits: f64,
     /// Subtrees whose painted extent (what culling reads) was worked out from their children,
     /// not found as an earlier pass or frame left it.
     pub extent_walks: f64,
@@ -949,6 +952,7 @@ impl TestGpuixRenderer {
                 shapes: text.shapes as f64,
                 wrapped_layouts: text.wrapped_layouts as f64,
                 line_layout_hits: text.hits as f64,
+                shape_cache_hits: text.shape_cache_hits as f64,
                 extent_walks: counters.extent_walks as f64,
                 overflow_walks: counters.overflow_walks as f64,
                 unsnapped_overflow_walks: counters.unsnapped_overflow_walks as f64,

@@ -1718,6 +1718,11 @@ export interface LayoutCounters {
   /** Line layout lookups that found a layout of this frame or the frame before. */
   lineLayoutHits: number
   /**
+   * Line layout lookups that neither frame had but the window's shape store did: a layout shaped
+   * some frames ago, found again without shaping. Not counted in `shapes`.
+   */
+  shapeCacheHits: number
+  /**
    * Subtrees whose painted extent (what culling reads) was worked out from their children,
    * not found as an earlier pass or frame left it.
    */
