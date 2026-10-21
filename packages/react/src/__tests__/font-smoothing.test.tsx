@@ -12,13 +12,11 @@
 /// the subset and the whole font by 8-44 px squared, so the oracle and the test load the same file.
 ///
 /// Where a sample is compared with Chrome:
-///  - `antialiased`, dark and light text: equal to the pixel, so the bound is 0.2 % of the ink.
+///  - `antialiased`, dark and light text: equal to the pixel, so the bound is 0.2 % of the ink. That holds for the `opsz` 16
+///    samples too (font-optical-size.test.tsx).
 ///  - `antialiased`, #a1a1a1 on #0a0a0a: up to 0.9 % heavier at scale 1 and 0.4 % at scale 2, not traced. The glyph
 ///    coverage is the same as for black; the blend of a grey on a near black differs a little between gpui's shader
 ///    and Skia's.
-///  - the samples with `opsz` 16 (the 500 weight): gpuix draws an `opsz` of exactly 16 as the optical size the font size
-///    picks (15 and 17 are drawn as set), so their glyphs are not the same ones. They are bound at 3 %, which still
-///    fails an `auto` drawing.
 ///  - `auto`: not changed by #67; it is 1-6.5 % from Chrome's `auto` (lighter text at scale 2, heavier at scale 1), and
 ///    bound at 7 %.
 
@@ -200,7 +198,6 @@ function relative(painted: number, chrome: number) {
 
 /** The tolerance of a sample against Chrome's `antialiased` ink, see the header. */
 function antialiasedBound(sample: Sample, scale: number) {
-  if (sample.opsz === 16) return 0.03
   if (sample.polarity === "dim") return scale === 1 ? 0.01 : 0.005
   return 0.002
 }
