@@ -13737,9 +13737,13 @@ mod font_size_cascade_tests {
     /// A height is rounded to the pixel grid.
     const TOLERANCE: f64 = 0.5;
 
-    /// The height of a `normal` line of the test renderer's font at `size`.
+    /// The scale of the windows the test platform opens, which the metrics of a font are rounded at.
+    const WINDOW_SCALE: f64 = 2.0;
+
+    /// The height of a `normal` line of the test renderer's font at `size`: the ascent and the
+    /// descent are each rounded to a device pixel of the window.
     fn normal_line(size: f64) -> f64 {
-        let rounded = |length: f64| (length + 0.5).floor();
+        let rounded = |length: f64| (length * WINDOW_SCALE + 0.5).floor() / WINDOW_SCALE;
         rounded(1025.0 * size / 1000.0) + rounded(275.0 * size / 1000.0)
     }
 
@@ -14209,6 +14213,11 @@ mod dimension_length_tests {
                     crate::events::state::PointerRequests::default(),
                 )
             });
+            // These tests count lines of text in whole pixels (a line is 20px tall). Lines are
+            // measured in device pixels, and a 16px line is 21px tall at the scale 2 that the test
+            // platform opens windows at, so the page is laid out at scale 1.
+            cx.update_window(window.into(), |_, window, _| window.set_scale_factor(1.))
+                .unwrap();
             let page = Self { tree, window };
             page.draw(cx);
             page
@@ -15753,11 +15762,12 @@ mod inline_run_size_tests {
                 window.draw(app).clear(app);
                 let text_system = app.text_system().clone();
                 let font = text_system.resolve_font(&window.text_style().font());
+                let scale_factor = window.scale_factor();
                 sizes
                     .iter()
                     .map(|size| {
                         let size = gpui::px(*size);
-                        let line_box = text_system.line_box(font, size);
+                        let line_box = text_system.line_box(font, size, scale_factor);
                         (
                             f64::from(f32::from(line_box.ascent)),
                             f64::from(f32::from(line_box.descent)),

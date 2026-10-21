@@ -8,6 +8,8 @@
     $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
       | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
 
+  or, for the files the test reads (device scale 1 and 2), `sh dsf-oracle.sh line-box`.
+
   Every box is `[x, y, width, height]` relative to its `data-case` box, so the case itself reads
   `[0, 0, 1280, height]`. A `.text` or `.span` rect is the inline box: its height is the font's
   rounded ascent plus rounded descent, whatever the line height is.

@@ -4,7 +4,9 @@
 ///
 /// `fixtures/inline-strut-oracle.html` is the page and `fixtures/inline-strut-oracle.json` the
 /// boxes headless Chrome reports for it (`getBoundingClientRect` relative to the box of the case,
-/// `[x, y, width, height]`; regenerate with the command in the HTML). The text is GpuixTestSquare
+/// `[x, y, width, height]`; regenerate with `fixtures/dsf-oracle.sh inline-strut`), and
+/// `fixtures/inline-strut-oracle-x2.json` the same on a display of device scale 2, where the half-leading of a line
+/// that is not whole is floored to a device pixel and not a CSS pixel (the `odd-` cases). The text is GpuixTestSquare
 /// at 20px with a line height of 20px, so every character is 20px wide, the ascent is the whole em
 /// and there is no descent, and only "A" is in the font.
 
@@ -24,22 +26,27 @@ const TEXT = { fontFamily: "GpuixTestSquare", fontSize: 20, lineHeight: "20px", 
 
 type Rect = [number, number, number, number]
 
-const ORACLE: Record<string, Rect> = JSON.parse(
-  fs.readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/inline-strut-oracle.json"),
-    "utf8"
-  )
-)
+const SCALES = [1, 2] as const
+type Scale = (typeof SCALES)[number]
 
-function chrome(id: string): Rect {
-  const box = ORACLE[id]
+const oracleOf = (file: string): Record<string, Rect> =>
+  JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures", file), "utf8"))
+
+const ORACLE: Record<Scale, Record<string, Rect>> = {
+  1: oracleOf("inline-strut-oracle.json"),
+  2: oracleOf("inline-strut-oracle-x2.json"),
+}
+
+function chrome(scale: Scale, id: string): Rect {
+  const box = ORACLE[scale][id]
   expect(box, `no oracle box ${id}`).toBeDefined()
   return box ?? [0, 0, 0, 0]
 }
 
 /** The names the elements of a render are found by; boxes are relative to the one called `root`. */
-function setup() {
+function setup(scale: Scale) {
   const root = createTestRoot()
+  root.renderer.setWindowScaleFactor(scale)
   root.renderer.registerFont(SQUARE_FONT)
   const refs = new Map<string, PublicInstance>()
   const ref = (name: string) => (instance: PublicInstance | null) => {
@@ -56,13 +63,13 @@ function setup() {
   /** Each `name` laid out as the oracle's `${scope}.${name}`; `root` is the oracle's `scope`. */
   const expectChrome = (scope: string, ...names: string[]) => {
     for (const name of names) {
-      const expected = chrome(name === "root" ? scope : `${scope}.${name}`)
+      const expected = chrome(scale, name === "root" ? scope : `${scope}.${name}`)
       const actual = rect(name)
       for (const [ix, key] of ["x", "y", "w", "h"].entries()) {
         expect(
           Math.abs((actual[ix] ?? 0) - (expected[ix] ?? 0)),
-          `${scope}.${name}: ${key} ${actual[ix]} != ${expected[ix]}`
-        ).toBeLessThanOrEqual(0.51)
+          `${scope}.${name} (scale ${scale}): ${key} ${actual[ix]} != ${expected[ix]}`
+        ).toBeLessThanOrEqual(0.51 / scale)
       }
     }
   }
@@ -75,18 +82,26 @@ const box = (ref: Names, name: string, style: Record<string, number | string> = 
   <span ref={ref(name)} style={{ display: "inline-block", width: 30, height: 10, ...style }} />
 )
 
-/** A line of the case `scope`: `inner` is what the container holds. */
-function check(scope: string, inner: (ref: Names) => ReactElement, names: string[], width = 300) {
-  const { render, ref, expectChrome, unmount } = setup()
-  try {
-    render(
-      <div ref={ref("root")} style={{ width, ...TEXT }}>
-        {inner(ref)}
-      </div>
-    )
-    expectChrome(scope, "root", ...names)
-  } finally {
-    unmount()
+/** A line of the case `scope`, at both scales: `inner` is what the container holds. */
+function check(
+  scope: string,
+  inner: (ref: Names) => ReactElement,
+  names: string[],
+  width = 300,
+  style: Record<string, number | string> = {}
+) {
+  for (const scale of SCALES) {
+    const { render, ref, expectChrome, unmount } = setup(scale)
+    try {
+      render(
+        <div ref={ref("root")} style={{ width, ...TEXT, ...style }}>
+          {inner(ref)}
+        </div>
+      )
+      expectChrome(scope, "root", ...names)
+    } finally {
+      unmount()
+    }
   }
 }
 
@@ -172,5 +187,35 @@ describeNative("a span that holds only a box", () => {
       ["box"],
       100
     )
+  })
+
+  it("floors a half-leading that is not whole to a device pixel", () => {
+    check("odd-tall", (ref) => spanOf(ref, "span", { lineHeight: "45px" }, box(ref, "box")), ["box"])
+    check(
+      "odd-text",
+      (ref) => (
+        <>
+          <span ref={ref("t1")}>A</span>
+          {spanOf(ref, "span", { lineHeight: "45px" }, box(ref, "box"))}
+          <span ref={ref("t2")}>A</span>
+        </>
+      ),
+      ["t1", "box", "t2"]
+    )
+    check(
+      "odd-container",
+      (ref) => (
+        <>
+          <span ref={ref("t1")}>A</span>
+          {box(ref, "box")}
+        </>
+      ),
+      ["t1", "box"],
+      300,
+      { lineHeight: "25px" }
+    )
+    check("odd-raised", (ref) => spanOf(ref, "span", { lineHeight: "45px", verticalAlign: "5px" }, box(ref, "box")), ["box"])
+    check("odd-top", (ref) => spanOf(ref, "span", { lineHeight: "45px", verticalAlign: "top" }, box(ref, "box")), ["box"])
+    check("odd-size", (ref) => spanOf(ref, "span", { fontSize: 24, lineHeight: "45px" }, box(ref, "box")), ["box"])
   })
 })

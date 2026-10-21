@@ -7,6 +7,8 @@
     $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
       | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
 
+  or, for the files the test reads (device scale 1 and 2), `sh dsf-oracle.sh inline-strut`.
+
   The text is GpuixTestSquare at 20px with a line height of 20px: every character is 20px wide,
   the ascent is the whole em and there is no descent. `data-id` names a box in the test as
   `case.name`, and the numbers are relative to the `data-case` box it is in.
@@ -38,6 +40,14 @@
 <!-- the box wraps, and the line it wraps to has the strut of the span it is in -->
 <div class="line" style="width: 100px" data-case data-id="wrap"><span data-id="wrap.t1">AAA</span><span style="line-height: 40px" data-id="wrap.span"><span data-id="wrap.t2">A</span><span class="ib" data-id="wrap.box"></span></span></div>
 <div class="line" style="width: 100px" data-case data-id="wrap-only"><span data-id="wrap-only.t1">AAAA</span><span style="line-height: 40px" data-id="wrap-only.span"><span class="ib" data-id="wrap-only.box"></span></span></div>
+
+<!-- a half-leading that is not whole: (45 - 20) / 2 and (25 - 20) / 2 are 12.5 and 2.5, floored to a device pixel -->
+<div class="line" data-case data-id="odd-tall"><span style="line-height: 45px" data-id="odd-tall.span"><span class="ib" data-id="odd-tall.box"></span></span></div>
+<div class="line" data-case data-id="odd-text"><span data-id="odd-text.t1">A</span><span style="line-height: 45px" data-id="odd-text.span"><span class="ib" data-id="odd-text.box"></span></span><span data-id="odd-text.t2">A</span></div>
+<div class="line" style="line-height: 25px" data-case data-id="odd-container"><span data-id="odd-container.t1">A</span><span class="ib" data-id="odd-container.box"></span></div>
+<div class="line" data-case data-id="odd-raised"><span style="line-height: 45px; vertical-align: 5px" data-id="odd-raised.span"><span class="ib" data-id="odd-raised.box"></span></span></div>
+<div class="line" data-case data-id="odd-top"><span style="line-height: 45px; vertical-align: top" data-id="odd-top.span"><span class="ib" data-id="odd-top.box"></span></span></div>
+<div class="line" data-case data-id="odd-size"><span style="font-size: 24px; line-height: 45px" data-id="odd-size.span"><span class="ib" data-id="odd-size.box"></span></span></div>
 
 <script>
   document.fonts.load('20px GpuixTestSquare').then(() => {

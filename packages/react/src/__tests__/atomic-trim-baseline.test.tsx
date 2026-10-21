@@ -318,24 +318,14 @@ function fractionOf(name: string, scale: 1 | 2) {
   }
 }
 
-/** Chrome shares the half-leading of a line out in device pixels (a 24px line round a 19px content area has 5 device
- *  pixels above it, 2.5px at scale 2), where gpuix floors it in CSS pixels (2px): at scale 2 the baseline of a line, and
- *  every box seated on it, is up to a device pixel higher than Chrome's. That is `extent_in_line` and the ascent and
- *  descent of `line_box` being whole CSS pixels (zed `text_system.rs`), and has nothing to do with the trim. The
- *  largest difference seen is exactly this device pixel, in the heights and offsets that follow the baseline. */
-const halfLeadingError = (scale: 1 | 2) => (scale === 1 ? 0 : 1 / scale)
-
-/** The places of a `frac-` case are Chrome's to 1/64 px, the fraction kept. What follows the baseline of a line (the top
- *  of a badge or a span, which are inside a line of text) has the half-leading of the line at scale 2 as well. */
+/** The places of a `frac-` case are Chrome's to 1/64 px, the fraction kept. */
 function expectFraction(name: string, scale: 1 | 2) {
   const { actual, expected } = fractionOf(name, scale)
-  const leading = halfLeadingError(scale)
   const parts = (["case", "cell", "item", "span", "holder", "label"] as const).filter((part) => expected[part])
   expect(Object.keys(actual).sort(), `${name} (scale ${scale}) reports the parts of the oracle`).toEqual([...parts].sort())
   for (const part of parts) {
     const chrome = expected[part]!
     const rect = actual[part]!
-    const onBaseline = part === "span" || part === "holder" || part === "label"
     const within = (value: number, wanted: number, tolerance: number, what: string) =>
       expect(Math.abs(value - wanted), `${name} (scale ${scale}) ${part} ${what}: ${value} != Chrome's ${wanted}`).toBeLessThanOrEqual(
         tolerance
@@ -343,12 +333,12 @@ function expectFraction(name: string, scale: 1 | 2) {
     within(rect[0], chrome[0], UNIT, "x")
     within(rect[2], chrome[2], UNIT, "width")
     // The baseline of a cap-trimmed label is in the layout unit its box is, so a badge sits exactly where Chrome puts
-    // it at scale 1: a 64th above it is a device pixel when it is painted on a tie (#80).
+    // it: a 64th above it is a device pixel when it is painted on a tie (#80).
     // The exception is a badge centred in a table cell: it is placed by the height of its Menlo 13px line, which is 20.02
     // here and 20 in Chrome (the text measure, a later item), so it is a 64th off.
-    const exact = scale === 1 && expected.spec.place !== "cell"
-    within(rect[1], chrome[1], exact ? 1e-4 : UNIT + (onBaseline ? leading : 0), "y")
-    within(rect[3], chrome[3], UNIT + (part === "label" ? 0 : leading), "height")
+    const exact = expected.spec.place !== "cell"
+    within(rect[1], chrome[1], exact ? 1e-4 : UNIT, "y")
+    within(rect[3], chrome[3], UNIT, "height")
   }
 }
 
@@ -358,41 +348,33 @@ function expectCase(name: string, scale: 1 | 2) {
     expect(Math.abs(value - chrome), `${name} (scale ${scale}) ${what}: ${value} != Chrome's ${chrome}`).toBeLessThanOrEqual(
       tolerance
     )
-  const leading = halfLeadingError(scale)
   for (const key of ["line", "holder", "label", "ink"] as const) {
     // A width is the advance of "Hello", which Chrome's shaping can make a unit wider or narrower (seen: 2/128 at scale
-    // 2, 1/64 at scale 1); x follows a width in the row cases. A height is the metric of the font rounded to a unit, and
-    // a trim-start or trim-end label has the height of the line less the trim, so it has the half-leading too.
+    // 2, 1/64 at scale 1); x follows a width in the row cases.
     within(actual[key][2], expected[key][2], UNIT, `${key} width`)
     within(actual[key][0], expected[key][0], UNIT, `${key} x`)
-    // A badge has the device-pixel rounding of the font's metrics at scale 2 in its heights as well: the content area of
-    // an 11px or 13px text is whole device pixels in Chrome (12.5 for the 13px, the wrapper 20.49 round a badge on its
-    // strut) and whole CSS pixels here, the same limit as the half-leading, and not the trim's.
-    const rounded = expected.spec.badge || !(key === "line" || key === "ink")
-    within(actual[key][3], expected[key][3], UNIT + (rounded ? leading : 0), `${key} height`)
+    within(actual[key][3], expected[key][3], UNIT, `${key} height`)
   }
   if (expected.spec.badge) {
     // The wrapper is as tall as the strut and the badge make it, the badge sits on the baseline of the strut, and the
     // text is in the badge where Chrome has it: the same tolerances as the labels below.
-    const place = UNIT + leading
-    within(actual.holder[1], expected.holder[1], place, "holder y")
-    within(actual.label[1], expected.label[1], place, "label y")
-    within(actual.label[1] - actual.holder[1], expected.label[1] - expected.holder[1], UNIT + leading, "label in the badge")
+    within(actual.holder[1], expected.holder[1], UNIT, "holder y")
+    within(actual.label[1], expected.label[1], UNIT, "label y")
+    within(actual.label[1] - actual.holder[1], expected.label[1] - expected.holder[1], UNIT, "label in the badge")
     return
   }
   if (expected.spec.row) {
     // A flex or grid item is placed where layout puts it, the fraction included, so the label and the span beside it are
-    // where Chrome has them but for the half-leading of the line they are seated on.
-    within(actual.label[1], expected.label[1], UNIT + leading, "label y")
-    within(actual.holder[1], expected.holder[1], UNIT + leading, "span y")
+    // where Chrome has them.
+    within(actual.label[1], expected.label[1], UNIT, "label y")
+    within(actual.holder[1], expected.holder[1], UNIT, "span y")
     return
   }
-  const place = UNIT + leading
-  within(actual.holder[1], expected.holder[1], place, "holder y")
-  within(actual.label[1], expected.label[1], place, "label y")
-  within(actual.ink[1], expected.ink[1], place, "ink y")
+  within(actual.holder[1], expected.holder[1], UNIT, "holder y")
+  within(actual.label[1], expected.label[1], UNIT, "label y")
+  within(actual.ink[1], expected.ink[1], UNIT, "ink y")
   // The label is seated on the baseline by its trimmed box, and the glyphs are in the label as Chrome has them.
-  within(actual.ink[1] - actual.label[1], expected.ink[1] - expected.label[1], UNIT + leading, "ink below the label")
+  within(actual.ink[1] - actual.label[1], expected.ink[1] - expected.label[1], UNIT, "ink below the label")
   within(actual.holder[1], actual.label[1], UNIT, "holder y against the label")
 }
 

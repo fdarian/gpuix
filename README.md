@@ -3269,13 +3269,16 @@ see [Inline-block, inline-flex, inline-grid and inline-table](#inline-block-inli
 ### Line height
 
 A line is as tall as Chrome on macOS makes it. The ascent, descent and line gap of a
-font are each rounded to a whole pixel at the size it is used, so a font's lines do not
-scale with its size, and Times, Helvetica and Courier get a taller ascent, as in Chrome.
-`lineHeight: 'normal'`, which is also what an element that sets none has, is the three
-together (Helvetica at 16px is 18px, Menlo 19px). A number or a length is laid out in
-sixty-fourths of a pixel, so `lineHeight: 1.2` at 12px is 14.390625px and not 14 or 15. What a
-line has over the font's ascent and descent is shared around them, the half above rounded
-down. Boxes are snapped to the pixel grid when they are painted, so a stack of such lines is as
+font are each rounded to a whole device pixel at the size it is used on the window's
+display, so a font's lines do not scale with its size, and Times, Helvetica and Courier get a
+taller ascent, as in Chrome. `lineHeight: 'normal'`, which is also what an element that sets
+none has, is the three together (Helvetica at 16px is 18px, Menlo 19px at scale 1; Menlo 20px is
+24px at scale 1 and 23px at scale 2, where the metrics are 37 and 9 device pixels). A number or a
+length is laid out in sixty-fourths of a pixel, so `lineHeight: 1.2` at 12px is 14.390625px and not
+14 or 15. What a line has over the font's ascent and descent is shared around them, the half above
+rounded down to a whole device pixel: a 24px line around a 19px content area of Menlo 16px has a
+baseline at 17px on a 1x display and at 17.5px on a 2x one, as in Chrome. A window that moves to a
+display of another scale shapes its text again. Boxes are snapped to the pixel grid when they are painted, so a stack of such lines is as
 tall as the sum of its lines; `getBoundingClientRect()` reports the layout and not the snapped box, so one box
 reports its height in sixty-fourths of a pixel.
 

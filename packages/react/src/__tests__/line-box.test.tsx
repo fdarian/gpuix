@@ -3,8 +3,10 @@
 ///
 /// `fixtures/line-box-oracle.html` is the page and `fixtures/line-box-oracle.json` the boxes
 /// headless Chrome reports for it (`getBoundingClientRect` relative to the box of the case,
-/// `[x, y, width, height]`; regenerate with the command in the HTML). Chrome rounds the ascent and
-/// descent of a font at its size to whole pixels, widens the ascent of Times, Helvetica and Courier,
+/// `[x, y, width, height]`; regenerate with `fixtures/dsf-oracle.sh line-box`), and
+/// `fixtures/line-box-oracle-x2.json` the same on a display of device scale 2. Chrome rounds the ascent and
+/// descent of a font at its size to whole device pixels (zoomed to the display first, so at scale 2 a half CSS pixel is
+/// a step), widens the ascent of Times, Helvetica and Courier,
 /// takes `line-height: normal` as the ascent, descent and line gap together, lays a number or a
 /// length out in sixty-fourths of a pixel, and shares what a line height has over the font as
 /// half-leading that is floored above the text. A span in another font, weight or size is a box of
@@ -21,12 +23,16 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 type Rect = [number, number, number, number]
 
-const ORACLE: Record<string, Rect> = JSON.parse(
-  fs.readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/line-box-oracle.json"),
-    "utf8"
-  )
-)
+const SCALES = [1, 2] as const
+type Scale = (typeof SCALES)[number]
+
+const oracleOf = (file: string): Record<string, Rect> =>
+  JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures", file), "utf8"))
+
+const ORACLE: Record<Scale, Record<string, Rect>> = {
+  1: oracleOf("line-box-oracle.json"),
+  2: oracleOf("line-box-oracle-x2.json"),
+}
 
 const FAMILIES: Record<string, string> = {
   "helvetica-neue": "Helvetica Neue",
@@ -49,11 +55,11 @@ const LINE_HEIGHTS: Record<string, number | string> = {
  *  a height out: in sixty-fourths of a pixel. */
 const TOLERANCE = 1 / 64 + 1e-3
 
-/** A block is on the device pixel grid, so its height is that of Chrome to the nearest pixel. */
-const BLOCK_TOLERANCE = 0.51
+/** A block is on the device pixel grid, so its height is that of Chrome to the nearest device pixel. */
+const blockTolerance = (scale: Scale) => 0.51 / scale
 
-const chrome = (id: string): Rect => {
-  const box = ORACLE[id]
+const chrome = (scale: Scale, id: string): Rect => {
+  const box = ORACLE[scale][id]
   expect(box, `no oracle box ${id}`).toBeDefined()
   return box ?? [0, 0, 0, 0]
 }
@@ -63,8 +69,12 @@ function expectNear(id: string, what: string, actual: number, expected: number, 
 }
 
 /** All the cases of the oracle in one window, one below the other: the height of each is its own. */
-function layout(cases: { id: string; style: Record<string, unknown>; spanStyle?: Record<string, unknown> }[]) {
+function layout(
+  scale: Scale,
+  cases: { id: string; style: Record<string, unknown>; spanStyle?: Record<string, unknown> }[]
+) {
   const root = createTestRoot({ width: 1280, height: 800 })
+  root.renderer.setWindowScaleFactor(scale)
   const refs = new Map<string, PublicInstance>()
   const ref = (name: string) => (instance: PublicInstance | null) => {
     if (instance) refs.set(name, instance)
@@ -145,16 +155,16 @@ function mixedCases() {
   return cases
 }
 
-describeNative("a line box", () => {
+describeNative.each(SCALES)("a line box at scale %i", (scale) => {
   it("is as tall as Chrome makes it for one font, weight, size and line height", () => {
     const cases = singleRunCases()
-    const { rect, unmount } = layout(cases)
+    const { rect, unmount } = layout(scale, cases)
     try {
       for (const { id } of cases) {
-        const expected = chrome(id)
+        const expected = chrome(scale, id)
         const actual = rect(id)
-        expectNear(id, "height", actual[3], expected[3], BLOCK_TOLERANCE)
-        const text = chrome(`${id}.text`)
+        expectNear(id, "height", actual[3], expected[3], blockTolerance(scale))
+        const text = chrome(scale, `${id}.text`)
         const painted = rect(`${id}.text`)
         expectNear(id, "text height", painted[3], text[3])
         expectNear(id, "text y", painted[1], text[1])
@@ -166,12 +176,12 @@ describeNative("a line box", () => {
 
   it("is as tall as Chrome makes it for a span of another weight or size", () => {
     const cases = mixedCases()
-    const { rect, unmount } = layout(cases)
+    const { rect, unmount } = layout(scale, cases)
     try {
       for (const { id } of cases) {
-        const expected = chrome(id)
-        expectNear(id, "height", rect(id)[3], expected[3], BLOCK_TOLERANCE)
-        const span = chrome(`${id}.span`)
+        const expected = chrome(scale, id)
+        expectNear(id, "height", rect(id)[3], expected[3], blockTolerance(scale))
+        const span = chrome(scale, `${id}.span`)
         const painted = rect(`${id}.span`)
         expectNear(id, "span height", painted[3], span[3])
         expectNear(id, "span y", painted[1], span[1])
@@ -181,27 +191,33 @@ describeNative("a line box", () => {
     }
   })
 
-  it("makes a bold 20px Helvetica Neue span in a regular container 25px tall at 24px", () => {
-    const { rect, unmount } = layout([
+  it("makes a bold 20px Helvetica Neue span in a regular container as tall as Chrome at 24px", () => {
+    const id = "mixed.helvetica-neue.reg20-bold20.24px"
+    const { rect, unmount } = layout(scale, [
       {
-        id: "mixed.helvetica-neue.reg20-bold20.24px",
+        id,
         style: { fontFamily: "Helvetica Neue", fontWeight: 400, fontSize: 20, lineHeight: "24px" },
         spanStyle: { fontWeight: 700 },
       },
     ])
     try {
-      expect(rect("mixed.helvetica-neue.reg20-bold20.24px")[3]).toBe(25)
+      // 25 at scale 1; at scale 2 the bold face is 49 device pixels tall around the 48 of the line.
+      expect(rect(id)[3]).toBe(chrome(scale, id)[3])
+      expect(rect(id)[3]).toBe(scale === 1 ? 25 : 24.5)
     } finally {
       unmount()
     }
   })
 
-  it("lays a number or a length line height out in sixty-fourths of a pixel", () => {
+  // Chrome lays the line height out in sixty-fourths of a device pixel (14.3984375px at scale 2 for 12px text at 1.2),
+  // gpuix in sixty-fourths of a CSS pixel: the same unit as the text measure, which is item 4 of round 15a.
+  it.skipIf(scale !== 1)("lays a number or a length line height out in sixty-fourths of a pixel", () => {
     // A block is on the pixel grid, so a stack of 64 lines is what shows the fraction of one:
     // Chrome makes 12px text at 1.2 a line of 14.390625px, and 13px text one of 15.59375px.
     for (const size of [12, 13, 14]) {
       const id = `helvetica-neue.400.${size}.1_2`
       const root = createTestRoot({ width: 1280, height: 800 })
+      root.renderer.setWindowScaleFactor(scale)
       const refs = new Map<string, PublicInstance>()
       root.render(
         <div
@@ -218,7 +234,7 @@ describeNative("a line box", () => {
       root.renderer.dispatchNativeEvents()
       try {
         const height = refs.get("stack")?.getBoundingClientRect().height ?? 0
-        expectNear(id, "64 lines", height, 64 * chrome(id)[3], BLOCK_TOLERANCE)
+        expectNear(id, "64 lines", height, 64 * chrome(scale, id)[3], blockTolerance(scale))
       } finally {
         root.unmount()
       }

@@ -4,7 +4,9 @@
 ///
 /// `fixtures/text-baseline-oracle.html` is the page and `fixtures/text-baseline-oracle.json` the boxes
 /// headless Chrome reports for it (`getBoundingClientRect` relative to the box of the case,
-/// `[x, y, width, height]`; regenerate with the command in the HTML). The text is GpuixTestSquare, every
+/// `[x, y, width, height]`; regenerate with `fixtures/dsf-oracle.sh text-baseline`), and
+/// `fixtures/text-baseline-oracle-x2.json` the same on a display of device scale 2, where the half-leading of a line
+/// that is not whole is floored to a device pixel and not a CSS pixel (the `odd-` cases). The text is GpuixTestSquare, every
 /// character one em wide with the whole em for the ascent and no descent, so the baseline of a line of
 /// text is the half-leading plus the font size below the top of the line.
 
@@ -33,24 +35,41 @@ const WIDTH_TOLERANCE = 0.51
 
 type Style = Record<string, number | string>
 
-const ORACLE: Record<string, Rect> = JSON.parse(
-  fs.readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/text-baseline-oracle.json"),
-    "utf8"
-  )
-)
+const SCALES = [1, 2] as const
+type Scale = (typeof SCALES)[number]
 
-function chrome(id: string): Rect {
-  const box = ORACLE[id]
+const oracleOf = (file: string): Record<string, Rect> =>
+  JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures", file), "utf8"))
+
+const ORACLE: Record<Scale, Record<string, Rect>> = {
+  1: oracleOf("text-baseline-oracle.json"),
+  2: oracleOf("text-baseline-oracle-x2.json"),
+}
+
+function chrome(scale: Scale, id: string): Rect {
+  const box = ORACLE[scale][id]
   expect(box, `no oracle box ${id}`).toBeDefined()
   return box ?? [0, 0, 0, 0]
 }
 
 type Names = (name: string) => (instance: PublicInstance | null) => void
 
-/** Renders `inner` in the container of the case `scope` and compares the boxes of `names` with Chrome's. */
+/** Renders `inner` in the container of the case `scope`, at both scales, and compares the boxes of `names` with Chrome's. */
 function check(scope: string, containerStyle: Style, inner: (ref: Names) => ReactElement, names: string[]) {
+  for (const scale of SCALES) {
+    checkAt(scale, scope, containerStyle, inner, names)
+  }
+}
+
+function checkAt(
+  scale: Scale,
+  scope: string,
+  containerStyle: Style,
+  inner: (ref: Names) => ReactElement,
+  names: string[]
+) {
   const test = createTestRoot()
+  test.renderer.setWindowScaleFactor(scale)
   test.renderer.registerFont(SQUARE_FONT)
   const refs = new Map<string, PublicInstance>()
   const ref: Names = (name) => (instance) => {
@@ -73,13 +92,13 @@ function check(scope: string, containerStyle: Style, inner: (ref: Names) => Reac
     if (process.env.DUMP)
       console.log(scope, JSON.stringify(Object.fromEntries(["root", ...names].map((name) => [name, rect(name)]))))
     for (const name of ["root", ...names]) {
-      const expected = chrome(name === "root" ? scope : `${scope}.${name}`)
+      const expected = chrome(scale, name === "root" ? scope : `${scope}.${name}`)
       const actual = rect(name)
       for (const [ix, key] of ["x", "y", "w", "h"].entries()) {
         expect(
           Math.abs((actual[ix] ?? 0) - (expected[ix] ?? 0)),
-          `${scope}.${name}: ${key} ${actual[ix]} != ${expected[ix]}`
-        ).toBeLessThanOrEqual(key === "y" || key === "h" ? 0.51 : WIDTH_TOLERANCE)
+          `${scope}.${name} (scale ${scale}): ${key} ${actual[ix]} != ${expected[ix]}`
+        ).toBeLessThanOrEqual(key === "y" || key === "h" ? 0.51 / scale : WIDTH_TOLERANCE)
       }
     }
   } finally {
@@ -660,6 +679,93 @@ describeNative("an inline-flex with text", () => {
         </>
       ),
       ["t1", "f", "i1", "t2"]
+    )
+  })
+})
+
+describeNative("a half-leading that is not whole", () => {
+  const ODD = { lineHeight: "45px" } as const
+
+  it("is floored to a device pixel in the cells of a row", () => {
+    check(
+      "odd-cells",
+      {},
+      (ref) => (
+        <Table id="t" ref={ref}>
+          <Row id="r" ref={ref}>
+            <Cell id="c1" ref={ref} style={{ lineHeight: "25px" }}>
+              <Letter id="s1" ref={ref} />
+            </Cell>
+            <Cell id="c2" ref={ref} style={ODD}>
+              <Letter id="s2" ref={ref} />
+            </Cell>
+            <Cell id="c3" ref={ref} style={BIG}>
+              <Letter id="s3" ref={ref} />
+            </Cell>
+          </Row>
+        </Table>
+      ),
+      ["t", "r", "c1", "c2", "c3"]
+    )
+  })
+
+  it("is floored to a device pixel in a flex row and a grid on the baseline", () => {
+    const items = (ref: Names) => (
+      <>
+        <div ref={ref("a")} style={{ lineHeight: "25px" }}>
+          A
+        </div>
+        <div ref={ref("b")} style={ODD}>
+          A
+        </div>
+        <div ref={ref("c")} style={BIG}>
+          A
+        </div>
+      </>
+    )
+    check("odd-flex", { display: "flex", alignItems: "baseline" }, items, ["a", "b", "c"])
+    check(
+      "odd-grid",
+      { display: "grid", gridTemplateColumns: "50px 50px 50px", alignItems: "baseline" },
+      items,
+      ["a", "b", "c"]
+    )
+  })
+
+  it("is floored to a device pixel in an inline-flex and an inline-table on the baseline", () => {
+    check(
+      "odd-inline-flex",
+      {},
+      (ref) => (
+        <>
+          <span ref={ref("t1")}>AA</span>
+          <div ref={ref("f")} style={{ display: "inline-flex", padding: 3 }}>
+            <div ref={ref("i1")} style={ODD}>
+              A
+            </div>
+          </div>
+          <span ref={ref("t2")}>AA</span>
+        </>
+      ),
+      ["t1", "f", "i1", "t2"]
+    )
+    check(
+      "odd-inline-table",
+      { lineHeight: "25px" },
+      (ref) => (
+        <>
+          <span ref={ref("t1")}>AA</span>
+          <Part display="inline-table" id="t" ref={ref}>
+            <Row id="r" ref={ref}>
+              <Cell id="c1" ref={ref} style={ODD}>
+                <Letter id="s1" ref={ref} />
+              </Cell>
+            </Row>
+          </Part>
+          <span ref={ref("t2")}>AA</span>
+        </>
+      ),
+      ["t1", "t", "c1", "s1", "t2"]
     )
   })
 })

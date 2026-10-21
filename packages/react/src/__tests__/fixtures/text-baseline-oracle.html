@@ -7,6 +7,8 @@
     $CHROME --headless --window-size=1280,800 --virtual-time-budget=3000 --allow-file-access-from-files --dump-dom file:///<this file> \
       | grep -o 'data-rects="[^"]*"' | sed 's/&quot;/"/g'
 
+  or, for the files the test reads (device scale 1 and 2), `sh dsf-oracle.sh text-baseline`.
+
   The text is GpuixTestSquare: every character is one em wide ("A", "m"; "B" is two), the ascent is
   the whole em and there is no descent, so the baseline of a line of text is the half-leading
   ((line height - font size) / 2) plus the font size below the top of the line. `data-id` names a
@@ -131,6 +133,17 @@ A</div><div class="big" data-id="flex-lines.b">A</div></div>
 
 <!-- an inline-flex and an inline-block that hold text -->
 <div class="line" data-case data-id="inline-flex"><span data-id="inline-flex.t1">AA</span><div style="display: inline-flex; padding: 3px" data-id="inline-flex.f"><div class="big" data-id="inline-flex.i1">A</div></div><span data-id="inline-flex.t2">AA</span></div>
+
+<!-- a half-leading that is not whole: (25 - 20) / 2 and (45 - 20) / 2 are 2.5 and 12.5, floored to a device pixel -->
+<div class="line" data-case data-id="odd-cells"><div class="t" data-id="odd-cells.t"><div class="r" data-id="odd-cells.r">
+  <div class="c" style="line-height: 25px" data-id="odd-cells.c1"><span data-id="odd-cells.s1">A</span></div>
+  <div class="c" style="line-height: 45px" data-id="odd-cells.c2"><span data-id="odd-cells.s2">A</span></div>
+  <div class="c big" data-id="odd-cells.c3"><span data-id="odd-cells.s3">A</span></div>
+</div></div></div>
+<div class="line flex" data-case data-id="odd-flex"><div style="line-height: 25px" data-id="odd-flex.a">A</div><div style="line-height: 45px" data-id="odd-flex.b">A</div><div class="big" data-id="odd-flex.c">A</div></div>
+<div class="line grid" data-case data-id="odd-grid"><div style="line-height: 25px" data-id="odd-grid.a">A</div><div style="line-height: 45px" data-id="odd-grid.b">A</div><div class="big" data-id="odd-grid.c">A</div></div>
+<div class="line" data-case data-id="odd-inline-flex"><span data-id="odd-inline-flex.t1">AA</span><div style="display: inline-flex; padding: 3px" data-id="odd-inline-flex.f"><div style="line-height: 45px" data-id="odd-inline-flex.i1">A</div></div><span data-id="odd-inline-flex.t2">AA</span></div>
+<div class="line" style="line-height: 25px" data-case data-id="odd-inline-table"><span data-id="odd-inline-table.t1">AA</span><div class="t" style="display: inline-table" data-id="odd-inline-table.t"><div class="r"><div class="c" style="line-height: 45px" data-id="odd-inline-table.c1"><span data-id="odd-inline-table.s1">A</span></div></div></div><span data-id="odd-inline-table.t2">AA</span></div>
 
 <script>
   document.fonts.load('20px GpuixTestSquare').then(() => {

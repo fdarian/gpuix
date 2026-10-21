@@ -788,11 +788,12 @@ impl gpui::Element for InlineText {
         let rem_size = window.rem_size();
         let text_style = window.text_style();
         let text_system = window.text_system().clone();
+        let scale_factor = window.scale_factor();
         let heights = RunHeights {
             snap: &gpui::floor_to_layout_unit,
             normal: &|font, font_size| {
                 text_system
-                    .line_box(text_system.resolve_font(font), font_size)
+                    .line_box(text_system.resolve_font(font), font_size, scale_factor)
                     .normal_line_height()
             },
         };
