@@ -2268,13 +2268,41 @@ needs it, then gives it back. A value drives one window at a time.
   and then `set(v)`: the next animation starts from where the value is.
   `isAnimating()` and `getVelocity()` (numbers only) read the current state.
 - **`animate(value, target, transition?)`** takes the same `transition` as
-  `motion` (tweens and springs, in seconds) and a `target`. The returned
-  controls have `stop()`, `cancel()` (back to where it started), `complete()` (to
-  the target), `finished` and `then`; the promise never rejects. The target may
-  be a list of keyframes (`animate(x, [null, 100, 0], { repeat: Infinity })`, see
-  [Keyframes](#keyframes)); `complete()` goes to the last one. A repeating
-  animation never finishes on its own. `animate(element, ...)` is not
-  supported.
+  `motion` (tweens and springs, in seconds) and a `target`. The target may be a
+  list of keyframes (`animate(x, [null, 100, 0], { repeat: Infinity })`, see
+  [Keyframes](#keyframes)). `animate(element, ...)` is not supported. It returns
+  Motion's playback controls (typed `AnimationPlaybackControlsWithThen`), which
+  work on the animation natively, so a paused one costs nothing:
+  - `pause()` holds the value where it is and `play()` goes on from there. The
+    animation stays in effect, `isAnimating()` is true and no frame is asked for
+    until it plays. `play()` on a finished animation starts it again.
+  - `time` (seconds since the delay ended, up to the end of the last repeat) and
+    `speed` (2 is twice as fast, a negative speed runs backwards and finishes at
+    the first keyframe, 0 holds) read and assign. `duration` is one iteration, a
+    spring's from the time it takes to settle (`Infinity` if it does not in 20 s),
+    and `iterationDuration` adds the delay.
+  - `state` is `"running"`, `"paused"`, `"finished"` or `"idle"`.
+  - `stop()` keeps the value and ends the controls for good. `cancel()` takes the
+    value back to the first keyframe, and a later `play()` runs it again from
+    there. `complete()` jumps to the last keyframe (the first, backwards).
+    `animate()` on the same value replaces the animation: the old controls go
+    idle and cannot be played again.
+  - `finished` and `then` resolve when the animation finishes by itself or
+    `complete()` ends it, with a new promise when `play()` starts a finished one
+    again. After `stop()`, `cancel()` or a replacement they stay pending, and they
+    never reject.
+  - Controls used before the value is bound to a window apply when the animation
+    starts; only `duration` and `iterationDuration` throw, as they are not known
+    until then.
+
+  Where it differs from Motion: the `time` setter reads back as set, where Motion
+  counts the delay in the time it is given; a `speed` other than 0 after 0 runs
+  the animation again without `play()`; `isAnimating()` is false after `stop()`
+  and `cancel()` of the controls (Motion leaves it true) and true while a seeked
+  or replayed animation runs; `time` stops at the end of the last repeat. A
+  paused animation holds its value's node, so stop it when its component goes
+  (`useEffect(() => () => controls.stop(), [])`). `startTime` and
+  `attachTimeline` are not built.
 - **Lengths.** A motion value reads `"20px"`, `"50%"`, `"2em"`, `"calc(100% - 20px)"`
   and the other [length](#lengths) syntaxes as a px part and a percentage part, and
   animates between any two lengths as the mix of the parts: `"20px"` to `"50%"` is
