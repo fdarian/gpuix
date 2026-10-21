@@ -432,11 +432,11 @@ describeNative("an auto element in the frame that mounts it", { timeout: 120_000
   })
 })
 
-function TextEntry({ index, value, events }: { index: number; value: "visible" | "auto"; events: Events }) {
+function TextEntry({ index, value, events, intrinsic = "auto 40px" }: { index: number; value: "visible" | "auto"; events: Events; intrinsic?: string }) {
   return (
     <div
       onContentVisibilityAutoStateChange={(event) => events.push([index, event.skipped])}
-      style={{ display: "flex", flexDirection: "column", flexShrink: 0, padding: 8, gap: 4, contentVisibility: value, containIntrinsicSize: "auto 40px" } as CSSProperties}
+      style={{ display: "flex", flexDirection: "column", flexShrink: 0, padding: 8, gap: 4, contentVisibility: value, containIntrinsicSize: intrinsic } as CSSProperties}
     >
       <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
         <div testId={`bar-${index}`} style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#999999" }} />
@@ -464,6 +464,73 @@ function TextPage({ value, events }: { value: "visible" | "auto"; events: Events
     </div>
   )
 }
+
+/** A sidebar of text rows beside the list: roots a frame can replay, which a change in the list must leave alone. */
+function BesideSidebar({ rows, events }: { rows: number; events: Events }) {
+  return (
+    <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "row", fontFamily: "GpuixTestSquare" }}>
+      <div style={{ width: 160, flexShrink: 0, display: "flex", flexDirection: "column" }}>
+        {Array.from({ length: rows }, (_, index) => (
+          <div key={index} style={{ height: 24, padding: 4 }}>
+            <text style={{ fontSize: 14, color: "#555555" }}>{`Sidebar row ${index}`}</text>
+          </div>
+        ))}
+      </div>
+      <div testId="scroller" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+        {Array.from({ length: ENTRIES }, (_, index) => (
+          <TextEntry key={index} index={index} value="auto" events={events} intrinsic="auto 37px" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+describeNative("a change of what is near", { timeout: 120_000 }, () => {
+  /** The subtrees each frame after a scroll builds, and how many entries the scroll showed. */
+  const scrollRun = (rows: number, by: number) => {
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.registerFont(SQUARE_FONT)
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(<BesideSidebar rows={rows} events={[]} />)
+      renderer.flush()
+      const ids = idsOf(renderer)
+      const frame = () => {
+        const before = renderer.getRetainedCounters().builds
+        renderer.drawFrame()
+        renderer.dispatchNativeEvents()
+        return renderer.getRetainedCounters().builds - before
+      }
+      for (let index = 0; index < 8; index++) frame()
+      expect([frame(), frame()], "the page is at rest").toEqual([0, 0])
+      const skipped = skippedIn(renderer, ids, ENTRIES).length
+      renderer.scrollTo(ids.get("scroller")!, 0, by)
+      const builds = [frame(), frame(), frame(), frame()]
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return { builds, shown: skipped - skippedIn(renderer, ids, ENTRIES).length }
+    } finally {
+      root.unmount()
+    }
+  }
+
+  it("builds the roots above the entries that change and replays the rest, as a commit does", () => {
+    // 37px an entry: 5px shows none, 120px shows three. The scroll itself has the entries in view built again, once.
+    const still = scrollRun(60, 5)
+    expect(still.shown).toBe(0)
+    const moved = scrollRun(60, 120)
+    expect(moved.shown).toBe(3)
+    // Verification builds every frame twice: only that it found no mismatch is left to hold.
+    if (verifying) return
+    expect(scrollRun(0, 120), "the sidebar is replayed: its 60 rows add no build").toEqual(moved)
+    expect(moved.builds.slice(0, 2), "the scroll costs what it costs without a change").toEqual(still.builds.slice(0, 2))
+    // Their own few subtrees, not the page: a refresh of the window builds the 150 roots of the entries alone.
+    expect(moved.builds[2], "the frame after the sweep builds the roots of the three entries").toBeGreaterThan(0)
+    expect(moved.builds[2]).toBeLessThanOrEqual(3 * 4)
+    expect(moved.builds[3], "and the frame after that builds nothing").toBe(0)
+  })
+})
 
 // ── What is told, and to whom ──
 

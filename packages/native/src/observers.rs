@@ -578,7 +578,9 @@ fn sweep_relevance(
         swept.rebuild
     };
     if rebuild {
-        cx.update_window(window, |_, window, _| window.refresh()).ok();
+        // Not `Window::refresh`: it turns replay off for every root. `Sources::relevance` already
+        // names the roots above the elements that change.
+        cx.update_window(window, |view, _, cx| crate::renderer::invalidate_after_commit(cx, view.entity_id())).ok();
     }
 }
 
