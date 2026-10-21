@@ -204,6 +204,12 @@ impl MotionValueStore {
         Ok(!self.graph.feeds_any(value_id(id)?, &self.layout_driven))
     }
 
+    /// Whether a `motionValues` binding drives only properties that change what an element paints.
+    /// A binding that does not parse is not known to.
+    pub(crate) fn binding_paints_only(binding: &Value) -> bool {
+        parse_binding(binding).is_ok_and(|pairs| pairs.iter().all(Bound::paints_only))
+    }
+
     pub(crate) fn set(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
         self.graph.set(value_id(id)?, parse_value(value, &self.context())?, now)?;
         self.observe(now);

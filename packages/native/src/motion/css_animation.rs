@@ -999,6 +999,21 @@ impl Run {
         evaluation
     }
 
+    /// The clock half of a frame: moves to `now` and reports a finish. It needs no style, which
+    /// is what lets an element nothing is built for keep its animations on time.
+    fn tick(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+        self.clock.resolve_pending(now);
+        self.progress = self.advance(id, now, events).progress;
+        if self.clock.take_finish(now, self.end_time()) {
+            api.push(ApiEvent {
+                element: id,
+                run: self.clock.id(),
+                kind: ApiEventKind::Finish,
+                info: self.info(now),
+            });
+        }
+    }
+
     /// Reports an animation that stops before it ended. It is brought up to
     /// `now` first: one that ran out since the last frame ended, and its
     /// `animationend` is what is owed, not a cancel. The API hears of the
@@ -1255,6 +1270,10 @@ pub(crate) struct CssAnimations {
     /// The elements a Web Animations command reached since the last frame.
     commanded: Vec<u64>,
     active: bool,
+    /// The elements this frame leaves dormant (see `retain::Sources::dormant`): what keeps their
+    /// animations going is a tick that builds nothing, so they do not ask for a drawn frame.
+    dormant: HashSet<u64>,
+    dormant_active: bool,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
 }
@@ -1293,16 +1312,7 @@ impl CssAnimations {
 
         let mut covered = Vec::new();
         for run in &mut state.runs {
-            run.clock.resolve_pending(now);
-            run.progress = run.advance(id, now, &mut self.events).progress;
-            if run.clock.take_finish(now, run.end_time()) {
-                self.api_events.push(ApiEvent {
-                    element: id,
-                    run: run.clock.id(),
-                    kind: ApiEventKind::Finish,
-                    info: run.info(now),
-                });
-            }
+            run.tick(id, now, &mut self.events, &mut self.api_events);
             if run.progress.is_some() {
                 covered.extend(run.properties.iter().filter_map(|key| match key {
                     PropKey::Style(prop) if scope.animates(*prop) => Some(*prop),
@@ -1351,7 +1361,12 @@ impl CssAnimations {
                     now,
                 ));
             }
-            self.active |= run.wants_frame(now);
+            let wants = run.wants_frame(now);
+            if self.dormant.contains(&id) {
+                self.dormant_active |= wants;
+            } else {
+                self.active |= wants;
+            }
         }
         state.moving = state.runs.iter().any(|run| run.wants_frame(now));
 
@@ -1370,6 +1385,55 @@ impl CssAnimations {
             }
         }
         (!animated.style.is_empty() || !animated.svg.is_empty()).then_some(animated)
+    }
+
+    /// Brings the runs of `id` up to `now` without a style: iterations and finishes are reported
+    /// as `advance` would, `getAnimations` reads the new time, and the element asks for another
+    /// tick if a run is still moving. The frame that builds the element afterwards at the same
+    /// instant finds nothing left to report.
+    pub(crate) fn advance_clock(&mut self, id: u64, now: Instant) {
+        let Some(state) = self.states.get_mut(&id) else {
+            return;
+        };
+        for run in &mut state.runs {
+            run.tick(id, now, &mut self.events, &mut self.api_events);
+        }
+        state.moving = state.runs.iter().any(|run| run.wants_frame(now));
+        self.dormant_active |= state.moving;
+    }
+
+    /// Whether everything running on `id` only changes what it paints: every property its
+    /// keyframes animate is one that moves no box and no line of text. A name whose keyframes are
+    /// not defined, or were redefined since the run read them, may start or change what is
+    /// animated, so it is not.
+    pub(crate) fn paints_only(&self, id: u64, registry: &KeyframesRegistry) -> bool {
+        let Some(state) = self.states.get(&id) else {
+            return true;
+        };
+        let defined = state.list.0.iter().filter_map(|animation| animation.name.as_deref()).all(|name| {
+            registry.get(name).is_some_and(|keyframes| {
+                state.runs.iter().any(|run| run.name == name && Arc::ptr_eq(&run.keyframes, keyframes))
+            })
+        });
+        defined
+            && state.runs.iter().all(|run| {
+                run.properties.iter().all(|key| match key {
+                    PropKey::Style(prop) => prop.paints_only(),
+                    // The attributes of an SVG shape change the picture of the `<svg>`, never its box.
+                    PropKey::Svg(_) => true,
+                })
+            })
+    }
+
+    /// The elements the frame being built leaves dormant.
+    pub(crate) fn set_dormant(&mut self, ids: impl IntoIterator<Item = u64>) {
+        self.dormant.clear();
+        self.dormant.extend(ids);
+    }
+
+    /// Whether a dormant element still has a run that moves, as of the last frame or tick.
+    pub(crate) fn take_dormant_active(&mut self) -> bool {
+        std::mem::take(&mut self.dormant_active)
     }
 
     /// A frame of a shape inside an `<svg>`: its animations advance and the SVG
@@ -3839,5 +3903,44 @@ mod tests {
         assert!(frames.shape(0, &declared, &own, &[]).is_empty());
         let written = frames.shape(5000, &declared, &own, &[]);
         assert_eq!(attribute(&written, "stroke-dashoffset"), "0");
+    }
+
+    #[test]
+    fn a_clock_only_advance_reports_what_a_frame_would_have_and_leaves_that_frame_nothing() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 3");
+        frames.frame(0, &animated);
+        frames.events();
+        frames.animations.take_active();
+        frames.animations.set_dormant([1]);
+        frames.animations.advance_clock(1, frames.at(1100));
+        assert_eq!(frames.events(), [named(Iteration, "fade", 1.0)]);
+        assert!(frames.animations.take_dormant_active());
+        assert!(!frames.animations.take_active());
+        near(opacity(&frames.frame(1100, &animated)), 0.1);
+        assert!(frames.events().is_empty(), "the frame at the same instant has nothing left to report");
+        assert!(frames.animations.take_dormant_active(), "a dormant element that is built still asks for ticks, not frames");
+        assert!(!frames.animations.take_active());
+        frames.animations.advance_clock(1, frames.at(3100));
+        assert_eq!(frames.events(), [named(End, "fade", 3.0)]);
+        assert!(!frames.animations.take_dormant_active(), "an animation that ended asks for nothing");
+    }
+
+    #[test]
+    fn an_animation_only_paints_when_every_property_its_keyframes_move_does() {
+        let mut frames = Frames::new();
+        frames.define("tint", r#"{ "from": { "color": "red", "backgroundColor": "red" }, "to": { "color": "blue", "backgroundColor": "blue" } }"#);
+        frames.define("grow", r#"{ "from": { "color": "red", "width": 10 }, "to": { "color": "blue", "width": 20 } }"#);
+        let tinted = fading("tint 1s linear");
+        frames.frame(0, &tinted);
+        assert!(frames.animations.paints_only(1, &frames.registry));
+        let growing = fading("grow 1s linear");
+        frames.frame(0, &growing);
+        assert!(!frames.animations.paints_only(1, &frames.registry));
+        frames.frame(0, &fading("tint 1s linear, missing 1s"));
+        assert!(!frames.animations.paints_only(1, &frames.registry), "keyframes that are not defined may start later");
+        frames.define("tint", FADE);
+        assert!(!frames.animations.paints_only(1, &frames.registry), "a redefined name is read again by a frame");
     }
 }

@@ -1168,6 +1168,9 @@ pub(crate) struct CssTransitions {
     /// The elements a Web Animations command reached since the last frame.
     commanded: Vec<u64>,
     active: bool,
+    /// See `CssAnimations::dormant`.
+    dormant: HashSet<u64>,
+    dormant_active: bool,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
 }
@@ -1256,12 +1259,43 @@ impl CssTransitions {
             now,
             &mut self.events,
         );
-        self.active |= state
+        let wants = state
             .running
             .values()
             .any(|running| running.clock.wants_frame(now, running.end_time()));
+        if self.dormant.contains(&id) {
+            self.dormant_active |= wants;
+        } else {
+            self.active |= wants;
+        }
         let values = state.values(now);
         (!values.is_empty()).then_some(TransitionStyle(values))
+    }
+
+    /// Brings the transitions of `id` up to `now` without a style, see `CssAnimations::advance_clock`.
+    pub(crate) fn advance_clock(&mut self, id: u64, now: Instant) {
+        let Some(state) = self.states.get_mut(&id) else {
+            return;
+        };
+        state.advance(id, now, &mut self.events);
+        self.dormant_active |= state
+            .running
+            .values()
+            .any(|running| running.clock.wants_frame(now, running.end_time()));
+    }
+
+    /// Whether every transition running on `id` is on a property that only changes what it paints.
+    pub(crate) fn paints_only(&self, id: u64) -> bool {
+        self.states.get(&id).is_none_or(|state| state.running.keys().all(|prop| prop.paints_only()))
+    }
+
+    pub(crate) fn set_dormant(&mut self, ids: impl IntoIterator<Item = u64>) {
+        self.dormant.clear();
+        self.dormant.extend(ids);
+    }
+
+    pub(crate) fn take_dormant_active(&mut self) -> bool {
+        std::mem::take(&mut self.dormant_active)
     }
 
     /// `id` is `display: none`, which takes it and everything below it out of

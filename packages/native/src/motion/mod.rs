@@ -980,6 +980,16 @@ impl MotionState {
         })
     }
 
+    /// Whether everything this description animates, or waits to animate, only changes what the
+    /// element paints. One that waits for a measurement is a layout animation.
+    pub(crate) fn paints_only(&self) -> bool {
+        self.pending.is_empty()
+            && self.tracks.keys().all(|key| match key {
+                PropKey::Style(prop) => prop.paints_only(),
+                PropKey::Svg(_) => true,
+            })
+    }
+
     /// Whether a track is still moving at `now`: what it shows differs from one frame to the next.
     pub(crate) fn is_animating(&self, now: Instant) -> bool {
         self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active))
