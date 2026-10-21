@@ -118,6 +118,37 @@ add('percent grid of 101.3', box('o', 'display:grid;width:101.3px;grid-template-
 add('percent flex of 101.3', box('o', 'display:flex;width:101.3px', box('a', 'width:25%;height:10px') + box('b', 'width:33.3333%;height:10px') + box('c', 'flex:1;height:10px')));
 add('percent of 33.3 with padding', box('o', 'width:33.3px', box('a', 'width:50%;padding:0 10%;height:10px')));
 
+// Percentages are cut to a LayoutUnit (1/64 device px) after the multiply, toward zero (Blink's MinimumValueForLength), at
+// every place a percentage becomes a length. The bases are fractional so the uncut product is more than 1/128 px from the cut.
+add('percent size 37% of 99.7', box('o', 'width:99.7px;height:87.7px', box('a', 'width:37%;height:37%') + box('b', 'width:61.8%;height:61.8%') + box('c', 'width:99.9%;height:12.3%')), { paint: true });
+add('percent min max 33.7% of 99.7', box('o', 'width:99.7px;height:87.7px', box('a', 'min-width:33.7%;min-height:33.7%;width:5px;height:5px') + box('b', 'max-width:66.3%;max-height:66.3%;width:100px;height:100px')));
+add('percent padding of 77.7', box('o', 'display:flow-root;width:77.7px', box('a', 'box-sizing:border-box;padding:9.9% 17.7% 13.3% 13.1%;height:30px', box('i', 'height:10px')) + box('b', 'height:10px')));
+add('percent padding flex of 77.7', box('o', 'display:flex;width:77.7px', box('a', 'box-sizing:border-box;padding:9.9% 17.7% 13.3% 13.1%;width:40px;height:30px', box('i', 'height:10px')) + box('b', 'width:20px;height:10px')));
+add('percent margin of 77.7', box('o', 'display:flow-root;width:77.7px', box('a', 'margin:5.5% 3.3% 7.7% 7.3%;height:10px') + box('b', 'margin:5.5% 3.3% 7.7% 7.3%;height:10px')));
+add('percent margin flex of 77.7', box('o', 'display:flex;align-items:flex-start;width:77.7px', box('a', 'margin:5.5% 3.3% 7.7% 7.3%;width:20px;height:10px') + box('b', 'margin:5.5% 3.3% 7.7% 7.3%;width:20px;height:10px')));
+add('percent margin negative of 77.7', box('o', 'display:flow-root;width:77.7px', box('a', 'margin:-5.5% -3.3% -7.7% -7.3%;height:10px') + box('b', 'margin:-5.5% -3.3% -7.7% -7.3%;height:10px')));
+add('percent margin negative flex of 77.7', box('o', 'display:flex;align-items:flex-start;width:77.7px', box('a', 'margin:-5.5% -3.3% -7.7% -7.3%;width:20px;height:10px') + box('b', 'margin:-5.5% -3.3% -7.7% -7.3%;width:20px;height:10px')));
+add('percent inset of 101.3', box('w', 'position:relative;width:101.3px;height:87.7px', box('a', 'position:absolute;left:23.3%;top:17.7%;width:20px;height:20px') + box('b', 'position:absolute;right:23.3%;bottom:17.7%;width:20px;height:20px') + box('c', 'position:absolute;left:11.1%;top:11.1%;right:12.3%;bottom:12.3%')), { paint: true });
+add('percent inset negative of 101.3', box('w', 'position:relative;width:101.3px;height:87.7px', box('a', 'position:absolute;left:-23.3%;top:-17.7%;width:20px;height:20px') + box('b', 'position:absolute;right:-23.3%;bottom:-17.7%;width:20px;height:20px') + box('c', 'position:absolute;left:-11.1%;top:-11.1%;right:-12.3%;bottom:-12.3%')));
+add('percent inset relative of 101.3', box('w', 'width:101.3px;height:87.7px', box('a', 'position:relative;left:23.3%;width:20px;height:20px') + box('b', 'position:relative;left:-23.3%;width:20px;height:20px')));
+add('percent gap flex of 101.3', box('o', 'display:flex;width:101.3px;gap:3.7%', cell('a') + cell('b') + cell('c')));
+add('percent gap flex column of 87.7', box('o', 'display:flex;flex-direction:column;height:87.7px;width:20px;gap:3.7%', cell('a') + cell('b') + cell('c')));
+add('percent gap flex wrap of 101.3', box('o', 'display:flex;flex-wrap:wrap;align-content:flex-start;width:101.3px;height:87.7px;gap:7.7% 3.7%', cell('a', 'width:30px') + cell('b', 'width:30px') + cell('c', 'width:30px') + cell('d', 'width:30px')));
+add('percent gap grid of 101.3', box('o', 'display:grid;width:101.3px;height:87.7px;grid-template-columns:20px 20px 20px;grid-template-rows:10px 10px;column-gap:3.7%;row-gap:7.7%', cell('a') + cell('b') + cell('c') + cell('d') + cell('e') + cell('f')));
+add('percent flex-basis of 101.3', box('o', 'display:flex;width:101.3px', box('a', 'flex:0 0 23.3%;height:10px') + box('b', 'flex:0 0 37.7%;height:10px') + box('c', 'flex:1;height:10px')));
+add('percent flex-basis column of 87.7', box('o', 'display:flex;flex-direction:column;height:87.7px;width:20px', box('a', 'flex:0 0 23.3%') + box('b', 'flex:0 0 37.7%') + box('c', 'flex:1')));
+add('percent grid tracks of 101.3', box('o', 'display:grid;width:101.3px;height:87.7px;grid-template-columns:23.3% 37.7% 1fr;grid-template-rows:13.3% 21.7% 1fr', cell('a', 'width:auto;height:auto') + cell('b', 'width:auto;height:auto') + cell('c', 'width:auto;height:auto') + cell('d', 'width:auto;height:auto') + cell('e', 'width:auto;height:auto') + cell('f', 'width:auto;height:auto')));
+add('percent grid fit-content of 101.3', box('o', 'display:grid;width:101.3px;grid-template-columns:fit-content(23.3%) fit-content(37.7%) 1fr;grid-auto-rows:10px', box('a', 'min-width:0;height:10px', box('ai', 'width:80px;height:10px')) + box('b', 'min-width:0;height:10px', box('bi', 'width:80px;height:10px')) + cell('c', 'width:auto')));
+add('percent nested of 99.9', box('o', 'width:99.9px;height:99.9px', box('a', 'width:37.7%;height:37.7%', box('b', 'width:37.7%;height:37.7%', box('c', 'width:37.7%;height:37.7%')))));
+add('percent nested padding margin of 99.9', box('o', 'width:99.9px;height:99.9px', box('a', 'box-sizing:border-box;width:77.7%;height:77.7%;padding:7.7%;margin:3.3%', box('b', 'box-sizing:border-box;width:77.7%;height:77.7%;padding:7.7%;margin:3.3%', box('c', 'width:50%;height:50%')))), { paint: true });
+add('percent nested flex of 99.9', box('o', 'display:flex;width:99.9px;height:99.9px', box('a', 'display:flex;flex:0 0 77.7%;height:77.7%', box('b', 'flex:0 0 77.7%;height:77.7%;margin-left:7.7%'))));
+const tableCells = (heights) => [1, 2, 3].map((row) => `<tr id="r${row}"${heights[row - 1] ? ` style="height:${heights[row - 1]}"` : ''}>` + [1, 2, 3].map((column) =>
+  `<td id="c${row}${column}" style="padding:0;${column === 1 ? 'width:23.3%;' : column === 2 ? 'width:37.7%;' : ''}height:10px"></td>`).join('') + '</tr>').join('');
+add('table percent column width of 101.3', `<table id="t" style="border-collapse:separate;border-spacing:0;width:101.3px"><tbody>${tableCells([])}</tbody></table>`);
+add('table percent column width of 99.9', `<table id="t" style="border-collapse:separate;border-spacing:0;width:99.9px"><tbody>${tableCells([])}</tbody></table>`);
+add('table percent row height of 87.7', `<table id="t" style="border-collapse:separate;border-spacing:0;width:101.3px;height:87.7px"><tbody>${tableCells(['23.3%', '37.7%', ''])}</tbody></table>`);
+add('table percent row height of 99.9', `<table id="t" style="border-collapse:separate;border-spacing:0;width:101.3px;height:99.9px"><tbody>${tableCells(['23.3%', '37.7%', ''])}</tbody></table>`);
+
 const adjacentFlex = (extra) => box('o', `display:flex;width:100px;${extra}`, box('a', 'width:33.3px;height:20px') + box('b', 'width:33.3px;height:20px') + box('c', 'width:33.4px;height:20px'));
 add('adjacent 33.3 33.3 33.4 flex', adjacentFlex(''), { paint: true, scans: [hscan(10, -5, 110)] });
 add('adjacent 33.3 33.3 33.4 flex at 0.5px', adjacentFlex('margin-left:0.5px'), { paint: true, scans: [hscan(10, -5, 110)] });

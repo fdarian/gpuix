@@ -1,8 +1,9 @@
 /// An authored length keeps its fraction, as in Chrome (#65): it is cut toward zero to 1/64 of a device pixel (`100.4px`
 /// is `100.390625` at scale 1 and `100.3984375` at scale 2; `-10.01px` is `-10` and `-10.0078125`), a `calc()` and a
-/// percentage are cut after they are resolved, the edges of a box snap half up to the pixel it paints on (33.3, 33.3
-/// and 33.4 paint 33, 34 and 33 pixels with no gap), and a border width is snapped as a border width (floored to whole
-/// device pixels, a width under one is one).
+/// percentage are cut after they are resolved wherever one becomes a length (`25%` of `101.3px` is `25.3125` at scale 1
+/// and `25.3203125` at scale 2, a negative one is cut toward zero), the edges of a box snap half up to the pixel it
+/// paints on (33.3, 33.3 and 33.4 paint 33, 34 and 33 pixels with no gap), and a border width is snapped as a border
+/// width (floored to whole device pixels, a width under one is one).
 ///
 /// `fixtures/fractional-lengths-oracle.html` is the page, `fixtures/fractional-lengths-oracle.json` what headless Chrome
 /// reports for each case at device scale 1 and 2 (regenerate with `fractional-lengths-oracle.sh`): the box of every
@@ -64,7 +65,6 @@ const ORACLE: Record<string, Case> = JSON.parse(
 const NAMES = Object.keys(ORACLE)
 const SCALES = [1, 2] as const
 
-const PERCENTAGES = "a percentage is not cut to a LayoutUnit where taffy resolves it (slice 1 left that)"
 const CONTENT_BOX_PERCENT =
   "gpuix has no content-box: a px height with a percentage or calc() padding cannot be written as a border-box height"
 
@@ -80,6 +80,11 @@ const KNOWN: Record<string, string> = {
   "percent of 33.3 with padding client": CONTENT_BOX_PERCENT,
 }
 // Chrome's clientWidth and clientHeight of a table with collapsed borders are those of its whole border box.
+// Chrome shares a table's height over its rows in LayoutUnits, each row cut as it gets its share; gpuix shares floats and cuts
+// what it reads, so the row that takes what is left reads a 64th short.
+for (const height of ["87.7", "99.9"]) {
+  KNOWN[`table percent row height of ${height} rect`] = "the rows that share a table's height are not cut one by one as Chrome cuts them"
+}
 for (const border of ["1px", "2px", "3px", "5px", "3px width 100", "0.5px", "1.5px"]) {
   KNOWN[`table collapse ${border} client`] = "gpuix takes the outer halves of the borders off the client size of a collapsed table, Chrome does not"
 }
@@ -87,10 +92,6 @@ for (const border of ["1px", "2px", "3px", "5px", "3px width 100", "0.5px", "1.5
 /** The rows whose boxes are compared to some 64ths of a pixel and not exactly: the number of them, and the reason. */
 const NEAR: Record<string, [number, string]> = {
   "flex-basis 50.5 shrink": [1, "the shrink of three equal items goes out in LayoutUnits of the free space in Chrome"],
-  "percent 25% of 101.3": [1, PERCENTAGES],
-  "percent grid of 101.3": [2, PERCENTAGES],
-  "percent flex of 101.3": [2, PERCENTAGES],
-  "adjacent 33.3333% of 100.1px": [1, PERCENTAGES],
 }
 
 type Colors = Record<string, { bg: string; bd?: string }>
