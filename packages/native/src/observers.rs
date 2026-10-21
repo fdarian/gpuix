@@ -699,7 +699,7 @@ mod tests {
         crate::automation::record_bounds(
             gpui::WindowId::from(1),
             1,
-            crate::automation::LaidOut::of_box(bounds),
+            crate::automation::LaidOut::of_box(bounds, 1.0),
             bounds.origin,
             LayoutInsets {
                 padding: gpui::Edges::default(),

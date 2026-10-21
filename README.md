@@ -3761,8 +3761,14 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
 #### Deviations
 
 - A text is as wide as its advance up to 1/64 of a pixel, as in Chrome, and boxes are laid out in
-  fractions of a pixel. Their positions are snapped to device pixels when painted, but not in
-  `getBoundingClientRect`, which reports them in 1/64 of a pixel as Chrome does. Chrome rounds the ascent and descent of a font to whole pixels,
+  fractions of a pixel: a length you write keeps its fraction, cut toward zero to 1/64 of a device pixel as
+  Chrome's `LayoutUnit` cuts it (`100.4px` is `100.390625`, `-10.01px` is `-10` at 1x and `-10.0078125` at 2x, and the
+  result of a `calc()` is cut, not its terms). The edges of a box snap, half up, to the device pixel it is painted on, and a box with a size is
+  never snapped to none, so `33.3px`, `33.3px` and `33.4px` side by side paint 33, 34 and 33 pixels with no gap, and a
+  border width is snapped as a border width (floored to whole device pixels, a width under one is one pixel). Painted
+  positions are snapped but `getBoundingClientRect` is not, it reports the layout in 1/64 of a device pixel as Chrome
+  does. A percentage is not cut (`25%` of 101.296875 is 25.324219 where Chrome has 25.3125), and a text measures in
+  1/64 of a CSS pixel, which is coarser than Chrome's unit at 2x. Chrome rounds the ascent and descent of a font to whole pixels,
   gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
@@ -4923,18 +4929,19 @@ value that drives a size or an inset, or that a transform or a follower computes
 and every state commit, hover, scroll or resize, make the next read lay the window out.
 
 The rect is the layout, as in Chrome, and not the box that is painted: `x`, `y`, `width`
-and `height` are fractions of a pixel, cut down to a multiple of 1/64 as a browser's
-`LayoutUnit` is (a `width: "33.3333%"` of 100 px is 33.328125, and a box after a text
-starts where the text ends, say 69.3125). Painting, hit testing and the pointer's
+and `height` are fractions of a pixel, cut down to a multiple of 1/64 of a device pixel (1/128 px at
+2x) as a browser's `LayoutUnit` is (a `width: "33.3333%"` of 100 px is 33.328125, a `width: 100.4` is
+100.390625, and a box after a text starts where the text ends, say 69.3125). Painting, hit testing and the pointer's
 `clientX`, `offsetX` and `offsetY` use the box snapped to device pixels and are
 unchanged. `ResizeObserver` sizes, `IntersectionObserver` rects, `onLayout`, the
 bounds of a `<span>` and `getElementsAt` read the same boxes. The integer members are
 rounded as Chrome rounds them: `clientWidth`, `clientHeight`, `scrollWidth` and
 `scrollHeight` (see [Scrolling](#scrolling)) are the padding box and the scrollable overflow
-rounded half up, `clientLeft` and `clientTop` of `getElementBounds` are the rounded border
-widths, and `scrollTop` and `scrollLeft` are as they were. Deviations: a length you write
-in px is snapped to a device pixel before layout, so at 1x `width: 100.4` is 100 (a
-percentage, a flex share and a text are not); the scroll offset an element is placed
+rounded half up, `clientLeft` and `clientTop` of `getElementBounds` are the border
+widths, which are whole device pixels, rounded half up,
+and `scrollTop` and `scrollLeft` are as they were. Deviations: a percentage is not cut to
+1/64 of a device pixel, so it can be a unit or two off Chrome's, and a flex share is distributed
+in its own units; the scroll offset an element is placed
 at is the one it is painted at, which is a whole device pixel, so a box inside a scroller
 that is scrolled by a fraction is where it is painted and not where a browser puts it; and
 a box that is not a scroller reports its padding box as `clientWidth` and the same number as

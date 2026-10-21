@@ -93,13 +93,18 @@ impl Candidate {
     }
 }
 
-/// `width` as whole device pixels, at least one for a border that is there: the width the layout and the paint of a
-/// border of its own would use.
+/// How far a border may stand under a whole device pixel and still be it: a width of whole pixels comes back from
+/// layout as a float a hair under (the same slack as `gpui`'s).
+const SNAP_SLACK: f32 = 1.0 / 1024.0;
+
+/// `width` as Chrome snaps a border width: whole device pixels, floored, except that a width of less than one device
+/// pixel is one and none stays none. It is the width the layout and the paint of a border of its own would use.
 fn snap(width: f32, scale: f32) -> f32 {
-    if width <= 0.0 {
+    let device = width.max(0.0) * scale;
+    if device == 0.0 {
         return 0.0;
     }
-    ((width * scale).abs() - 0.5).ceil().max(1.0) / scale
+    (device + SNAP_SLACK).floor().max(1.0) / scale
 }
 
 /// How elaborate a style is, for two borders of the same width.
@@ -595,12 +600,16 @@ mod tests {
 
     #[test]
     fn widths_are_whole_device_pixels() {
-        // 1.4px at one device pixel to a pixel is 1px, 1.5 rounds toward zero, a hair is a pixel.
+        // Floored, as Chrome has it (fractional-lengths-oracle: 1.6 is 1 device pixel at scale 1 and 3 at scale 2); a hair is a pixel.
         assert_eq!(snap(1.4, 1.0), 1.0);
         assert_eq!(snap(1.5, 1.0), 1.0);
-        assert_eq!(snap(1.6, 1.0), 2.0);
+        assert_eq!(snap(1.6, 1.0), 1.0);
+        assert_eq!(snap(3.99, 1.0), 3.0);
         assert_eq!(snap(0.1, 1.0), 1.0);
         assert_eq!(snap(0.0, 2.0), 0.0);
-        assert_eq!(snap(1.4, 2.0), 1.5);
+        assert_eq!(snap(1.4, 2.0), 1.0);
+        assert_eq!(snap(1.6, 2.0), 1.5);
+        assert_eq!(snap(0.3, 2.0), 0.5);
+        assert_eq!(snap(3.99, 2.0), 3.5);
     }
 }

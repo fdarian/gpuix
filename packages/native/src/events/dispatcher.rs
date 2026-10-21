@@ -1754,7 +1754,7 @@ mod tests {
         crate::automation::record_bounds(
             WindowId::from(1),
             id,
-            crate::automation::LaidOut::of_box(Bounds::default()),
+            crate::automation::LaidOut::of_box(Bounds::default(), 1.0),
             gpui::Point::default(),
             gpui::LayoutInsets { border: gpui::Edges::all(gpui::px(border)), ..Default::default() },
         );
@@ -1943,7 +1943,7 @@ mod tests {
         crate::automation::record_bounds(
             WindowId::from(window),
             id,
-            crate::automation::LaidOut::of_box(Bounds::new(point(px(x), px(y)), size(px(50.0), px(50.0)))),
+            crate::automation::LaidOut::of_box(Bounds::new(point(px(x), px(y)), size(px(50.0), px(50.0))), 1.0),
             point(px(x), px(y)),
             gpui::LayoutInsets::default(),
         );

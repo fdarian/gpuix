@@ -161,7 +161,7 @@ pub fn record(layout: &TextLayout, boxes: &[InlineBox], shift: Point<Pixels>, wi
         // An inline box has no layout node: its padding and border are its style's.
         let insets = inline.edges.layout_insets(layout);
         let laid_out = Bounds::new(painted.origin + shift, painted.size);
-        record_bounds(window.window_handle().window_id(), inline.id, LaidOut::of_box(laid_out), painted.origin, insets);
+        record_bounds(window.window_handle().window_id(), inline.id, LaidOut::of_box(laid_out, window.scale_factor()), painted.origin, insets);
     }
 }
 

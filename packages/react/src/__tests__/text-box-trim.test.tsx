@@ -142,7 +142,8 @@ describeNative("text-box-trim", () => {
 
   it("trims only the first top and the last bottom of a paragraph that wraps", () => {
     const column = columnWidth()
-    const style = { width: 11 * column }
+    // Two words are 11 columns, a hair over what a width of 11 columns is once it is cut to a layout unit.
+    const style = { width: 11 * column + 1 }
     // "aaaaa bbbbb ccccc ddddd": two words to a line.
     const words = "aaaaa bbbbb ccccc ddddd"
     near(heightOf({ ...style }, words), 2 * LINE)

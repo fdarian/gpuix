@@ -1,0 +1,211 @@
+<!doctype html>
+<!--
+  Oracle for gpuix issue #65 (authored lengths keep their fraction): what headless Chrome lays out and paints for boxes
+  with fractional insets, sizes, padding, margins, gaps, borders and collapsed-border tables, at device scale 1 and 2.
+  There is no text, so no font matters.
+
+  Every case is built in a holder (`position: absolute`, 360x160, at an integer position) and every element with an id
+  is probed: getBoundingClientRect (relative to the holder), offset*, client* and the computed border widths and size.
+  A case with `paint: true` stays on the page, its elements get a unique solid background (and `data-border` elements a
+  unique border colour, background clipped to the padding box), so the screenshot taken by the .sh gives the painted
+  edges, and `scans` lists lines whose pixel runs the .sh records. The JSON is read back from the data-oracle attribute.
+  Regenerate with
+
+    sh fractional-lengths-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:content-box}
+body{margin:0;background:#fff}
+.holder{position:absolute;width:360px;height:160px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const COLUMNS = 6, CELL_WIDTH = 400, CELL_HEIGHT = 200, MARGIN = 20;
+const cases = {};
+function add(name, html, options) {
+  if (cases[name]) throw new Error('duplicate case ' + name);
+  cases[name] = Object.assign({ html, paint: false, scans: [] }, options);
+}
+const box = (id, style, inner = '', attrs = '') => `<div id="${id}" ${attrs} style="${style}">${inner}</div>`;
+
+const INSETS = [110.5, 14.6, 10.01, 10.99, 0.3, -2.5, -10.01];
+for (const v of INSETS) {
+  const wrapper = (extra, children) => box('w', `position:relative;${extra}width:200px;height:140px`, children, 'data-nobg');
+  const abs = (id, style) => box(id, `position:absolute;${style}`);
+  const children = abs('a', `left:${v}px;top:${v}px;width:20px;height:20px`) + abs('b', `right:${v}px;bottom:${v}px;width:20px;height:20px`);
+  add(`inset ${v} offset parent at 1px`, wrapper('left:1px;top:1px;', children), { paint: true });
+  add(`inset ${v} offset parent at 0.5px`, wrapper('left:0.5px;top:0.5px;', children));
+  add(`inset ${v} offset parent at 0`, wrapper('', children + (Math.abs(v) * 2 < 140 ? abs('c', `left:${v}px;right:${v}px;top:${v}px;bottom:${v}px`) : '')));
+}
+
+const SIZES = [100.4, 33.3, 10.01, 0.4, 0.6, 2.5];
+for (const v of SIZES) {
+  const abs = (id, style) => box(id, `position:absolute;${style}`);
+  add(`size ${v}`,
+    abs('a', `left:0;top:0;width:${v}px;height:20px`) + abs('c', `left:0.5px;top:30px;width:${v}px;height:20px`) +
+    abs('d', `left:150px;top:0;width:20px;height:${v}px`) + abs('e', `left:180.5px;top:0.5px;width:20px;height:${v}px`),
+    { paint: true });
+  add(`size ${v} stacked blocks`, box('a', `width:${v}px;height:${v}px`) + box('b', `width:${v}px;height:${v}px`) + box('c', `width:${v}px;height:${v}px`));
+}
+for (const v of ['6.275rem', '2.08125rem', '0.6256rem', '0.025rem', '0.0375rem', '0.1563rem', '0.03125rem'])
+  add(`size ${v}`, box('a', `width:${v};height:${v}`) + box('b', `width:${v};height:${v}`));
+add('size em 2.5em of 13.7px', box('o', 'font-size:13.7px', box('a', 'width:2.5em;height:1.1em') + box('b', 'width:2.5em;height:1.1em')));
+
+const SPACES = [0.3, 0.5, 0.6, 1.4, 2.5];
+for (const v of SPACES) {
+  const painted = v === 0.3 || v === 0.5 || v === 2.5;
+  add(`padding ${v} block`, box('o', 'display:flow-root;width:100px', box('a', `padding:${v}px`, box('i', 'height:10px')) + box('b', 'height:10px')));
+  add(`padding ${v} flex`, box('o', 'display:flex;width:100px', box('a', `padding:${v}px;width:20px`, box('i', 'height:10px')) + box('b', 'width:20px;height:10px')), { paint: painted });
+  add(`margin ${v} block`, box('o', 'display:flow-root;width:100px', box('a', `margin:${v}px;height:10px`) + box('b', `margin:${v}px;height:10px`)));
+  add(`margin ${v} block left top`, box('o', 'display:flow-root;width:100px', box('a', `margin-left:${v}px;margin-top:${v}px;width:30px;height:10px`) + box('b', `margin-left:${v}px;margin-top:${v}px;width:30px;height:10px`)));
+  add(`margin ${v} flex`, box('o', 'display:flex;align-items:flex-start;width:100px', box('a', `margin:${v}px;width:20px;height:10px`) + box('b', `margin:${v}px;width:20px;height:10px`)), { paint: painted });
+}
+add('margin -0.7 block', box('o', 'display:flow-root;width:100px', box('a', 'margin:-0.7px;height:10px') + box('b', 'margin:-0.7px;height:10px')));
+add('margin -0.7 flex', box('o', 'display:flex;align-items:flex-start;width:100px', box('a', 'margin:-0.7px;width:20px;height:10px') + box('b', 'margin:-0.7px;width:20px;height:10px')));
+
+const nest = (style, leaf, levels = 3, ids = ['a', 'b', 'c', 'd', 'e', 'f']) =>
+  levels === 0 ? leaf : box(ids[levels - 1], style, nest(style, leaf, levels - 1, ids));
+const LEAF = box('x', 'width:5px;height:5px');
+add('nested 3 padding 0.3 margin 0.7', nest('padding:0.3px;margin:0.7px', LEAF), { paint: true });
+add('nested 3 padding 0.3', nest('padding:0.3px', LEAF), { paint: true });
+add('nested 3 margin 0.7', nest('display:flow-root;margin:0.7px', LEAF), { paint: true });
+add('nested 3 padding 0.3 margin 0.7 flex', nest('display:flex;padding:0.3px;margin:0.7px', LEAF), { paint: true });
+add('nested 6 padding 0.3', nest('padding:0.3px', LEAF, 6));
+add('nested 6 margin 0.7 flow-root', nest('display:flow-root;margin:0.7px', LEAF, 6));
+add('nested 6 padding 0.3 margin 0.7 border 0.3', nest('padding:0.3px;margin:0.7px;border:0.3px solid', LEAF, 6));
+
+const cell = (id, style) => box(id, `width:20px;height:10px;${style || ''}`);
+const hscan = (y, x0 = -5, x1 = 175) => ['h', y, x0, x1];
+const vscan = (x, y0 = -5, y1 = 85) => ['v', x, y0, y1];
+add('gap flex 10.5', box('o', 'display:flex;gap:10.5px', cell('a') + cell('b') + cell('c')), { paint: true, scans: [hscan(5, -5, 90)] });
+add('gap flex 0.25', box('o', 'display:flex;gap:0.25px', cell('a') + cell('b') + cell('c')));
+add('gap flex column 10.5', box('o', 'display:flex;flex-direction:column;gap:10.5px;width:20px', cell('a') + cell('b') + cell('c')), { paint: true, scans: [vscan(5, -5, 50)] });
+add('gap flex wrap 10.5', box('o', 'display:flex;flex-wrap:wrap;gap:10.5px;width:70px', cell('a') + cell('b') + cell('c') + cell('d') + cell('e')), { paint: true });
+add('gap grid 0.25', box('o', 'display:grid;grid-template-columns:20px 20px 20px;grid-auto-rows:10px;gap:0.25px', cell('a') + cell('b') + cell('c') + cell('d') + cell('e') + cell('f')), { paint: true, scans: [hscan(5, -5, 70), vscan(5, -5, 30)] });
+add('gap grid 10.5', box('o', 'display:grid;grid-template-columns:20px 20px 20px;grid-auto-rows:10px;gap:10.5px', cell('a') + cell('b') + cell('c') + cell('d') + cell('e') + cell('f')), { paint: true });
+add('gap grid column row 0.25 10.5', box('o', 'display:grid;grid-template-columns:20px 20px 20px;grid-auto-rows:10px;column-gap:0.25px;row-gap:10.5px', cell('a') + cell('b') + cell('c') + cell('d') + cell('e') + cell('f')));
+
+const BORDERS = [0.1, 0.3, 0.5, 0.75, 0.9, 1, 1.4, 1.5, 1.6, 2, 2.5, 3.99];
+const bordered = (style, inner = box('i', 'width:10px;height:10px')) => box('a', `border-style:solid;width:40px;height:30px;${style}`, inner, 'data-border');
+for (const v of BORDERS) {
+  add(`border ${v}`, bordered(`border-width:${v}px`), { paint: true });
+}
+add('border 0.3 1.4 2.5 3.99', bordered('border-width:0.3px 1.4px 2.5px 3.99px'), { paint: true });
+for (const v of [0.5, 1.5, 2.5])
+  add(`border ${v} at 0.5px`, box('w', 'margin:0.5px', bordered(`border-width:${v}px`), 'data-nobg'), { paint: true });
+add('border 0.5 padding 0.5', bordered('border-width:0.5px;padding:0.5px'));
+add('border 1.5 padding 0.3 nested', bordered('border-width:1.5px;padding:0.3px', bordered('border-width:1.5px;padding:0.3px', box('i', 'width:5px;height:5px')).replace('id="a"', 'id="b"')));
+add('border 0 none', box('a', 'border:0.3px none;width:40px;height:30px', box('i', 'width:10px;height:10px')));
+add('border box-sizing border-box 2.5', box('a', 'box-sizing:border-box;border:2.5px solid;width:40px;height:30px', box('i', 'width:100%;height:100%')));
+add('border box-sizing border-box 0.3', box('a', 'box-sizing:border-box;border:0.3px solid;width:40px;height:30px', box('i', 'width:100%;height:100%')));
+
+for (const v of [30.4, 10.01, 0.6]) {
+  add(`min max ${v} block`, box('a', `min-width:${v}px;min-height:${v}px;width:5px;height:2px`) + box('b', `max-width:${v}px;max-height:${v}px;width:100px;height:100px`));
+  add(`min max ${v} flex`, box('o', 'display:flex;width:60px', box('a', `flex:0 1 80px;min-width:${v}px;height:10px`) + box('b', `flex:0 0 40px;height:10px`) + box('c', `flex:1 1 0;max-width:${v}px;height:10px`)));
+}
+add('flex-basis 50.5', box('o', 'display:flex;width:200px', box('a', 'flex:0 0 50.5px;height:10px') + box('b', 'flex:1;height:10px') + box('c', 'flex:0 0 33.3px;height:10px')));
+add('flex-basis 50.5 grow', box('o', 'display:flex;width:200px', box('a', 'flex:1 1 50.5px;height:10px') + box('b', 'flex:1 1 50.5px;height:10px') + box('c', 'flex:1 1 0;height:10px')));
+add('flex-basis 50.5 shrink', box('o', 'display:flex;width:100px', box('a', 'flex:0 1 50.5px;height:10px') + box('b', 'flex:0 1 50.5px;height:10px') + box('c', 'flex:0 1 50.5px;height:10px')));
+add('flex-basis 50.5 column', box('o', 'display:flex;flex-direction:column;height:200px;width:20px', box('a', 'flex:0 0 50.5px') + box('b', 'flex:1') + box('c', 'flex:0 0 33.3px')));
+add('flex-basis calc 50% + 0.3px', box('o', 'display:flex;width:101px', box('a', 'flex:0 0 calc(50% + 0.3px);height:10px') + box('b', 'flex:1;height:10px')));
+add('calc 50% + 0.3px', box('o', 'width:101px;height:61px', box('a', 'width:calc(50% + 0.3px);height:calc(50% + 0.3px)') + box('b', 'width:calc(100% - 0.7px);height:calc(25% - 0.3px)')));
+add('calc 50% + 0.3px absolute', box('o', 'position:relative;width:101px;height:61px', box('a', 'position:absolute;left:calc(50% + 0.3px);top:calc(50% - 0.3px);width:calc(100% - 0.7px);height:10px')));
+add('calc 1rem + 0.3px', box('a', 'width:calc(1rem + 0.3px);height:calc(2rem - 0.3px)'));
+add('calc padding margin', box('o', 'width:101px', box('a', 'padding:calc(1% + 0.3px);margin-left:calc(10% + 0.3px);height:5px')));
+add('percent 25% of 101.3', box('o', 'width:101.3px;height:101.3px', box('a', 'width:25%;height:25%') + box('b', 'width:33.333%;height:33.333%') + box('c', 'padding-left:25%;padding-right:12.5%;margin-left:7%;height:5px')));
+add('percent nested of 101.3', box('o', 'width:101.3px;height:101.3px', box('a', 'width:50%;height:50%', box('b', 'width:50%;height:50%', box('c', 'width:50%;height:50%')))));
+add('percent grid of 101.3', box('o', 'display:grid;width:101.3px;grid-template-columns:25% 25% 1fr;grid-auto-rows:10px', cell('a', 'width:auto') + cell('b', 'width:auto') + cell('c', 'width:auto')));
+add('percent flex of 101.3', box('o', 'display:flex;width:101.3px', box('a', 'width:25%;height:10px') + box('b', 'width:33.3333%;height:10px') + box('c', 'flex:1;height:10px')));
+add('percent of 33.3 with padding', box('o', 'width:33.3px', box('a', 'width:50%;padding:0 10%;height:10px')));
+
+const adjacentFlex = (extra) => box('o', `display:flex;width:100px;${extra}`, box('a', 'width:33.3px;height:20px') + box('b', 'width:33.3px;height:20px') + box('c', 'width:33.4px;height:20px'));
+add('adjacent 33.3 33.3 33.4 flex', adjacentFlex(''), { paint: true, scans: [hscan(10, -5, 110)] });
+add('adjacent 33.3 33.3 33.4 flex at 0.5px', adjacentFlex('margin-left:0.5px'), { paint: true, scans: [hscan(10, -5, 110)] });
+add('adjacent 33.3 33.3 33.4 absolute', box('o', 'position:relative;height:20px', box('a', 'position:absolute;left:0;width:33.3px;height:20px') + box('b', 'position:absolute;left:33.3px;width:33.3px;height:20px') + box('c', 'position:absolute;left:66.6px;width:33.4px;height:20px')), { paint: true, scans: [hscan(10, -5, 110)] });
+add('adjacent 33.3333% of 100.1px', box('o', 'display:flex;width:100.1px', box('a', 'width:33.3333%;height:20px') + box('b', 'width:33.3333%;height:20px') + box('c', 'width:33.3334%;height:20px')), { paint: true, scans: [hscan(10, -5, 110)] });
+add('adjacent 33.3 33.3 33.4 stacked blocks', box('a', 'width:20px;height:33.3px') + box('b', 'width:20px;height:33.3px') + box('c', 'width:20px;height:33.4px'), { paint: true, scans: [vscan(10, -5, 110)] });
+
+// A table of B px collapsed borders: the rows land on halves (B = 1, 3, 5) and a highlight per row is positioned the way
+// a fluid highlight is, from the row's getBoundingClientRect relative to the wrapper.
+const tableRow = (row, border) => `<tr id="r${row}" data-nobg>` + [1, 2].map((column) =>
+  `<td id="c${row}${column}" style="border:${border}px solid #000;padding:0;width:40px;height:20px"></td>`).join('') + '</tr>';
+function tableCase(border, extra = '') {
+  const html = box('w', 'position:relative;width:300px;height:150px',
+    `<table id="t" data-nobg style="border-collapse:collapse;${extra}">${tableRow(1, border)}${tableRow(2, border)}${tableRow(3, border)}</table>` +
+    [1, 2, 3].map((row) => box(`hl${row}`, `position:absolute;left:${130 + (row - 1) * 40}px;width:30px;top:0;height:0`)).join(''), 'data-nobg');
+  const setup = (holder) => {
+    const wrapper = holder.querySelector('#w').getBoundingClientRect();
+    for (const row of [1, 2, 3]) {
+      const rect = holder.querySelector(`#r${row}`).getBoundingClientRect();
+      const highlight = holder.querySelector(`#hl${row}`);
+      highlight.style.top = (rect.top - wrapper.top) + 'px';
+      highlight.style.height = rect.height + 'px';
+    }
+  };
+  return [html, { paint: true, setup, scans: [vscan(10, -5, 90), vscan(145, -5, 90), vscan(185, -5, 90), vscan(225, -5, 90), hscan(10, -5, 100)] }];
+}
+for (const border of [1, 2, 3, 5]) add(`table collapse ${border}px`, ...tableCase(border));
+add('table collapse 3px width 100', ...tableCase(3, 'width:100px'));
+add('table collapse 0.5px', ...tableCase(0.5));
+add('table collapse 1.5px', ...tableCase(1.5));
+
+const out = { devicePixelRatio: window.devicePixelRatio, innerWidth: window.innerWidth, innerHeight: window.innerHeight, columns: COLUMNS, cellWidth: CELL_WIDTH, cellHeight: CELL_HEIGHT, cases: {} };
+const scene = document.getElementById('scene');
+let paintCount = 0, nextColor = 0;
+function color() {
+  const k = nextColor++;
+  if (k >= 512) throw new Error('out of colours');
+  return [20 + 28 * (k % 8), 20 + 28 * (Math.floor(k / 8) % 8), 20 + 28 * Math.floor(k / 64)];
+}
+const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+for (const [name, spec] of Object.entries(cases)) {
+  const holder = document.createElement('div');
+  holder.className = 'holder';
+  let originX = 0, originY = 0;
+  if (spec.paint) {
+    originX = MARGIN + (paintCount % COLUMNS) * CELL_WIDTH;
+    originY = MARGIN + Math.floor(paintCount / COLUMNS) * CELL_HEIGHT;
+    paintCount++;
+  }
+  holder.style.left = originX + 'px';
+  holder.style.top = originY + 'px';
+  holder.innerHTML = spec.html;
+  scene.appendChild(holder);
+  if (spec.setup) spec.setup(holder);
+  const html = holder.innerHTML;
+  const colors = {};
+  if (spec.paint) {
+    for (const element of holder.querySelectorAll('[id]')) {
+      if (element.hasAttribute('data-nobg')) continue;
+      const entry = { bg: color() };
+      element.style.backgroundColor = rgb(entry.bg);
+      if (element.hasAttribute('data-border')) {
+        entry.bd = color();
+        element.style.borderColor = rgb(entry.bd);
+        element.style.backgroundClip = 'padding-box';
+      }
+      colors[element.id] = entry;
+    }
+  }
+  const elements = {};
+  for (const element of holder.querySelectorAll('[id]')) {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    elements[element.id] = {
+      rect: [rect.left - originX, rect.top - originY, rect.width, rect.height],
+      offset: [element.offsetLeft, element.offsetTop, element.offsetWidth, element.offsetHeight],
+      client: [element.clientWidth, element.clientHeight, element.clientLeft, element.clientTop],
+      border: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(parseFloat),
+      computed: [style.width, style.height].map(parseFloat),
+    };
+  }
+  out.cases[name] = { html, paint: spec.paint, origin: [originX, originY], elements, colors, scans: spec.scans };
+  if (!spec.paint) scene.removeChild(holder);
+}
+out.pageHeight = MARGIN * 2 + Math.ceil(paintCount / COLUMNS) * CELL_HEIGHT;
+
+const output = document.createElement('div');
+output.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(output);
+</script></body></html>

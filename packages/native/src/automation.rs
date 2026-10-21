@@ -56,33 +56,36 @@ pub struct ElementBounds {
 }
 
 /// Layout resolution, the one of Chrome's `LayoutUnit`: a length is cut down to a multiple of
-/// 1/64 of a pixel, which `getBoundingClientRect` reports as it is. A multiple of it is exact in an
-/// `f32` and in a sum with a device-pixel offset, so a box a replay moves by a whole offset is the
-/// box a build would have given there.
-const LAYOUT_UNITS_PER_PX: f64 = 64.0;
+/// 1/64 of a device pixel (1/128 of a pixel at scale 2), which `getBoundingClientRect` reports as
+/// it is. A multiple of it is exact in an `f32` and in a sum with a device-pixel offset, so a box a
+/// replay moves by a whole offset is the box a build would have given there.
+const LAYOUT_UNITS_PER_DEVICE_PX: f64 = 64.0;
 
 /// Taffy computes in `f32`, so a length that is a multiple of 1/64 (a text's width, `10px`) comes
 /// out a rounding error either side of it, an error that depends on how far from the window's
 /// origin the box is. Cutting that down would take a whole unit off one side, and a replayed box
 /// and a built one would differ. The error is taken off first, by rounding to a finer grid that
-/// is still many times coarser than it.
-const NOISE_UNITS_PER_PX: f64 = 512.0;
+/// is still many times coarser than it. Both grids are in device pixels, so a unit is on the
+/// finer one whatever the scale.
+const NOISE_UNITS_PER_DEVICE_PX: f64 = 512.0;
 
-fn layout_units(value: Pixels) -> f64 {
-    let denoised = (f64::from(f32::from(value)) * NOISE_UNITS_PER_PX).round() / NOISE_UNITS_PER_PX;
-    (denoised * LAYOUT_UNITS_PER_PX).floor() / LAYOUT_UNITS_PER_PX
+fn layout_units(value: Pixels, scale: f32) -> f64 {
+    let scale = f64::from(scale);
+    let device = f64::from(f32::from(value)) * scale;
+    let denoised = (device * NOISE_UNITS_PER_DEVICE_PX).round() / NOISE_UNITS_PER_DEVICE_PX;
+    (denoised * LAYOUT_UNITS_PER_DEVICE_PX).floor() / LAYOUT_UNITS_PER_DEVICE_PX / scale
 }
 
 impl ElementBounds {
     /// `painted` is where the box is when snapped to device pixels.
     fn from_gpui(layout: LaidOut, painted: Point<Pixels>, insets: LayoutInsets) -> Self {
         Self {
-            x: layout_units(layout.border_box.origin.x),
-            y: layout_units(layout.border_box.origin.y),
-            width: layout_units(layout.border_box.size.width),
-            height: layout_units(layout.border_box.size.height),
-            content_width: layout_units(layout.content.width),
-            content_height: layout_units(layout.content.height),
+            x: layout_units(layout.border_box.origin.x, layout.scale),
+            y: layout_units(layout.border_box.origin.y, layout.scale),
+            width: layout_units(layout.border_box.size.width, layout.scale),
+            height: layout_units(layout.border_box.size.height, layout.scale),
+            content_width: layout_units(layout.content.width, layout.scale),
+            content_height: layout_units(layout.content.height, layout.scale),
             painted_x: f64::from(f32::from(painted.x)),
             painted_y: f64::from(f32::from(painted.y)),
             client_left: f64::from(f32::from(insets.border.left)),
@@ -199,12 +202,14 @@ pub struct LaidOut {
     /// after the content included, which `scrollWidth` and `scrollHeight` round. The border box
     /// for an element that does not scroll.
     pub content: gpui::Size<Pixels>,
+    /// The window's scale factor, which sets the unit the box is read in.
+    pub scale: f32,
 }
 
 impl LaidOut {
     /// An inline box has no layout node: it holds what it is.
-    pub fn of_box(border_box: Bounds<Pixels>) -> Self {
-        Self { border_box, content: border_box.size }
+    pub fn of_box(border_box: Bounds<Pixels>, scale: f32) -> Self {
+        Self { border_box, content: border_box.size, scale }
     }
 }
 
@@ -248,7 +253,7 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
             }
             None => border_box.size,
         };
-        let laid_out = LaidOut { border_box, content };
+        let laid_out = LaidOut { border_box, content, scale: window.scale_factor() };
         slot.set(Some(PrepaintedBox { laid_out, snapped }));
     });
     (el, captured)
@@ -718,11 +723,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_length_is_cut_down_to_a_sixty_fourth_of_a_pixel_as_chrome_cuts_it() {
+    fn a_length_is_cut_down_to_a_sixty_fourth_of_a_device_pixel_as_chrome_cuts_it() {
         // 33.3333% of 100px, and `getBoundingClientRect` in Chrome for it.
-        assert_eq!(layout_units(px(33.3333)), 33.328125);
-        assert_eq!(layout_units(px(100.4)), 100.390625);
-        assert_eq!(layout_units(px(-0.3)), -0.3125);
+        assert_eq!(layout_units(px(33.3333), 1.0), 33.328125);
+        assert_eq!(layout_units(px(100.4), 1.0), 100.390625);
+        assert_eq!(layout_units(px(-0.3), 1.0), -0.3125);
+        // A unit is 1/128 of a pixel at scale 2: `10.01px` is 10.0078125 there (fractional-lengths-oracle).
+        assert_eq!(layout_units(px(10.01), 2.0), 10.0078125);
+        assert_eq!(layout_units(px(100.4), 2.0), 100.3984375);
+        assert_eq!(layout_units(px(0.4), 2.0), 0.3984375);
     }
 
     #[test]
@@ -731,14 +740,25 @@ mod tests {
             let below = f32::from_bits(value.to_bits() - 1);
             let above = f32::from_bits(value.to_bits() + 1);
             for noisy in [below, value, above] {
-                assert_eq!(layout_units(px(noisy)), f64::from(value), "{noisy}");
+                assert_eq!(layout_units(px(noisy), 1.0), f64::from(value), "{noisy}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_multiple_of_a_sixty_fourth_of_a_device_pixel_stays_put_at_scale_two() {
+        for value in [10.0078125_f32, 0.0078125, 1391.9921875] {
+            let below = f32::from_bits(value.to_bits() - 1);
+            let above = f32::from_bits(value.to_bits() + 1);
+            for noisy in [below, value, above] {
+                assert_eq!(layout_units(px(noisy), 2.0), f64::from(value), "{noisy}");
             }
         }
     }
 
     #[test]
     fn a_box_moved_by_a_device_pixel_offset_is_the_box_laid_out_there() {
-        let at = |x: f32| layout_units(px(x));
+        let at = |x: f32| layout_units(px(x), 1.0);
         let moved = ElementBounds::plain(at(33.3333), 0.0, 10.0, 10.0).translated(gpui::point(px(-1021.5), px(0.0)));
         assert_eq!(moved.x, at(33.3333 - 1021.5));
     }

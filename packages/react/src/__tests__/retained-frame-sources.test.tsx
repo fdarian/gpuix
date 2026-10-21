@@ -930,7 +930,8 @@ describeNative("an inline span and an svg group running inside a root", () => {
 
 // The clock of every case above is paused, so the two passes of a verified frame read one instant. A
 // live clock is read by each pass on its own, and whatever animates is further along in the pass that
-// the replay is compared with, so a root below it sits somewhere else in it.
+// the replay is compared with, so a root below it sits somewhere else in it. The height steps by whole
+// pixels: a root that layout moves by a fraction of a pixel is built, its boxes snap from the new origin.
 describeNative("a root below a sibling whose height animates, on a clock that is running", () => {
   it("is moved by layout each frame, and a verified frame finds it where a build of the same instant puts it", () => {
     const view = setup(
@@ -939,7 +940,7 @@ describeNative("a root below a sibling whose height animates, on a clock that is
           testId="grower"
           initial={{ height: 0 }}
           animate={{ height: 400 }}
-          transition={{ duration: 2, ease: "linear" }}
+          transition={{ duration: 2, ease: "steps(400, jump-end)" }}
           style={{ width: 140, backgroundColor: RED }}
         />
         <Page />
@@ -962,7 +963,7 @@ describeNative("a root below a sibling whose height animates, on a clock that is
 
 // A root keeps its snapped box while the unsnapped origin layout puts it at settles at another
 // fraction of a device pixel, and the boxes inside snap edge by edge from that origin: the label here
-// is 43.4 wide (a percentage, since a length is rounded before layout), 43 where the card begins at
+// is 43.4 wide, 43 where the card begins at
 // 10 and 44 where it begins at 10.4. A replay that only knew the snapped box of the card kept the 43.
 describeNative("a root whose sibling settles at a fraction of a pixel, with a box inside that snaps with its origin", () => {
   const ROW = 640

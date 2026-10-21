@@ -200,7 +200,7 @@ mod tests {
         crate::automation::record_bounds(
             WindowId::from(1),
             id,
-            crate::automation::LaidOut::of_box(gpui::Bounds::new(origin, gpui::size(gpui::px(width), gpui::px(height)))),
+            crate::automation::LaidOut::of_box(gpui::Bounds::new(origin, gpui::size(gpui::px(width), gpui::px(height))), 1.0),
             origin,
             gpui::LayoutInsets::default(),
         );
