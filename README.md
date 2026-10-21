@@ -2601,7 +2601,7 @@ await app.clock.resume()
 
 ## Scrolling
 
-A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. The two values differ only when scrollbars take layout space (see [Scrollbars](#scrollbars)): `"scroll"` always reserves the bar and `"auto"` only once there is something to scroll. `"hidden"` clips and is a scroll container that only code scrolls: `scrollTop`, `scrollTo` and `scrollIntoView` move it, the wheel and the keys do not, as in a browser. `"clip"` only clips, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis. As in CSS, `"visible"` beside `"hidden"`, `"scroll"` or `"auto"` computes to `"auto"`, so both axes clip; beside `"clip"` it stays visible, and only the clipping axis is cut (the clip is then not rounded by `borderRadius`).
+A container with `overflow: "scroll"` or `"auto"` is natively scrollable. GPUI handles scroll physics, clipping, and offset persistence. The two values differ only when scrollbars take layout space (see [Scrollbars](#scrollbars)): `"scroll"` always reserves the bar and `"auto"` only once there is something to scroll. `"hidden"` clips and is a scroll container that only code scrolls: `scrollTop`, `scrollTo` and `scrollIntoView` move it, the wheel and the keys do not, as in a browser. `"clip"` only clips and is no scroll container, and `"visible"` (the default) does neither. `overflowX` and `overflowY` set one axis. As in CSS, `"visible"` beside `"hidden"`, `"scroll"` or `"auto"` computes to `"auto"`, so both axes clip; beside `"clip"` it stays visible, and only the clipping axis is cut (the clip is then not rounded by `borderRadius`).
 
 Overflow follows CSS. It never changes `display` or wraps the children: a scroller lays out exactly as it would without `overflow`. A child wider than the scroller overflows it and can be scrolled to. A scroller can scroll as far as its descendants' boxes, and its own padding and border, reach, measured from where the padding box starts. This is CSS scrollable overflow: a descendant counts down to one that clips itself (`overflow` other than `visible`), whose box counts but whose own overflow does not. An absolute descendant counts only when the scroller is its containing block, so give the scroller a `position` for that. `position: fixed` boxes and anchored or deferred layers (popovers, tooltips) never count. Content that fits never scrolls, and neither does an empty scroller.
 
@@ -3061,7 +3061,9 @@ so GPUI builds and lays out **every** retained child on every frame. Nothing
 skips that for you. GPUI does skip the prepaint and paint of in-flow content
 outside an `overflow` clip, as a browser does, but a clipped box is still built
 and laid out, because script can read its box, and costs about two thirds of a
-visible one. Content placed with `position: absolute` is never skipped.
+visible one. Content placed with `position: absolute` is never skipped. For a list of
+boxes in flow, [`contentVisibility`](#skipping-content-with-contentvisibility) skips the
+build and layout of the ones far from the window.
 
 `memo` and culling fix different halves, and only one of them is the draw:
 
@@ -3091,6 +3093,59 @@ The timeline example measures both, on 3,259 clips across 26 tracks:
 > A perf sample must include `renderer.flush()`. Without it you time the React
 > update and none of the GPUI build, layout, and paint that follows. The
 > `memo`-only number above looks like **0.6 ms** if you forget.
+
+### Skipping content with `contentVisibility`
+
+For a long list that you do not virtualize, `contentVisibility` is CSS
+`content-visibility`: `"auto"` skips the content of an element while it is not near the
+window and does not hold the focus, `"hidden"` always skips it, and `"visible"` (the
+default) never does. A skipped element is built and painted itself (background, border,
+hit area) and builds, lays out, shapes and paints nothing inside it. Unlike `display:
+none` nothing is forgotten: the subtree's state, styles, transitions and animations stay,
+and it is built whole when it shows again. Only a `div`, `text`, `label`, `form` and a
+block `span` skip; any other element has the containment below and nothing more.
+
+```tsx
+<div style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 40px' }}>
+  <Entry />
+</div>
+```
+
+A skipped element has the size `containIntrinsicSize` gives: `none` (0), a length or
+`auto <length>` per axis, written as one value for both axes or width then height (a
+number is px), with the longhands `containIntrinsicWidth`, `containIntrinsicHeight`,
+`containIntrinsicInlineSize` and `containIntrinsicBlockSize`. With `auto`, the size the
+element had when it was last built is used, and the length until then. Give an `auto`
+entry a size close to its real one: the page scrolls by what the skipped entries claim,
+and the extent changes as they are built.
+
+<details>
+<summary>What `auto` and `hidden` do to the element, and what is near</summary>
+
+- An element with `auto` or `hidden` is contained, skipped or not: `overflow: clip` on
+  each axis you left `visible`, a stacking context, and the containing block of its
+  `position: absolute` descendants. Margins of its first and last child still collapse
+  through it, and a `position: fixed` descendant goes to the window; Chrome does neither.
+- Near is the border box outset by 150% of the window (its width at the sides, its
+  height above and below), cut by every ancestor that clips it. The very edge is not near.
+  The first answer comes in the frame that builds the element, which draws again to
+  build what is near; a later change takes effect in the next frame, with no hysteresis.
+- `focus()` on an element inside a skipped one builds what holds it in the same frame.
+  Skipped content is not in the accessibility tree and search does not find it.
+- `onContentVisibilityAutoStateChange` (and `…Capture`) fires on an `auto` element
+  after the frame that skipped it or showed it, once for the first answer and then when
+  it changes. `skipped` is in the payload. It bubbles and is cancelable, and
+  `preventDefault()` does nothing.
+- A geometry read of an element inside a skipped subtree (`getBoundingClientRect`,
+  `getElementBounds`, `getScrollMetrics`) lays the subtree out for real and returns true
+  boxes; the subtree stays skipped. The read costs a layout pass, and every read lays
+  out again.
+- An animation below a skipped element is not built or drawn and fires no event; it
+  goes on from the clock when the element shows.
+- A percentage height of a child of a skipped element resolves against the intrinsic
+  size, where Chrome gives `auto`.
+
+</details>
 
 ## Inline text
 
@@ -5031,7 +5086,8 @@ a box that is not a scroller reports its padding box as `clientWidth` and the sa
 on the test renderer. It does the same flush and layout, and returns `null`
 instead of a zero rect when the element has no box. `<input>` reports its border
 box like every other element. The browser (wasm) build still answers from the
-last painted frame.
+last painted frame. An element inside a `contentVisibility` subtree that is skipped
+gets its true box too (see [Skipping content](#skipping-content-with-contentvisibility)).
 
 ### Observe size and visibility
 
@@ -5977,6 +6033,7 @@ text imports no longer need a runtime flag.
 | Focus out | `onFocusOut` (Solid; React's `onBlur`) | `focusVisible`, `relatedTarget`. Bubbles |
 | Wheel | `onWheel`, `onWheelCapture` | `deltaX`, `deltaY`, `deltaMode`, `clientX`, `clientY`, `offsetX`, `offsetY`, `buttons`, `precise`, `touchPhase`, `modifiers`. Bubbles, cancelable. See [The wheel](#the-wheel) |
 | Scroll | `onScroll` | `scrollTop`, `scrollLeft` — scroll containers, not `<virtual-list>` |
+| Content visibility | `onContentVisibilityAutoStateChange` | `skipped` — an element with `contentVisibility: "auto"` began or stopped skipping its content. Bubbles, cancelable, has an `…Capture` twin. See [Skipping content with `contentVisibility`](#skipping-content-with-contentvisibility) |
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — any element a `ResizeObserver` works on (`<div>`, `<text>`, `<input>`, `<img>`, `<svg>` and the other built-in elements). See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
 | Change | `onChange` | `value`, `inputType`, `data`, `isComposing` — `<input>` and `<textarea>` only, once per edit like the DOM `input`. See [The change event](#the-change-event) |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
@@ -6854,9 +6911,12 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   covers the others and the others run under it. Rows, groups and columns paint no
   border at all when the borders are separate. A part's border is the one it is painted with, so a
   transition, a CSS animation, `motion` or a state style on the border of a cell, row, group or column
-  moves its neighbours' share of the edge every frame. The parts are built after the table, so a table
-  that finds one painted with other borders than it shared the edges by is built again before the frame
-  is presented.
+  moves its neighbours' share of the edge every frame. The parts are built after the table. Which
+  border wins an edge and how wide it is are settled when the table is built, and the colour of an
+  edge is the one its owner is painted with in the frame, so a `border-color` transition on a part
+  is drawn in step, builds nothing else (the table's siblings are replayed) and is a patched tick
+  with the table as its unit. A table that finds a part painted with another width or style than it
+  shared the edges by is built again before the frame is presented.
 - **Copying.** A selection across cells copies as `getSelection().toString()` does in Chrome:
   a tab between the cells of a row and a line break between rows and between the blocks of
   one cell (the cells of an anonymous table and the anonymous cells included).
@@ -7383,7 +7443,9 @@ The shape also clips hit testing, as in CSS: a pointer over the clipped-away par
 hits what is underneath instead, and the element's descendants are cut the same
 way, overflow included.
 
-**Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content, `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
+**Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content and is no scroll container (a flex or grid item of it keeps its content-based minimum size; of a `"hidden"` one it shrinks to 0), `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
+
+**Containment:** `contentVisibility` (`"visible"` (default) | `"auto"` | `"hidden"`) skips the content of an element and `containIntrinsicSize` (`none`, a length or `auto <length>` per axis; longhands `containIntrinsicWidth`, `containIntrinsicHeight`, `containIntrinsicInlineSize`, `containIntrinsicBlockSize`) sizes it while it is skipped — see [Skipping content with `contentVisibility`](#skipping-content-with-contentvisibility). Neither inherits.
 
 **Text:** `fontSize`, `fontFamily`, `fontWeight`, `fontStyle` (`"normal"` | `"italic"` | `"oblique"`, inherited), `WebkitFontSmoothing` (`"auto"` | `"antialiased"` | `"subpixel-antialiased"`, inherited; see below), `textAlign` (`"start"` | `"end"` | `"left"` | `"right"` | `"center"`, inherited), `direction` (`"ltr"` | `"rtl"`, inherited; see [Direction](#direction)), `lineHeight` (a number multiplies the font size, a string is a length, see [Lengths](#lengths)), `whiteSpace` (`"normal"` | `"nowrap"` | `"pre"` | `"pre-wrap"` | `"pre-line"` | `"break-spaces"`, inherited), `tabSize` (a number of spaces or a length such as `"40px"`, inherited, default 8; see [White space](#white-space)), `wordBreak` (`"normal"` | `"break-all"` | `"keep-all"` | `"break-word"`, inherited) and `overflowWrap` (`"normal"` | `"break-word"` | `"anywhere"`, inherited; see [Breaking words](#breaking-words)), `textOverflow`, `lineClamp`, `textDecoration` (`"underline line-through"`, `"underline wavy red"`...), `textDecorationLine`, `textDecorationStyle`, `textDecorationColor`, `textDecorationThickness`, `textUnderlineOffset` (see [Inline text](#inline-text)), `textWrap`, `textWrapMode` and `textWrapStyle` (see [Balanced and pretty lines](#balanced-and-pretty-lines)), `textBox`, `textBoxTrim` and `textBoxEdge` (see [Trimming text boxes](#trimming-text-boxes))
 
@@ -8695,7 +8757,9 @@ Counters you read off the renderer:
   for those over 256 elements).
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
   child lists set, passes, and measure calls, since the window was made, the
-  text system's lines shaped, wrapped layouts built and line layout hits, and the
+  text system's lines shaped, wrapped layouts built, line layout hits and
+  `shapeCacheHits` (lines the window's shape store gave back: text shaped more than
+  two frames ago and mounted again is not shaped again), and the
   subtrees whose extent for culling and whose scrollable overflow were worked out
   again (`extentWalks`, `overflowWalks`, `unsnappedOverflowWalks`).
 - `getFrameWorkCounters()`: elements prepainted and painted by themselves (those in
@@ -8712,6 +8776,10 @@ Counters you read off the renderer:
   whole after trying to patch them) and `unpatchable` (ticks gpuix did not try to
   patch, such as `Sourced` for a pointer move and `Edited` for a commit). A loop
   that is patched has `patchedFrames` equal to its ticks.
+- `getBuiltElementBounds(id)` (test renderer only): the box of the last layout, `null`
+  for an element that is not built. `getElementBounds` lays out a skipped
+  `contentVisibility` subtree to answer; this one does not, so a test uses it to tell
+  what is built.
 - `getCulledSubtreeCount()`: subtrees skipped for lying outside their clip. A test
   of what a clipped box still reports (its box, observers, tab order) reads it to
   be sure something was skipped.
