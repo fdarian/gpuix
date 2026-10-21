@@ -56,6 +56,7 @@ impl Unpatchable {
             Unpatchable::Everything => "Everything",
             Unpatchable::Sourced => "Sourced",
             Unpatchable::Outside(_) => "Outside",
+            Unpatchable::Ended(_) => "Ended",
         }
     }
 }

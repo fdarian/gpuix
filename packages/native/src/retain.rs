@@ -415,6 +415,18 @@ struct Record {
     paints_only: bool,
 }
 
+impl Record {
+    /// Whether the last build of the element found it a unit to be: only paint-only motion runs on
+    /// it, and it lifts nothing out of it (`end_unit` judges the build for what is inside).
+    fn is_unit_candidate(&self) -> bool {
+        let only_motion = self.vol.dynamic & Dynamic::OWN != 0 && self.vol.dynamic & !Dynamic::OWN == 0;
+        // `Record::lifts` is true of every lifted element: whether it holds a descendant that lifts
+        // out of it is for `end_unit` to find in the build.
+        let lifts_out = self.lifts && self.lift_z.is_none();
+        self.eligible && !lifts_out && only_motion && self.paints_only
+    }
+}
+
 const NO_PARENT: u32 = u32::MAX;
 
 /// Where each reason is counted: `perf_counters` keeps one number per slot.
@@ -733,6 +745,10 @@ pub(crate) enum Unpatchable {
     Sourced,
     /// A time-driven change outside every unit that is not dormant.
     Outside(u64),
+    /// A unit that the last frame found nothing left running on (the animation ended in it, while
+    /// a source goes on listing it): the frame built whole in the tick's place does not make it a
+    /// unit, so a patch would repaint a root that frame does not have.
+    Ended(u64),
 }
 
 /// The most frames that follow a recorded frame which found nothing a later frame could skip,
@@ -1524,11 +1540,7 @@ impl Retain {
             return None;
         }
         let record = self.records.get(&node.id)?;
-        let only_motion = record.vol.dynamic & Dynamic::OWN != 0 && record.vol.dynamic & !Dynamic::OWN == 0;
-        // `Record::lifts` is true of every lifted element: whether it holds a descendant that lifts
-        // out of it is for `end_unit` to find in the build.
-        let lifts_out = record.lifts && record.lift_z.is_none();
-        if !record.eligible || lifts_out || !only_motion || !record.paints_only {
+        if !record.is_unit_candidate() {
             return None;
         }
         if record.size > UNIT_MAX_ELEMENTS {
@@ -1686,13 +1698,20 @@ impl Retain {
                 None => return Err(Unpatchable::Outside(id)),
             }
         }
-        Ok(self
+        let units: Vec<u64> = self
             .plan
             .units
             .iter()
             .map(|unit| unit.id)
             .filter(|id| touched.contains(id))
-            .collect())
+            .collect();
+        if let Some(&ended) = units
+            .iter()
+            .find(|id| !self.records.get(id).is_some_and(Record::is_unit_candidate))
+        {
+            return Err(Unpatchable::Ended(ended));
+        }
+        Ok(units)
     }
 
     pub(crate) fn enter_row(&mut self) {
@@ -4127,6 +4146,23 @@ mod tests {
     }
 
     #[test]
+    fn a_unit_whose_animation_ended_in_the_last_frame_is_not_patched() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        // The frame that finds the animation over is still built as the unit the frame before
+        // found, and a source goes on saying that the element runs something (an SVG shape with
+        // an animation that holds its end value does): the next frame builds it as no unit.
+        page.page(&[], None, None);
+        assert_eq!(page.ids(), vec![2]);
+        let mut sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
+        sources.motion = vec![2];
+        assert_eq!(page.retain.preview(&sources, false), Err(Unpatchable::Ended(2)));
+        page.page(&[], None, None);
+        assert_eq!(page.ids(), Vec::<u64>::new());
+    }
+
+    #[test]
     fn a_unit_is_the_outermost_element_that_runs_something_that_only_paints() {
         let mut page = Units::new();
         page.page(&[], Some(true), Some(true));
@@ -4553,9 +4589,13 @@ mod tests {
 
     /// A page whose `<svg>` (a unit once drawn) runs a shape animation, with `size` its box.
     fn spinning(cx: &mut gpui::TestAppContext, size: &'static str) -> Scene {
+        spinning_as(cx, size, r#"{"animation": "grow 600ms linear infinite"}"#)
+    }
+
+    /// `spinning` with the style of the shape.
+    fn spinning_as(cx: &mut gpui::TestAppContext, size: &'static str, style: &'static str) -> Scene {
         let mut elements = icon(size, None);
-        elements.iter_mut().find(|element| element.id == 41).unwrap().style =
-            r#"{"animation": "grow 600ms linear infinite"}"#;
+        elements.iter_mut().find(|element| element.id == 41).unwrap().style = style;
         let scene = Scene::new(cx, elements);
         scene
             .window
@@ -4585,6 +4625,28 @@ mod tests {
         let after = scene.patches(cx);
         assert_eq!(after.patched_frames - before.patched_frames, 4);
         assert_eq!(after.total_declines(), before.total_declines());
+    }
+
+    #[gpui::test]
+    fn the_tick_after_the_frame_that_found_a_shape_animation_over_is_built_whole(cx: &mut gpui::TestAppContext) {
+        let scene = spinning_as(cx, SMALL_ICON, r#"{"animation": "grow 600ms linear forwards"}"#);
+        assert_eq!(units_of(&scene, cx), vec![40]);
+        // The frame that finds the animation over is still built as the unit the frame before found.
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(1000.0)).unwrap();
+        cx.update_window(scene.window.into(), |_, window, app| {
+            window.refresh();
+            window.draw(app).clear(app);
+        })
+        .unwrap();
+        assert_eq!(units_of(&scene, cx), vec![40]);
+        // The shape holds its end value and is listed as animated, but the next frame built whole makes
+        // no unit of the svg: a patch would repaint a root that frame does not have.
+        let before = scene.patches(cx);
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+        scene.tick(cx);
+        let after = scene.patches(cx);
+        assert_eq!(after.patched_frames, before.patched_frames);
+        assert_eq!(units_of(&scene, cx), Vec::<u64>::new());
     }
 
     #[gpui::test]
