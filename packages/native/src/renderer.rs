@@ -8690,7 +8690,7 @@ fn replay_hook(
             gpui::RetainedPhase::LiftedEnd => return tapes.end_lifted(id),
             gpui::RetainedPhase::LiftedPaint(rel) => crate::tape::Phase::Lifted(rel),
         };
-        tapes.replay(id, phase, delta);
+        tapes.replay(window.window_handle().window_id(), id, phase, delta);
     }
 }
 

@@ -18,10 +18,11 @@
 //! those are [`BuildEffect`]s, kept by `retain` with the record of the subtree and applied when a
 //! frame plans to skip it.
 
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Bounds, Edges, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Point, Window};
+use gpui::{AnyElement, App, Bounds, Edges, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Point, Window, WindowId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -40,28 +41,60 @@ pub(crate) enum Phase {
     Lifted(u32),
 }
 
-/// A registry write that can be made again, and said in words. A write that holds a position is
-/// made `offset` away from where it was recorded: a subtree that a scroller moved is replayed
-/// where the scroll put it.
+/// The registry a write goes to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Bounds,
+    StartRegion,
+    Painted,
+    Text,
+    Paragraph,
+    /// `Measurements::by_element`, which lives across frames and is not reset by one: the replay
+    /// of a subtree leaves it as the build wrote it, and only the tape keeps the write, to say
+    /// what the build would have written ([`Tape::same_writes`], a verified frame).
+    Measured,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Kinds(u8);
+
+impl Kinds {
+    fn with(self, kind: Kind) -> Self {
+        Self(self.0 | 1 << kind as u8)
+    }
+
+    fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    fn has(self, kind: Kind) -> bool {
+        self.0 & 1 << kind as u8 != 0
+    }
+
+    fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+/// A registry write that is kept, said in words and handed to the registry that reads it back.
+/// A write that holds a position is read `offset` away from where it was recorded: a subtree
+/// that a scroller moved is replayed where the scroll put it.
 trait Replay {
-    fn apply(&self, offset: Point<Pixels>);
     fn describe(&self, offset: Point<Pixels>) -> String;
     /// Whether a pass that only lays out makes the write too, from prepaint.
     fn in_layout(&self) -> bool;
+    fn kind(&self) -> Kind;
+    fn data(&self) -> &dyn Any;
 }
 
 struct Write<D> {
     data: D,
-    apply: fn(&D, Point<Pixels>),
     describe: fn(&D, Point<Pixels>) -> String,
     in_layout: bool,
+    kind: Kind,
 }
 
-impl<D> Replay for Write<D> {
-    fn apply(&self, offset: Point<Pixels>) {
-        (self.apply)(&self.data, offset);
-    }
-
+impl<D: 'static> Replay for Write<D> {
     fn describe(&self, offset: Point<Pixels>) -> String {
         (self.describe)(&self.data, offset)
     }
@@ -69,23 +102,236 @@ impl<D> Replay for Write<D> {
     fn in_layout(&self) -> bool {
         self.in_layout
     }
+
+    fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    fn data(&self) -> &dyn Any {
+        &self.data
+    }
 }
 
 type Effect = Rc<dyn Replay>;
 
-/// A write and how far from where it was made it is to be made again. A tape that replays a
-/// tape inside it holds the inner writes with the distance the inner one was replayed at, so
-/// that replaying the outer one moves them by that and by its own.
-type Entry = (Effect, Point<Pixels>);
+#[derive(Clone)]
+enum Entry {
+    Write(Effect),
+    /// The writes of another subtree, `by` away from where they were made: a subtree that was
+    /// replayed or built inside this one while it recorded. They are held by reference, so that
+    /// recording a replay costs the same however much the replayed subtree wrote.
+    Nested(Rc<Entries>, Point<Pixels>),
+}
+
+thread_local! {
+    static SERIAL: Cell<u64> = const { Cell::new(1) };
+    /// The serial of the list the write being made is recorded into, see [`owner`].
+    static OWNER: Cell<u64> = const { Cell::new(0) };
+}
+
+/// The writes of one phase of one subtree, in the order they were made. Once it has been
+/// recorded it is never changed: a later recording makes a list of its own, so a registry that
+/// holds this one (a replay that has not been read yet) reads what the subtree wrote then.
+pub(crate) struct Entries {
+    /// Names this list for as long as it lives, for a registry to say which writes it holds
+    /// without holding the list (see [`owner`]).
+    serial: u64,
+    list: Vec<Entry>,
+    children: Vec<(Rc<Entries>, Point<Pixels>)>,
+    /// Of the writes in the list and in the lists nested in it.
+    kinds: Kinds,
+    layout_kinds: Kinds,
+}
+
+/// A list of its own with the writes of this one: what a recording does to a list that a replay
+/// already holds, so that the replay is left as it was.
+impl Clone for Entries {
+    fn clone(&self) -> Self {
+        Self {
+            serial: next_serial(),
+            list: self.list.clone(),
+            children: self.children.clone(),
+            kinds: self.kinds,
+            layout_kinds: self.layout_kinds,
+        }
+    }
+}
+
+fn next_serial() -> u64 {
+    SERIAL.replace(SERIAL.get() + 1)
+}
+
+impl Entries {
+    fn new() -> Rc<Self> {
+        Rc::new(Self {
+            serial: next_serial(),
+            list: Vec::new(),
+            children: Vec::new(),
+            kinds: Kinds::default(),
+            layout_kinds: Kinds::default(),
+        })
+    }
+
+    fn push_write(&mut self, effect: Effect) {
+        self.kinds = self.kinds.with(effect.kind());
+        if effect.in_layout() {
+            self.layout_kinds = self.layout_kinds.with(effect.kind());
+        }
+        self.list.push(Entry::Write(effect));
+    }
+
+    fn push_nested(&mut self, child: Rc<Entries>, by: Point<Pixels>) {
+        if child.list.is_empty() {
+            return;
+        }
+        self.kinds = self.kinds.union(child.kinds);
+        self.layout_kinds = self.layout_kinds.union(child.layout_kinds);
+        self.children.push((child.clone(), by));
+        self.list.push(Entry::Nested(child, by));
+    }
+
+    /// Calls `visit` with every write, `offset` away from where it was made, in the order it was
+    /// made. A pass that only lays out makes `layout_only` of them.
+    fn walk(&self, offset: Point<Pixels>, layout_only: bool, visit: &mut dyn FnMut(&Effect, Point<Pixels>)) {
+        for entry in &self.list {
+            match entry {
+                Entry::Write(effect) => {
+                    if !layout_only || effect.in_layout() {
+                        visit(effect, offset);
+                    }
+                }
+                Entry::Nested(child, by) => {
+                    if !layout_only || !child.layout_kinds.is_empty() {
+                        child.walk(offset + *by, layout_only, visit);
+                    }
+                }
+            }
+        }
+    }
+
+    fn mark(&self, offset: Point<Pixels>, live: &mut rustc_hash::FxHashMap<u64, Point<Pixels>>) {
+        live.insert(self.serial, offset);
+        for (child, by) in &self.children {
+            child.mark(offset + *by, live);
+        }
+    }
+
+    fn described(&self, phase: &str, delta: Point<Pixels>) -> String {
+        let mut text = String::new();
+        self.walk(delta, false, &mut |effect, offset| {
+            text.push_str(&format!(
+                "{phase}{} {}\n",
+                if effect.in_layout() { "+layout" } else { "" },
+                effect.describe(offset)
+            ));
+        });
+        text
+    }
+
+    fn lines(&self) -> Vec<(bool, String)> {
+        let mut lines = Vec::new();
+        self.walk(Point::default(), false, &mut |effect, offset| lines.push((effect.in_layout(), effect.describe(offset))));
+        lines
+    }
+}
+
+/// The writes of a replay that a registry has been told of and has not read, see [`publish`].
+#[derive(Clone)]
+pub(crate) struct Live {
+    entries: Rc<Entries>,
+    delta: Point<Pixels>,
+    layout_only: bool,
+}
+
+impl Live {
+    /// Whether the replay writes anything for the registry of `kind`.
+    pub(crate) fn has(&self, kind: Kind) -> bool {
+        if self.layout_only { self.entries.layout_kinds.has(kind) } else { self.entries.kinds.has(kind) }
+    }
+
+    /// Calls `read` with the data of every write to the registry of `kind`, and how far from
+    /// where it was made it is made now, in the order it was made.
+    pub(crate) fn each(&self, kind: Kind, mut read: impl FnMut(&dyn Any, Point<Pixels>)) {
+        self.entries.walk(self.delta, self.layout_only, &mut |effect, offset| {
+            if effect.kind() == kind {
+                read(effect.data(), offset);
+            }
+        });
+    }
+
+    /// Notes the lists that the replay puts back as live, with how far from where they were
+    /// written they are, for [`owner`] to be looked up in.
+    pub(crate) fn mark(&self, live: &mut rustc_hash::FxHashMap<u64, Point<Pixels>>) {
+        self.entries.mark(self.delta, live);
+    }
+}
+
+/// Tells the registries that read in order, and the one that answers by element, that a replay
+/// puts `live` back. They keep it as it is and read it when something asks.
+fn publish(window: WindowId, live: &Live) {
+    crate::automation::publish(window, live);
+    crate::text::publish(window, live);
+}
+
+/// A registry that holds the writes of replays by reference, and the writes made around them, in
+/// the order they came: reading it expands each replay into the writes it stands for.
+pub(crate) struct Layered<T> {
+    /// What was read.
+    read: Vec<T>,
+    /// What came since: a write is `Slot::One`, a replay that has not been expanded `Slot::Live`.
+    pending: Vec<Slot<T>>,
+}
+
+enum Slot<T> {
+    One(T),
+    Live(Live),
+}
+
+impl<T> Default for Layered<T> {
+    fn default() -> Self {
+        Self { read: Vec::new(), pending: Vec::new() }
+    }
+}
+
+impl<T> Layered<T> {
+    pub(crate) fn push(&mut self, value: T) {
+        if self.pending.is_empty() {
+            self.read.push(value);
+        } else {
+            self.pending.push(Slot::One(value));
+        }
+    }
+
+    pub(crate) fn push_live(&mut self, live: Live) {
+        self.pending.push(Slot::Live(live));
+    }
+
+    /// Every write, in order. `from` makes one from the data of a write of `kind` and how far from
+    /// where it was made it is made.
+    pub(crate) fn all(&mut self, kind: Kind, from: impl Fn(&dyn Any, Point<Pixels>) -> T) -> &[T] {
+        for slot in self.pending.drain(..) {
+            match slot {
+                Slot::One(value) => self.read.push(value),
+                Slot::Live(live) => live.each(kind, |data, offset| self.read.push(from(data, offset))),
+            }
+        }
+        &self.read
+    }
+}
 
 /// The registry writes of one subtree, in the order they were made.
-#[derive(Default)]
 pub(crate) struct Tape {
-    prepaint: Vec<Entry>,
-    paint: Vec<Entry>,
-    lifted: Vec<Vec<Entry>>,
+    prepaint: Rc<Entries>,
+    paint: Rc<Entries>,
+    lifted: Vec<Rc<Entries>>,
     /// The writes made while it records are kept and not made, see [`Tape::capturing`].
     capture_only: bool,
+}
+
+impl Default for Tape {
+    fn default() -> Self {
+        Self { prepaint: Entries::new(), paint: Entries::new(), lifted: Vec::new(), capture_only: false }
+    }
 }
 
 impl Tape {
@@ -99,28 +345,48 @@ impl Tape {
     /// Whether `other` holds the writes this does, phase by phase, in the same order, at the same
     /// places.
     pub(crate) fn same_writes(&self, other: &Tape) -> bool {
-        fn same(left: &[Entry], right: &[Entry]) -> bool {
-            left.len() == right.len()
-                && left.iter().zip(right).all(|((left, left_offset), (right, right_offset))| {
-                    left.in_layout() == right.in_layout() && left.describe(*left_offset) == right.describe(*right_offset)
-                })
-        }
-        same(&self.prepaint, &other.prepaint)
-            && same(&self.paint, &other.paint)
+        self.prepaint.lines() == other.prepaint.lines()
+            && self.paint.lines() == other.paint.lines()
             && self.lifted.len() == other.lifted.len()
-            && self.lifted.iter().zip(&other.lifted).all(|(left, right)| same(left, right))
+            && self.lifted.iter().zip(&other.lifted).all(|(left, right)| left.lines() == right.lines())
     }
 
-    fn of(&mut self, phase: Phase) -> &mut Vec<Entry> {
+    fn entries(&self, phase: Phase) -> Option<&Rc<Entries>> {
         match phase {
+            Phase::Prepaint => Some(&self.prepaint),
+            Phase::Paint => Some(&self.paint),
+            Phase::Lifted(rel) => self.lifted.get(rel as usize),
+            Phase::Layout | Phase::LayoutPaint => {
+                unreachable!("nothing records into the layout phases: they replay the others")
+            }
+        }
+    }
+
+    /// The list `phase` is recorded into, for a recording to add to.
+    fn recording(&mut self, phase: Phase) -> &mut Entries {
+        let list = match phase {
             Phase::Prepaint => &mut self.prepaint,
             Phase::Paint => &mut self.paint,
+            Phase::Lifted(rel) => &mut self.lifted[rel as usize],
+            Phase::Layout | Phase::LayoutPaint => {
+                unreachable!("nothing records into the layout phases: they replay the others")
+            }
+        };
+        Rc::make_mut(list)
+    }
+
+    /// Starts a list of its own for `phase`, so that what a replay of the one before holds is left
+    /// as it was.
+    fn start(&mut self, phase: Phase) {
+        match phase {
+            Phase::Prepaint => self.prepaint = Entries::new(),
+            Phase::Paint => self.paint = Entries::new(),
             Phase::Lifted(rel) => {
                 let rel = rel as usize;
                 if self.lifted.len() <= rel {
-                    self.lifted.resize_with(rel + 1, Vec::new);
+                    self.lifted.resize_with(rel + 1, Entries::new);
                 }
-                &mut self.lifted[rel]
+                self.lifted[rel] = Entries::new();
             }
             Phase::Layout | Phase::LayoutPaint => {
                 unreachable!("nothing records into the layout phases: they replay the others")
@@ -128,41 +394,37 @@ impl Tape {
         }
     }
 
-    /// Writes again what `phase` of the subtree wrote, `delta` from where it wrote it. A subtree
-    /// inside another that is being recorded is part of its tape too.
-    pub(crate) fn replay(&self, phase: Phase, delta: Point<Pixels>) {
+    /// Puts back what `phase` of the subtree wrote, `delta` from where it wrote it: the registries
+    /// are told, and read it when something asks. A subtree inside another that is being recorded
+    /// is part of its tape too.
+    pub(crate) fn replay(&self, window: WindowId, phase: Phase, delta: Point<Pixels>) {
         debug_assert!(!is_capturing(), "a subtree that is only captured holds no subtree to replay");
-        let effects = match phase {
+        let put = |entries: &Rc<Entries>, layout_only: bool| {
+            if !entries.list.is_empty() {
+                publish(window, &Live { entries: entries.clone(), delta, layout_only });
+            }
+        };
+        match phase {
             // A pass that only lays out records no tape, so this is not part of one. It makes the
             // writes of prepaint, and those of paint and of the elements handed to the stacking
             // context that it makes from prepaint too.
             Phase::Layout => {
-                for (effect, offset) in &self.prepaint {
-                    effect.apply(*offset + delta);
-                }
-                for (effect, offset) in self.paint.iter().chain(self.lifted.iter().flatten()).filter(|(effect, _)| effect.in_layout()) {
-                    effect.apply(*offset + delta);
-                }
-                return;
-            }
-            Phase::LayoutPaint => {
-                for (effect, offset) in self.paint.iter().filter(|(effect, _)| effect.in_layout()) {
-                    effect.apply(*offset + delta);
+                put(&self.prepaint, false);
+                put(&self.paint, true);
+                for lifted in &self.lifted {
+                    put(lifted, true);
                 }
                 return;
             }
-            Phase::Prepaint => &self.prepaint,
-            Phase::Paint => &self.paint,
-            Phase::Lifted(rel) => match self.lifted.get(rel as usize) {
-                Some(effects) => effects,
-                None => return,
-            },
-        };
-        for (effect, offset) in effects {
-            effect.apply(*offset + delta);
+            Phase::LayoutPaint => return put(&self.paint, true),
+            Phase::Prepaint | Phase::Paint | Phase::Lifted(_) => {}
         }
+        let Some(entries) = self.entries(phase) else {
+            return;
+        };
+        put(entries, false);
         RECORDING.with(|recordings| {
-            for recording in recordings.borrow().iter() {
+            if let Some(recording) = recordings.borrow().last() {
                 // What the context paints, of the subtree or of what it handed over, is replayed
                 // inside whichever of the two is being recorded.
                 debug_assert!(
@@ -172,11 +434,7 @@ impl Tape {
                     },
                     "a subtree is replayed in the phase it is recorded in"
                 );
-                recording
-                    .tape
-                    .borrow_mut()
-                    .of(recording.phase)
-                    .extend(effects.iter().map(|(effect, offset)| (effect.clone(), *offset + delta)));
+                recording.tape.borrow_mut().recording(recording.phase).push_nested(entries.clone(), delta);
             }
         });
     }
@@ -184,28 +442,15 @@ impl Tape {
     /// What the tape writes `delta` from where it wrote it, as text, one line per write.
     pub(crate) fn describe(&self, delta: Point<Pixels>) -> String {
         let lifted = (0..self.lifted.len() as u32).map(|rel| self.describe_lifted(rel)).collect::<String>();
-        describe_effects("prepaint", &self.prepaint, delta) + &describe_effects("paint", &self.paint, delta) + &lifted
+        self.prepaint.described("prepaint", delta) + &self.paint.described("paint", delta) + &lifted
     }
 
     /// What the element handed to the stacking context as `rel` wrote, as text.
     fn describe_lifted(&self, rel: u32) -> String {
         self.lifted
             .get(rel as usize)
-            .map_or_else(String::new, |effects| describe_effects(&format!("lifted {rel} "), effects, Point::default()))
+            .map_or_else(String::new, |entries| entries.described(&format!("lifted {rel} "), Point::default()))
     }
-}
-
-fn describe_effects(phase: &str, effects: &[Entry], delta: Point<Pixels>) -> String {
-    effects
-        .iter()
-        .map(|(effect, offset)| {
-            format!(
-                "{phase}{} {}\n",
-                if effect.in_layout() { "+layout" } else { "" },
-                effect.describe(*offset + delta)
-            )
-        })
-        .collect()
 }
 
 pub(crate) type SharedTape = Rc<RefCell<Tape>>;
@@ -240,7 +485,7 @@ impl TapeStore {
     }
 
     /// Replays what the last build of `root` wrote in `phase`, `delta` from where it wrote it.
-    pub(crate) fn replay(&self, root: u64, phase: Phase, delta: Point<Pixels>) {
+    pub(crate) fn replay(&self, window: WindowId, root: u64, phase: Phase, delta: Point<Pixels>) {
         let tape = self
             .tapes
             .borrow()
@@ -254,7 +499,7 @@ impl TapeStore {
                 _ => {}
             }
         }
-        tape.borrow().replay(phase, delta);
+        tape.borrow().replay(window, phase, delta);
     }
 
     /// The context starts to paint an element that `root` handed to it: what the element writes
@@ -266,19 +511,18 @@ impl TapeStore {
             .get(&root)
             .expect("a root that hands an element to the stacking context has the tape of its build")
             .clone();
-        tape.borrow_mut().of(Phase::Lifted(rel)).clear();
+        tape.borrow_mut().start(Phase::Lifted(rel));
         RECORDING.with(|recordings| recordings.borrow_mut().push(Recording { tape, phase: Phase::Lifted(rel) }));
     }
 
     pub(crate) fn end_lifted(&self, root: u64) {
-        RECORDING.with(|recordings| {
-            let recording = recordings.borrow_mut().pop().expect("a lifted element that begun is ended");
-            debug_assert!(
-                matches!(recording.phase, Phase::Lifted(_))
-                    && self.tapes.borrow().get(&root).is_some_and(|tape| Rc::ptr_eq(tape, &recording.tape)),
-                "the ends of lifted elements come in the reverse order of their beginnings"
-            );
-        });
+        let recording = RECORDING.with(|recordings| recordings.borrow_mut().pop().expect("a lifted element that begun is ended"));
+        debug_assert!(
+            matches!(recording.phase, Phase::Lifted(_))
+                && self.tapes.borrow().get(&root).is_some_and(|tape| Rc::ptr_eq(tape, &recording.tape)),
+            "the ends of lifted elements come in the reverse order of their beginnings"
+        );
+        recording.end();
     }
 
     pub(crate) fn verify(&self, verifying: bool) {
@@ -334,9 +578,21 @@ struct Recording {
     phase: Phase,
 }
 
+impl Recording {
+    /// The subtree is done: what it wrote is part of the subtree it is inside, if it is inside one.
+    fn end(self) {
+        let written = self.tape.borrow().entries(self.phase).expect("a recording has its list").clone();
+        RECORDING.with(|recordings| {
+            if let Some(outer) = recordings.borrow().last() {
+                outer.tape.borrow_mut().recording(outer.phase).push_nested(written, Point::default());
+            }
+        });
+    }
+}
+
 thread_local! {
     /// The subtrees being prepainted or painted, innermost last. A write belongs to the tape of
-    /// each: a subtree inside another is part of it.
+    /// the innermost, which the subtrees around it hold by reference once it is done.
     static RECORDING: RefCell<Vec<Recording>> = const { RefCell::new(Vec::new()) };
     /// How many of them are on a tape that [captures](Tape::capturing).
     static CAPTURING: Cell<u32> = const { Cell::new(0) };
@@ -348,45 +604,47 @@ pub(crate) fn is_capturing() -> bool {
     CAPTURING.get() > 0
 }
 
+/// Which list the write being made is recorded into, or 0 when it is made outside any subtree
+/// that records. A registry that answers by element, and does not keep a write per replay, notes it
+/// with the write and asks [`Live::mark`] which lists a replay put back.
+pub(crate) fn owner() -> u64 {
+    OWNER.get()
+}
+
 /// Makes a registry write with `apply`, and notes it on the tape of the subtree being prepainted
 /// or painted, if there is one, for `describe` to say in words and a frame that replays the
-/// subtree to make again. A frame without retained subtrees pays one thread-local read per write.
+/// subtree to put back. A frame without retained subtrees pays one thread-local read per write.
 ///
-/// Both functions take how far from `data` the write is made, which is zero when it is made for
-/// the first time: a write that holds a position moves by it, any other ignores it.
-pub(crate) fn write<D: 'static>(data: D, apply: fn(&D, Point<Pixels>), describe: fn(&D, Point<Pixels>) -> String) {
-    write_with(data, apply, describe, false);
+/// `apply` makes the write where it was made; a replay is read by the registry, which is given
+/// how far from there it is (`describe` takes that too: a write that holds a position moves by it,
+/// any other ignores it).
+pub(crate) fn write<D: 'static>(kind: Kind, data: D, apply: fn(&D), describe: fn(&D, Point<Pixels>) -> String) {
+    write_with(kind, data, apply, describe, false);
 }
 
 /// [`write`] for a registry that a pass which only lays out (a bounds read) writes too, from
 /// prepaint: the painted boxes. A subtree that such a pass does not build repeats it from its tape.
-pub(crate) fn write_in_layout<D: 'static>(
-    data: D,
-    apply: fn(&D, Point<Pixels>),
-    describe: fn(&D, Point<Pixels>) -> String,
-) {
-    write_with(data, apply, describe, true);
+pub(crate) fn write_in_layout<D: 'static>(kind: Kind, data: D, apply: fn(&D), describe: fn(&D, Point<Pixels>) -> String) {
+    write_with(kind, data, apply, describe, true);
 }
 
-fn write_with<D: 'static>(
-    data: D,
-    apply: fn(&D, Point<Pixels>),
-    describe: fn(&D, Point<Pixels>) -> String,
-    in_layout: bool,
-) {
-    if !is_capturing() {
-        apply(&data, Point::default());
-    }
-    RECORDING.with(|recordings| {
-        let recordings = recordings.borrow();
-        if recordings.is_empty() {
-            return;
-        }
-        let effect: Effect = Rc::new(Write { data, apply, describe, in_layout });
-        for recording in recordings.iter() {
-            recording.tape.borrow_mut().of(recording.phase).push((effect.clone(), Point::default()));
-        }
+fn write_with<D: 'static>(kind: Kind, data: D, apply: fn(&D), describe: fn(&D, Point<Pixels>) -> String, in_layout: bool) {
+    let list = RECORDING.with(|recordings| {
+        recordings.borrow().last().map(|recording| recording.tape.borrow_mut().recording(recording.phase).serial)
     });
+    if !is_capturing() {
+        OWNER.set(list.unwrap_or(0));
+        apply(&data);
+        OWNER.set(0);
+    }
+    if list.is_some() {
+        let effect: Effect = Rc::new(Write { data, describe, in_layout, kind });
+        RECORDING.with(|recordings| {
+            let recordings = recordings.borrow();
+            let recording = recordings.last().expect("a list was found");
+            recording.tape.borrow_mut().recording(recording.phase).push_write(effect);
+        });
+    }
 }
 
 /// Puts `tape` under `phase` for as long as it lives. A guard, so that an unwinding paint does not
@@ -398,7 +656,7 @@ struct Recorder {
 impl Recorder {
     fn begin(tape: &SharedTape, phase: Phase) -> Self {
         let capturing = tape.borrow().capture_only;
-        tape.borrow_mut().of(phase).clear();
+        tape.borrow_mut().start(phase);
         RECORDING.with(|recordings| {
             recordings.borrow_mut().push(Recording { tape: tape.clone(), phase });
         });
@@ -411,9 +669,10 @@ impl Recorder {
 
 impl Drop for Recorder {
     fn drop(&mut self) {
-        RECORDING.with(|recordings| {
-            recordings.borrow_mut().pop();
-        });
+        let recording = RECORDING.with(|recordings| recordings.borrow_mut().pop());
+        if let Some(recording) = recording {
+            recording.end();
+        }
         if self.capturing {
             CAPTURING.set(CAPTURING.get() - 1);
         }
@@ -560,7 +819,7 @@ mod tests {
     }
 
     fn add(amount: i32) {
-        write(amount, |amount, _| REGISTRY.set(REGISTRY.get() + amount), |amount, _| format!("add {amount}"));
+        write(Kind::Painted, amount, |amount| REGISTRY.set(REGISTRY.get() + amount), |amount, _| format!("add {amount}"));
     }
 
     fn record(tape: &SharedTape, writes: &[i32]) {
@@ -606,6 +865,114 @@ mod tests {
         record(&different, &[8]);
         assert!(!tapes.same_as_recorded(1, &different));
         assert!(!tapes.same_as_recorded(2, &same), "a root with no recording has nothing to be the same as");
+    }
+
+    fn log(window: WindowId, text: &'static str) {
+        crate::text::log_painted_text(window, text.into());
+    }
+
+    fn record_logs(tape: &SharedTape, window: WindowId, texts: &[&'static str]) {
+        let _recording = Recorder::begin(tape, Phase::Paint);
+        for text in texts {
+            log(window, text);
+        }
+    }
+
+    fn replay(tape: &SharedTape, window: WindowId) {
+        tape.borrow().replay(window, Phase::Paint, Point::default());
+    }
+
+    #[test]
+    fn a_replay_is_read_among_the_writes_made_around_it_in_the_order_they_came() {
+        let (recorded_in, window) = (WindowId::from(901), WindowId::from(902));
+        let tape = SharedTape::default();
+        record_logs(&tape, recorded_in, &["a", "b"]);
+
+        log(window, "before");
+        replay(&tape, window);
+        log(window, "between");
+        replay(&tape, window);
+        log(window, "after");
+        assert_eq!(crate::text::painted_text(window), ["before", "a", "b", "between", "a", "b", "after"]);
+    }
+
+    #[test]
+    fn a_replay_holds_what_the_subtree_wrote_then_and_not_what_it_writes_when_built_again() {
+        let (recorded_in, window) = (WindowId::from(903), WindowId::from(904));
+        let tape = SharedTape::default();
+        record_logs(&tape, recorded_in, &["old"]);
+        replay(&tape, window);
+        record_logs(&tape, recorded_in, &["new"]);
+        assert_eq!(crate::text::painted_text(window), ["old"]);
+        replay(&tape, window);
+        assert_eq!(crate::text::painted_text(window), ["old", "new"]);
+    }
+
+    #[test]
+    fn a_subtree_that_replays_or_is_built_inside_another_is_part_of_its_tape_either_way() {
+        let (recorded_in, window) = (WindowId::from(905), WindowId::from(906));
+        let inner = SharedTape::default();
+        record_logs(&inner, recorded_in, &["i1", "i2"]);
+
+        let replayed = SharedTape::default();
+        {
+            let _recording = Recorder::begin(&replayed, Phase::Paint);
+            log(window, "o1");
+            replay(&inner, window);
+            log(window, "o2");
+        }
+        let built = SharedTape::default();
+        {
+            let _recording = Recorder::begin(&built, Phase::Paint);
+            log(window, "o1");
+            record_logs(&SharedTape::default(), window, &["i1", "i2"]);
+            log(window, "o2");
+        }
+        let whole = SharedTape::default();
+        record_logs(&whole, window, &["o1", "i1", "i2", "o2"]);
+
+        let said = whole.borrow().describe(Point::default());
+        assert_eq!(replayed.borrow().describe(Point::default()), said);
+        assert_eq!(built.borrow().describe(Point::default()), said);
+        assert!(replayed.borrow().same_writes(&whole.borrow()));
+        assert!(built.borrow().same_writes(&whole.borrow()));
+    }
+
+    fn box_at(window: WindowId, id: u64, x: f32) {
+        use crate::automation::{record_bounds, LaidOut};
+        let bounds = Bounds::new(gpui::point(gpui::px(x), gpui::px(0.0)), gpui::size(gpui::px(5.0), gpui::px(5.0)));
+        record_bounds(window, id, LaidOut::of_box(bounds, 1.0), bounds.origin, Default::default());
+    }
+
+    fn x_of(window: WindowId, id: u64) -> Option<f64> {
+        crate::automation::get_bounds(window, id).map(|bounds| bounds.x)
+    }
+
+    #[test]
+    fn a_box_is_the_one_the_frame_wrote_or_the_one_a_replayed_subtree_recorded_moved_by_the_replay() {
+        let window = WindowId::from(907);
+        let tape = SharedTape::default();
+        {
+            let _recording = Recorder::begin(&tape, Phase::Paint);
+            box_at(window, 7, 10.0);
+        }
+        crate::automation::forget_window(window);
+        assert_eq!(x_of(window, 7), None, "a frame forgets the boxes of the one before");
+
+        tape.borrow().replay(window, Phase::Paint, gpui::point(gpui::px(3.0), gpui::px(0.0)));
+        assert_eq!(x_of(window, 7), Some(13.0));
+
+        // A pass that builds the element and records nothing writes it where the build put it,
+        // and the pass after it that replays the subtree finds the box the tape holds.
+        crate::automation::forget_window(window);
+        box_at(window, 7, 99.0);
+        assert_eq!(x_of(window, 7), Some(99.0));
+        crate::automation::forget_window(window);
+        replay(&tape, window);
+        assert_eq!(x_of(window, 7), Some(10.0));
+
+        crate::automation::forget_window(window);
+        assert_eq!(x_of(window, 7), None);
     }
 
     #[test]

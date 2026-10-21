@@ -220,8 +220,9 @@ impl Measurements {
             self.parents.borrow_mut().insert(id, parent_content.clone());
         }
         crate::tape::write(
+            crate::tape::Kind::Measured,
             (self.by_element.clone(), id, measurement, parent_content),
-            |(by_element, id, measurement, parent_content), _| {
+            |(by_element, id, measurement, parent_content)| {
                 by_element.borrow_mut().insert(
                     *id,
                     Measurement {

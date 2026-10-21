@@ -31,6 +31,7 @@ use gpui::{
 };
 
 use super::selection::{self, SelectionState};
+use crate::tape::{Kind, Layered};
 
 /// Shared selection state. `GpuixView` and `GpuixRenderer` both hold clones, and
 /// so does every paint closure.
@@ -54,6 +55,46 @@ struct RegEntry {
     line: Option<Arc<str>>,
     /// See [`selection::RegisteredText::cell`].
     cell: Option<selection::TableCell>,
+}
+
+/// A subtree that was replayed puts back what it wrote here: the registries keep it until they are
+/// read (see [`Layered`]).
+pub(crate) fn publish(window: WindowId, live: &crate::tape::Live) {
+    if [Kind::Text, Kind::StartRegion, Kind::Painted].iter().all(|kind| !live.has(*kind)) {
+        return;
+    }
+    with_frame(window, |frame| {
+        if live.has(Kind::Text) {
+            frame.registry.push_live(live.clone());
+        }
+        if live.has(Kind::StartRegion) {
+            frame.start_regions.push_live(live.clone());
+        }
+        if live.has(Kind::Painted) {
+            frame.painted.push_live(live.clone());
+        }
+    });
+}
+
+impl Frame {
+    fn registry(&mut self) -> &[RegEntry] {
+        self.registry.all(Kind::Text, |data, _| {
+            data.downcast_ref::<(WindowId, RegEntry)>().expect("a text write holds its entry").1.clone()
+        })
+    }
+
+    fn start_regions(&mut self) -> &[StartRegion] {
+        self.start_regions.all(Kind::StartRegion, |data, offset| {
+            let (_, bounds, selectable) = data.downcast_ref::<(WindowId, Bounds<gpui::Pixels>, bool)>().expect("a start region write holds its box");
+            StartRegion { bounds: Bounds::new(bounds.origin + offset, bounds.size), selectable: *selectable }
+        })
+    }
+
+    fn painted(&mut self) -> &[SharedString] {
+        self.painted.all(Kind::Painted, |data, _| {
+            data.downcast_ref::<(WindowId, SharedString)>().expect("a painted text write holds its text").1.clone()
+        })
+    }
 }
 
 /// Full element box that owns whether a press may start a selection.
@@ -87,15 +128,15 @@ pub struct PaintedHighlight {
 /// What one window painted this frame.
 #[derive(Default)]
 struct Frame {
-    registry: Vec<RegEntry>,
-    start_regions: Vec<StartRegion>,
+    registry: Layered<RegEntry>,
+    start_regions: Layered<StartRegion>,
     /// Every string painted this frame, selectable or not, in paint order.
     ///
     /// Native elements draw their text inside gpui, so it never appears in the
     /// retained tree and `getAllText()` cannot see it. Without this log the only
     /// way to assert what `<code>` or `<diff>` rendered is a screenshot, which
     /// tells you something changed but never what.
-    painted: Vec<SharedString>,
+    painted: Layered<SharedString>,
     /// Same idea for highlight washes. See [`PaintedHighlight`].
     highlights: Vec<PaintedHighlight>,
 }
@@ -148,8 +189,9 @@ pub fn selection_frame_reset(
 /// always the same box automation already uses. Last painted region that contains the point wins.
 pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
     crate::tape::write(
+        Kind::StartRegion,
         (window, bounds, selectable),
-        |(window, bounds, selectable), offset| push_start_region(*window, Bounds::new(bounds.origin + offset, bounds.size), *selectable),
+        |(window, bounds, selectable)| push_start_region(*window, *bounds, *selectable),
         |(_, bounds, selectable), offset| format!("start region {:?} {selectable}", Bounds::new(bounds.origin + offset, bounds.size)),
     );
 }
@@ -164,7 +206,7 @@ fn push_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable:
 fn start_region_at(window: WindowId, position: gpui::Point<gpui::Pixels>) -> Option<bool> {
     with_frame(window, |frame| {
         frame
-            .start_regions
+            .start_regions()
             .iter()
             .rev()
             .find(|region| region.bounds.contains(&position))
@@ -175,7 +217,7 @@ fn start_region_at(window: WindowId, position: gpui::Point<gpui::Pixels>) -> Opt
 /// Every string `window` painted in its last frame, in paint order. Test-facing.
 pub fn painted_text(window: WindowId) -> Vec<String> {
     with_frame(window, |frame| {
-        frame.painted.iter().map(|s| s.to_string()).collect()
+        frame.painted().iter().map(|s| s.to_string()).collect()
     })
 }
 
@@ -195,8 +237,9 @@ fn utf16_offset(text: &str, byte: usize) -> usize {
 /// Record text painted by a custom element that owns its text layout.
 pub fn log_painted_text(window: WindowId, text: SharedString) {
     crate::tape::write(
+        Kind::Painted,
         (window, text),
-        |(window, text), _| with_frame(*window, |frame| frame.painted.push(text.clone())),
+        |(window, text)| with_frame(*window, |frame| frame.painted.push(text.clone())),
         |(_, text), _| format!("painted {text:?}"),
     );
 }
@@ -546,9 +589,10 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     cell,
                 };
                 crate::tape::write(
+                    Kind::Text,
                     (window_id, entry),
                     // Its layout is moved by the frame, with the subtree.
-                    |(window, entry), _| with_frame(*window, |frame| frame.registry.push(entry.clone())),
+                    |(window, entry)| with_frame(*window, |frame| frame.registry.push(entry.clone())),
                     |(_, entry), _| {
                         format!(
                             "text {} {:?} {:?} {:?} {:?} {:?} {:?}",
@@ -775,7 +819,7 @@ fn registry_point(
     position: gpui::Point<gpui::Pixels>,
 ) -> Option<(usize, usize)> {
     with_frame(window, |frame| {
-        let reg = &frame.registry;
+        let reg = frame.registry();
         let mut contained: Option<usize> = None;
         let mut nearest: Option<(usize, (f32, f32))> = None;
 
@@ -828,7 +872,7 @@ fn registry_point_on_line(
 ) -> Option<(usize, usize)> {
     let (ei, ix) = registry_point(window, position)?;
     with_frame(window, |frame| {
-        let b = frame.registry.get(ei)?.layout.bounds();
+        let b = frame.registry().get(ei)?.layout.bounds();
         (position.y >= b.top() && position.y <= b.bottom()).then_some((ei, ix))
     })
 }
@@ -838,7 +882,7 @@ fn registry_point_on_line(
 fn resolve_drag(window: WindowId, selection: &SharedSelection, head: (usize, usize)) -> bool {
     with_frame(window, |frame| {
         let painted: Vec<(selection::RegisteredText, &selection::DocPos)> = frame
-            .registry
+            .registry()
             .iter()
             .map(|e| {
                 let text = selection::RegisteredText {
@@ -896,7 +940,7 @@ fn register_down_listener(window: &mut Window, selection: &SharedSelection) {
         let hit = registry_point_on_line(window_id, e.position).and_then(|(ei, ix)| {
             with_frame(window_id, |frame| {
                 frame
-                    .registry
+                    .registry()
                     .get(ei)
                     .map(|entry| (entry.key.clone(), entry.text.clone(), ix))
             })
@@ -1303,11 +1347,11 @@ mod tests {
         assert_eq!(painted_text(one), ["one"]);
         assert_eq!(painted_highlights(one).len(), 1);
         assert_eq!(start_region_at(one, point(px(5.0), px(5.0))), Some(false));
-        assert_eq!(with_frame(one, |frame| frame.registry.len()), 1);
+        assert_eq!(with_frame(one, |frame| frame.registry().len()), 1);
 
         assert!(painted_text(two).is_empty());
         assert!(painted_highlights(two).is_empty());
         assert_eq!(start_region_at(two, point(px(5.0), px(5.0))), None);
-        assert_eq!(with_frame(two, |frame| frame.registry.len()), 0);
+        assert_eq!(with_frame(two, |frame| frame.registry().len()), 0);
     }
 }

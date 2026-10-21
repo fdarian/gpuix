@@ -149,10 +149,79 @@ impl ElementBounds {
     }
 }
 
+/// The painted boxes of one window.
+///
+/// A box is written once by the frame that built its element, and read again when a root that
+/// holds it is replayed. A replay does not write the box back: it notes which of the lists of
+/// writes it puts back (`live`, by the serial [`crate::tape::owner`] gave the write) and how far
+/// they are moved, and a box is current if the frame wrote it or the list it was written to is live.
+/// So replaying a root costs the same whatever it holds, and a box is read in one lookup.
+#[derive(Default)]
+struct WindowBounds {
+    /// Counts the frames that reset the boxes. A box written by an earlier one is gone.
+    frame: u64,
+    live: FxHashMap<u64, Point<Pixels>>,
+    boxes: FxHashMap<u64, Stored>,
+    /// Boxes of elements that no frame wrote or replayed are left in `boxes` until there are this
+    /// many.
+    purge_at: usize,
+}
+
+struct Stored {
+    bounds: ElementBounds,
+    frame: u64,
+    /// The box as a subtree that records wrote it, and the list of writes it is in (see
+    /// [`crate::tape::owner`]). A pass that builds the element without recording writes it
+    /// again as `bounds`, and leaves this, which the next pass that replays the subtree reads.
+    recorded: Option<(ElementBounds, u64)>,
+}
+
+impl WindowBounds {
+    fn get(&self, id: u64) -> Option<ElementBounds> {
+        let stored = self.boxes.get(&id)?;
+        if stored.frame == self.frame {
+            return Some(stored.bounds);
+        }
+        let (bounds, owner) = stored.recorded.as_ref()?;
+        let delta = self.live.get(owner)?;
+        Some(bounds.translated(*delta))
+    }
+
+    fn reset(&mut self) {
+        if self.boxes.len() > self.purge_at {
+            let (frame, live) = (self.frame, &self.live);
+            self.boxes.retain(|_, stored| {
+                stored.frame == frame || stored.recorded.as_ref().is_some_and(|(_, owner)| live.contains_key(owner))
+            });
+            self.purge_at = (self.boxes.len() * 2).max(4096);
+        }
+        self.frame += 1;
+        self.live.clear();
+    }
+
+    fn insert(&mut self, id: u64, bounds: ElementBounds, owner: u64) {
+        let recorded = if owner != 0 {
+            Some((bounds, owner))
+        } else {
+            self.boxes.get_mut(&id).and_then(|stored| stored.recorded.take())
+        };
+        self.boxes.insert(id, Stored { bounds, frame: self.frame, recorded });
+    }
+}
+
 thread_local! {
     /// Keyed by window as well as element id: element ids are only unique within one renderer,
     /// so two windows would otherwise read each other's boxes.
-    static BOUNDS: RefCell<FxHashMap<(WindowId, u64), ElementBounds>> = RefCell::new(FxHashMap::default());
+    static BOUNDS: RefCell<FxHashMap<WindowId, WindowBounds>> = RefCell::new(FxHashMap::default());
+}
+
+/// The roots that `live` replays put back have the boxes they were built with, moved by the
+/// replay: see [`WindowBounds`].
+pub(crate) fn publish(window: WindowId, live: &crate::tape::Live) {
+    if !live.has(crate::tape::Kind::Bounds) {
+        return;
+    }
+    BOUNDS.with(|cell| live.mark(&mut cell.borrow_mut().entry(window).or_default().live));
 }
 
 /// Zero-size canvas. Keep it ahead of the app subtree under the root.
@@ -179,8 +248,8 @@ pub fn bounds_frame_reset() -> impl IntoElement {
     .h(px(0.0))
 }
 
-fn forget_window(window: WindowId) {
-    BOUNDS.with(|cell| cell.borrow_mut().retain(|key, _| key.0 != window));
+pub(crate) fn forget_window(window: WindowId) {
+    BOUNDS.with(|cell| cell.borrow_mut().entry(window).or_default().reset());
 }
 
 /// Record this element's own painted box, with no extra element in the tree.
@@ -337,26 +406,28 @@ pub fn record_bounds(
     insets: LayoutInsets,
 ) {
     crate::tape::write_in_layout(
+        crate::tape::Kind::Bounds,
         (window, id, ElementBounds::from_gpui(layout, painted, insets)),
-        |(window, id, bounds), offset| insert_bounds(*window, *id, bounds.translated(offset)),
+        |(window, id, bounds)| insert_bounds(*window, *id, bounds.translated(Point::default())),
         |(_, id, bounds), offset| format!("bounds {id} {}", bounds.translated(offset).described()),
     );
 }
 
 fn insert_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
     BOUNDS.with(|cell| {
-        cell.borrow_mut().insert((window, id), bounds);
+        let mut cell = cell.borrow_mut();
+        cell.entry(window).or_default().insert(id, bounds, crate::tape::owner());
     });
 }
 
 pub fn get_bounds(window: WindowId, id: u64) -> Option<ElementBounds> {
-    BOUNDS.with(|cell| cell.borrow().get(&(window, id)).copied())
+    BOUNDS.with(|cell| cell.borrow().get(&window)?.get(id))
 }
 
 /// Whether the last frame that painted or laid out `window` walked `id` in a culled subtree. An
 /// element it did not reach is not culled: nothing is assumed of what was not seen.
 pub(crate) fn was_culled(window: WindowId, id: u64) -> bool {
-    BOUNDS.with(|cell| cell.borrow().get(&(window, id)).is_some_and(|bounds| bounds.culled))
+    get_bounds(window, id).is_some_and(|bounds| bounds.culled)
 }
 
 /// Every painted box of `window` as text, in the order of the element ids.
@@ -368,11 +439,9 @@ pub(crate) fn describe_bounds(window: WindowId) -> String {
 
 pub fn all_bounds(window: WindowId) -> HashMap<u64, ElementBounds> {
     BOUNDS.with(|cell| {
-        cell.borrow()
-            .iter()
-            .filter(|(key, _)| key.0 == window)
-            .map(|(key, bounds)| (key.1, *bounds))
-            .collect()
+        cell.borrow().get(&window).map_or_else(HashMap::new, |bounds| {
+            bounds.boxes.keys().filter_map(|id| Some((*id, bounds.get(*id)?))).collect()
+        })
     })
 }
 

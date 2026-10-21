@@ -24,6 +24,12 @@ pub mod search;
 pub mod selection;
 pub mod white_space;
 
+/// A subtree that was replayed puts back what it wrote into the registries of the frame.
+pub(crate) fn publish(window: gpui::WindowId, live: &crate::tape::Live) {
+    paint::publish(window, live);
+    inline_hit::publish(window, live);
+}
+
 pub use paint::{
     chrome_text, log_painted_text, painted_highlights, painted_text, range_rects,
     record_start_region, selectable_text, selection_frame_reset, selection_key, HighlightSource,

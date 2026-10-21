@@ -32,6 +32,7 @@ use super::inline_bounds::border_box_rows;
 use std::rc::Rc;
 
 use super::inline_insets::{BoxEdges, InsetSpec};
+use crate::tape::{Kind, Layered};
 
 /// The inline boxes of one paragraph that can be a target, by the bytes they
 /// cover.
@@ -146,29 +147,48 @@ pub(super) fn piece_targets(
     targets
 }
 
+#[derive(Clone)]
 struct Entry {
     container: u64,
     layout: TextLayout,
     targets: Arc<Targets>,
 }
 
+type Written = (WindowId, u64, TextLayout, Arc<Targets>);
+
 thread_local! {
     /// The paragraphs painted this frame, in paint order, by window. Rebuilt every
     /// frame like the selection registry, because a list decides at paint time
     /// which rows exist. A window has its own, because every renderer numbers its
     /// containers from the same start and a window's frame must not clear another's.
-    static PARAGRAPHS: RefCell<HashMap<WindowId, Vec<Entry>>> = RefCell::new(HashMap::new());
+    static PARAGRAPHS: RefCell<HashMap<WindowId, Layered<Entry>>> = RefCell::new(HashMap::new());
 }
 
 pub fn frame_reset(window: WindowId) {
-    PARAGRAPHS.with(|paragraphs| paragraphs.borrow_mut().insert(window, Vec::new()));
+    PARAGRAPHS.with(|paragraphs| paragraphs.borrow_mut().insert(window, Layered::default()));
+}
+
+/// A subtree that was replayed puts back the paragraphs it painted: they are read from its tape
+/// when something asks.
+pub(crate) fn publish(window: WindowId, live: &crate::tape::Live) {
+    if live.has(Kind::Paragraph) {
+        PARAGRAPHS.with(|paragraphs| paragraphs.borrow_mut().entry(window).or_default().push_live(live.clone()));
+    }
+}
+
+fn read(paragraphs: &mut Layered<Entry>) -> &[Entry] {
+    paragraphs.all(Kind::Paragraph, |data, _| {
+        let (_, container, layout, targets) = data.downcast_ref::<Written>().expect("a paragraph write holds its paragraph");
+        Entry { container: *container, layout: layout.clone(), targets: targets.clone() }
+    })
 }
 
 pub fn register(window: WindowId, container: u64, layout: TextLayout, targets: Arc<Targets>) {
     crate::tape::write(
+        Kind::Paragraph,
         (window, container, layout, targets),
         // Its layout is moved by the frame, with the subtree.
-        |(window, container, layout, targets), _| push(*window, *container, layout.clone(), targets.clone()),
+        |(window, container, layout, targets)| push(*window, *container, layout.clone(), targets.clone()),
         |(_, container, layout, targets), _| {
             format!("paragraph {container} {:?} {}", layout.bounds(), targets.describe())
         },
@@ -197,12 +217,12 @@ pub fn boxes_under(
     position: Point<Pixels>,
 ) -> Vec<(u64, Bounds<Pixels>)> {
     PARAGRAPHS.with(|paragraphs| {
-        let paragraphs = paragraphs.borrow();
-        let Some(entries) = paragraphs.get(&window) else {
+        let mut paragraphs = paragraphs.borrow_mut();
+        let Some(entries) = paragraphs.get_mut(&window) else {
             return Vec::new();
         };
         // A later paragraph is painted over an earlier one.
-        for entry in entries.iter().rev() {
+        for entry in read(entries).iter().rev() {
             if entry.container != container || !entry.layout.bounds().contains(&position) {
                 continue;
             }
@@ -223,7 +243,7 @@ pub fn boxes_under(
 #[cfg(test)]
 pub fn painted_layout(window: WindowId, container: u64) -> TextLayout {
     PARAGRAPHS.with(|paragraphs| {
-        paragraphs.borrow()[&window]
+        read(paragraphs.borrow_mut().get_mut(&window).expect("the window painted"))
             .iter()
             .rev()
             .find(|entry| entry.container == container)
@@ -465,7 +485,7 @@ mod tests {
     }
 
     fn painted(window: WindowId) -> usize {
-        PARAGRAPHS.with(|paragraphs| paragraphs.borrow().get(&window).map_or(0, Vec::len))
+        PARAGRAPHS.with(|paragraphs| paragraphs.borrow_mut().get_mut(&window).map_or(0, |entries| read(entries).len()))
     }
 
     #[test]
