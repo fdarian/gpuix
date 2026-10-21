@@ -284,6 +284,13 @@ pub trait CustomElement: 'static {
         None
     }
 
+    /// Whether a change of what it draws is made in the paint that shows it, so that a tick which
+    /// builds only this element again can paint it alone and show the change. An element whose
+    /// paint hands the change to a job that lands in a later paint is not.
+    fn draws_changes_at_once(&self) -> bool {
+        true
+    }
+
     /// Every image this element put in the sprite atlas and still holds, so the
     /// registry can drop them when the element goes away.
     fn take_held_images(&mut self) -> Vec<std::sync::Arc<gpui::RenderImage>> {
@@ -465,6 +472,11 @@ impl CustomElementRegistry {
     /// See [`CustomElement::retain_state`].
     pub(crate) fn retain_state(&self, id: u64) -> Option<u64> {
         self.instances.get(&id)?.element.retain_state()
+    }
+
+    /// See [`CustomElement::draws_changes_at_once`]. An element that is gone does not.
+    pub(crate) fn draws_changes_at_once(&self, id: u64) -> bool {
+        self.instances.get(&id).is_some_and(|instance| instance.element.draws_changes_at_once())
     }
 
     /// The `retain_state` of every element the registry holds.

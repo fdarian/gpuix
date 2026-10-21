@@ -101,6 +101,10 @@ impl Key {
     }
 }
 
+fn color_bits(color: Rgba) -> [u32; 4] {
+    [color.r.to_bits(), color.g.to_bits(), color.b.to_bits(), color.a.to_bits()]
+}
+
 impl SvgPaint {
     /// The SVG in `bytes` rasterised to fit `size` (logical pixels) at
     /// `scale_factor`, with `currentColor` resolved to `current_color`.
@@ -132,12 +136,7 @@ impl SvgPaint {
             bytes: bytes.clone(),
             width: device(size.width),
             height: device(size.height),
-            color: [
-                current_color.r.to_bits(),
-                current_color.g.to_bits(),
-                current_color.b.to_bits(),
-                current_color.a.to_bits(),
-            ],
+            color: color_bits(current_color),
         };
         let outcome = self.resolve(key, |key| {
             rasterize(renderer, bytes, key.width, key.height, current_color)
@@ -212,10 +211,27 @@ impl SvgPaint {
         self.shown = Some(Shown { key, image });
     }
 
-    /// Something was painted and nothing is on its way: painting the same box again would draw the
-    /// image already shown. While a job runs, or before the first paint, it would not.
-    pub fn settled(&self) -> bool {
-        self.shown.is_some() && self.running.is_none() && self.inbox.borrow().is_none()
+    /// Painting `bytes` in `current_color` into the box of the last paint draws what was shown or
+    /// an image made in that paint, and nothing is on its way: the same box painted again draws
+    /// the image already shown or a new one at once. While a job runs, before the first paint, or
+    /// when a document that changed is too big to be rasterised in paint (the image shown stays
+    /// until its job lands), it does not.
+    pub fn paints_in_place(&self, bytes: &Arc<[u8]>, current_color: Rgba) -> bool {
+        let Some(shown) = &self.shown else {
+            return false;
+        };
+        if self.running.is_some() || self.inbox.borrow().is_some() {
+            return false;
+        }
+        let asked = Key { bytes: bytes.clone(), width: shown.key.width, height: shown.key.height, color: color_bits(current_color) };
+        shown.key.same_as(&asked) || asked.is_inline()
+    }
+
+    /// Whether a document of the size of the last paint is rasterised in the paint that needs it
+    /// and not by a job, so that what it draws follows the document at once. Before the first paint
+    /// there is no image that could lag behind.
+    pub fn rasterises_in_paint(&self, bytes: &Arc<[u8]>) -> bool {
+        self.shown.as_ref().is_none_or(|shown| Key { bytes: bytes.clone(), ..shown.key.clone() }.is_inline())
     }
 
     /// Drops the image held, for an `<svg>` that has nothing left to paint.
@@ -613,6 +629,32 @@ mod tests {
         assert_eq!(width_of(&outcome), Some(1200));
         assert!(outcome.job.is_some());
         assert!(outcome.stale.is_empty());
+    }
+
+    #[test]
+    fn a_changed_document_paints_in_place_only_when_it_is_rasterised_in_paint() {
+        let (bytes, other) = (doc(), Arc::<[u8]>::from(&b"y"[..]));
+        let mut paint = SvgPaint::default();
+        assert!(!paint.paints_in_place(&bytes, RED), "before the first paint");
+        paint.resolve(small(&bytes, 24), fake_raster);
+        assert!(paint.paints_in_place(&bytes, RED));
+        assert!(paint.paints_in_place(&other, RED), "a small document is rasterised in paint");
+        let green = Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
+        assert!(paint.paints_in_place(&bytes, green));
+        assert!(paint.rasterises_in_paint(&other));
+        assert!(SvgPaint::default().rasterises_in_paint(&other), "nothing shown yet lags behind nothing");
+
+        let mut paint = SvgPaint::default();
+        let job = paint.resolve(big(&bytes, 1200), never_in_paint).job.unwrap();
+        assert!(!paint.paints_in_place(&bytes, RED), "a job is running");
+        let landed = fake_raster(&job.key);
+        job.finish(landed);
+        assert!(!paint.paints_in_place(&bytes, RED), "its result has not been shown");
+        paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert!(paint.paints_in_place(&bytes, RED), "the image shown is the document");
+        assert!(!paint.paints_in_place(&other, RED), "another document would be a job, and the image stays");
+        assert!(!paint.paints_in_place(&bytes, green), "and so would another colour");
+        assert!(!paint.rasterises_in_paint(&bytes), "a box this big is rasterised by a job");
     }
 
     #[test]

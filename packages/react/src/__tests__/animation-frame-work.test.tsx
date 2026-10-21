@@ -6,7 +6,11 @@
  * rendered last (`patchedFrames` counts them), which is how Chrome repaints the display items of an
  * animation and keeps the rest. What is patched is the same picture a frame built whole gives.
  *
- * What cannot be patched is drawn whole, as before: an animation that moves a box, an `<svg>` shape,
+ * An `<svg>` whose shapes animate (the button spinner of the FF demo) is such a unit too: the `<svg>` is
+ * built alone and its raster made again in the patched frame, when the document is small enough to be
+ * rasterised in paint. A large one is rasterised by a job and is drawn whole, as before.
+ *
+ * What cannot be patched is drawn whole, as before: an animation that moves a box, a large `<svg>`,
  * a tick in which the pointer moved or the tree was committed.
  *
  * The counters are `getBuildCounters`, `getLayoutCounters`, `getFrameWorkCounters`,
@@ -137,6 +141,22 @@ const spinnerHead = (
   </svg>
 )
 
+/** 200 x 200 is past what is rasterised in paint, so a job makes each image and the tick is a frame built whole. */
+const largeSpinnerHead = (
+  <svg testId="spinner" viewBox="0 0 24 24" width={200} height={200}>
+    <circle
+      cx={12}
+      cy={12}
+      r={10}
+      pathLength={100}
+      fill="none"
+      stroke="#333333"
+      strokeWidth={3}
+      style={{ animation: "afw-spin 1.4s linear infinite" }}
+    />
+  </svg>
+)
+
 const motionHead = (
   <motion.div
     testId="animated"
@@ -214,6 +234,7 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
   const heads = {
     "a keyframes colour": colourHead(),
     "a native motion colour loop": motionHead,
+    "an svg stroke dash loop": spinnerHead,
   }
   for (const [name, head] of Object.entries(heads)) {
     counted(`does the work of one text on any page: ${name}`, async () => {
@@ -244,6 +265,7 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
   const pictures = {
     "a keyframes colour": colourHead(),
     "a native motion colour loop": motionHead,
+    "an svg stroke dash loop": spinnerHead,
   }
   for (const [name, head] of Object.entries(pictures)) {
     it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
@@ -319,18 +341,39 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     }
   })
 
-  counted("builds the spine and replays the roots of an svg spinner each tick, which a unit cannot hold", async () => {
-    // An `<svg>` is painted by a raster of its own tree, so it is not an element a tick can build alone.
-    const small = await ticksOf(spinnerHead, 500)
-    const large = await ticksOf(spinnerHead, 5000)
+  counted("draws a large svg whole, which is rasterised by a job and shows the image of the tick before", async () => {
+    const small = await ticksOf(largeSpinnerHead, 500)
     for (let index = 0; index < TICKS; index++) {
       expect(small[index].patchedFrames, `tick ${index}`).toBe(0)
-      expect(large[index].patchedFrames, `tick ${index}`).toBe(0)
+      expect(small[index].elementsBuilt, `tick ${index}`).toBeGreaterThan(0)
     }
-    console.info(
-      `[animation-frame-work] svg spinner per tick: 500 nodes built ${small[TICKS - 1].elementsBuilt}, replays ${small[TICKS - 1].replays}; ` +
-        `5000 nodes built ${large[TICKS - 1].elementsBuilt}, replays ${large[TICKS - 1].replays}`,
-    )
+  })
+
+  it.skipIf(!patching)("shows a large svg as a frame built whole does, once its rasters have landed", async () => {
+    const page = await mount(largeSpinnerHead, 500)
+    try {
+      const renderer = page.renderer
+      for (let step = 0; step < 24; step++) {
+        tick(renderer)
+        await settle(renderer, 2)
+        renderer.setInlineDraws(false)
+      }
+      expect(renderer.getPatchCounters().patchedFrames).toBe(0)
+      await settle(renderer, 6)
+      renderer.setInlineDraws(false)
+      tick(renderer, 0)
+      await settle(renderer, 6)
+      renderer.setInlineDraws(false)
+      const drawn = shot(renderer, "large-svg-drawn")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      await settle(renderer, 6)
+      renderer.setInlineDraws(false)
+      expect(drawn.equals(shot(renderer, "large-svg-whole"))).toBe(true)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
   })
 })
 

@@ -1473,6 +1473,13 @@ impl CssAnimations {
             .map(|(id, _)| *id)
     }
 
+    /// Whether the shape `id` inside an `<svg>` is one of `svg_shapes`.
+    pub(crate) fn shape_moves(&self, id: u64, registry: &KeyframesRegistry) -> bool {
+        self.states
+            .get(&id)
+            .is_some_and(|state| state.target == PropTarget::SvgShape && state.shows_something_new(registry))
+    }
+
     /// `id` is `display: none`, which takes it and everything below it out of
     /// rendering: its animations are cancelled and its state dropped, so they
     /// start over when it renders again. Cheap to call every frame the element

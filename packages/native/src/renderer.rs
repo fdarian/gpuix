@@ -7992,14 +7992,22 @@ fn runs_paint_only(
     keyframes: &crate::motion::KeyframesRegistry,
 ) -> bool {
     let id = element.id;
-    // A span is painted by its paragraph, an `<svg>` and its shapes by a raster, and a `layout`
-    // element glides between boxes: none is an element whose frame is only paint.
+    // A span is painted by its paragraph, a shape of an `<svg>` by the raster of the `<svg>`, and a
+    // `layout` element glides between boxes: none is an element whose frame is only paint.
     if element.element_type == "span"
         || crate::custom_elements::svg_tree::is_svg_element(tree, element)
         || element.custom_props().contains_key("layout")
     {
         return false;
     }
+    // What runs on the shapes of an `<svg>` changes its picture, never its box. An `<svg>` blocks
+    // culling around it (`Subtree::block`), so it is a unit but never dormant.
+    let shapes_paint_only = || {
+        crate::custom_elements::svg_tree::shapes(tree, element).all(|shape| {
+            animations.paints_only(shape.id, keyframes)
+                && motion_states.get(&shape.id).is_none_or(crate::motion::MotionState::paints_only)
+        })
+    };
     animations.paints_only(id, keyframes)
         && transitions.paints_only(id)
         && motion_states.get(&id).is_none_or(crate::motion::MotionState::paints_only)
@@ -8007,6 +8015,31 @@ fn runs_paint_only(
             .custom_props()
             .get("motionValues")
             .is_none_or(crate::motion::MotionValueStore::binding_paints_only)
+        && shapes_paint_only()
+}
+
+/// What runs on the shapes of the `<svg>` `element` at `now`, as `retain::Dynamic` bits. A shape is
+/// never built, so its `<svg>` is the element a running shape is a reason to build again.
+fn shapes_running(
+    tree: &crate::retained_tree::RetainedTree,
+    element: &crate::retained_tree::RetainedElement,
+    animations: &crate::motion::CssAnimations,
+    motion_states: &HashMap<u64, crate::motion::MotionState>,
+    keyframes: &crate::motion::KeyframesRegistry,
+    now: web_time::Instant,
+) -> u8 {
+    use crate::retain::Dynamic;
+
+    let mut running = 0;
+    for shape in crate::custom_elements::svg_tree::shapes(tree, element) {
+        if animations.shape_moves(shape.id, keyframes) {
+            running |= Dynamic::Animation as u8;
+        }
+        if motion_states.get(&shape.id).is_some_and(|state| state.is_animating(now)) {
+            running |= Dynamic::Motion as u8;
+        }
+    }
+    running
 }
 
 impl GpuixView {
@@ -9367,6 +9400,30 @@ fn build_element_unpumped(
                     )
                 })
                 .flatten();
+            let running_shapes = if is_svg {
+                let running = shapes_running(
+                    ctx.tree,
+                    element,
+                    ctx.css_animations,
+                    ctx.motion_states,
+                    ctx.keyframes,
+                    ctx.now,
+                );
+                if running != 0 {
+                    ctx.retain.dynamic_bits(running);
+                    ctx.retain.paints_only(runs_paint_only(
+                        ctx.tree,
+                        element,
+                        ctx.css_animations,
+                        ctx.css_transitions,
+                        ctx.motion_states,
+                        ctx.keyframes,
+                    ));
+                }
+                running != 0
+            } else {
+                false
+            };
             let sized_style = is_svg
                 .then(|| crate::custom_elements::svg_tree::sized_style(style, element.custom_props()))
                 .flatten();
@@ -9455,6 +9512,10 @@ fn build_element_unpumped(
                 }),
             }
             if is_svg {
+                // A big document that moves is drawn a paint late, by a job: a tick cannot show it.
+                if running_shapes && !ctx.custom_registry.draws_changes_at_once(id) {
+                    ctx.retain.exclude(crate::retain::Exclusion::Svg);
+                }
                 ctx.retain.shape(ctx.svg_trees.generation(id));
                 ctx.retain.digest(|| format!("{svg_drawn:?}"));
             }

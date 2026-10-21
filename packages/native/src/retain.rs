@@ -167,7 +167,8 @@ pub(crate) enum Exclusion {
     /// own that notify, take the input handler while focused and blink; `<code>`, `<markdown>`
     /// and `<diff>` hold scrollers whose offset only gpui knows.
     CustomElement,
-    /// An `<svg>` that has not been painted yet or whose raster is still being made.
+    /// An `<svg>` that has not been painted yet, whose raster is still being made, or whose document
+    /// changed and is too big to be rasterised in paint.
     Svg,
     VirtualList,
     /// Built by a virtual list in layout, after the render.
@@ -3716,7 +3717,7 @@ mod tests {
                 "generation": 1,
                 "initial": { "r": 2.0 },
                 "animate": { "r": 10.0 },
-                "transition": { "duration": 600.0, "ease": "linear" }
+                "transition": { "duration": 0.6, "ease": "linear" }
             })),
         );
         let scene = Scene::new(cx, elements);
@@ -4305,6 +4306,55 @@ mod tests {
             scene.tick(cx);
         }
         assert_eq!(scene.patches(cx).patched_frames, after.patched_frames + 2);
+    }
+
+    /// A page whose `<svg>` (a unit once drawn) runs a shape animation, with `size` its box.
+    fn spinning(cx: &mut gpui::TestAppContext, size: &'static str) -> Scene {
+        let mut elements = icon(size, None);
+        elements.iter_mut().find(|element| element.id == 41).unwrap().style =
+            r#"{"animation": "grow 600ms linear infinite"}"#;
+        let scene = Scene::new(cx, elements);
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                view.retain.set_planning(true);
+                view.retain.set_verify(true);
+                view.keyframes.define("grow", r#"{"from": {"r": 2}, "to": {"r": 10}}"#).unwrap();
+            })
+            .unwrap();
+        for _ in 0..6 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.notified_draw(cx);
+            cx.run_until_parked();
+        }
+        scene
+    }
+
+    #[gpui::test]
+    fn an_svg_whose_shape_runs_an_animation_is_a_unit_and_its_ticks_are_patched(cx: &mut gpui::TestAppContext) {
+        let scene = spinning(cx, SMALL_ICON);
+        assert_eq!(units_of(&scene, cx), vec![40]);
+        let before = scene.patches(cx);
+        for _ in 0..4 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.tick(cx);
+        }
+        let after = scene.patches(cx);
+        assert_eq!(after.patched_frames - before.patched_frames, 4);
+        assert_eq!(after.total_declines(), before.total_declines());
+    }
+
+    #[gpui::test]
+    fn an_svg_too_big_to_raster_in_paint_whose_shape_runs_is_no_unit(cx: &mut gpui::TestAppContext) {
+        let scene = spinning(cx, r#"{"width": 300, "height": 200}"#);
+        assert_eq!(units_of(&scene, cx), Vec::<u64>::new());
+        let before = scene.patches(cx);
+        for _ in 0..4 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.tick(cx);
+            cx.run_until_parked();
+        }
+        assert_eq!(scene.patches(cx).patched_frames, before.patched_frames);
     }
 
     #[gpui::test]

@@ -786,8 +786,8 @@ pub struct SvgElement {
     source: Option<std::sync::Arc<[u8]>>,
     /// Shared with the paint closure, which runs after `render` returns.
     paint: std::rc::Rc<std::cell::RefCell<super::svg_paint::SvgPaint>>,
-    /// The last render had a document to paint.
-    drawing: bool,
+    /// The document the last render had to paint, and its `currentColor`.
+    drawing: Option<(std::sync::Arc<[u8]>, gpui::Rgba)>,
 }
 
 impl SvgElement {
@@ -896,11 +896,11 @@ impl CustomElement for SvgElement {
             Some(markup) => Some(std::sync::Arc::from(markup.as_bytes())),
             None => self.source.clone().or_else(|| self.bytes.clone()),
         };
-        self.drawing = bytes.is_some();
+        let color = ctx.colors.current;
+        self.drawing = bytes.clone().map(|bytes| (bytes, color));
         if let Some(bytes) = bytes {
             let paint = self.paint.clone();
             let renderer = cx.svg_renderer();
-            let color = ctx.colors.current;
             surface = surface.child(
                 gpui::canvas(
                     |_, _, _| (),
@@ -948,11 +948,22 @@ impl CustomElement for SvgElement {
         self.paint.borrow().held().into_iter().collect()
     }
 
-    /// What it paints is its document, drawn at its box in its colour. Both are in the key, and
-    /// the raster of a big document is a job that lands in some later paint, so until one has
-    /// been shown and none is running it is not the same as the last paint.
+    /// What it paints is its document, drawn at its box in its colour. Both are in the key. A
+    /// small document is rasterised in the paint that needs it, and the raster of a big one is a
+    /// job that lands in some later paint, so until one has been shown and none is running, and
+    /// while a change of document would start one, it is not the same as the last paint.
+    fn draws_changes_at_once(&self) -> bool {
+        self.drawing
+            .as_ref()
+            .is_none_or(|(bytes, _)| self.paint.borrow().rasterises_in_paint(bytes))
+    }
+
     fn retain_state(&self) -> Option<u64> {
-        (!self.drawing || self.paint.borrow().settled()).then_some(0)
+        let settled = match &self.drawing {
+            None => true,
+            Some((bytes, color)) => self.paint.borrow().paints_in_place(bytes, *color),
+        };
+        settled.then_some(0)
     }
 }
 

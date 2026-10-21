@@ -64,6 +64,26 @@ pub(crate) fn is_svg_element(tree: &RetainedTree, element: &crate::retained_tree
             .is_some_and(|parent| parent.element_type == "svg" || is_svg_element(tree, parent))
 }
 
+/// The shapes below the `<svg>` `host`, which it draws.
+pub(crate) fn shapes<'t>(
+    tree: &'t RetainedTree,
+    host: &crate::retained_tree::RetainedElement,
+) -> impl Iterator<Item = &'t crate::retained_tree::RetainedElement> {
+    let mut pending: Vec<u64> = if host.element_type == "svg" { host.children.clone() } else { Vec::new() };
+    std::iter::from_fn(move || {
+        while let Some(next) = pending.pop() {
+            let Some(shape) = tree.elements.get(&next) else {
+                continue;
+            };
+            if is_svg_element(tree, shape) {
+                pending.extend(&shape.children);
+                return Some(shape);
+            }
+        }
+        None
+    })
+}
+
 /// Props every host element takes that have nothing to say to the XML.
 const HOST_PROPS: &[&str] = &[
     "src",
