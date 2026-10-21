@@ -37,7 +37,7 @@ function setup() {
   return { ...root, ref, rect, element: (name: string) => refs.get(name)! }
 }
 
-function expectRect(actual: Rect, expected: Rect, context: string, tolerance = 0.51) {
+function expectRect(actual: Rect, expected: Rect, context: string, tolerance = 0.02) {
   for (const key of ["x", "y", "w", "h"] as const) {
     expect(Math.abs(actual[key] - expected[key]), `${context}: ${key} ${actual[key]} != ${expected[key]}`).toBeLessThanOrEqual(
       tolerance

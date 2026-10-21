@@ -279,7 +279,7 @@ pub fn track_own_bounds<E: gpui::InteractiveElement + gpui::Styled>(el: E, id: u
 /// painted-layout listener of the same element, which paints, or publishes after a pass that only
 /// lays out, right after it.
 #[derive(Clone, Default)]
-pub struct LaidOutBox(Rc<Cell<Option<PrepaintedBox>>>);
+pub struct LaidOutBox(Rc<Cell<Option<LaidOut>>>);
 
 /// What layout measured of an element, before any of it is snapped to device pixels.
 #[derive(Clone, Copy)]
@@ -306,26 +306,9 @@ impl LaidOut {
     }
 }
 
-#[derive(Clone, Copy)]
-struct PrepaintedBox {
-    laid_out: LaidOut,
-    snapped: Bounds<Pixels>,
-}
-
 impl LaidOutBox {
-    fn seen(&self) -> PrepaintedBox {
-        self.0.get().expect("an element is prepainted before its box is reported")
-    }
-
     fn get(&self) -> LaidOut {
-        self.seen().laid_out
-    }
-
-    /// How far the box as laid out is from the box snapped to device pixels, which is what
-    /// moves a position measured from the snapped box to the same position in the laid out one.
-    pub fn shift(&self) -> Point<Pixels> {
-        let seen = self.seen();
-        seen.laid_out.border_box.origin - seen.snapped.origin
+        self.0.get().expect("an element is prepainted before its box is reported")
     }
 }
 
@@ -334,7 +317,7 @@ impl LaidOutBox {
 pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> (E, LaidOutBox) {
     let captured = LaidOutBox::default();
     let slot = captured.0.clone();
-    let el = el.on_prepainted_layout(move |snapped, layout_id, window, _| {
+    let el = el.on_prepainted_layout(move |_, layout_id, window, _| {
         let border_box = window.layout_unsnapped_bounds(layout_id);
         let content = match scrolls.then(|| window.layout_unsnapped_scrollable_overflow(layout_id)).flatten() {
             Some(reach) => {
@@ -353,7 +336,7 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
             collapsed_table: false,
             culled: window.is_culling(),
         };
-        slot.set(Some(PrepaintedBox { laid_out, snapped }));
+        slot.set(Some(laid_out));
     });
     (el, captured)
 }

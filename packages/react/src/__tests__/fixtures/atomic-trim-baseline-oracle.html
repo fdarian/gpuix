@@ -10,7 +10,9 @@
   holding the atomic `holder` (or, in a `row-` case, a flex or grid container that holds a plain span as `holder` and the label
   beside it, baselines aligned); `label` is the trimmed box and `ink` the inline box inside it, whose box is the font's
   ascent and descent around the baseline. Numbers are [x, y, width, height] relative to the `line` box of the case.
-  The BADGES at the end are the cases of a 20px chip in a block line, see the comment there.
+  The BADGES at the end are the cases of a 20px chip in a block line, see the comment there. The FRACTIONS after them are
+  boxes at a fractional place on the page (an atomic inline whose line top is a device pixel tie, a paragraph at a
+  fractional x and y holding one, a span in a flex or grid item at a fractional top), read in page coordinates.
 -->
 <html><head><meta charset="utf-8"><style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -79,6 +81,26 @@ badge('block-badge-trim-line-24', { display: 'inline-block', wrap: 'div', line: 
 badge('flex-badge-16-24', { trim: false, size: '16px', line: '24px' })
 badge('block-badge-16-24', { display: 'inline-block', trim: false, wrap: 'div', size: '16px', line: '24px' })
 
+// A fraction: a case box (`position: absolute` at `left`, `top`) whose parts are read in page coordinates. The tops are
+// device pixel ties at scale 1 (x.5) and at scale 2 (the odd quarters x.25 and x.75).
+const FRACTIONS = []
+const fraction = (name, spec) => FRACTIONS.push({ name, left: 20, ...spec })
+for (const top of [100.5, 100.25, 100.75, 100, 101.5]) {
+  fraction(`badge-block-top${top}`, { kind: 'badge', place: 'block', top })
+  fraction(`badge-cell-top${top}`, { kind: 'badge', place: 'cell', top })
+  fraction(`bare-top${top}`, { kind: 'bare', top })
+}
+for (const [left, top] of [[20.5, 100.5], [20.25, 100.25], [20.75, 100.75], [20.5, 100.25], [20.25, 100.5]]) {
+  fraction(`paragraph-left${left}-top${top}`, { kind: 'paragraph', left, top })
+}
+for (const holder of ['flex', 'grid']) {
+  for (const top of [100.5, 100.25, 100.75, 101.5]) {
+    fraction(`${holder}-item-span-top${top}`, { kind: 'item', holder, top })
+    fraction(`${holder}-item-badge-top${top}`, { kind: 'item', holder, top, chip: true })
+  }
+  fraction(`${holder}-item-span-left20.5-top100.5`, { kind: 'item', holder, top: 100.5, left: 20.5 })
+}
+
 const rect = (element, origin) => {
   const box = element.getBoundingClientRect()
   return [box.x - origin.x, box.y - origin.y, box.width, box.height]
@@ -142,6 +164,74 @@ document.fonts.load('16px Menlo').then(() => {
     document.body.append(row)
     const origin = line.getBoundingClientRect()
     results[spec.name] = { line: rect(line, origin), holder: rect(holder, origin), label: rect(label, origin), ink: rect(label, origin), spec: { badge: true, ...spec } }
+  }
+  const chip = (bare) => {
+    const holder = document.createElement('span')
+    if (bare) {
+      holder.style.cssText = 'display: inline-block; width: 20px; height: 20px; background: #ddd'
+      return [holder]
+    }
+    holder.style.cssText = 'display: inline-flex; align-items: center; white-space: nowrap; height: 20px; padding: 0 8px; font-size: 11px; line-height: 14px'
+    const label = document.createElement('span')
+    label.style.cssText = 'display: block; text-box: trim-both cap alphabetic'
+    label.textContent = 'x.com'
+    holder.append(label)
+    return [holder, label]
+  }
+  for (const spec of FRACTIONS) {
+    const box = document.createElement('div')
+    box.style.cssText = `position: absolute; left: ${spec.left}px; top: ${spec.top}px; width: 300px; color: #000`
+    const parts = { case: box }
+    if (spec.kind === 'badge' || spec.kind === 'bare') {
+      box.style.font = spec.kind === 'bare' ? '16px/24px Menlo' : '13px/20px Menlo'
+      const [holder, label] = chip(spec.kind === 'bare')
+      parts.holder = holder
+      if (label) parts.label = label
+      if (spec.place === 'cell') {
+        box.style.display = 'table'
+        const line = document.createElement('div')
+        line.style.display = 'table-row'
+        const cell = document.createElement('div')
+        cell.style.cssText = 'display: table-cell; vertical-align: middle; height: 41px; padding: 8px 12px'
+        cell.append(holder)
+        line.append(cell)
+        box.append(line)
+        parts.cell = cell
+      } else {
+        box.append(holder)
+      }
+    } else if (spec.kind === 'paragraph') {
+      box.style.font = '16px/24px Menlo'
+      const span = document.createElement('span')
+      span.textContent = 'Hello'
+      const [holder] = chip(true)
+      box.append(span, ' ', holder, ' world')
+      parts.span = span
+      parts.holder = holder
+    } else {
+      box.style.font = '16px/24px Menlo'
+      box.style.display = spec.holder
+      const item = document.createElement('div')
+      item.style.height = '41px'
+      const span = document.createElement('span')
+      span.textContent = 'Plain'
+      parts.item = item
+      if (spec.chip) {
+        item.style.font = '13px/20px Menlo'
+        const [holder, label] = chip(false)
+        item.append(holder)
+        parts.holder = holder
+        parts.label = label
+      } else {
+        item.append(span)
+        parts.span = span
+      }
+      box.append(item)
+    }
+    document.body.append(box)
+    const rects = {}
+    for (const [part, element] of Object.entries(parts)) rects[part] = rect(element, { x: 0, y: 0 })
+    results[`frac-${spec.name}`] = { ...rects, spec: { frac: true, ...spec } }
   }
   document.body.setAttribute('data-rects', JSON.stringify({ scale: window.devicePixelRatio, results }))
 })

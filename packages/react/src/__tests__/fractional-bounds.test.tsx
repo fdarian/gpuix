@@ -141,6 +141,37 @@ describeNative("fractional bounds", () => {
     }
   })
 
+  it("reads an inline box in a flex item at a fractional top from the top of the item, once", () => {
+    const root = createTestRoot({ width: 480, height: 300 })
+    try {
+      root.render(
+        <div style={{ ...FONT, display: "flex", flexDirection: "column", width: 400 }}>
+          <div style={{ height: 10.5, flexShrink: 0 }} />
+          <div style={{ display: "flex", width: 300, alignItems: "flex-start" }}>
+            <div testId="item">
+              <text>
+                Hello <span testId="span">wide world</span> end
+              </text>
+            </div>
+          </div>
+        </div>
+      )
+      root.renderer.flush()
+      const ids = idsByTestId(root.renderer)
+      const bounds = (testId: string) => {
+        const found = root.renderer.getElementBounds(ids.get(testId))
+        return [found.x, found.y, found.width, found.height]
+      }
+      // Chrome 155: the item at y 10.5 (a line of 20px), the span 2px below it, 15px tall: the fraction of the item's
+      // top is in the span's top once (the span was 0.5 lower, at 11, when the paragraph's rows and the shift of its
+      // origin both held it).
+      near(bounds("item").slice(0, 2), [0, 10.5])
+      near(bounds("span"), [33.21875, 12.5, 63.296875, 15])
+    } finally {
+      root.unmount()
+    }
+  })
+
   it("gives getBoundingClientRect and getElementBounds the same fractions, with the derived edges", () => {
     const { element, box, unmount } = setup()
     try {

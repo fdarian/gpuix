@@ -150,10 +150,13 @@ pub fn union(fragments: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
 /// Records the box of every inline element of the paragraph `layout` belongs to. Call it from
 /// paint.
 ///
-/// The rows are measured from the snapped origin of the paragraph, where its glyphs are painted,
-/// and `shift` is how far layout's origin of the paragraph is from it: a span reports where
-/// layout put it, as a browser does.
-pub fn record(layout: &TextLayout, boxes: &[InlineBox], shift: Point<Pixels>, window: &Window) {
+/// The rows are measured from where the glyphs are painted (x on a device pixel, y with the
+/// fraction of the box top, which glyphs round once), and a span reports where layout put it, as
+/// a browser does: the same rows moved by how far layout's origin of the paragraph is from the
+/// glyphs' (`TextLayout::unsnapped_offset`: the fraction of x, and of both axes in an atomic inline
+/// that is not on a device pixel). The offset the pointer is measured from stays the painted one.
+pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &Window) {
+    let shift = layout.unsnapped_offset();
     for inline in boxes {
         let Some(painted) = union(&border_box_rows(layout, &inline.range, &inline.edges)) else {
             continue;

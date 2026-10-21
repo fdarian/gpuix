@@ -57,7 +57,7 @@ function setup() {
   return { ...root, ref, rect }
 }
 
-function expectRect(actual: Rect, expected: Rect, context: string, tolerance = 0.51) {
+function expectRect(actual: Rect, expected: Rect, context: string, tolerance = 0.02) {
   for (const key of ["x", "y", "w", "h"] as const) {
     expect(Math.abs(actual[key] - expected[key]), `${context}: ${key} ${actual[key]} != ${expected[key]}`).toBeLessThanOrEqual(
       tolerance
@@ -193,9 +193,9 @@ describeNative("the stable label: a weight change does not move what is around a
     </span>
   )
   const WORD = "Label"
-  // Boxes are painted on device pixels, so each item of a row is up to half a pixel off Chrome's.
+  // Text widths are a few 64ths off Chrome's, so each item of a row is too.
   const near = (actual: number, expected: number, context: string) =>
-    expect(Math.abs(actual - expected), `${context}: ${actual} != ${expected}`).toBeLessThanOrEqual(0.51)
+    expect(Math.abs(actual - expected), `${context}: ${actual} != ${expected}`).toBeLessThanOrEqual(0.05)
 
   it("sits on the line between the text before and after it, whatever the weight", () => {
     const { render, ref, rect, unmount } = setup()

@@ -440,8 +440,8 @@ pub fn baseline(
                     _ => {
                         let state = probe.state.clone();
                         AtomicBaseline::Measured(Box::new(move |window, root, _| {
-                            let item = window.layout_bounds(state.layout_id.get()?);
-                            Some(item.bottom() - window.layout_bounds(root).origin.y)
+                            let item = window.layout_unsnapped_bounds(state.layout_id.get()?);
+                            Some(item.bottom() - window.layout_unsnapped_bounds(root).origin.y)
                         }))
                     }
                 },
