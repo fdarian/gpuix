@@ -10163,6 +10163,7 @@ pub(crate) fn build_host_container(
         element.id,
         selection_start,
         ctx.scroll_handles.contains_key(&element.id),
+        collapsed_table,
         scroll_report,
     );
     if let Some(handle) = ctx.focus_handles.get(&element.id) {

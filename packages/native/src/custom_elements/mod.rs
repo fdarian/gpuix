@@ -191,6 +191,7 @@ pub(crate) fn custom_surface(
         ctx.id,
         None,
         false,
+        false,
         None,
     );
     el = match ctx.focus_handle {

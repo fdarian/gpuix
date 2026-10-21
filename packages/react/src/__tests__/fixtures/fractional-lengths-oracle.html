@@ -223,6 +223,20 @@ add('table collapse 3px width 100', ...tableCase(3, 'width:100px'));
 add('table collapse 0.5px', ...tableCase(0.5));
 add('table collapse 1.5px', ...tableCase(1.5));
 
+// The client box of a collapsed table is its border box whatever the borders are, and its cells' is what their own halves
+// leave: tables of sized cells (padding, no width) with a thicker table border, thicker cells, unequal neighbours.
+const collapsedTable = (tableStyle, rows) => `<table id="t" data-nobg style="border-collapse:collapse;${tableStyle}">${rows.map((cells, row) =>
+  `<tr id="r${row + 1}" data-nobg>${cells.map((style, column) => `<td id="c${row + 1}${column + 1}" style="padding:10px 20px;${style}"></td>`).join('')}</tr>`).join('')}</table>`;
+const solid = (width) => `border:${width}px solid #000`;
+add('table collapse table 4px cells 1px', collapsedTable(solid(4), [[solid(1), solid(1)], [solid(1), solid(1)]]));
+add('table collapse table 1px cells 5px', collapsedTable(solid(1), [[solid(5), solid(5)], [solid(5), solid(5)]]));
+add('table collapse table 3px cells none', collapsedTable(solid(3), [['', ''], ['', '']]));
+add('table collapse table none cells 3px', collapsedTable('', [[solid(3), solid(3)], [solid(3), solid(3)]]));
+add('table collapse unequal neighbours', collapsedTable('', [[solid(1), solid(3)], [solid(2), solid(5)]]));
+add('table collapse unequal neighbours table 2px', collapsedTable(solid(2), [[solid(1), solid(3)], [solid(5), solid(1)]]));
+add('table collapse table 2.5px cells 1.5px', collapsedTable(solid(2.5), [[solid(1.5), solid(1.5)], [solid(1.5), solid(1.5)]]));
+add('table collapse unequal sides', collapsedTable('', [['border-style:solid;border-width:1px 2px 3px 4px', 'border-style:solid;border-width:5px 1px 2px 3px']]));
+
 const out = { devicePixelRatio: window.devicePixelRatio, innerWidth: window.innerWidth, innerHeight: window.innerHeight, columns: COLUMNS, cellWidth: CELL_WIDTH, cellHeight: CELL_HEIGHT, cases: {} };
 const scene = document.getElementById('scene');
 let paintCount = 0, nextColor = 0;

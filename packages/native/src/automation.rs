@@ -53,6 +53,9 @@ pub struct ElementBounds {
     pub padding_top: f64,
     pub padding_right: f64,
     pub padding_bottom: f64,
+    /// A table with `border-collapse: collapse`. Its `border` is the outer halves of its cells' borders, which Chrome
+    /// reports as `clientLeft` and `clientTop` but does not take off `clientWidth` and `clientHeight`.
+    pub collapsed_table: bool,
     /// The element was in a culled subtree of the frame that recorded it: gpui walked it under an
     /// empty content mask, so nothing of it was drawn or hit. Retention reads it to leave a
     /// paint-only animation on it dormant (`retain::Sources::dormant`).
@@ -100,6 +103,7 @@ impl ElementBounds {
             padding_top: f64::from(f32::from(insets.padding.top)),
             padding_right: f64::from(f32::from(insets.padding.right)),
             padding_bottom: f64::from(f32::from(insets.padding.bottom)),
+            collapsed_table: layout.collapsed_table,
             culled: layout.culled,
         }
     }
@@ -124,6 +128,7 @@ impl ElementBounds {
             padding_top: 0.0,
             padding_right: 0.0,
             padding_bottom: 0.0,
+            collapsed_table: false,
             culled: false,
         }
     }
@@ -287,6 +292,8 @@ pub struct LaidOut {
     pub content: gpui::Size<Pixels>,
     /// The window's scale factor, which sets the unit the box is read in.
     pub scale: f32,
+    /// The element is a table with collapsed borders (`ElementBounds::collapsed_table`).
+    pub collapsed_table: bool,
     /// Prepaint walked the element as part of a culled subtree (`Window::is_culling`), which only
     /// prepaint knows.
     pub culled: bool,
@@ -295,7 +302,7 @@ pub struct LaidOut {
 impl LaidOut {
     /// An inline box has no layout node: it holds what it is.
     pub fn of_box(border_box: Bounds<Pixels>, scale: f32) -> Self {
-        Self { border_box, content: border_box.size, scale, culled: false }
+        Self { border_box, content: border_box.size, scale, collapsed_table: false, culled: false }
     }
 }
 
@@ -343,6 +350,7 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
             border_box,
             content,
             scale: window.scale_factor(),
+            collapsed_table: false,
             culled: window.is_culling(),
         };
         slot.set(Some(PrepaintedBox { laid_out, snapped }));
@@ -363,6 +371,7 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
 ///
 /// The box is the border box, which is what a DOM `getBoundingClientRect`
 /// reports. `scrolls` says it is a scroller, whose scrollable overflow is measured too.
+/// `collapsed_table` says it is a table with collapsed borders.
 ///
 /// `report` sees the painted box right after it is recorded. `on_painted_layout`
 /// takes one listener, so it shares this one. It is for what cannot be read from the recorded
@@ -373,6 +382,7 @@ pub fn track_host_bounds<E>(
     id: u64,
     selection_start: Option<bool>,
     scrolls: bool,
+    collapsed_table: bool,
     report: Option<PaintReporter>,
 ) -> E
 where
@@ -382,7 +392,7 @@ where
     el.on_painted_layout(move |bounds, layout_id, window, cx| {
         let insets = window.layout_insets(layout_id);
         let window_id = window.window_handle().window_id();
-        record_bounds(window_id, id, laid_out.get(), bounds.origin, insets);
+        record_bounds(window_id, id, LaidOut { collapsed_table, ..laid_out.get() }, bounds.origin, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
             crate::text::record_start_region(window_id, bounds, selectable);

@@ -183,8 +183,14 @@ pub(crate) fn metrics(
         let bars = handle.scrollbar_size();
         (f64::from(f32::from(bars.width)), f64::from(f32::from(bars.height)))
     });
-    let width = (painted.width - painted.client_left - painted.border_right - reserved_width).max(0.0);
-    let height = (painted.height - painted.client_top - painted.border_bottom - reserved_height).max(0.0);
+    // A collapsed table's outer halves are its border for `clientLeft` but not for its client size (see `ElementBounds::collapsed_table`).
+    let (border_x, border_y) = if painted.collapsed_table {
+        (0.0, 0.0)
+    } else {
+        (painted.client_left + painted.border_right, painted.client_top + painted.border_bottom)
+    };
+    let width = (painted.width - border_x - reserved_width).max(0.0);
+    let height = (painted.height - border_y - reserved_height).max(0.0);
     let (client_width, client_height) = (round_half_up(width), round_half_up(height));
     let Some(handle) = handle else {
         return Some([0.0, 0.0, client_width, client_height, client_width, client_height]);
@@ -672,6 +678,22 @@ mod tests {
         assert_eq!(round_half_up(10.5), 11.0);
         assert_eq!(round_half_up(10.4375), 10.0);
         assert_eq!(round_half_up(31.328125), 31.0);
+    }
+
+    #[test]
+    fn a_collapsed_tables_client_size_is_its_border_box_and_a_cells_leaves_its_halves() {
+        let halves = crate::automation::ElementBounds {
+            client_left: 1.5,
+            client_top: 1.5,
+            border_right: 1.5,
+            border_bottom: 1.5,
+            ..crate::automation::ElementBounds::plain(0.0, 0.0, 43.0, 23.0)
+        };
+        let cell = metrics(None, Some(halves)).unwrap();
+        assert_eq!((cell[4], cell[5]), (40.0, 20.0));
+        let table = crate::automation::ElementBounds { collapsed_table: true, ..halves };
+        let table = metrics(None, Some(table)).unwrap();
+        assert_eq!((table[4], table[5]), (43.0, 23.0));
     }
 
     #[test]
