@@ -5322,9 +5322,12 @@ pub(crate) struct GpuixView {
     selection_scroll_task: Option<gpui::Task<()>>,
     /// Motion / review clock. Live wall time unless automation freezes it.
     pub(crate) clock: crate::automation::AutomationClock,
-    /// The instant the last pass that was not a verifier's reference was built at, or the last
-    /// dormant tick ran at.
-    pub(crate) built_at: Option<web_time::Instant>,
+    /// The instant the last draw was built at, which every pass that only lays out reads again
+    /// instead of the clock: a forced layout is not a frame, and a browser's animation clock does
+    /// not move between frames either. A dormant tick and a patched frame move it too, they are
+    /// frames. Stamped by the first pass if no draw came yet. A verifier's reference pass does not
+    /// write it.
+    pub(crate) frame_instant: Option<web_time::Instant>,
     /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
     dormant_tick_armed: bool,
     paint_statics: PaintStatics,
@@ -5796,7 +5799,7 @@ impl GpuixView {
     /// The Web Animations of `element`: its CSS transitions, then its CSS
     /// animations, each in composite order, as of the last frame.
     pub(crate) fn web_animations(&self, element: u64) -> Vec<WebAnimationInfo> {
-        let Some(now) = self.built_at else {
+        let Some(now) = self.frame_instant else {
             return Vec::new();
         };
         let transitions = self.css_transitions.list(element, now);
@@ -5807,7 +5810,7 @@ impl GpuixView {
     /// The run `id` as it is now, or as it showed when its finish or cancel
     /// was reported while JS has not consumed that event.
     pub(crate) fn web_animation(&self, id: u64) -> std::result::Result<WebAnimationInfo, String> {
-        self.built_at
+        self.frame_instant
             .and_then(|now| {
                 self.css_transitions.info(id, now).or_else(|| self.css_animations.info(id, now))
             })
@@ -5828,12 +5831,29 @@ impl GpuixView {
         id: u64,
         command: crate::motion::web_animation::Command,
     ) -> std::result::Result<(), String> {
-        let outcome = self.built_at.and_then(|now| {
+        let outcome = self.frame_instant.and_then(|now| {
             self.css_transitions
                 .command(id, command, now)
                 .or_else(|| self.css_animations.command(id, command, now))
         });
         outcome.unwrap_or_else(|| Err(unknown_web_animation(id)))
+    }
+
+    /// The instant the pass being built samples time at: a draw reads the clock, anything else
+    /// (a layout a read forced, the reference of a verified frame) the instant of the draw
+    /// before it. See `frame_instant`.
+    fn pass_instant(&mut self, window: &gpui::Window) -> web_time::Instant {
+        if window.is_retention_reference() {
+            return self
+                .frame_instant
+                .expect("a reference pass is built right after the pass it is compared with");
+        }
+        if window.is_layout_pass() {
+            return *self.frame_instant.get_or_insert_with(|| self.clock.now());
+        }
+        let now = self.clock.now();
+        self.frame_instant = Some(now);
+        now
     }
 
     pub(crate) fn new(
@@ -5888,7 +5908,7 @@ impl GpuixView {
             selection_scroll_list: None,
             selection_scroll_task: None,
             clock: crate::automation::AutomationClock::new(),
-            built_at: None,
+            frame_instant: None,
             dormant_tick_armed: false,
             swept_at: 0,
             paint_statics: PaintStatics::default(),
@@ -6342,7 +6362,7 @@ impl GpuixView {
         }
 
         let callback = self.event_callback.clone();
-        let now = self.clock.now();
+        let now = self.pass_instant(window);
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
@@ -7833,7 +7853,7 @@ impl GpuixView {
     /// Nothing of the frames is touched: not the records, the dynamic elements, the elements not yet
     /// built, the tapes, and no frame is asked for (the animations that still run are noted in
     /// `take_active`, for the caller). What the build does to the clocks of the animations and the
-    /// events it emits are those of a frame, and `built_at` is `now`.
+    /// events it emits are those of a frame, and `frame_instant` is `now`.
     pub(crate) fn build_unit(
         &mut self,
         id: u64,
@@ -7866,7 +7886,7 @@ impl GpuixView {
         crate::tape::truncate_build_effects(effects);
         drop(pointer);
         debug_assert!(highlight_events.is_empty(), "a highlight is never inside a unit");
-        self.built_at = Some(now);
+        self.frame_instant = Some(now);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
@@ -8175,7 +8195,7 @@ impl GpuixView {
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
         let now = self.clock.now();
-        self.built_at = Some(now);
+        self.frame_instant = Some(now);
         self.css_animations.advance_dormant(now);
         self.css_transitions.advance_dormant(now);
         let (animating, settled) = if tree.motion_ids.is_empty() {
@@ -8297,19 +8317,15 @@ impl gpui::Render for GpuixView {
         // are different fields of self, so Rust allows borrowing all simultaneously.
         let theme = Theme::dark();
         // Everything time-dependent in a pass (motions, springs, transitions, animations, scroll
-        // animations, scrollbar fades) reads this one instant. The reference pass of a verified
-        // frame takes the instant of the pass it is compared with: on a clock that runs on it
-        // would be a pass ahead, and a replayed subtree placed by something that animates would
-        // differ from it by the distance that moved. Those are all sampled at `now` and not
-        // stepped, so building again at the same instant gives the same state.
-        let now = if window.is_retention_reference() {
-            self.built_at
-                .expect("a reference pass is built right after the pass it is compared with")
-        } else {
-            let now = self.clock.now();
-            self.built_at = Some(now);
-            now
-        };
+        // animations, scrollbar fades) reads this one instant. Only a draw takes a new one, so
+        // a layout a read forces advances nothing and fires no event of progress, and a handler
+        // that reads layout from a change event cannot make the next sample come early. The
+        // reference pass of a verified frame takes the instant of the pass it is compared with:
+        // on a clock that runs on it would be a pass ahead, and a replayed subtree placed by
+        // something that animates would differ from it by the distance that moved. Those are all
+        // sampled at `now` and not stepped, so building again at the same instant gives the same
+        // state.
+        let now = self.pass_instant(window);
         crate::scroll::begin_frame(|id| tree.elements.contains_key(&id));
         crate::scrollbar::begin_frame(
             now,

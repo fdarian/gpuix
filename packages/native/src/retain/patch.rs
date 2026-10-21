@@ -158,7 +158,7 @@ impl GpuixView {
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
-        self.built_at = Some(now);
+        self.frame_instant = Some(now);
         self.css_animations.advance_dormant(now);
         self.css_transitions.advance_dormant(now);
         let (animating, settled) = if tree.motion_ids.is_empty() {

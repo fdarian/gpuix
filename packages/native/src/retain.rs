@@ -4528,7 +4528,7 @@ mod tests {
                 let built = view.build_unit(20, now, window, cx);
                 assert!(view.build_unit(10, now, window, cx).is_none(), "10 is not a unit");
                 assert_eq!(view.retain.record_counts(), records, "nothing of the frames is touched");
-                assert_eq!(view.built_at, Some(now));
+                assert_eq!(view.frame_instant, Some(now));
                 (preview, built)
             })
             .unwrap();

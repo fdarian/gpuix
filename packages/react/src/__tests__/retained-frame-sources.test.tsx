@@ -761,10 +761,12 @@ function followRow(ringIn: "page" | "card", mode: Mode, planning: boolean, betwe
     view.render(page(null))
     view.settle()
     const series = []
-    // A live window is drawn by the display link, so a read between two frames is a pass of its own.
+    // A live window is drawn by the display link, not by each update: the frame that moves the row is
+    // drawn first (a layout pass a read forces does not advance time), then the ring is rendered and drawn.
     if (between) view.renderer.setInlineDraws(false)
     for (let index = 0; index < FRAMES; index++) {
       view.renderer.clockFastForward(50)
+      if (between) view.renderer.drawFrame()
       const target = rowRef.current.getBoundingClientRect()
       const card = view.bounds(`card-${CARD}`)
       view.render(page({ x: target.x, y: target.y, width: target.width, height: target.height, cardX: card.x, cardY: card.y }))
