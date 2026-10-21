@@ -12,9 +12,11 @@
  *
  * An element that is lifted into the stacking context around it is a unit too: one with an opacity
  * below 1 (a skeleton pulse, a motion fade), a positioned one, one with a `z-index`, as long as nothing
- * in it is lifted out of it. A loop that passes through opacity 1 is not lifted there, and the ticks
- * that change that are drawn whole. A `position: absolute` element is placed against a containing block
- * that gpui cannot tell is its parent, so it is drawn whole.
+ * in it is lifted out of it. An element whose opacity is animated is lifted, and paints as a group, for
+ * as long as the animation or transition is current, whatever opacity it samples (Chrome's
+ * `will-change: opacity` of an animation's side effects): a loop through exactly 1 and exactly 0 is
+ * patched at every tick, those included. A `position: absolute` element is placed against a containing
+ * block that gpui cannot tell is its parent, so it is drawn whole.
  *
  * What cannot be patched is drawn whole, as before: an animation that moves a box, a large `<svg>`,
  * a tick in which the pointer moved or the tree was committed.
@@ -223,11 +225,27 @@ const breatheHead = (
   </div>
 )
 
+/** The loop through 1 and 0 of native motion. */
+const opacityBlinkHead = motionOpacity([1, 0, 1], 1.6)
+
 /** A skeleton placeholder: Tailwind's `animate-pulse` is this, opacity 1 at its ends. */
 const skeletonHead = (
   <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 4 }}>
     <div testId="animated" style={{ height: 16, width: 240, borderRadius: 4, backgroundColor: "#cccccc", animation: "afw-skeleton 1.6s linear infinite" }} />
     <div style={{ height: 16, width: 180, borderRadius: 4, backgroundColor: "#cccccc" }} />
+  </div>
+)
+
+defineKeyframes("afw-blink", {
+  "0%": { opacity: 1 },
+  "50%": { opacity: 0 },
+  "100%": { opacity: 1 },
+})
+
+/** A loop through exactly 1 and exactly 0 (800 ms, the 50th tick of a 1.6 s loop of 16 ms ticks). */
+const blinkHead = (
+  <div testId="animated" style={{ height: 24, backgroundColor: "#99ccff", animation: "afw-blink 1.6s linear infinite" }}>
+    <text style={{ fontSize: 20, color: "#222222" }}>animated</text>
   </div>
 )
 
@@ -278,6 +296,21 @@ function TransitionHead() {
       <text testId="animated" style={{ fontSize: 20, color: on ? "#ff0000" : "#0000ff", transition: "color 1.5s linear" }}>
         transition
       </text>
+    </div>
+  )
+}
+
+/** Fades out when clicked: opacity 1 to 0, at 0 from the first tick on (`steps(1, jump-start)`) for 1.6 s. */
+function FadeOutHead() {
+  const [on, setOn] = useState(false)
+  return (
+    <div testId="toggle" onClick={() => setOn(true)} style={{ height: 24 }}>
+      <div
+        testId="animated"
+        style={{ height: 24, backgroundColor: "#99ccff", opacity: on ? 0 : 1, transition: "opacity 1.6s steps(1, jump-start)" }}
+      >
+        <text style={{ fontSize: 20, color: "#222222" }}>fading</text>
+      </div>
     </div>
   )
 }
@@ -427,23 +460,31 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     }
   })
 
-  // Opacity 1 is no stacking context, and a unit is lifted in the frame that recorded it or it is not. The tick at
-  // which the opacity is 1 is drawn whole, and so is the one after it, which records the lifted element again.
-  const dips = {
+  // An element with a current opacity animation is an effect group at every opacity it samples, and a unit is lifted
+  // in the frame that recorded it or it is not: the ticks at opacity 1 and at opacity 0 are patched like the others.
+  const loops = {
     "a native motion opacity loop through 1": opacityDipHead,
     "a keyframes skeleton pulse through 1": skeletonHead,
+    "a native motion opacity loop through 1 and 0": opacityBlinkHead,
+    "a keyframes opacity loop through 1 and 0": blinkHead,
   }
   const LOOP_TICKS = 200
-  // 1.6 s loops of 16 ms ticks, 12 of them before the first counted: the instants of opacity 1 are the 88th and the 188th.
-  const WHOLE = [87, 88, 187, 188]
-  for (const [name, head] of Object.entries(dips)) {
-    counted(`patches every tick of a loop through opacity 1 but the two at 1: ${name}`, async () => {
+  // 1.6 s loops of 16 ms ticks, 12 of them before the first counted: opacity is 1 at the 88th and the 188th tick, and 0
+  // at the 38th and the 138th of the loops through 0.
+  const EXACT = [38, 88, 138, 188]
+  for (const [name, head] of Object.entries(loops)) {
+    counted(`patches every tick of a loop through opacity 1 and 0, those ticks included: ${name}`, async () => {
       const run = async (nodes: number) => {
         const page = await mount(head, nodes)
         try {
           for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+          const before = page.renderer.getPatchCounters()
           const done: Work[] = []
           for (let frame = 0; frame < LOOP_TICKS; frame++) done.push(tick(page.renderer))
+          const after = page.renderer.getPatchCounters()
+          expect(after.patchedFrames - before.patchedFrames, "a patched frame for every tick").toBe(LOOP_TICKS)
+          expect(after.declines, "no tick is declined by gpui").toBe(before.declines)
+          expect(after.unpatchable, "no tick is left unpatched by gpuix").toBe(before.unpatchable)
           return done
         } finally {
           page.root.unmount()
@@ -451,25 +492,23 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
       }
       const small = await run(500)
       const large = await run(5000)
-      const whole = (done: Work[]) => done.flatMap((one, index) => (one.patchedFrames === 0 ? [index] : []))
-      expect(whole(small)).toEqual(WHOLE)
-      expect(whole(large)).toEqual(WHOLE)
-      for (const index of WHOLE) expect(small[index].elementsBuilt, `tick ${index} is built`).toBeGreaterThan(0)
       for (let index = 0; index < LOOP_TICKS; index++) {
-        if (!WHOLE.includes(index)) expect(large[index], `tick ${index}`).toEqual(small[index])
+        expect(small[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+        expect(small[index].elementsBuilt, `tick ${index}`).toBeLessThanOrEqual(3)
+        expect(large[index], `tick ${index}`).toEqual(small[index])
       }
-      expect(small[0].elementsBuilt).toBeLessThanOrEqual(3)
+      expect(EXACT.every((index) => small[index].patchedFrames === 1)).toBe(true)
     })
 
-    it.skipIf(!patching)(`shows the picture of a frame built whole at every instant around opacity 1: ${name}`, async () => {
+    it.skipIf(!patching)(`shows the picture of a frame built whole at every instant around opacity 1 and 0: ${name}`, async () => {
       const page = await mount(head, 500)
       try {
         const renderer = page.renderer
         const file = name.replace(/\W+/g, "-")
         for (let warm = 0; warm < WARM; warm++) tick(renderer)
-        for (let step = 0; step < 110; step++) {
+        for (let step = 0; step < 200; step++) {
           tick(renderer)
-          if (step % 10 !== 0 && (step < 84 || step > 91)) continue
+          if (step % 25 !== 0 && !EXACT.some((exact) => Math.abs(step - exact) <= 2)) continue
           const patched = shot(renderer, `${file}-patched`)
           renderer.setPatchEnabled(false)
           tick(renderer, 0)
@@ -483,6 +522,44 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
       }
     })
   }
+
+  counted("patches the ticks of an opacity transition that sits at exactly 0 while it runs, and shows what a whole frame does", async () => {
+    const run = async (nodes: number) => {
+      const root = createTestRoot(SIZE)
+      const renderer = root.renderer
+      try {
+        renderer.clockPause()
+        root.render(<Page nodes={nodes} head={<FadeOutHead />} />)
+        await settle(renderer)
+        renderer.setInlineDraws(false)
+        renderer.setA11yActive(false)
+        for (let warm = 0; warm < 4; warm++) tick(renderer)
+        const rect = renderer.getElementBounds(renderer.findByTestId("toggle").id)
+        renderer.nativeSimulateClick(rect.x + 4, rect.y + 4)
+        renderer.dispatchNativeEvents()
+        await settle(renderer, 6)
+        renderer.setInlineDraws(false)
+        // The commit and the frame that starts the transition are drawn whole. The 1.6 s run is at 0 from its first tick.
+        for (let warm = 0; warm < 4; warm++) tick(renderer)
+        const done: Work[] = []
+        for (let frame = 0; frame < 80; frame++) done.push(tick(renderer))
+        const patched = shot(renderer, `fade-out-${nodes}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        expect(patched.equals(shot(renderer, `fade-out-${nodes}-whole`)), "the picture of a frame built whole").toBe(true)
+        renderer.setPatchEnabled(true)
+        return done
+      } finally {
+        root.unmount()
+      }
+    }
+    const small = await run(500)
+    const large = await run(5000)
+    for (let index = 0; index < small.length; index++) {
+      expect(small[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+      expect(large[index], `tick ${index}`).toEqual(small[index])
+    }
+  })
 
   // gpuix puts `position: absolute` on gpui as absolute in an ancestor, which gpui keeps out of a recording.
   counted("draws the opacity loop of an absolute badge in a relative card whole, as before", async () => {

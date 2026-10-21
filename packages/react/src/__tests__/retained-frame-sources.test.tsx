@@ -930,11 +930,12 @@ describeNative("an inline span and an svg group running inside a root", () => {
 })
 
 
-// The clock of every case above is paused, so the two passes of a verified frame read one instant. A
-// live clock is read by each pass on its own, and whatever animates is further along in the pass that
-// the replay is compared with, so a root below it sits somewhere else in it. The height steps by whole
-// pixels: a root that layout moves by a fraction of a pixel is built, its boxes snap from the new origin.
-describeNative("a root below a sibling whose height animates, on a clock that is running", () => {
+// A root below a sibling whose height animates is moved by layout each frame, and the root is replayed
+// where layout puts it. The clock is paused and stepped by 5 ms, which is one pixel of the height: on a
+// live clock the number of replays depends on how long a frame takes (a debug addon drew none). The height
+// steps by whole pixels: a root that layout moves by a fraction of a pixel is built, its boxes snap from
+// the new origin.
+describeNative("a root below a sibling whose height animates, on a clock that is stepped", () => {
   it("is moved by layout each frame, and a verified frame finds it where a build of the same instant puts it", () => {
     const view = setup(
       <div>
@@ -949,9 +950,11 @@ describeNative("a root below a sibling whose height animates, on a clock that is
       </div>
     )
     try {
+      view.renderer.clockPause()
       view.settle()
       const tops = new Set<number>()
       for (let frame = 0; frame < 12; frame++) {
+        advance(view, 5)
         view.renderer.flush()
         tops.add(view.bounds("card-0").y)
       }

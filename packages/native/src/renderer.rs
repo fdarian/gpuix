@@ -8784,6 +8784,9 @@ fn build_element_in(
             boxed,
             prekeyed,
             scroller: ctx.scroller,
+            opacity_run: &|| {
+                opacity_runs(known, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now)
+            },
             costly: known.content.is_some()
                 || !crate::text::inline::is_host_type(&known.element_type)
                 || known.element_type == "text",
@@ -9246,6 +9249,18 @@ fn animate_style(
         );
         resolved
     });
+    let (mut transitioned, mut moved, mut bound, mut animated) = (transitioned, moved, bound, animated);
+    if opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now) {
+        // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
+        let current = animated
+            .as_deref_mut()
+            .or(bound.as_deref_mut())
+            .or(moved.as_deref_mut())
+            .or(transitioned.as_deref_mut().map(|declared| &mut declared.style));
+        current
+            .expect("an opacity that runs has the style it runs on")
+            .animating_opacity = true;
+    }
     Animated {
         hidden: false,
         transitioned,
@@ -9258,6 +9273,25 @@ fn animate_style(
         focus_visible_own,
         dynamic,
     }
+}
+
+/// Whether an animation or a transition of the `opacity` of `element` is current: a CSS animation or
+/// transition, `motion`, or a motion value that is moving. For as long as one is, the element is an
+/// effect group at every opacity it samples (`StyleDesc::animating_opacity`).
+fn opacity_runs(
+    element: &crate::retained_tree::RetainedElement,
+    animations: &crate::motion::CssAnimations,
+    transitions: &crate::motion::CssTransitions,
+    motion_states: &HashMap<u64, crate::motion::MotionState>,
+    motion_values: &crate::motion::MotionValueStore,
+    now: web_time::Instant,
+) -> bool {
+    let props = element.custom_props();
+    animations.animates_opacity(element.id)
+        || transitions.animates_opacity(element.id)
+        || (props.contains_key("motion")
+            && motion_states.get(&element.id).is_some_and(|state| state.animates_opacity(now)))
+        || props.get("motionValues").is_some_and(|binding| motion_values.animates_opacity(binding))
 }
 
 /// What a `display: contents` element handed down in a frame, kept for the other children spliced
@@ -9568,6 +9602,7 @@ fn build_element_unpumped(
     );
     tree.resolved.borrow_mut().record(id, resolved);
     let (colors, lengths) = (&ctx.inherited.colors, &ctx.inherited.lengths);
+    ctx.retain.opacity_run(style.is_some_and(|style| style.animating_opacity));
     ctx.retain.stacking(|| {
         (
             crate::layout::stacking::lift_z(&resolved, stacking_item),
@@ -11523,6 +11558,9 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     }
     if let Some(opacity) = style.opacity {
         el = el.opacity(opacity as f32);
+    }
+    if style.animating_opacity {
+        el = el.has_active_opacity_animation();
     }
     // Some(empty) is `none`, which a state style needs in order to clear the base filter.
     if let Some(filters) = style

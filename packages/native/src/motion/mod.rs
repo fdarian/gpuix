@@ -990,6 +990,15 @@ impl MotionState {
             })
     }
 
+    /// Whether the `opacity` track is moving at `now`: an animation of the opacity is current.
+    pub(crate) fn animates_opacity(&self, now: Instant) -> bool {
+        self.valid
+            && self
+                .tracks
+                .get(&PropKey::Style(AnimProp::Opacity))
+                .is_some_and(|track| track.sample(now).active)
+    }
+
     /// Whether a track is still moving at `now`: what it shows differs from one frame to the next.
     pub(crate) fn is_animating(&self, now: Instant) -> bool {
         self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active))

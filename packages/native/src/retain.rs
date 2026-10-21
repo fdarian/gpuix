@@ -393,6 +393,8 @@ struct Record {
     token: u64,
     lift_z: Option<i32>,
     forms_context: bool,
+    /// `Node::opacity_run`.
+    opacity_run: bool,
     /// The element or something in it is lifted out of it, which a recording is not moved with.
     lifts: bool,
     /// What `Below::holes` added up to when it was built: what the lifted elements in it, however
@@ -548,6 +550,9 @@ struct Node {
     exclusion: Option<Exclusion>,
     lift_z: Option<i32>,
     forms_context: bool,
+    /// An animation of the element's opacity was current when it was built: the element is an effect group
+    /// at every opacity it samples, so `lift_z` holds for as long as the run does.
+    opacity_run: bool,
     /// The element is a containing block for the absolutely positioned boxes below it.
     positioned: bool,
     /// The element is absolutely positioned: gpui rewrites its box against its containing block.
@@ -922,6 +927,10 @@ pub(crate) struct Entry<'a> {
     pub prekeyed: Option<EnterKey>,
     /// The scroller the element is inside of.
     pub scroller: Option<Scroller>,
+    /// Whether an animation of the element's opacity is current now. It is the one input of the lift
+    /// that moves with the clock and not with a revision: a record made on the other side of the
+    /// start or the end of a run says the element is lifted, or is not, wrongly.
+    pub opacity_run: &'a dyn Fn() -> bool,
     /// Whether building the element alone costs more than replaying it: it carries text or is
     /// not a plain host box (an image, an `<svg>`). Only a root of one element needs this.
     pub costly: bool,
@@ -958,6 +967,7 @@ enum Kept {
     Revision,
     Inherited,
     Shape,
+    OpacityRun,
 }
 
 impl Kept {
@@ -978,6 +988,7 @@ impl Kept {
             Self::Revision => "enter-revision",
             Self::Inherited => "enter-inherited",
             Self::Shape => "enter-shape",
+            Self::OpacityRun => "opacity-run",
         }
     }
 }
@@ -1810,6 +1821,7 @@ impl Retain {
             exclusion,
             lift_z: None,
             forms_context: false,
+            opacity_run: false,
             positioned: false,
             absolute: false,
             moved,
@@ -1832,6 +1844,7 @@ impl Retain {
                 node.vol = record.vol;
                 node.lift_z = record.lift_z;
                 node.forms_context = record.forms_context;
+                node.opacity_run = record.opacity_run;
                 node.subtree = record.subtree;
                 node.end = at + 1;
                 node.skipped = Some(Skipped { size: record.size, digest: record.digest });
@@ -1928,6 +1941,11 @@ impl Retain {
         }
         if record.enter.shape != node.enter.shape {
             return Err(Kept::Shape);
+        }
+        // The wrapper of a skipped root carries the lift of the record, and the build that replaces
+        // a replay that cannot be used makes the element as it is lifted now.
+        if record.opacity_run != (entry.opacity_run)() {
+            return Err(Kept::OpacityRun);
         }
         Ok(record)
     }
@@ -2135,6 +2153,13 @@ impl Retain {
                 node.lift_z = lift_z;
                 node.forms_context = forms_context;
             }
+        }
+    }
+
+    /// Whether an animation of the element's opacity is current in this build.
+    pub(crate) fn opacity_run(&mut self, runs: bool) {
+        if let Some(node) = self.top() {
+            node.opacity_run = runs;
         }
     }
 
@@ -2409,6 +2434,7 @@ impl Retain {
                     token,
                     lift_z: node.lift_z,
                     forms_context: node.forms_context,
+                    opacity_run: node.opacity_run,
                     lifts,
                     holes,
                     size: own.size,
@@ -2658,6 +2684,7 @@ mod tests {
             container: None,
             prekeyed: None,
             scroller: None,
+            opacity_run: &|| false,
             costly: true,
         });
         retain.stacking(|| (None, true));
@@ -2701,11 +2728,14 @@ mod tests {
         commanded: Vec<u64>,
         relevance: Vec<u64>,
         selection: u64,
+        /// An animation of the opacity of element 1 is current.
+        opacity_run: bool,
     }
 
     /// A frame of the one element 1, which it builds or leaves unvisited (a layout-only pass with
     /// `display: none` above it). Returns whether the frame skipped it.
     fn frame(retain: &mut Retain, changes: Changes, visit: bool) -> bool {
+        let opacity_run = changes.opacity_run;
         let (tree, focus) = (RetainedTree::new(), crate::focus::FocusStyles {
             within: changes.within.into(),
             ..Default::default()
@@ -2754,11 +2784,13 @@ mod tests {
                     container: None,
                     prekeyed: None,
                     scroller: None,
+                    opacity_run: &|| opacity_run,
                     costly: true,
                 })
                 .is_some();
             if !skipped {
-                retain.stacking(|| (None, true));
+                retain.opacity_run(opacity_run);
+                retain.stacking(|| (opacity_run.then_some(0), true));
                 retain.exit();
             }
         }
@@ -2791,6 +2823,23 @@ mod tests {
             assert!(!frame(&mut retain, Changes::default(), true), "{name}: the element is built");
             assert!(frame(&mut retain, Changes::default(), true), "{name}: then it is skipped again");
         }
+    }
+
+    #[test]
+    fn a_record_made_on_the_other_side_of_the_start_or_end_of_an_opacity_run_is_not_skipped() {
+        let run = |opacity_run| Changes { opacity_run, ..Default::default() };
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        for _ in 0..3 {
+            frame(&mut retain, run(true), true);
+        }
+        assert!(frame(&mut retain, run(true), true), "a run that goes on leaves the lift as the record has it");
+        // The wrapper of a skipped root carries the lift of the record, which the run made: with the
+        // run over, the element is lifted as its static opacity says.
+        assert!(!frame(&mut retain, run(false), true), "the run is over");
+        assert!(frame(&mut retain, run(false), true), "a record made after it is skipped again");
+        assert!(!frame(&mut retain, run(true), true), "a run has started");
+        assert!(frame(&mut retain, run(true), true));
     }
 
     #[test]
@@ -2868,6 +2917,7 @@ mod tests {
                 container: None,
                 prekeyed: None,
                 scroller: None,
+                opacity_run: &|| false,
                 costly: true,
             });
             retain.stacking(|| (None, true));
@@ -2984,6 +3034,7 @@ mod tests {
                 container: None,
                 prekeyed: None,
                 scroller: None,
+                opacity_run: &|| false,
                 costly: true,
             })
         };
@@ -4174,6 +4225,7 @@ mod tests {
                     container: None,
                     prekeyed: None,
                     scroller: None,
+                    opacity_run: &|| false,
                     costly: true,
                 })
                 .is_some();

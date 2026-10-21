@@ -1287,6 +1287,11 @@ impl CssTransitions {
             .any(|running| running.clock.wants_frame(now, running.end_time()));
     }
 
+    /// Whether a transition of `opacity` is running on `id`.
+    pub(crate) fn animates_opacity(&self, id: u64) -> bool {
+        self.states.get(&id).is_some_and(|state| state.running.contains_key(&AnimProp::Opacity))
+    }
+
     /// Whether every transition running on `id` is on a property that only changes what it paints.
     pub(crate) fn paints_only(&self, id: u64) -> bool {
         self.states.get(&id).is_none_or(|state| state.running.keys().all(|prop| prop.paints_only()))

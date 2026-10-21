@@ -1011,6 +1011,14 @@ pub struct StyleDesc {
     /// element is an atomic inline, which the text decoration of the boxes around it does not reach.
     #[serde(skip)]
     pub atomic_inline: bool,
+    /// Set by the renderer on the copy of the style it builds an element from, never by JS: an
+    /// animation or a transition of `opacity` is current on the element (a CSS animation or
+    /// transition, `motion`, a motion value that is moving), whatever opacity it samples. Chrome
+    /// treats the element as `will-change: opacity` for the whole run (Web Animations, "side effects
+    /// of animation"): it is an effect group, lifted at 0, at opacity 1 and 0 as well, and a group
+    /// at opacity 0 still paints. A run that ends puts the element back to what its static opacity says.
+    #[serde(skip)]
+    pub animating_opacity: bool,
 
     // CSS animations: CSS syntax, as in a DOM inline style. The longhands win
     // over the `animation` shorthand. Names refer to `defineKeyframes`.

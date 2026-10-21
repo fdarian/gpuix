@@ -77,7 +77,9 @@ pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
     resolved.effect_group || resolved.content_visibility.contains()
 }
 
-/// The condition of zed's `Style::group_effect`: opacity below 1, a non-empty `filter` or
+/// The condition of zed's `Style::group_effect`: opacity below 1 or an animation of it that is
+/// current (`animating_opacity`: the element is a group at any opacity it samples, as Chrome's
+/// `will-change: opacity` layer, so its lift does not change with the value), a non-empty `filter` or
 /// `backdrop-filter`, a mask layer or a mask border, or a clip path other than `none`. `colors` and `lengths`
 /// only decide whether a `filter` or `mask` value is valid, and a value that does not parse
 /// makes no group. Not `transform`: gpuix has no such style.
@@ -89,6 +91,7 @@ pub(crate) fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths
             .is_some_and(|filters| !filters.is_empty())
     };
     style.opacity.is_some_and(|opacity| opacity < 1.0)
+        || style.animating_opacity
         || filters(&style.filter)
         || filters(&style.backdrop_filter)
         || style

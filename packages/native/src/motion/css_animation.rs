@@ -1144,12 +1144,17 @@ impl Run {
     /// alone: a paused animation at the end of its effect is not current, and
     /// neither is one run back to the start.
     fn is_relevant(&self) -> bool {
-        self.progress.is_some()
-            || match self.phase {
-                Phase::Before => self.clock.rate() > 0.0,
-                Phase::Active => true,
-                Phase::After => self.clock.rate() < 0.0,
-            }
+        self.progress.is_some() || self.is_current()
+    }
+
+    /// Whether the animation is current: active, before its active phase going forward, or after it
+    /// going back. One that only fills is in effect and not current.
+    fn is_current(&self) -> bool {
+        match self.phase {
+            Phase::Before => self.clock.rate() > 0.0,
+            Phase::Active => true,
+            Phase::After => self.clock.rate() < 0.0,
+        }
     }
 
     fn info(&self, now: Instant) -> Info {
@@ -1505,6 +1510,16 @@ impl CssAnimations {
                     PropKey::Svg(_) => true,
                 })
             })
+    }
+
+    /// Whether an animation of `id` that is current animates `opacity`.
+    pub(crate) fn animates_opacity(&self, id: u64) -> bool {
+        self.states.get(&id).is_some_and(|state| {
+            state
+                .runs
+                .iter()
+                .any(|run| run.is_current() && run.properties.contains(&PropKey::Style(AnimProp::Opacity)))
+        })
     }
 
     /// `id` is left dormant by the frame being built: its clock is carried on by

@@ -38,6 +38,7 @@ macro_rules! overlay_fields {
             // What the element is, not a property: the style on top of it is the same element's.
             flex_or_grid_item: $base.flex_or_grid_item,
             atomic_inline: false,
+            animating_opacity: $base.animating_opacity,
             clone_probe: Default::default(),
         }
     };

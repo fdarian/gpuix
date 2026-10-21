@@ -83,6 +83,8 @@ pub(crate) struct MotionValueStore {
     watches: HashMap<ValueId, Watch>,
     /// What the last frame sampled for the values elements bind.
     frame_values: HashMap<ValueId, AnimValue>,
+    /// The values of `frame_values` that were changing by themselves (an animation or a spring) when sampled.
+    frame_moving: HashSet<ValueId>,
     /// The values the last frame found bound to something that is not paint-only, or read for
     /// the renderer's own use (a drag's offset), which is not known to be.
     layout_driven: HashSet<ValueId>,
@@ -176,6 +178,7 @@ impl MotionValueStore {
         let id = value_id(id)?;
         self.watches.remove(&id);
         self.frame_values.remove(&id);
+        self.frame_moving.remove(&id);
         Ok(self.graph.remove(id))
     }
 
@@ -337,6 +340,7 @@ impl MotionValueStore {
         now: Instant,
     ) -> MotionValueFrame {
         self.frame_values.clear();
+        self.frame_moving.clear();
         self.layout_driven.clear();
         let mut active = self.sample_unsampled(bindings, read, now);
         active |= self.observe(now);
@@ -383,6 +387,9 @@ impl MotionValueStore {
             match self.graph.sample(id, now) {
                 Ok(sample) => {
                     active |= sample.moving;
+                    if sample.moving {
+                        self.frame_moving.insert(id);
+                    }
                     self.frame_values.insert(id, sample.value);
                 }
                 Err(error) => self.warn(error),
@@ -416,6 +423,20 @@ impl MotionValueStore {
             }
         }
         active
+    }
+
+    /// Whether a value bound to `opacity` by `binding` was changing by itself when the frame sampled
+    /// it: an animation of the opacity is current on the element.
+    pub(crate) fn animates_opacity(&self, binding: &Value) -> bool {
+        parse_binding(binding).is_ok_and(|bound| {
+            bound.iter().any(|bound| match bound {
+                Bound::Longhand { prop: AnimProp::Opacity, id } => self.frame_moving.contains(id),
+                Bound::Longhand { .. } => false,
+                Bound::Shorthand { props, id, .. } => {
+                    props.contains(&AnimProp::Opacity) && self.frame_moving.contains(id)
+                }
+            })
+        })
     }
 
     /// The number the last frame sampled for a value passed as `read`.

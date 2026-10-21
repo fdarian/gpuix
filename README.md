@@ -6841,9 +6841,12 @@ so that animation starts at `0`.
   state style, an `@container` block, a transition, a CSS animation or a motion
   value moves the element between layers there, as in a browser. An element
   that was never painted (a virtual list row outside the window) has its declared
-  style. Known difference: Chrome gives an element a stacking context for as
-  long as an `opacity` animation or transition is on it, even at the instant the
-  `opacity` is still 1; gpuix does once it is below 1.
+  style. As in Chrome, an element has a stacking context, and paints as a group, for as
+  long as an `opacity` animation or transition (a CSS animation or transition, `motion`,
+  a motion value that is moving) is current on it, whatever `opacity` it samples:
+  at the instants it is 1 it is still in the layer above its in-flow siblings, and
+  at 0 it still paints (nothing shows). When the run ends it goes back to what its
+  own `opacity` says.
 - **`order`** stable-sorts the children of a flex or grid container. Layout and
   paint follow it; tab order stays in document order.
 - **Baselines.** Text has a first baseline: that of its first line. A flex or grid
