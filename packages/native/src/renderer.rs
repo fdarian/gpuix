@@ -9414,6 +9414,8 @@ fn build_element_unpumped(
         crate::css::text_underline_offset::with_inherited(style, ctx.inherited.underline_offset)
     });
     let style = offset_style.as_ref().or(style);
+    let contained_style = style.and_then(crate::layout::content_visibility::contained);
+    let style = contained_style.as_ref().or(style);
 
     if style.is_some_and(StyleDesc::lays_out_unstably) {
         ctx.retain.exclude(crate::retain::Exclusion::UnstableLayout);

@@ -1067,6 +1067,18 @@ pub struct StyleDesc {
     pub container_name: Option<crate::layout::container::ContainerNames>,
     /// `<name> [ / <type> ]`, the two longhands in one. The longhands win.
     pub container: Option<crate::layout::container::ContainerShorthand>,
+    /// `visible` (default), `auto` or `hidden`. Anything but `visible` contains the element's style,
+    /// layout and paint, and `hidden` (and `auto` while it is off screen) skips its content. See
+    /// `layout::content_visibility`.
+    pub content_visibility: Option<crate::layout::content_visibility::ContentVisibility>,
+    /// `<axis> [<axis>]`, the width and then the height of a box with size containment that has no
+    /// content to size it: a skipped one. An axis is `none`, a length or `auto <length>`.
+    pub contain_intrinsic_size: Option<crate::css::contain_intrinsic::IntrinsicSize>,
+    pub contain_intrinsic_width: Option<crate::css::contain_intrinsic::IntrinsicAxis>,
+    pub contain_intrinsic_height: Option<crate::css::contain_intrinsic::IntrinsicAxis>,
+    /// The logical longhands are the width and the height: the writing mode is horizontal.
+    pub contain_intrinsic_inline_size: Option<crate::css::contain_intrinsic::IntrinsicAxis>,
+    pub contain_intrinsic_block_size: Option<crate::css::contain_intrinsic::IntrinsicAxis>,
     /// Style blocks that apply while a container query is true, in written order, the later
     /// one winning. A block may carry state keys (`hover`, ...).
     #[serde(rename = "@container")]

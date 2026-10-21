@@ -61,8 +61,9 @@ pub(crate) fn paint_rank(resolved: &Resolved, item: bool) -> i32 {
 
 /// Whether the element forms a stacking context of its own: a positioned element with a
 /// `z-index` (not `auto`), a `fixed` or `sticky` one, a flex or grid item (`item`) with a
-/// `z-index`, and anything whose composite is applied as a whole, which is what zed's
-/// `effects.rs` does with an effect group. zed cannot see the latter
+/// `z-index`, an element with `content-visibility` other than `visible` (paint containment), and
+/// anything whose composite is applied as a whole, which is what zed's `effects.rs` does with an
+/// effect group. zed cannot see the latter
 /// (`element_opacity` is paint-only state), so every one must be flagged.
 pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
     if resolved.position != Position::Static {
@@ -73,7 +74,7 @@ pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
     } else if item && resolved.z_index.is_some() {
         return true;
     }
-    resolved.effect_group
+    resolved.effect_group || resolved.content_visibility.contains()
 }
 
 /// The condition of zed's `Style::group_effect`: opacity below 1, a non-empty `filter` or

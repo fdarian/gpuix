@@ -88,6 +88,10 @@ covers! {
     overflow => [overflow_x, overflow_y],
     overscroll_behavior => [overscroll_behavior_x, overscroll_behavior_y],
     container => [container_type, container_name],
+    contain_intrinsic_size => [
+        contain_intrinsic_width, contain_intrinsic_height, contain_intrinsic_inline_size,
+        contain_intrinsic_block_size,
+    ],
     grid_area => [grid_column, grid_row],
     grid_column => [grid_column_start, grid_column_end],
     grid_row => [grid_row_start, grid_row_end],

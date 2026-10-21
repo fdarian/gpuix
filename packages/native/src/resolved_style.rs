@@ -17,6 +17,7 @@ use rustc_hash::FxHashMap;
 use crate::color::ColorContext;
 use crate::css::length::LengthContext;
 use crate::layout::containing_block::Position;
+use crate::layout::content_visibility::ContentVisibility;
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::scroll::{Axes, Overflow};
 use crate::style::StyleDesc;
@@ -53,6 +54,9 @@ pub(crate) struct Resolved {
     pub contents: bool,
     /// `display` is `flex` or `grid` (or the inline-level spelling): the children are items.
     pub lays_out_items: bool,
+    /// `content-visibility`. Anything but `visible` contains the element: `position`, `overflow`
+    /// and the stacking context here already include what that brings (`layout::content_visibility`).
+    pub content_visibility: ContentVisibility,
 }
 
 impl Resolved {
@@ -68,6 +72,7 @@ impl Resolved {
         },
         contents: false,
         lays_out_items: false,
+        content_visibility: ContentVisibility::Visible,
     };
 
     /// The record for `element`, whose resolved `style` is given. `colors` and `lengths` decide
@@ -84,7 +89,10 @@ impl Resolved {
 
     /// Everything but the `display` flags, which depend on the element.
     pub(crate) fn of_style(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> Self {
+        let contained = crate::layout::content_visibility::contained(style);
+        let style = contained.as_ref().unwrap_or(style);
         Self {
+            content_visibility: style.content_visibility.unwrap_or_default(),
             position: Position::parse(style.position.as_deref()),
             z_index: style.z_index.map(crate::layout::stacking::round_z),
             effect_group: crate::layout::stacking::has_effect_group(style, colors, lengths),
@@ -202,7 +210,11 @@ impl RetainedTree {
     pub(crate) fn position_of(&self, element: &RetainedElement) -> Position {
         match self.resolved.borrow().get(element.id) {
             Some(resolved) => resolved.position,
-            None => Position::parse(element.style.as_deref().and_then(|style| style.position.as_deref())),
+            None => {
+                let declared = element.style.as_deref();
+                let contained = declared.and_then(crate::layout::content_visibility::contained);
+                Position::parse(contained.as_ref().or(declared).and_then(|style| style.position.as_deref()))
+            }
         }
     }
 
@@ -219,7 +231,11 @@ impl RetainedTree {
     pub(crate) fn overflow_of(&self, element: &RetainedElement) -> Axes {
         match self.resolved.borrow().get(element.id) {
             Some(resolved) => resolved.overflow,
-            None => element.style.as_deref().map_or(Resolved::UNSTYLED.overflow, Axes::of),
+            None => {
+                let declared = element.style.as_deref();
+                let contained = declared.and_then(crate::layout::content_visibility::contained);
+                contained.as_ref().or(declared).map_or(Resolved::UNSTYLED.overflow, Axes::of)
+            }
         }
     }
 }

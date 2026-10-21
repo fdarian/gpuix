@@ -10,6 +10,7 @@ pub(crate) mod clip_path;
 pub(crate) mod color_function;
 pub(crate) mod color_mix;
 pub(crate) mod color_space;
+pub(crate) mod contain_intrinsic;
 pub(crate) mod container_query;
 pub(crate) mod covers;
 pub(crate) mod custom_properties;

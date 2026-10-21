@@ -1282,6 +1282,38 @@ export interface StyleDesc {
    */
   container?: string
   /**
+   * Like CSS `content-visibility`. `"hidden"` skips the element's content: its children
+   * are not built, laid out or painted, but their DOM, animation and transition state is kept,
+   * and they are there again, as they were, when the value goes back to `"visible"` (the
+   * default). The element itself is built and painted: its background, border and hit area.
+   * `"auto"` is not yet skipped, and for now only has the containment below.
+   *
+   * Anything but `"visible"` contains the element's style, layout and paint: its content is
+   * clipped at the padding box as with `overflow: "clip"` (an `overflow` that already clips
+   * wins), it is a stacking context and the containing block of its `position: "absolute"`
+   * descendants. A skipped element also has size containment on both axes, sized by
+   * `containIntrinsicSize` (none, so zero, by default) plus its padding and border. Applies to
+   * `div`, `text`, `label`, `form` and block `span`; another element has the containment and
+   * is never skipped. Not modelled: the element is not an independent formatting context (a
+   * margin of its first or last child can collapse through it), and a `position: "fixed"`
+   * descendant is placed against the viewport. An observer on an element inside a skipped
+   * element may report it gone.
+   */
+  contentVisibility?: "visible" | "auto" | "hidden"
+  /**
+   * Like CSS `contain-intrinsic-size`: the size of the content box of an element with size
+   * containment that has no content to size it, for now a skipped one. `"<width> <height>"`
+   * or one value for both; each is `"none"`, a length (a number is px), or `"auto <length>"`.
+   * `containIntrinsicWidth` and `containIntrinsicHeight` win over it.
+   */
+  containIntrinsicSize?: number | string
+  containIntrinsicWidth?: number | string
+  containIntrinsicHeight?: number | string
+  /** `containIntrinsicWidth` in a horizontal writing mode, which is the only one. */
+  containIntrinsicInlineSize?: number | string
+  /** `containIntrinsicHeight` in a horizontal writing mode. */
+  containIntrinsicBlockSize?: number | string
+  /**
    * Styles that apply while a container query is true, like CSS `@container`.
    * Keys are queries in the CSS Containment 3 grammar, written the way they
    * follow `@container`: an optional container name, then a condition.

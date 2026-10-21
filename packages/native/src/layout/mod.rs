@@ -7,6 +7,7 @@ pub(crate) mod box_generation;
 pub(crate) mod container;
 pub(crate) mod collapse;
 pub(crate) mod containing_block;
+pub(crate) mod content_visibility;
 pub(crate) mod contents;
 pub(crate) mod cull;
 pub(crate) mod display;
