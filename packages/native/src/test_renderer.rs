@@ -394,6 +394,8 @@ fn unset_window_options() -> WindowOptions {
         app_name: None,
         width: None,
         height: None,
+        x: None,
+        y: None,
         min_width: None,
         min_height: None,
         resizable: None,
@@ -675,9 +677,13 @@ impl TestGpuixRenderer {
             &WindowOptions {
                 fullscreen: Some(false),
                 focus: Some(options.focus.unwrap_or(false)),
+                // The window stays at its offscreen position on no display.
+                x: None,
+                y: None,
                 ..options
             },
             bounds,
+            &[],
         );
         let window_handle = cx
             .update(|app| {

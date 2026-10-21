@@ -1205,6 +1205,30 @@ export interface DebugFrameOverlayStats {
 }
 
 /**
+ * A display, as Electron's `Display`. Coordinates are CSS px in one global space: the origin is
+ * the top-left of the primary display, y points down, and a display left of or above it has
+ * negative coordinates.
+ */
+export interface Display {
+  id: number
+  /** The name the OS gives the display, such as "Built-in Retina Display". */
+  label: string
+  bounds: Rectangle
+  /** `bounds` without the menu bar and the Dock. */
+  workArea: Rectangle
+  /** Device pixels per CSS px. */
+  scaleFactor: number
+  /** Degrees clockwise: 0, 90, 180 or 270. */
+  rotation: number
+  /** True for the display built into the machine. */
+  internal: boolean
+  /** The size of `bounds`. */
+  size: Size
+  /** The size of `workArea`. */
+  workAreaSize: Size
+}
+
+/**
  * One file of an OS file drag, as the DOM `File` plus the path the browser
  * would hide.
  */
@@ -1589,6 +1613,12 @@ export interface FrameWorkCounters {
   replayedPrimitives: number
 }
 
+/** Every display, in the order the OS lists them. */
+export declare function getAllDisplays(): Array<Display>
+
+/** The display with the menu bar. Its `bounds` start at 0, 0. */
+export declare function getPrimaryDisplay(): Display
+
 /** True only when this binary compiled the real GPU test renderer. */
 export declare function hasTestGpuixRenderer(): boolean
 
@@ -1816,6 +1846,14 @@ export interface PathPromptOptions {
   accept?: string
 }
 
+/** A rectangle in CSS px. */
+export interface Rectangle {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /** What the retained subtrees of the window did since it was made, see `get_retained_counters`. */
 export interface RetainedCounters {
   /** Subtrees a frame did not build, because the frame before left them recorded as the same. */
@@ -1863,6 +1901,12 @@ export interface RetainedCounters {
    * they were the same but for where they are, by the reason.
    */
   relocationMisses: string
+}
+
+/** A size in CSS px. */
+export interface Size {
+  width: number
+  height: number
 }
 
 /** What the sync handler returns. */
@@ -1946,6 +1990,16 @@ export interface WindowOptions {
   appName?: string
   width?: number
   height?: number
+  /**
+   * Where the window's top-left corner opens, in CSS px in the global space
+   * `getAllDisplays()` reports (origin at the primary display's top-left, y down).
+   * The display that contains the point, else the nearest, is the one the window
+   * opens on. Both `x` and `y` are needed; otherwise the window is centred, as in
+   * Electron. Ignored by `TestGpuixRenderer`.
+   */
+  x?: number
+  /** See `x`. */
+  y?: number
   minWidth?: number
   minHeight?: number
   resizable?: boolean

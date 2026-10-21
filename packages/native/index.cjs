@@ -782,5 +782,7 @@ module.exports.AvailableUpdate = nativeBinding.AvailableUpdate
 module.exports.GpuixRenderer = nativeBinding.GpuixRenderer
 module.exports.TestGpuixRenderer = nativeBinding.TestGpuixRenderer
 module.exports.checkUpdate = nativeBinding.checkUpdate
+module.exports.getAllDisplays = nativeBinding.getAllDisplays
+module.exports.getPrimaryDisplay = nativeBinding.getPrimaryDisplay
 module.exports.hasTestGpuixRenderer = nativeBinding.hasTestGpuixRenderer
 module.exports.validateKeyframes = nativeBinding.validateKeyframes

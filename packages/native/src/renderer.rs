@@ -1733,6 +1733,7 @@ impl GpuixRenderer {
         let activate = options.focus.unwrap_or(true);
         let window_options = options.clone();
         let appearance = appearance_override(&options).map_err(Error::from_reason)?;
+        let displays = crate::screen::all_displays()?;
 
         let platform = Rc::new(gpui_macos::MacPlatform::new_embedded());
 
@@ -1763,7 +1764,7 @@ impl GpuixRenderer {
             );
 
             match cx.open_window(
-                to_gpui_window_options(&window_options, bounds),
+                to_gpui_window_options(&window_options, bounds, &displays),
                 |window, cx| {
                     cx.new(|cx| {
                         let mut view = GpuixView::new(
@@ -1916,7 +1917,7 @@ impl GpuixRenderer {
                                 gpui::Bounds::centered(None, size, cx)
                             };
                             let window = match cx.open_window(
-                                to_gpui_window_options(&window_options, bounds),
+                                to_gpui_window_options(&window_options, bounds, &[]),
                                 |window, cx| {
                                     cx.new(|cx| {
                                         let mut view = GpuixView::new(
@@ -12365,6 +12366,14 @@ pub struct WindowOptions {
     pub app_name: Option<String>,
     pub width: Option<f64>,
     pub height: Option<f64>,
+    /// Where the window's top-left corner opens, in CSS px in the global space
+    /// `getAllDisplays()` reports (origin at the primary display's top-left, y down).
+    /// The display that contains the point, else the nearest, is the one the window
+    /// opens on. Both `x` and `y` are needed; otherwise the window is centred, as in
+    /// Electron. Ignored by `TestGpuixRenderer`.
+    pub x: Option<f64>,
+    /// See `x`.
+    pub y: Option<f64>,
     pub min_width: Option<f64>,
     pub min_height: Option<f64>,
     pub resizable: Option<bool>,
@@ -12410,6 +12419,8 @@ impl Default for WindowOptions {
             app_name: None,
             width: Some(800.0),
             height: Some(600.0),
+            x: None,
+            y: None,
             min_width: None,
             min_height: None,
             resizable: Some(true),
@@ -12529,9 +12540,14 @@ pub(crate) fn appearance_override(
     }
 }
 
+/// `centred` gives the size, and the origin when `x` and `y` are not both set. With both set the
+/// window opens on the display that contains the point (else the nearest), at the point's offset
+/// from that display's top-left, which is what GPUI reads `window_bounds.origin` as when
+/// `display_id` is set. With no displays to place it on (`displays` empty) the origin is the point.
 pub(crate) fn to_gpui_window_options(
     options: &WindowOptions,
-    bounds: gpui::Bounds<gpui::Pixels>,
+    centred: gpui::Bounds<gpui::Pixels>,
+    displays: &[crate::screen::Display],
 ) -> gpui::WindowOptions {
     let title = options.title.clone().unwrap_or_else(|| "GPUIX".to_string());
     let titlebar_transparent = options.frameless();
@@ -12552,6 +12568,28 @@ pub(crate) fn to_gpui_window_options(
         }
         _ => None,
     };
+    let (bounds, display_id) = match (options.x, options.y) {
+        (Some(x), Some(y)) => match crate::screen::display_for_point(displays, x, y) {
+            Some(display) => (
+                gpui::Bounds {
+                    origin: gpui::point(
+                        gpui::px((x - display.bounds.x) as f32),
+                        gpui::px((y - display.bounds.y) as f32),
+                    ),
+                    size: centred.size,
+                },
+                Some(gpui::DisplayId::new(u64::from(display.id))),
+            ),
+            None => (
+                gpui::Bounds {
+                    origin: gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
+                    size: centred.size,
+                },
+                None,
+            ),
+        },
+        _ => (centred, None),
+    };
     let window_bounds = if options.fullscreen.unwrap_or(false) {
         gpui::WindowBounds::Fullscreen(bounds)
     } else {
@@ -12560,6 +12598,7 @@ pub(crate) fn to_gpui_window_options(
     #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     let mut gpui_options = gpui::WindowOptions {
         window_bounds: Some(window_bounds),
+        display_id,
         titlebar: Some(gpui::TitlebarOptions {
             title: Some(title.into()),
             appears_transparent: titlebar_transparent,
@@ -13135,11 +13174,18 @@ mod window_options_tests {
     use super::*;
 
     fn mapped(options: WindowOptions) -> gpui::WindowOptions {
+        mapped_on(options, &[])
+    }
+
+    fn mapped_on(
+        options: WindowOptions,
+        displays: &[crate::screen::Display],
+    ) -> gpui::WindowOptions {
         let bounds = gpui::Bounds {
             origin: gpui::point(gpui::px(0.0), gpui::px(0.0)),
             size: gpui::size(gpui::px(800.0), gpui::px(600.0)),
         };
-        to_gpui_window_options(&options, bounds)
+        to_gpui_window_options(&options, bounds, displays)
     }
 
     #[test]
@@ -13241,6 +13287,101 @@ mod window_options_tests {
         assert_eq!(appearance_name(VibrantLight), "light");
         assert_eq!(appearance_name(Dark), "dark");
         assert_eq!(appearance_name(VibrantDark), "dark");
+    }
+
+    fn two_displays() -> Vec<crate::screen::Display> {
+        vec![
+            crate::screen::test_display(1, 0.0, 0.0, 1512.0, 982.0),
+            crate::screen::test_display(2, 1512.0, -200.0, 2560.0, 1440.0),
+        ]
+    }
+
+    fn placed(x: Option<f64>, y: Option<f64>) -> WindowOptions {
+        WindowOptions {
+            x,
+            y,
+            ..WindowOptions::default()
+        }
+    }
+
+    fn window_origin(options: &gpui::WindowOptions) -> (f32, f32) {
+        let bounds = match options.window_bounds {
+            Some(gpui::WindowBounds::Windowed(bounds) | gpui::WindowBounds::Fullscreen(bounds)) => {
+                bounds
+            }
+            other => panic!("expected windowed or fullscreen bounds, got {other:?}"),
+        };
+        (bounds.origin.x.into(), bounds.origin.y.into())
+    }
+
+    #[test]
+    fn a_point_on_the_second_display_opens_there_relative_to_it() {
+        let gpui_options = mapped_on(placed(Some(1612.0), Some(-100.0)), &two_displays());
+        assert_eq!(gpui_options.display_id, Some(gpui::DisplayId::new(2)));
+        assert_eq!(window_origin(&gpui_options), (100.0, 100.0));
+        assert!(matches!(
+            gpui_options.window_bounds,
+            Some(gpui::WindowBounds::Windowed(bounds))
+                if bounds.size == gpui::size(gpui::px(800.0), gpui::px(600.0))
+        ));
+    }
+
+    #[test]
+    fn a_point_on_the_primary_opens_there() {
+        let gpui_options = mapped_on(placed(Some(40.0), Some(60.0)), &two_displays());
+        assert_eq!(gpui_options.display_id, Some(gpui::DisplayId::new(1)));
+        assert_eq!(window_origin(&gpui_options), (40.0, 60.0));
+    }
+
+    #[test]
+    fn a_point_on_no_display_opens_on_the_nearest_relative_to_it() {
+        let gpui_options = mapped_on(placed(Some(-50.0), Some(300.0)), &two_displays());
+        assert_eq!(gpui_options.display_id, Some(gpui::DisplayId::new(1)));
+        assert_eq!(window_origin(&gpui_options), (-50.0, 300.0));
+
+        let gpui_options = mapped_on(placed(Some(4500.0), Some(-300.0)), &two_displays());
+        assert_eq!(gpui_options.display_id, Some(gpui::DisplayId::new(2)));
+        assert_eq!(window_origin(&gpui_options), (2988.0, -100.0));
+    }
+
+    #[test]
+    fn only_x_or_only_y_centres_the_window() {
+        for options in [placed(Some(1612.0), None), placed(None, Some(-100.0))] {
+            let gpui_options = mapped_on(options, &two_displays());
+            assert_eq!(gpui_options.display_id, None);
+            assert_eq!(window_origin(&gpui_options), (0.0, 0.0));
+        }
+    }
+
+    #[test]
+    fn fullscreen_with_a_point_goes_fullscreen_on_that_display() {
+        let gpui_options = mapped_on(
+            WindowOptions {
+                fullscreen: Some(true),
+                ..placed(Some(1612.0), Some(-100.0))
+            },
+            &two_displays(),
+        );
+        assert_eq!(gpui_options.display_id, Some(gpui::DisplayId::new(2)));
+        assert!(matches!(
+            gpui_options.window_bounds,
+            Some(gpui::WindowBounds::Fullscreen(_))
+        ));
+        assert_eq!(window_origin(&gpui_options), (100.0, 100.0));
+    }
+
+    #[test]
+    fn a_point_with_no_displays_is_the_origin_on_no_display() {
+        let gpui_options = mapped_on(placed(Some(1612.0), Some(-100.0)), &[]);
+        assert_eq!(gpui_options.display_id, None);
+        assert_eq!(window_origin(&gpui_options), (1612.0, -100.0));
+    }
+
+    #[test]
+    fn unplaced_windows_have_no_display() {
+        let gpui_options = mapped_on(WindowOptions::default(), &two_displays());
+        assert_eq!(gpui_options.display_id, None);
+        assert_eq!(window_origin(&gpui_options), (0.0, 0.0));
     }
 
     #[test]
