@@ -551,7 +551,7 @@ impl CustomElement for TextEditorElement {
                 state.caret_color = self.theme.caret;
                 state.changed(cx);
             }
-            state.arm_blink(window, cx);
+            state.note_focus(window, cx);
         });
 
         let mut editor = div().id(crate::events::ids::host_element_id(ctx.id)).flex().min_w_0().w_full();
@@ -1007,18 +1007,26 @@ impl TextEditorState {
         Duration::from_millis(CARET_BLINK_MS - self.ms_since_activity(cx) % CARET_BLINK_MS)
     }
 
-    /// Keeps a task waiting for the caret to change phase while it is shown. The change is a tick
-    /// of the window and not a notification of the editor: nothing about the editor changed, and
-    /// the frame that follows paints again only the element of the caret, see
-    /// `CustomElement::follows_clock`.
-    fn arm_blink(&mut self, window: &Window, cx: &mut Context<Self>) {
+    /// The caret starts solid when focus comes to it.
+    fn note_focus(&mut self, window: &Window, cx: &Context<Self>) {
         let shown = self.shows_caret(window);
         let was_shown = std::mem::replace(&mut self.caret_was_shown, shown);
-        if !shown {
-            return;
-        }
-        if !was_shown {
+        if shown && !was_shown {
             self.reset_blink(cx);
+        }
+    }
+
+    /// Keeps a task waiting for the caret to change phase while it can be seen, and none while it
+    /// cannot (scrolled out of its scroller, outside the window or a clip): a caret nobody sees
+    /// asks for no frame. The change is a tick of the window and not a notification of the
+    /// editor: nothing about the editor changed, and the frame that follows paints again only the
+    /// element of the caret, see `CustomElement::follows_clock`. Called by the prepaint of the
+    /// editor, so a frame that brings the caret back into view arms it.
+    fn keep_blinking(&mut self, visible: bool, window: &Window, cx: &mut Context<Self>) {
+        if !visible {
+            self.blink_armed = false;
+            self.blink_task = None;
+            return;
         }
         if self.blink_armed {
             return;
@@ -2359,7 +2367,7 @@ impl gpui::Element for EditorTextElement {
         _: Option<&gpui::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut (),
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> EditorPrepaint {
         self.input.update(cx, |input, _| {
@@ -2425,6 +2433,11 @@ impl gpui::Element for EditorTextElement {
                 ));
             }
         }
+        let seen = window.content_mask().bounds.intersect(&bounds);
+        let visible = caret.as_ref().is_some_and(|caret| caret.bounds.intersects(&seen));
+        self.input.update(cx, |input, cx| {
+            input.keep_blinking(visible && input.shows_caret(window), window, cx)
+        });
         EditorPrepaint { caret, selection }
     }
 

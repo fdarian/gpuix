@@ -4004,8 +4004,10 @@ reports the complete value to React.
 does not reject an edit like a browser-controlled input.
 
 The focused caret stays solid during edits and then blinks every 500ms while
-idle. It stops scheduling repaint frames on blur or while the window is
-inactive. The blink is a tick that repaints only the input, and only when the
+idle. It stops scheduling repaint frames on blur, while the window is
+inactive and while the caret cannot be seen (scrolled out of its scroller, or
+outside the window or a clip); the field still takes text there, and blinks again
+once a frame brings it back. The blink is a tick that repaints only the input, and only when the
 caret changes phase (a tick of an animation elsewhere leaves the caret as it was
 painted, as Chrome does), so a field costs a page with a running animation nothing:
 an idle one, a focused one and one outside its clip leave every tick of the

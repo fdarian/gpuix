@@ -893,6 +893,8 @@ describeNative("a patched tick on a live clock", { timeout: TIMEOUT }, () => {
 })
 
 const probeStyle = { width: 160, height: 24 }
+/** The frames a window drew: whole ones and patched ones. */
+const frames = (done: Work) => done.paintedFrames + done.patchedFrames
 const withProbe = (probe: React.ReactNode) => (
   <div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
     {colourHead()}
@@ -1049,6 +1051,65 @@ describeNative("the caret of a focused input", { timeout: TIMEOUT }, () => {
       const input = done.elementsBuilt - idle.phases[index].elementsBuilt
       expect(input, `the change of phase ${index} builds the input once`).toBeGreaterThan(0)
       expect(input).toBeLessThanOrEqual(6)
+    }
+  })
+
+  // Nobody sees a caret that is scrolled out of its scroller, or outside the window or a clip: Chrome paints no frame for it. The input
+  // still takes keys (it is not culled, which would drop its handlers), and blinks again when it is back.
+  counted("asks for no frame while it cannot be seen, takes text there, and blinks again when it is seen", async () => {
+    const values: string[] = []
+    const field = (
+      <div testId="scroller" style={{ width: 300, height: 60, flexShrink: 0, overflow: "auto" }}>
+        <input testId="probe" style={{ width: 200, height: 24 }} onChange={(event) => values.push(event.value)} />
+        <div style={{ width: 10, height: 600 }} />
+      </div>
+    )
+    const page = await mount(field, 500)
+    try {
+      const renderer = page.renderer
+      const scroller = renderer.findByTestId("scroller").id
+      const id = renderer.findByTestId("probe").id
+      // The scrollbar that a scroll shows fades out by itself, in frames of its own.
+      const scrollTo = (top: number) => {
+        renderer.scrollTo(scroller, 0, top)
+        wholeFrame(renderer)
+        tick(renderer, 2000)
+        tick(renderer)
+        wholeFrame(renderer)
+        wholeFrame(renderer)
+      }
+      const idle = (what: string) => {
+        for (let index = 0; index < 4; index++) expect(frames(work(renderer, () => renderer.advanceTime(500))), `${what}, 500 ms ${index}`).toBe(0)
+      }
+      await focusProbe(renderer)
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      expect(frames(work(renderer, () => renderer.advanceTime(500))), "in view").toBe(1)
+      scrollTo(300)
+      idle("out of view")
+      renderer.nativeSimulateKeystrokes(id, "a b")
+      renderer.dispatchNativeEvents()
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      expect(values.at(-1), "text typed while it is out of view").toBe("ab")
+      idle("typed in")
+      scrollTo(0)
+      for (let index = 0; index < 4; index++) expect(frames(work(renderer, () => renderer.advanceTime(500))), `back in view, 500 ms ${index}`).toBe(1)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  counted("asks for no frame while it is outside the clip of its ancestor", async () => {
+    const page = await mount(<div style={{ width: 10, height: 10 }} />, 500, false, <input testId="probe" style={probeStyle} />)
+    try {
+      const renderer = page.renderer
+      await focusProbe(renderer)
+      wholeFrame(renderer)
+      wholeFrame(renderer)
+      for (let index = 0; index < 4; index++) expect(frames(work(renderer, () => renderer.advanceTime(500))), `500 ms ${index}`).toBe(0)
+    } finally {
+      page.root.unmount()
     }
   })
 
