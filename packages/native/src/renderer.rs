@@ -5311,8 +5311,11 @@ pub(crate) struct GpuixView {
     selection_scroll_task: Option<gpui::Task<()>>,
     /// Motion / review clock. Live wall time unless automation freezes it.
     pub(crate) clock: crate::automation::AutomationClock,
-    /// The instant the last pass that was not a verifier's reference was built at.
+    /// The instant the last pass that was not a verifier's reference was built at, or the last
+    /// dormant tick ran at.
     built_at: Option<web_time::Instant>,
+    /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
+    dormant_tick_armed: bool,
     /// Resolved `highlight` state, keyed by the element that declared it.
     /// Empty in every app that does not use search.
     highlights: HashMap<u64, HighlightCacheEntry>,
@@ -5514,7 +5517,7 @@ fn sync_motion_states(
     viewport: gpui::Size<gpui::Pixels>,
     gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
     now: web_time::Instant,
-) -> (bool, Vec<(u64, u64)>) {
+) -> (Vec<u64>, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
     let mut root_font = crate::motion::ParentFont::initial();
     root_font.lengths = LengthContext::initial(
@@ -5524,7 +5527,7 @@ fn sync_motion_states(
     let root = (crate::color::ColorContext::root(color_scheme_of(appearance)), root_font);
     let mut known_colors = HashMap::new();
     states.retain(|id, _| tree.motion_ids.contains(id));
-    let mut active = false;
+    let mut animating = Vec::new();
     let mut settled = Vec::new();
 
     for &id in &tree.motion_ids {
@@ -5585,13 +5588,15 @@ fn sync_motion_states(
             log::warn!("Invalid motion gesture for element {id}: {error}");
         }
         let frame = state.frame(now);
-        active |= frame.active;
+        if frame.active {
+            animating.push(id);
+        }
         if frame.just_settled {
             settled.push((id, frame.generation));
         }
     }
 
-    (active, settled)
+    (animating, settled)
 }
 
 /// Emits a DOM event that bubbles and cannot be cancelled, aimed at `id`, when
@@ -5868,6 +5873,7 @@ impl GpuixView {
             selection_scroll_task: None,
             clock: crate::automation::AutomationClock::new(),
             built_at: None,
+            dormant_tick_armed: false,
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
             containers: Default::default(),
@@ -6321,7 +6327,7 @@ impl GpuixView {
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
-        let (motion_active, motion_settled) =
+        let (motion_animating, motion_settled) =
             sync_motion_states(
                 &tree,
                 &mut self.motion_states,
@@ -6331,6 +6337,7 @@ impl GpuixView {
                 &|id| gestures_of(&tree, &pointer, &focus_styles, id),
                 now,
             );
+        let motion_active = !motion_animating.is_empty();
         let motion_values_active =
             sync_row_motion_values(&tree, &mut self.motion_values, expected_child_id, now);
         let mut highlight_events = Vec::new();
@@ -7801,6 +7808,9 @@ impl GpuixView {
         if self.css_transitions.take_active() || self.css_animations.take_active() {
             window.request_animation_frame();
         }
+        if self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active() {
+            self.arm_dormant_tick(window, cx);
+        }
         // Only a build that gpui can record has a tape that goes with the recording. A pass that
         // only lays out records nothing, and must leave the tape of the recording that stands.
         if !window.retention_records() {
@@ -7816,6 +7826,102 @@ impl GpuixView {
             tree: self.tree.clone(),
             callback: self.event_callback.clone(),
             routing: self.routing.clone(),
+        }
+    }
+}
+
+/// Whether an element can be left alone while nobody sees it, see `retain::Sources::dormant`.
+struct Dormancy<'a> {
+    tree: &'a crate::retained_tree::RetainedTree,
+    window: gpui::WindowId,
+    animations: &'a crate::motion::CssAnimations,
+    transitions: &'a crate::motion::CssTransitions,
+    motion_states: &'a HashMap<u64, crate::motion::MotionState>,
+    keyframes: &'a crate::motion::KeyframesRegistry,
+}
+
+impl Dormancy<'_> {
+    fn holds(&self, id: u64) -> bool {
+        if !crate::automation::was_culled(self.window, id) {
+            return false;
+        }
+        let Some(element) = self.tree.elements.get(&id) else {
+            return false;
+        };
+        // A span is painted by its paragraph, an `<svg>` and its shapes by a raster, and a `layout`
+        // element glides between boxes: none is an element whose frame is only paint.
+        if element.element_type == "span"
+            || crate::custom_elements::svg_tree::is_svg_element(self.tree, element)
+            || element.custom_props().contains_key("layout")
+        {
+            return false;
+        }
+        self.animations.paints_only(id, self.keyframes)
+            && self.transitions.paints_only(id)
+            && self.motion_states.get(&id).is_none_or(crate::motion::MotionState::paints_only)
+            && element
+                .custom_props()
+                .get("motionValues")
+                .is_none_or(crate::motion::MotionValueStore::binding_paints_only)
+    }
+}
+
+impl GpuixView {
+    /// Asks for a frame callback that carries the dormant animations on without drawing: Chrome
+    /// runs the animations of content it does not show without painting a frame for them.
+    fn arm_dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        if std::mem::replace(&mut self.dormant_tick_armed, true) {
+            return;
+        }
+        let view = cx.weak_entity();
+        window.on_next_frame(move |window, cx| {
+            view.update(cx, |view, cx| view.dormant_tick(window, cx)).ok();
+        });
+    }
+
+    /// A frame in which only dormant animations run: no build, no layout, no draw. What a frame
+    /// would have done for them with the clock is done here: runs and transitions move to `now`,
+    /// motion is stepped, `animationiteration` and its kin are emitted, and `getAnimations` reads
+    /// the instant of the tick.
+    fn dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        self.dormant_tick_armed = false;
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        let callback = self.event_callback.clone();
+        let now = self.clock.now();
+        self.built_at = Some(now);
+        for &id in self.retain.dormant() {
+            self.css_animations.advance_clock(id, now);
+            self.css_transitions.advance_clock(id, now);
+        }
+        let (animating, settled) = if tree.motion_ids.is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
+            let pointer_state = self.pointer.clone();
+            let pointer = pointer_state.borrow();
+            sync_motion_states(
+                &tree,
+                &mut self.motion_states,
+                &self.measurements,
+                window.appearance(),
+                window.viewport_size(),
+                &|id| gestures_of(&tree, &pointer, &focus_styles, id),
+                now,
+            )
+        };
+        emit_motion_settled(&callback, &tree, &settled);
+        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
+        emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
+        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        let dormant = self.retain.dormant();
+        let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
+        if animating.iter().any(|id| !dormant.contains(id)) {
+            // A motion that no frame has seen run: a frame of its own sets it going.
+            cx.notify();
+        } else if dormant_active || !animating.is_empty() {
+            self.arm_dormant_tick(window, cx);
         }
     }
 }
@@ -7928,7 +8034,7 @@ impl gpui::Render for GpuixView {
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
-        let (motion_active, motion_settled) =
+        let (motion_animating, motion_settled) =
             sync_motion_states(
                 &tree,
                 &mut self.motion_states,
@@ -7964,6 +8070,20 @@ impl gpui::Render for GpuixView {
         crate::accessibility::links::sync(&tree);
         let activation = self.activation();
         crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
+        let commanded: Vec<u64> = self
+            .css_transitions
+            .take_commanded()
+            .into_iter()
+            .chain(self.css_animations.take_commanded())
+            .collect();
+        let dormancy = Dormancy {
+            tree: &tree,
+            window: window.window_handle().window_id(),
+            animations: &self.css_animations,
+            transitions: &self.css_transitions,
+            motion_states: &self.motion_states,
+            keyframes: &self.keyframes,
+        };
         self.retain.begin_frame(crate::retain::Sources {
             tree: &tree,
             hovered: pointer.chains().0,
@@ -7974,12 +8094,7 @@ impl gpui::Render for GpuixView {
             scrolls: &self.scroll_handles,
             measured: self.measurements.take_changed(),
             links: crate::accessibility::links::take_changed(),
-            commanded: self
-                .css_transitions
-                .take_commanded()
-                .into_iter()
-                .chain(self.css_animations.take_commanded())
-                .collect(),
+            commanded,
             customs: self.custom_registry.retain_states(),
             motion: self
                 .motion_states
@@ -7988,12 +8103,23 @@ impl gpui::Render for GpuixView {
                 .map(|(id, _)| *id)
                 .chain(self.css_animations.svg_shapes(&self.keyframes))
                 .collect(),
+            dormant: &|id| dormancy.holds(id),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
             lazy_builds: window.retained_counters().lazy_builds,
             relocations: window.retained_counters().relocations,
             reference: window.is_retention_reference(),
         });
+        // The elements left dormant keep their animations on time without a build: their clocks
+        // move here, and what they ask of the window goes to a tick that draws nothing.
+        self.css_animations.set_dormant(self.retain.dormant().iter().copied());
+        self.css_transitions.set_dormant(self.retain.dormant().iter().copied());
+        if !window.is_retention_reference() {
+            for &id in self.retain.dormant() {
+                self.css_animations.advance_clock(id, now);
+                self.css_transitions.advance_clock(id, now);
+            }
+        }
         let result = match tree.root_id {
             Some(root_id) => {
                 let mut ctx = BuildCtx {
@@ -8069,6 +8195,9 @@ impl gpui::Render for GpuixView {
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
+        let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
+        let motion_active = motion_animating.iter().any(|id| !self.retain.dormant().contains(id));
+        let dormant_motion = motion_animating.iter().any(|id| self.retain.dormant().contains(id));
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
@@ -8161,6 +8290,8 @@ impl gpui::Render for GpuixView {
 
         if motion_active || transitions_active || motion_value_frame.active || scroll_animating {
             window.request_animation_frame();
+        } else if dormant_active || dormant_motion {
+            self.arm_dormant_tick(window, cx);
         }
 
         result
@@ -8715,7 +8846,9 @@ fn build_element_unpumped(
         return absent_host(id);
     };
     crate::perf_counters::element_built();
-    ctx.retain.dynamic_bits(contents_dynamic);
+    if contents_dynamic != 0 {
+        ctx.retain.dynamic_bits(contents_dynamic | crate::retain::Dynamic::Spliced as u8);
+    }
 
     // `@container` blocks fold into the declared style before anything reads it, so state
     // styles, transitions and motion all see the style the containers above select.

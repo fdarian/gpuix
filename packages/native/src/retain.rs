@@ -294,6 +294,15 @@ pub(crate) enum Dynamic {
     Animation = 4,
     MotionValues = 8,
     InlineMotion = 16,
+    /// What runs on a `display: contents` element the build was spliced out of, which only its
+    /// children are built for: nothing on the child says what it is.
+    Spliced = 32,
+}
+
+impl Dynamic {
+    /// The kinds that only ever run on the element they are noted on, so that what the element
+    /// is running can be asked of its own state (`Sources::dormant`).
+    const OWN: u8 = Self::Motion as u8 | Self::Transition as u8 | Self::Animation as u8 | Self::MotionValues as u8;
 }
 
 /// What the build of an element is a function of that the retained tree can see.
@@ -574,6 +583,11 @@ pub(crate) struct Sources<'a> {
     pub customs: Vec<(u64, Option<u64>)>,
     /// The elements with a motion that is running.
     pub motion: Vec<u64>,
+    /// Whether the element can be left alone while it is not seen: everything that runs on it
+    /// only changes what it paints, and the last frame that reached it culled it (gpui walked it
+    /// under an empty content mask). Chrome paints no frame for such a change, and a frame that
+    /// builds it again when it shows reads the clock, so nothing it would have built is lost.
+    pub dormant: &'a dyn Fn(u64) -> bool,
     pub selection: u64,
     /// The pass of the draw the frame is built in, counted from 1, or 0 for a frame built outside
     /// a draw. Only the first pass of a draw is a frame to the back-off.
@@ -698,7 +712,10 @@ pub(crate) struct Retain {
     moved: Vec<bool>,
     records: FxHashMap<u64, Record>,
     /// The elements whose last build found a motion, transition or animation running.
-    dynamic: FxHashSet<u64>,
+    dynamic: FxHashMap<u64, u8>,
+    /// The elements the frame being built left out of `changed` because they are dormant
+    /// (`Sources::dormant`). Their records stay as they are: the roots above them are replayed.
+    dormant: FxHashSet<u64>,
     /// `RetainedTree::removals` when `records` and `dynamic` last dropped the destroyed elements.
     pruned_at: u64,
     seen: Seen,
@@ -846,7 +863,8 @@ impl Retain {
             retained: Vec::new(),
             moved: Vec::new(),
             records: FxHashMap::default(),
-            dynamic: FxHashSet::default(),
+            dynamic: FxHashMap::default(),
+            dormant: FxHashSet::default(),
             pruned_at: 0,
             seen: Seen::default(),
             deltas: Deltas::default(),
@@ -912,6 +930,7 @@ impl Retain {
         self.seen = Seen { scrolls, ..Seen::default() };
         self.records.clear();
         self.dynamic.clear();
+        self.dormant.clear();
         self.backoff = Backoff::default();
     }
 
@@ -945,6 +964,11 @@ impl Retain {
         [self.records.len(), self.dynamic.len()]
     }
 
+    /// The elements the frame being built (or the last one) leaves dormant, see `Sources::dormant`.
+    pub(crate) fn dormant(&self) -> &FxHashSet<u64> {
+        &self.dormant
+    }
+
     pub(crate) fn mismatches(&self) -> &[String] {
         &self.mismatches
     }
@@ -973,6 +997,11 @@ impl Retain {
         self.selection = sources.selection;
         self.nodes.clear();
         self.stack.clear();
+        // The pass that rebuilds a frame to compare it plans nothing, and builds the elements the
+        // frame left dormant, which must stay dormant for what they ask of the window.
+        if !sources.reference {
+            self.dormant.clear();
+        }
         self.debug.begin_frame(sources.pass);
         crate::tape::clear_build_effects();
         if self.open && self.planning {
@@ -1013,7 +1042,7 @@ impl Retain {
         }
         self.pruned_at = tree.removals();
         self.records.retain(|id, _| tree.elements.contains_key(id));
-        self.dynamic.retain(|id| tree.elements.contains_key(id));
+        self.dynamic.retain(|id, _| tree.elements.contains_key(id));
         self.unbuilt.retain(|id| tree.elements.contains_key(id));
     }
 
@@ -1129,18 +1158,40 @@ impl Retain {
         changed.extend(seen.customs.keys().filter(|id| !customs.contains_key(id)));
 
         self.debug.sources("pointer-focus-scroll-custom", changed.iter().copied());
-        self.debug.sources("motion-running", sources.motion.iter().copied());
         self.debug.sources("motion-just-ended", seen.motion.iter().copied().filter(|id| !sources.motion.contains(id)));
-        self.debug.sources("dynamic-last-build", self.dynamic.iter().copied());
+        let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
+        // A dormant element is not a change: the roots above it keep their recording, and a frame
+        // that shows it builds the root late, with the clock of that frame.
+        let mut dormant = FxHashSet::default();
+        let mut running = Vec::new();
+        for &id in &motion {
+            if (sources.dormant)(id) {
+                dormant.insert(id);
+            } else {
+                running.push(id);
+            }
+        }
+        running.extend(seen.motion.iter().filter(|id| !motion.contains(id)));
+        let mut dynamic = Vec::new();
+        for (&id, &bits) in &self.dynamic {
+            if dormant.contains(&id) || (bits & !Dynamic::OWN == 0 && (sources.dormant)(id)) {
+                dormant.insert(id);
+            } else {
+                dynamic.push(id);
+            }
+        }
+        self.debug.sources("motion-running", running.iter().copied());
+        self.debug.sources("dynamic-last-build", dynamic.iter().copied());
+        self.debug.sources("dormant", dormant.iter().copied());
         self.debug.sources("measurement", sources.measured.iter().copied());
         self.debug.sources("link", sources.links.iter().copied());
         self.debug.sources("web-animation-command", sources.commanded.iter().copied());
-        let motion: FxHashSet<u64> = sources.motion.iter().copied().collect();
-        changed.extend(motion.union(&seen.motion));
+        changed.extend(running);
         changed.extend(&sources.measured);
         changed.extend(&sources.links);
         changed.extend(&sources.commanded);
-        changed.extend(&self.dynamic);
+        changed.extend(dynamic);
+        self.dormant = dormant;
 
         seen.known = true;
         seen.hovered = sources.hovered.to_vec();
@@ -1765,7 +1816,7 @@ impl Retain {
                 check(&self.records, &mut self.mismatches, node.id, own.digest, eligible);
             }
             if node.vol.dynamic != 0 {
-                self.dynamic.insert(node.id);
+                self.dynamic.insert(node.id, node.vol.dynamic);
                 built_dynamic.insert(node.id);
             } else {
                 self.dynamic.remove(&node.id);
@@ -1811,12 +1862,17 @@ impl Retain {
     }
 
     /// A whole frame visits every element it does not skip, and it skips none that has a dynamic
-    /// one below it. So a dynamic element that this frame did not visit sits under one that has no
+    /// one below it, unless the dynamic one is dormant. So a dynamic element that this frame did not visit sits under one that has no
     /// box (`display: none`), and its record is of a build that is gone: it would keep every
     /// ancestor on the spine for as long as the window lives. Its record goes too, since a frame
     /// that shows it again must build it, not take what was recorded while its motion ran.
     fn forget_unbuilt_dynamic(&mut self, built: &FxHashSet<u64>) {
-        let stale: Vec<u64> = self.dynamic.iter().copied().filter(|id| !built.contains(id)).collect();
+        let stale: Vec<u64> = self
+            .dynamic
+            .keys()
+            .copied()
+            .filter(|id| !built.contains(id) && !self.dormant.contains(id))
+            .collect();
         for id in stale {
             self.dynamic.remove(&id);
             self.records.remove(&id);
@@ -1997,6 +2053,7 @@ mod tests {
             commanded: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
+            dormant: &|_| false,
             selection: 0,
             pass: 1,
             lazy_builds: 0,
@@ -2084,6 +2141,7 @@ mod tests {
             commanded: changes.commanded,
             customs: Vec::new(),
             motion: Vec::new(),
+            dormant: &|_| false,
             selection: changes.selection,
             pass: 1,
             lazy_builds: 0,
@@ -2195,6 +2253,7 @@ mod tests {
             commanded: Vec::new(),
             customs: Vec::new(),
             motion: motion.to_vec(),
+            dormant: &|_| false,
             selection: 0,
             pass: 1,
             lazy_builds: 0,
@@ -2307,6 +2366,7 @@ mod tests {
             commanded: Vec::new(),
             customs: Vec::new(),
             motion: Vec::new(),
+            dormant: &|_| false,
             selection: 0,
             pass: 1,
             lazy_builds: 0,

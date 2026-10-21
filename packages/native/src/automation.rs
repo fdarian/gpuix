@@ -53,6 +53,10 @@ pub struct ElementBounds {
     pub padding_top: f64,
     pub padding_right: f64,
     pub padding_bottom: f64,
+    /// The element was in a culled subtree of the frame that recorded it: gpui walked it under an
+    /// empty content mask, so nothing of it was drawn or hit. Retention reads it to leave a
+    /// paint-only animation on it dormant (`retain::Sources::dormant`).
+    pub culled: bool,
 }
 
 /// Layout resolution, the one of Chrome's `LayoutUnit`: a length is cut down to a multiple of
@@ -96,6 +100,7 @@ impl ElementBounds {
             padding_top: f64::from(f32::from(insets.padding.top)),
             padding_right: f64::from(f32::from(insets.padding.right)),
             padding_bottom: f64::from(f32::from(insets.padding.bottom)),
+            culled: layout.culled,
         }
     }
 
@@ -119,7 +124,15 @@ impl ElementBounds {
             padding_top: 0.0,
             padding_right: 0.0,
             padding_bottom: 0.0,
+            culled: false,
         }
+    }
+
+    /// How a verified frame says the box in words. Whether prepaint took the culled walk is left
+    /// out: a root kept near a scroller's clip is walked culled when it replays a recording made
+    /// far from it and unculled when it is built whole, and nothing the frame shows differs.
+    fn described(self) -> String {
+        format!("{:?}", Self { culled: false, ..self })
     }
 
     /// The box `offset` away, in the single precision it is measured in, which is what painting
@@ -204,12 +217,15 @@ pub struct LaidOut {
     pub content: gpui::Size<Pixels>,
     /// The window's scale factor, which sets the unit the box is read in.
     pub scale: f32,
+    /// Prepaint walked the element as part of a culled subtree (`Window::is_culling`), which only
+    /// prepaint knows.
+    pub culled: bool,
 }
 
 impl LaidOut {
     /// An inline box has no layout node: it holds what it is.
     pub fn of_box(border_box: Bounds<Pixels>, scale: f32) -> Self {
-        Self { border_box, content: border_box.size, scale }
+        Self { border_box, content: border_box.size, scale, culled: false }
     }
 }
 
@@ -253,7 +269,12 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
             }
             None => border_box.size,
         };
-        let laid_out = LaidOut { border_box, content, scale: window.scale_factor() };
+        let laid_out = LaidOut {
+            border_box,
+            content,
+            scale: window.scale_factor(),
+            culled: window.is_culling(),
+        };
         slot.set(Some(PrepaintedBox { laid_out, snapped }));
     });
     (el, captured)
@@ -318,7 +339,7 @@ pub fn record_bounds(
     crate::tape::write_in_layout(
         (window, id, ElementBounds::from_gpui(layout, painted, insets)),
         |(window, id, bounds), offset| insert_bounds(*window, *id, bounds.translated(offset)),
-        |(_, id, bounds), offset| format!("bounds {id} {:?}", bounds.translated(offset)),
+        |(_, id, bounds), offset| format!("bounds {id} {}", bounds.translated(offset).described()),
     );
 }
 
@@ -332,11 +353,17 @@ pub fn get_bounds(window: WindowId, id: u64) -> Option<ElementBounds> {
     BOUNDS.with(|cell| cell.borrow().get(&(window, id)).copied())
 }
 
+/// Whether the last frame that painted or laid out `window` walked `id` in a culled subtree. An
+/// element it did not reach is not culled: nothing is assumed of what was not seen.
+pub(crate) fn was_culled(window: WindowId, id: u64) -> bool {
+    BOUNDS.with(|cell| cell.borrow().get(&(window, id)).is_some_and(|bounds| bounds.culled))
+}
+
 /// Every painted box of `window` as text, in the order of the element ids.
 pub(crate) fn describe_bounds(window: WindowId) -> String {
     let mut all: Vec<_> = all_bounds(window).into_iter().collect();
     all.sort_by_key(|(id, _)| *id);
-    all.iter().map(|(id, bounds)| format!("bounds {id} {bounds:?}\n")).collect()
+    all.iter().map(|(id, bounds)| format!("bounds {id} {}\n", bounds.described())).collect()
 }
 
 pub fn all_bounds(window: WindowId) -> HashMap<u64, ElementBounds> {
