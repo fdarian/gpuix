@@ -988,6 +988,73 @@ describeNative("an input on a page with a loop", { timeout: TIMEOUT }, () => {
   }
 })
 
+const PATCH = ["diff --git a/a.ts b/a.ts", "--- a/a.ts", "+++ b/a.ts", "@@ -1,2 +1,2 @@", "-const a = 1", "+const a = 2", " const b = 3", ""].join("\n")
+
+// A `<code>`, `<markdown>` or `<diff>` is rebuilt by every frame that builds its page and paints the same in a tick: it is no
+// reason for a tick of a loop elsewhere to be drawn whole.
+describeNative("a code block on a page with a loop", { timeout: TIMEOUT }, () => {
+  const probes: Record<string, React.ReactNode> = {
+    "a code block": <code testId="probe" code={"const a = 1\nconst b = 2"} language="ts" style={{ width: 240 }} />,
+    "a markdown block": <markdown testId="probe" source={"# Title\n\nsome *text* and `code`"} style={{ width: 240 }} />,
+    "a diff": <diff testId="probe" patch={PATCH} style={{ width: 300 }} />,
+  }
+  const run = async (name: string, nodes: number) => {
+    const page = await mount(withProbe(probes[name]), nodes)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      const before = renderer.getPatchCounters()
+      const done: Work[] = []
+      for (let frame = 0; frame < TICKS; frame++) done.push(tick(renderer))
+      const after = renderer.getPatchCounters()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return {
+        done,
+        patched: after.patchedFrames - before.patchedFrames,
+        declines: gained(after.declines, before.declines),
+        unpatchable: gained(after.unpatchable, before.unpatchable),
+      }
+    } finally {
+      page.root.unmount()
+    }
+  }
+  for (const name of Object.keys(probes)) {
+    counted(`patches every tick of the loop and does the work of one text on any page: ${name}`, async () => {
+      const small = await run(name, 500)
+      const large = await run(name, 5000)
+      for (const result of [small, large]) {
+        expect(result.patched).toBe(TICKS)
+        expect(result.declines).toEqual({})
+        expect(result.unpatchable).toEqual({})
+      }
+      for (let index = 0; index < TICKS; index++) {
+        expect(large.done[index], `tick ${index}`).toEqual(small.done[index])
+        expect(small.done[index].elementsBuilt, `tick ${index}`).toBeLessThanOrEqual(6)
+        expect(small.done[index].hits + small.done[index].replays + small.done[index].builds, `tick ${index}`).toBe(0)
+      }
+    })
+
+    it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
+      const page = await mount(withProbe(probes[name]), 500)
+      try {
+        const renderer = page.renderer
+        for (let warm = 0; warm < WARM; warm++) tick(renderer)
+        for (let step = 0; step < 40; step++) tick(renderer)
+        const file = name.replace(/\W+/g, "-")
+        const patched = shot(renderer, `${file}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        const whole = shot(renderer, `${file}-whole`)
+        renderer.setPatchEnabled(true)
+        expect(patched.equals(whole)).toBe(true)
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        page.root.unmount()
+      }
+    })
+  }
+})
+
 describeNative("the caret of a focused input", { timeout: TIMEOUT }, () => {
   const blinking = (value = "") => <input testId="probe" defaultValue={value} style={{ width: 200, height: 24 }} />
 

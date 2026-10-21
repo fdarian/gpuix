@@ -210,12 +210,14 @@ impl Exclusion {
     ];
 
     /// Whether what the element paints or lays out follows the clock or the arrival of something
-    /// (a caret, a raster, an image, rows measured late), so that a tick which builds only what
-    /// runs on a clock would leave it as it was.
+    /// (a raster, an image, rows measured late), so that a tick which builds only what runs on a
+    /// clock would leave it as it was. A custom element that has no `retain_state` (`<code>`,
+    /// `<markdown>`, `<diff>`) does not: it is rebuilt by every frame that builds its page and
+    /// paints the same in a tick.
     pub(crate) fn varies_with_time(self) -> bool {
         matches!(
             self,
-            Self::Highlight | Self::CustomElement | Self::Svg | Self::VirtualList | Self::VirtualRow | Self::LayoutAnimation
+            Self::Highlight | Self::Svg | Self::VirtualList | Self::VirtualRow | Self::LayoutAnimation
         )
     }
 
@@ -4643,7 +4645,7 @@ mod tests {
 
     #[test]
     fn a_table_with_collapsed_borders_is_no_unit_when_a_part_is_excluded_for_another_reason() {
-        for (what, exclude) in [("a scroller", Exclusion::Scroller), ("an input", Exclusion::CustomElement)] {
+        for (what, exclude) in [("a scroller", Exclusion::Scroller), ("a code block", Exclusion::CustomElement)] {
             let mut page = Units::new();
             page.table(Some(true), |retain| retain.exclude(exclude));
             page.table(Some(true), |retain| retain.exclude(exclude));
@@ -4806,8 +4808,10 @@ mod tests {
         build(&mut page, Exclusion::Sticky);
         assert_eq!(page.ids(), vec![2]);
         assert_eq!(page.preview(&[], false), Ok(vec![2]), "a sticky box follows the scroll, not the clock");
+        build(&mut page, Exclusion::CustomElement);
+        build(&mut page, Exclusion::CustomElement);
+        assert_eq!(page.preview(&[], false), Ok(vec![2]), "a code block is rebuilt by its frame, and paints the same in a tick");
         for varies in [
-            Exclusion::CustomElement,
             Exclusion::Highlight,
             Exclusion::Svg,
             Exclusion::VirtualList,
