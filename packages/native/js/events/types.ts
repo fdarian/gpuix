@@ -223,6 +223,24 @@ export interface AnimationEventHandlerProps {
 }
 
 /**
+ * `contentvisibilityautostatechange`: an element with `contentVisibility: "auto"` began or stopped
+ * skipping its content. It bubbles from the element (`target`) and can be cancelled, which does
+ * nothing. `skipped` is whether the content is skipped now.
+ */
+export interface HostContentVisibilityAutoStateChangeEvent extends HostDomEvent {
+  skipped: boolean
+}
+
+export interface ContentVisibilityEventHandlerProps {
+  /**
+   * An `auto` element is told once it has been decided whether it is near enough to the viewport to show its
+   * content, and again each time that changes, after the frame that applied it. A mounted element near the viewport
+   * is told `skipped: false` once.
+   */
+  onContentVisibilityAutoStateChange?: (event: HostContentVisibilityAutoStateChangeEvent) => void
+}
+
+/**
  * `compositionstart`, `compositionupdate` and `compositionend`: an input method
  * composing text in an `<input>` or `<textarea>`. They bubble from the text
  * input (`target`) and cannot be cancelled. `data` is the text the composition
@@ -274,6 +292,10 @@ export type PointerEventProps = PointerEventHandlerProps &
 /** Each transition and animation handler, plus its capture-phase `on…Capture` twin. */
 export type AnimationEventProps = AnimationEventHandlerProps &
   Partial<CaptureProps<AnimationEventHandlerProps>>
+
+/** The `content-visibility` handler, plus its capture-phase `on…Capture` twin. */
+export type ContentVisibilityEventProps = ContentVisibilityEventHandlerProps &
+  Partial<CaptureProps<ContentVisibilityEventHandlerProps>>
 
 /** Each composition handler, plus its capture-phase `on…Capture` twin. */
 export type CompositionEventProps = CompositionEventHandlerProps &

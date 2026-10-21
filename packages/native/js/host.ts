@@ -13,6 +13,7 @@ import type { DomEvent, RootEvent } from "./events/dispatch.js"
 import type {
   AnimationEventProps,
   CompositionEventProps,
+  ContentVisibilityEventProps,
   HostInputEvent,
   PointerEventProps,
 } from "./events/types.js"
@@ -1590,6 +1591,7 @@ export interface HostProps
   extends AriaProps,
     PointerEventProps,
     AnimationEventProps,
+    ContentVisibilityEventProps,
     CompositionEventProps {
   style?: StyleDesc
 

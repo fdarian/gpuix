@@ -73,6 +73,15 @@ describe("EVENT_PROPS", () => {
     expect(eventIsCancelable(type)).toBe(false)
   })
 
+  it("onContentVisibilityAutoStateChange listens for the DOM type, has a capture twin, bubbles and can be cancelled", () => {
+    const type = "contentvisibilityautostatechange"
+    expect(EVENT_TYPE_BY_PROP.get("onContentVisibilityAutoStateChange")).toBe(type)
+    expect(EVENT_TYPE_BY_PROP.get("onContentVisibilityAutoStateChangeCapture")).toBe(captureHandlerKey(type))
+    expect(DOM_DISPATCHED_EVENT_TYPES.has(type)).toBe(true)
+    expect(eventBubbles(type)).toBe(true)
+    expect(eventIsCancelable(type)).toBe(true)
+  })
+
   it("keeps onMouseDownOutside as the gpuix type, without a capture variant", () => {
     expect(EVENT_TYPE_BY_PROP.get("onMouseDownOutside")).toBe("mousedownoutside")
     expect(EVENT_PROP_NAMES.has("onMouseDownOutsideCapture")).toBe(false)

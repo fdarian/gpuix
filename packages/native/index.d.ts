@@ -1556,6 +1556,11 @@ export interface EventPayload {
    */
   focusVisible?: boolean
   /**
+   * Whether the element skips its content (`content-visibility: auto`).
+   * Populated for: contentvisibilityautostatechange.
+   */
+  skipped?: boolean
+  /**
    * Content box, visible rect and viewport for an observer.
    * Populated for: resizeObserve, intersectObserve. With `x`, `y`, `width`
    * and `height` as the border box.

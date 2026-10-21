@@ -272,6 +272,10 @@ pub struct EventPayload {
     /// Populated for: focus, blur, focusin, focusout.
     pub focus_visible: Option<bool>,
 
+    /// Whether the element skips its content (`content-visibility: auto`).
+    /// Populated for: contentvisibilityautostatechange.
+    pub skipped: Option<bool>,
+
     /// Content box, visible rect and viewport for an observer.
     /// Populated for: resizeObserve, intersectObserve. With `x`, `y`, `width`
     /// and `height` as the border box.
@@ -372,6 +376,7 @@ impl Default for EventPayload {
             pointer_type: None,
             focus_visible: None,
             observation: None,
+            skipped: None,
             property_name: None,
             animation_name: None,
             animation_id: None,

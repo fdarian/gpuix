@@ -2,6 +2,7 @@ import { captureHandlerKey } from "./dispatch.js"
 import type {
   AnimationEventHandlerProps,
   CompositionEventHandlerProps,
+  ContentVisibilityEventHandlerProps,
   PointerEventHandlerProps,
 } from "./types.js"
 
@@ -81,6 +82,18 @@ type MissingFromAnimationTable = Exclude<
 const animationTableCoversEveryProp: [MissingFromAnimationTable] extends [never] ? true : never = true
 void animationTableCoversEveryProp
 
+/** The state change of an element with `content-visibility: auto`. It bubbles and can be cancelled. */
+const CONTENT_VISIBILITY_EVENT_PROPS = [
+  ["onContentVisibilityAutoStateChange", "contentvisibilityautostatechange"],
+] as const satisfies readonly (readonly [keyof ContentVisibilityEventHandlerProps, string])[]
+
+type MissingFromContentVisibilityTable = Exclude<
+  keyof ContentVisibilityEventHandlerProps,
+  (typeof CONTENT_VISIBILITY_EVENT_PROPS)[number][0]
+>
+const contentVisibilityTableCoversEveryProp: [MissingFromContentVisibilityTable] extends [never] ? true : never = true
+void contentVisibilityTableCoversEveryProp
+
 /** Input method composition events. They bubble and cannot be cancelled. */
 const COMPOSITION_EVENT_PROPS = [
   ["onCompositionStart", "compositionstart"],
@@ -107,6 +120,7 @@ export const POINTER_EVENT_TYPES: ReadonlySet<string> = new Set(
 export const DOM_DISPATCHED_EVENT_TYPES: ReadonlySet<string> = new Set([
   ...POINTER_EVENT_TYPES,
   ...ANIMATION_EVENT_PROPS.map(([, eventType]) => eventType),
+  ...CONTENT_VISIBILITY_EVENT_PROPS.map(([, eventType]) => eventType),
   ...COMPOSITION_EVENT_PROPS.map(([, eventType]) => eventType),
 ])
 
@@ -118,6 +132,7 @@ export const DOM_DISPATCHED_EVENT_TYPES: ReadonlySet<string> = new Set([
 export const DOM_DISPATCHED_HANDLER_PROPS: readonly (readonly [string, string])[] = [
   ...POINTER_EVENT_PROPS,
   ...ANIMATION_EVENT_PROPS,
+  ...CONTENT_VISIBILITY_EVENT_PROPS,
   ...COMPOSITION_EVENT_PROPS,
 ].flatMap(([propName, eventType]) => [
   [propName, eventType] as const,
