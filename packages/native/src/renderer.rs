@@ -470,6 +470,45 @@ pub(crate) fn invalidate_after_commit(cx: &mut gpui::App, view: gpui::EntityId) 
     cx.notify(view);
 }
 
+/// Lays out the window as `lay_out` does and reads what it published with `read`, laying out the
+/// content of the skipped ancestors of `id` first when it has any: Chrome's forced layout of a
+/// locked subtree (`DisplayLockUtilities::ScopedForcedUpdate`) for a read of geometry. The
+/// ancestors are forced for one layout-only pass, which builds their content and publishes its
+/// boxes and paints nothing, and then skip again: the window is invalidated once more, so the
+/// frame that follows is not the forced one. Nothing about their state changes (see
+/// `content_visibility::Relevance::force`). An element outside any skipped subtree costs the walk
+/// up its ancestors.
+pub(crate) fn read_after_layout<R>(
+    tree: &Mutex<RetainedTree>,
+    id: u64,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+    lay_out: fn(&mut gpui::Window, &mut gpui::App) -> bool,
+    read: impl FnOnce(gpui::WindowId) -> R,
+) -> Result<R> {
+    lay_out(window, cx);
+    let window_id = window.window_handle().window_id();
+    let (relevance, skipped) = {
+        let tree = tree.lock().unwrap();
+        (tree.relevance.clone(), crate::layout::content_visibility::skipped_ancestors(&tree, id))
+    };
+    if skipped.is_empty() {
+        return Ok(read(window_id));
+    }
+    let view = window
+        .root::<GpuixView>()
+        .flatten()
+        .ok_or_else(|| Error::from_reason("the window has no view to lay out"))?
+        .entity_id();
+    relevance.force(skipped);
+    invalidate_after_commit(cx, view);
+    lay_out(window, cx);
+    let read = read(window_id);
+    relevance.unforce();
+    invalidate_after_commit(cx, view);
+    Ok(read)
+}
+
 /// What a write to the motion state asks of the window.
 #[derive(Clone, Copy)]
 pub(crate) enum Repaint {
@@ -1456,13 +1495,6 @@ impl GpuixRenderer {
         self.with_initialized_window(|window, cx| window.draw_if_dirty(cx))
     }
 
-    /// Like `draw_pending_changes`, for a read of the size and extent of a scroller and its
-    /// offset: a scroll write does not make it lay out.
-    #[cfg(target_os = "macos")]
-    fn draw_pending_scroll_metrics(&self) -> Result<Option<gpui::WindowId>> {
-        self.with_initialized_window(|window, cx| window.draw_if_scroll_metrics_dirty(cx))
-    }
-
     /// Like `draw_pending_changes`, for a read of what a frame painted (the painted text), which
     /// a layout does not produce.
     #[cfg(target_os = "macos")]
@@ -1542,9 +1574,19 @@ impl GpuixRenderer {
     fn element_bounds(&self, id: u64) -> Result<Option<crate::automation::ElementBounds>> {
         #[cfg(target_os = "macos")]
         {
-            return Ok(self
-                .draw_pending_changes()?
-                .and_then(|window| crate::automation::get_bounds(window, id)));
+            if !*self.initialized.lock().unwrap() {
+                return Ok(None);
+            }
+            return update_window_without_view(|window, cx| {
+                read_after_layout(
+                    &self.tree,
+                    id,
+                    window,
+                    cx,
+                    gpui::Window::draw_if_dirty,
+                    |window| crate::automation::get_bounds(window, id),
+                )
+            })?;
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -3441,10 +3483,19 @@ impl GpuixRenderer {
         let id = to_element_id(element_id)?;
         #[cfg(target_os = "macos")]
         {
-            return Ok(self
-                .draw_pending_scroll_metrics()?
-                .and_then(|window| scroll_metrics(window, id))
-                .map(|metrics| metrics.to_vec()));
+            if !*self.initialized.lock().unwrap() {
+                return Ok(None);
+            }
+            return update_window_without_view(|window, cx| {
+                read_after_layout(
+                    &self.tree,
+                    id,
+                    window,
+                    cx,
+                    gpui::Window::draw_if_scroll_metrics_dirty,
+                    |window| scroll_metrics(window, id).map(|metrics| metrics.to_vec()),
+                )
+            })?;
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -9020,8 +9071,9 @@ fn animate_style(
     let props = element.custom_props();
     let has_motion = props.contains_key("motion");
     let motion_binding = props.get("motionValues");
-    let transitions_wanted = !input.provisional && ctx.css_transitions.wants(id, input.declared);
-    let animations_wanted = !input.provisional && ctx.css_animations.wants(id, input.declared);
+    let steps = !input.provisional && !crate::layout::content_visibility::is_forced_by_ancestor(ctx.tree, element);
+    let transitions_wanted = steps && ctx.css_transitions.wants(id, input.declared);
+    let animations_wanted = steps && ctx.css_animations.wants(id, input.declared);
     // A plain element has no measurement to read: it is not wrapped below, and
     // the root render prunes the measurement of any element that was not.
     let measured = has_motion || transitions_wanted || animations_wanted;
@@ -10035,7 +10087,7 @@ pub(crate) fn build_host_container(
         remembers_size,
         skipped,
     );
-    if skipped {
+    if crate::layout::content_visibility::contains_size(&ctx.tree.relevance, content_visibility, element.id) {
         if let Some(style) = style {
             el = crate::layout::content_visibility::contain_skipped(
                 el,
@@ -10045,6 +10097,8 @@ pub(crate) fn build_host_container(
                 &ctx.tree.relevance,
             );
         }
+    }
+    if skipped {
         for id in ctx.retain.skip_content(ctx.tree, element.id) {
             ctx.css_animations.leave_dormant(id);
             ctx.css_transitions.leave_dormant(id);

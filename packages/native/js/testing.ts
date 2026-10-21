@@ -160,6 +160,7 @@ interface NativeTestRendererApi
   setInlineDraws(enabled: boolean): void
   drawFrame(): void
   getElementBounds(elementId: number): ElementBounds | null
+  getBuiltElementBounds(elementId: number): ElementBounds | null
   getElementsAt(x: number, y: number): number[]
   clockPause(): number
   clockSet(nowMs: number): number
@@ -1050,6 +1051,14 @@ export class TestRenderer implements NativeRenderer {
   getElementBounds(elementId: number): ElementBounds | null {
     flushPendingMutations(this)
     return this.native.getElementBounds(elementId)
+  }
+
+  /** The box the last layout gave an element, or null if it was not built. Unlike `getElementBounds`
+   *  it does not lay out the content of a skipped `content-visibility` ancestor to answer, so it
+   *  tells whether that content is built. */
+  getBuiltElementBounds(elementId: number): ElementBounds | null {
+    flushPendingMutations(this)
+    return this.native.getBuiltElementBounds(elementId)
   }
 
   /** Ids of the elements under the window point, topmost first. */

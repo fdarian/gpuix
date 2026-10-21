@@ -23,6 +23,8 @@ const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fix
 interface OracleStep {
   step: string
   skipped?: number[]
+  /** `[x, y, width, height]` of the elements a scene reads the geometry of. */
+  rects?: number[][]
   /** For each section, how many of its rows are built. */
   rows?: number[]
   sizes?: number[]
@@ -177,6 +179,7 @@ function idsOf(renderer: TestRenderer): Map<string, number> {
 
 interface Seen {
   skipped?: number[]
+  rects?: number[][]
   rows?: number[]
   sizes?: number[]
   focused?: number
@@ -212,7 +215,7 @@ interface Scene {
   events: "exact" | "last" | "none"
 }
 
-const built = (renderer: TestRenderer, ids: Map<string, number>, name: string) => Boolean(renderer.getElementBounds(ids.get(name)!))
+const built = (renderer: TestRenderer, ids: Map<string, number>, name: string) => Boolean(renderer.getBuiltElementBounds(ids.get(name)!))
 const skippedIn = (renderer: TestRenderer, ids: Map<string, number>, count: number) =>
   Array.from({ length: count }, (_, index) => index).filter((index) => !built(renderer, ids, `bar-${index}`))
 const scrolled = (renderer: TestRenderer, ids: Map<string, number>, along: "x" | "y") => {
@@ -229,6 +232,29 @@ const listScene = (intrinsic: string, tops: number[], scrollerHeight?: number): 
   events: intrinsic === "auto 21px" ? "exact" : "last",
 })
 
+const FORCED_BARS = [10, 100, 150, 189]
+const rectOf = (renderer: TestRenderer, id: number) => {
+  const box = renderer.getElementBounds(id)!
+  return [box.x, box.y, box.width, box.height]
+}
+
+/** Two skipped elements, one in the other. */
+function Nested() {
+  return (
+    <Page>
+      <div testId="scroller" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+        <div testId="outer" style={{ flexShrink: 0, padding: 4, contentVisibility: "hidden", containIntrinsicSize: "60px" } as CSSProperties}>
+          <div style={{ height: 30 }} />
+          <div testId="inner" style={{ margin: 6, contentVisibility: "hidden", containIntrinsicSize: "50px" } as CSSProperties}>
+            <div testId="bar" style={{ height: 16, margin: 3 }} />
+          </div>
+        </div>
+        <div style={{ height: 20, flexShrink: 0 }} />
+      </div>
+    </Page>
+  )
+}
+
 const SCENES: Record<string, Scene> = {
   // The intrinsic size is not the size the entries have, so what is near moves as they are laid out.
   list: listScene("auto 40px", [1000, 4000, 7000, 0]),
@@ -237,6 +263,20 @@ const SCENES: Record<string, Scene> = {
   clipped: listScene("auto 21px", [2000, 0], 400),
   // No `contain-intrinsic-size`: `auto` is in effect all the same, so a skipped entry keeps the size it had.
   bare: listScene("none", [3000, 0]),
+  // A read of geometry below a skipped element lays it out and leaves it skipped.
+  forced: {
+    ...listScene("auto 40px", [4000, 0]),
+    look: (renderer, ids) => {
+      const rects = FORCED_BARS.map((index) => rectOf(renderer, ids.get(`bar-${index}`)!))
+      return { rects, skipped: skippedIn(renderer, ids, ENTRIES), ...scrolled(renderer, ids, "y") }
+    },
+  },
+  forcedNested: {
+    render: () => <Nested />,
+    look: (renderer, ids) => ({ rects: ["bar", "inner", "outer"].map((name) => rectOf(renderer, ids.get(name)!)), ...scrolled(renderer, ids, "y") }),
+    steps: [],
+    events: "none",
+  },
   horizontal: {
     render: (events) => <Row events={events} />,
     look: (renderer, ids) => ({ skipped: skippedIn(renderer, ids, ITEMS), ...scrolled(renderer, ids, "x") }),
@@ -314,6 +354,11 @@ describeNative("content-visibility: auto against Chrome", { timeout: 120_000 }, 
           const seen = scene.look(renderer, ids)
           const label = `${name}, ${expected.step}`
           if (expected.skipped) expect(seen.skipped, `${label}: skipped`).toEqual(expected.skipped)
+          expected.rects?.forEach((rect, index) =>
+            rect.forEach((value, side) =>
+              expect(Math.abs(seen.rects![index]![side]! - value), `${label}: rect ${index} is [${seen.rects![index]}], Chrome's [${rect}]`).toBeLessThanOrEqual(UNIT)
+            )
+          )
           if (expected.rows) expect(seen.rows, `${label}: rows built in each section`).toEqual(expected.rows)
           if (expected.focused !== undefined) expect(seen.focused, `${label}: the focused entry`).toBe(expected.focused)
           if (expected.sizes) {
@@ -532,6 +577,151 @@ describeNative("a change of what is near", { timeout: 120_000 }, () => {
   })
 })
 
+describeNative("a read of geometry below a skipped element", { timeout: 120_000 }, () => {
+  const work = (renderer: TestRenderer, read: () => void) => {
+    const layout = renderer.getLayoutCounters()
+    const built = renderer.getBuildCounters().elementsBuilt
+    const passes = renderer.getLayoutPassCount()
+    const frame = renderer.getFrameWorkCounters()
+    read()
+    const after = renderer.getFrameWorkCounters()
+    return {
+      nodes: renderer.getLayoutCounters().nodesCreated - layout.nodesCreated,
+      shapes: renderer.getLayoutCounters().shapes - layout.shapes,
+      built: renderer.getBuildCounters().elementsBuilt - built,
+      passes: renderer.getLayoutPassCount() - passes,
+      painted: after.painted - frame.painted,
+      primitives: after.paintedPrimitives - frame.paintedPrimitives,
+    }
+  }
+
+  it("lays out the entry it is in, leaves it skipped and paints nothing of it", () => {
+    const events: Events = []
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.registerFont(SQUARE_FONT)
+      renderer.setInlineDraws(false)
+      root.render(<TextPage value="auto" events={events} />)
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let index = 0; index < 6; index++) {
+        renderer.drawFrame()
+        renderer.dispatchNativeEvents()
+      }
+      const clean = () => {
+        renderer.drawFrame()
+        renderer.getBuiltElementBounds(ids.get("bar-3")!)
+      }
+      const skippedBefore = skippedIn(renderer, ids, ENTRIES)
+      expect(skippedBefore).toContain(150)
+      events.length = 0
+      // What the frame after a change that moves nothing and a read of a box that is built paints, for the frame after the
+      // read to be compared with.
+      const dirty = () => {
+        renderer.flush()
+        renderer.getElementBounds(ids.get("bar-3")!)
+        return work(renderer, () => renderer.drawFrame())
+      }
+      dirty()
+      const control = dirty()
+      expect(control.painted).toBeGreaterThan(0)
+
+      clean()
+      const near = work(renderer, () => expect(renderer.getElementBounds(ids.get("bar-3")!)).toBeTruthy())
+      expect(near, "a read of an element that is built costs nothing on a clean window").toMatchObject({ passes: 0, built: 0, nodes: 0, shapes: 0 })
+
+      clean()
+      let bar: ReturnType<TestRenderer["getElementBounds"]>
+      const far = work(renderer, () => (bar = renderer.getElementBounds(ids.get("bar-150")!)))
+      // Above it are the 53 near entries of 37px and 97 skipped ones of 56px (40px and the padding): size containment stays.
+      expect(bar!.y, "the bar of an entry that is skipped, where Chrome puts it").toBe(53 * 37 + 97 * 56 + 8)
+      expect(far.passes, "one layout pass").toBe(1)
+      expect(far.nodes, "nodes for the entry that holds it and nothing else").toBeGreaterThan(0)
+      expect(far.nodes).toBeLessThanOrEqual(12)
+      expect(far.shapes, "the one line of text of that entry").toBe(1)
+      expect(far.painted + far.primitives, "nothing is painted by a read").toBe(0)
+
+      expect(skippedIn(renderer, ids, ENTRIES), "it is skipped still").toEqual(skippedBefore)
+      renderer.dispatchNativeEvents()
+      expect(events, "and nothing was told").toEqual([])
+      expect(renderer.getBuiltElementBounds(ids.get("bar-150")!), "its content is not built").toBeFalsy()
+
+      const frame = work(renderer, () => renderer.drawFrame())
+      // Verification builds each frame it replays a second time, and counts what that paints.
+      if (!verifying) {
+        expect(frame.painted, "the frame after the read paints what any frame does").toBe(control.painted)
+        expect(frame.built, "and builds what it does").toBe(control.built)
+      }
+      const text = renderer.getPaintedText()
+      expect(text.some((line) => line.startsWith("Entry 3:")), "the entries that are near are painted").toBe(true)
+      expect(text.some((line) => line.startsWith("Entry 150:")), "and the one that was read is not").toBe(false)
+      expect(skippedIn(renderer, ids, ENTRIES)).toEqual(skippedBefore)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
+describeNative("a read of geometry below a skipped element, for what else it could change", { timeout: 120_000 }, () => {
+  it("remembers no size, starts no animation and tells nothing, for an auto and a hidden element", () => {
+    const seen: string[] = []
+    const events: Events = []
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    const Forced = () => (
+      <Page>
+        <div testId="scroller" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+          <div testId="held" style={{ contentVisibility: "hidden", containIntrinsicSize: "auto 30px", flexShrink: 0 } as CSSProperties}>
+            <div testId="held-child" style={{ height: 70, width: 40, margin: 5 }} />
+          </div>
+          <div style={{ height: 6000, flexShrink: 0 }} />
+          <div
+            testId="far"
+            onContentVisibilityAutoStateChange={(event) => events.push([0, event.skipped])}
+            style={{ contentVisibility: "auto", containIntrinsicSize: "auto 20px", flexShrink: 0 } as CSSProperties}
+          >
+            <div
+              testId="loop"
+              onAnimationStart={() => seen.push("start")}
+              onAnimationIteration={() => seen.push("iteration")}
+              style={{ height: 100, width: 60, animation: "cv-auto-pulse 1s linear infinite" }}
+            />
+          </div>
+        </div>
+      </Page>
+    )
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(<Forced />)
+      renderer.flush()
+      const ids = idsOf(renderer)
+      const frame = () => {
+        renderer.clockFastForward(100)
+        renderer.drawFrame()
+        renderer.dispatchNativeEvents()
+      }
+      for (let step = 0; step < 6; step++) frame()
+      const height = (name: string) => renderer.getBuiltElementBounds(ids.get(name)!)!.height
+      expect([height("held"), height("far")], "skipped, at the length").toEqual([30, 20])
+      events.length = 0
+
+      expect(renderer.getElementBounds(ids.get("loop")!)!.height, "the content is laid out").toBe(100)
+      expect(renderer.getElementBounds(ids.get("held-child")!)!.height).toBe(70)
+      for (let step = 0; step < 36; step++) frame()
+      expect(seen, "no animation started or looped below them").toEqual([])
+      expect(events, "nothing is told").toEqual([])
+      expect([height("held"), height("far")], "and they did not remember the size they were laid out at").toEqual([30, 20])
+      expect(renderer.getBuiltElementBounds(ids.get("loop")!)).toBeFalsy()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
 // ── What is told, and to whom ──
 
 describeNative("contentvisibilityautostatechange", { timeout: 120_000 }, () => {
@@ -725,7 +915,7 @@ describeNative("a far auto element", { timeout: 120_000 }, () => {
       }
       for (let step = 0; step < 36; step++) frame()
       expect(seen, "nothing runs below it while it is far").toEqual([])
-      expect(renderer.getElementBounds(ids.get("loop")!), "the loop is not built").toBeFalsy()
+      expect(renderer.getBuiltElementBounds(ids.get("loop")!), "the loop is not built").toBeFalsy()
       const perFrame = () => {
         const before = renderer.getBuildCounters().elementsBuilt
         frame()

@@ -1001,6 +1001,12 @@ export declare class TestGpuixRenderer {
   getAutomationTree(): string
   /** Last painted bounds for an element, or null if it was not painted. */
   getElementBounds(id: number): ElementBounds | null
+  /**
+   * The box the last layout gave an element, or null if it was not built. Unlike
+   * `getElementBounds`, it does not lay out the content of the skipped ancestors of the element
+   * to answer, so it tells whether the content of a `content-visibility` element is built.
+   */
+  getBuiltElementBounds(id: number): ElementBounds | null
   /** Ids under the window point, topmost first. See the live renderer. */
   getElementsAt(x: number, y: number): Array<number>
   clockPause(): number

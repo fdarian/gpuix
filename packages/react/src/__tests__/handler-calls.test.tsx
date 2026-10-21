@@ -101,6 +101,7 @@ function calls(r, ids) {
     getDebugFrameOverlayStats: () => r.getDebugFrameOverlayStats(),
     getElement: () => r.getElement(ids.box),
     getElementBounds: () => r.getElementBounds(ids.box),
+    getBuiltElementBounds: () => r.getBuiltElementBounds(ids.box),
     getElementsAt: () => r.getElementsAt(5, 5),
     getFocusedElementId: () => r.getFocusedElementId(),
     getLayoutCounters: () => r.getLayoutCounters(),

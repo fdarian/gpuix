@@ -9,7 +9,7 @@ const here = import.meta.dir
 const chrome =
   process.env.CHROME ??
   `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
-const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember"]
+const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested"]
 const SIZE = { width: 900, height: 780 }
 
 async function run(scene: string) {

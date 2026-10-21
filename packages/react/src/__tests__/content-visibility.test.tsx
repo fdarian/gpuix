@@ -1,5 +1,6 @@
 /// `contentVisibility` and `containIntrinsicSize`: the boxes of an element that skips its content (`hidden`), and the
-/// containment of every element that is not `visible` (`auto` is not skipped yet), against headless Chrome.
+/// containment of every element that is not `visible`, and the read of a box inside a skipped one (`hidden-read-*`), against
+/// headless Chrome.
 ///
 /// `fixtures/content-visibility-oracle.html` is the page, `fixtures/content-visibility-cases.json` the cases both pages
 /// are made from, and `fixtures/content-visibility-oracle.json` the boxes Chrome reports (`[x, y, width, height]` from

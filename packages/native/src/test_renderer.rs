@@ -342,17 +342,6 @@ fn window_call<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -
     })
 }
 
-/// Lays out a pending change before a bounds or scroll read, as the live renderer does: a
-/// layout-only pass, which paints nothing and leaves the window dirty for the next frame.
-///
-/// Returns the window that was laid out, which is where its boxes are.
-fn draw_pending_changes() -> Result<gpui::WindowId> {
-    window_call(|window, cx| {
-        window.draw_if_dirty(cx);
-        window.window_handle().window_id()
-    })
-}
-
 /// Delivers the frame callbacks the last draw queued, as a display link would before the next
 /// draw. GPUI's test mode draws a dirty window inline and never runs them, so `flush` is the
 /// frame boundary. A read or an input is not one: `flush_if_dirty`, which every `nativeSimulate*`
@@ -2079,11 +2068,11 @@ impl TestGpuixRenderer {
         if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
             self.flush()?;
         }
-        let window = window_call(|window, cx| {
-            window.draw_if_scroll_metrics_dirty(cx);
-            window.window_handle().window_id()
-        })?;
-        Ok(crate::renderer::scroll_metrics(window, id).map(|metrics| metrics.to_vec()))
+        window_call(|window, cx| {
+            crate::renderer::read_after_layout(&self.tree, id, window, cx, gpui::Window::draw_if_scroll_metrics_dirty, |window| {
+                crate::renderer::scroll_metrics(window, id).map(|metrics| metrics.to_vec())
+            })
+        })?
     }
 
     /// The DOM scroll position of a scrollable element, `[scrollLeft, scrollTop]` (zero or
@@ -2238,9 +2227,27 @@ impl TestGpuixRenderer {
         if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
             self.flush()?;
         }
-        let window = draw_pending_changes()?;
-        Ok(crate::automation::get_bounds(window, id)
-            .map(crate::renderer::ElementBounds::from_painted))
+        window_call(|window, cx| {
+            crate::renderer::read_after_layout(&self.tree, id, window, cx, gpui::Window::draw_if_dirty, |window| {
+                crate::automation::get_bounds(window, id).map(crate::renderer::ElementBounds::from_painted)
+            })
+        })?
+    }
+
+    /// The box the last layout gave an element, or null if it was not built. Unlike
+    /// `getElementBounds`, it does not lay out the content of the skipped ancestors of the element
+    /// to answer, so it tells whether the content of a `content-visibility` element is built.
+    #[napi]
+    pub fn get_built_element_bounds(&self, id: f64) -> Result<Option<crate::renderer::ElementBounds>> {
+        let id = to_element_id(id)?;
+        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
+            self.flush()?;
+        }
+        window_call(|window, cx| {
+            window.draw_if_dirty(cx);
+            crate::automation::get_bounds(window.window_handle().window_id(), id)
+                .map(crate::renderer::ElementBounds::from_painted)
+        })
     }
 
     /// Ids under the window point, topmost first. See the live renderer.

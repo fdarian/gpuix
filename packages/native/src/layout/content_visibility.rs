@@ -19,6 +19,12 @@
 //! asks for the frame to be built again when the element is relevant; later answers come from the
 //! boxes a frame painted ([`Relevance::sweep`]) and take effect in the next frame.
 //!
+//! A read of geometry inside a skipped subtree forces it, as Chrome does
+//! (`DisplayLockUtilities::ScopedForcedUpdate`): [`Relevance::force`] makes [`skips`] answer no for
+//! the skipped ancestors of the element read, so a layout-only pass builds and lays out what is
+//! below them and publishes its boxes, and [`Relevance::unforce`] makes the next frame skip them
+//! again. Nothing the forced pass builds is remembered, answered for or told.
+//!
 //! Not modelled: the element is not an independent formatting context (a margin of its first or
 //! last child still collapses through it), and a `position: fixed` descendant is placed against
 //! the viewport, where a contained element would be its containing block.
@@ -121,8 +127,15 @@ pub(crate) fn contained(style: &StyleDesc) -> Option<StyleDesc> {
 
 /// Whether an element whose `content-visibility` is `value` skips its content in the build about
 /// to be made. The one place that decides, so that the build and the walks over the tree cannot
-/// disagree.
+/// disagree. A forced element (see [`Relevance::force`]) builds its content though it is skipped.
 pub(crate) fn skips(relevance: &Relevance, value: ContentVisibility, id: u64) -> bool {
+    contains_size(relevance, value, id) && !relevance.is_forced(id)
+}
+
+/// Whether the box of an element whose `content-visibility` is `value` has size containment in
+/// the build about to be made: it is skipped, or would be but for being forced, whose content is
+/// laid out in the box the skipped element has.
+pub(crate) fn contains_size(relevance: &Relevance, value: ContentVisibility, id: u64) -> bool {
     match value {
         ContentVisibility::Hidden => true,
         ContentVisibility::Auto => relevance.is_skipped(id),
@@ -250,6 +263,8 @@ struct Shared {
     /// How many elements `known` has, readable without the lock: almost every element of a page
     /// asks and has nothing to ask about.
     count: AtomicUsize,
+    /// How many elements are forced, for the same reason.
+    forced: AtomicUsize,
     known: Mutex<Known>,
 }
 
@@ -266,7 +281,8 @@ impl Shared {
 #[derive(Default)]
 struct Known {
     elements: FxHashMap<u64, Element>,
-    /// Which draw the build in progress belongs to: the passes of one draw share it.
+    /// The elements a read of geometry below them lays out the content of, see [`Relevance::force`].
+    forced: Vec<u64>,
     /// The focused element and its ancestors, which hold the focus.
     focus_within: Arc<[u64]>,
     clips: Option<Clips>,
@@ -334,6 +350,9 @@ impl Relevance {
     /// when it is built, which builds it again when that changes. `declared` is whether its style
     /// says `auto`, for an element no build has seen yet.
     pub(crate) fn key(&self, id: u64, declared: bool) -> Option<u64> {
+        if self.is_forced(id) {
+            return Some(8);
+        }
         if !declared && self.is_empty() {
             return None;
         }
@@ -349,7 +368,8 @@ impl Relevance {
     /// The build of `id` has decided: `skipped` is what it does with the content. `auto` and
     /// `remembers` are what its style says. An element that is neither is forgotten.
     pub(crate) fn built(&self, id: u64, auto: bool, remembers: bool, skipped: bool) {
-        if !auto && !remembers && self.is_empty() {
+        // A forced build is not a build the frames see: what the state says is what they built.
+        if self.is_forced(id) || (!auto && !remembers && self.is_empty()) {
             return;
         }
         let mut known = self.0.lock();
@@ -374,7 +394,7 @@ impl Relevance {
     /// reads the layout the frame ended with: an answer from a pass that is built again would
     /// chase the layout the passes change as the entries are laid out, a pass at a time.
     pub(crate) fn wants_answer(&self, id: u64) -> bool {
-        self.0.lock().elements.get(&id).is_some_and(|element| element.auto && element.near.is_none())
+        !self.is_forced(id) && self.0.lock().elements.get(&id).is_some_and(|element| element.auto && element.near.is_none())
     }
 
     /// Prepaint found out whether `id` is near. True if the build has to be made again because it
@@ -391,6 +411,9 @@ impl Relevance {
 
     /// `id` was laid out without being skipped, with this content box.
     pub(crate) fn remember(&self, id: u64, width: f64, height: f64) {
+        if self.is_forced(id) {
+            return;
+        }
         if let Some(element) = self.0.lock().elements.get_mut(&id) {
             if !element.skipped_in_build {
                 element.remembered = Some((width, height));
@@ -415,7 +438,28 @@ impl Relevance {
             .iter()
             .filter(|(id, element)| element.auto && element.wanted_skipped(&known.focus_within, **id) != element.skipped_in_build)
             .map(|(id, _)| *id)
+            .chain(known.forced.iter().copied())
             .collect()
+    }
+
+    pub(crate) fn any_forced(&self) -> bool {
+        self.0.forced.load(Ordering::Relaxed) != 0
+    }
+
+    pub(crate) fn is_forced(&self, id: u64) -> bool {
+        self.0.forced.load(Ordering::Relaxed) != 0 && self.0.lock().forced.contains(&id)
+    }
+
+    /// Makes the builds that follow lay out the content of `ids`, whether they skip it or not, until
+    /// [`Relevance::unforce`]. They are a source of the frame, so the roots above them are built.
+    pub(crate) fn force(&self, ids: Vec<u64>) {
+        let mut known = self.0.lock();
+        known.forced = ids;
+        self.0.forced.store(known.forced.len(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn unforce(&self) {
+        self.force(Vec::new());
     }
 
     /// Drops what is known of elements the tree no longer has.
@@ -482,6 +526,43 @@ impl Relevance {
 /// What `element` was last built with, the declared value for one that never was.
 fn value_of(tree: &RetainedTree, element: &RetainedElement) -> ContentVisibility {
     tree.content_visibility_of(element)
+}
+
+/// The strict ancestors of `id` that skip their content, as the last build did or as the next
+/// would: what a read of the geometry of `id` has to lay out for. Outermost first.
+pub(crate) fn skipped_ancestors(tree: &RetainedTree, id: u64) -> Vec<u64> {
+    let mut skipped = Vec::new();
+    let mut current = tree.elements.get(&id).and_then(|element| element.parent).and_then(|parent| tree.elements.get(&parent));
+    while let Some(ancestor) = current {
+        let value = value_of(tree, ancestor);
+        if value.contains()
+            && crate::text::inline::is_host_container(ancestor)
+            && !crate::layout::contents::is_display_contents(ancestor)
+            && (skipped_as_built(&tree.relevance, value, ancestor.id) || skips(&tree.relevance, value, ancestor.id))
+        {
+            skipped.push(ancestor.id);
+        }
+        current = ancestor.parent.and_then(|parent| tree.elements.get(&parent));
+    }
+    skipped.reverse();
+    skipped
+}
+
+/// Whether a strict ancestor of `element` is forced, so that `element` is laid out for a read of
+/// geometry and nothing of what it runs advances: no animation or transition starts or steps below
+/// a skipped element.
+pub(crate) fn is_forced_by_ancestor(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    if !tree.relevance.any_forced() {
+        return false;
+    }
+    let mut current = element.parent.and_then(|parent| tree.elements.get(&parent));
+    while let Some(ancestor) = current {
+        if tree.relevance.is_forced(ancestor.id) {
+            return true;
+        }
+        current = ancestor.parent.and_then(|parent| tree.elements.get(&parent));
+    }
+    false
 }
 
 /// Whether `element` is a host element that skips its content, as it was last built.
@@ -652,6 +733,62 @@ mod tests {
         assert!(!skips(&relevance, ContentVisibility::Auto, 1));
         relevance.set_focus_within(&Arc::from([]));
         assert!(skips(&relevance, ContentVisibility::Auto, 1));
+    }
+
+    #[test]
+    fn a_forced_element_builds_its_content_in_its_skipped_box_and_leaves_no_trace() {
+        let relevance = Relevance::default();
+        relevance.built(1, true, true, true);
+        relevance.answer(1, false);
+        assert!(skips(&relevance, ContentVisibility::Hidden, 2));
+        relevance.force(vec![1, 2]);
+        for (value, id) in [(ContentVisibility::Auto, 1), (ContentVisibility::Hidden, 2)] {
+            assert!(!skips(&relevance, value, id), "its content is built");
+            assert!(contains_size(&relevance, value, id), "in the box it has skipped");
+        }
+        assert!(relevance.pending().contains(&1) && relevance.pending().contains(&2), "a source of the frame, hidden or not");
+        assert!(relevance.key(2, false).is_some(), "and part of the key of a hidden element");
+        // What the forced build tells is not what the frames built.
+        relevance.built(1, true, true, false);
+        relevance.remember(1, 30.0, 40.0);
+        relevance.unforce();
+        assert!(relevance.was_skipped(1));
+        assert_eq!(relevance.remembered(1), None);
+        assert!(skips(&relevance, ContentVisibility::Auto, 1) && skips(&relevance, ContentVisibility::Hidden, 2));
+        assert!(relevance.pending().is_empty());
+        assert_eq!(relevance.key(2, false), None);
+    }
+
+    #[test]
+    fn the_skipped_ancestors_are_the_ones_a_read_has_to_force() {
+        let mut tree = RetainedTree::new();
+        for (id, json) in [
+            (1, "{}"),
+            (2, r#"{"contentVisibility":"hidden"}"#),
+            (3, r#"{"contentVisibility":"auto"}"#),
+            (4, r#"{"contentVisibility":"auto"}"#),
+            (5, "{}"),
+        ] {
+            tree.create_element(id, "div".to_owned());
+            tree.set_style(id, std::sync::Arc::new(style(json)));
+        }
+        tree.set_root(1);
+        for (parent, child) in [(1, 2), (2, 3), (3, 5), (1, 4)] {
+            tree.append_child(parent, child);
+        }
+        // Element 3 was never built: skipped. The one in the other, then, outermost first.
+        assert_eq!(skipped_ancestors(&tree, 5), vec![2, 3]);
+        assert_eq!(skipped_ancestors(&tree, 3), vec![2], "its own box is no concern of a read");
+        assert!(skipped_ancestors(&tree, 2).is_empty());
+        // An `auto` element the last build did not skip, and that is near, is read through.
+        tree.relevance.built(4, true, true, false);
+        tree.relevance.answer(4, true);
+        tree.create_element(6, "div".to_owned());
+        tree.append_child(4, 6);
+        assert!(skipped_ancestors(&tree, 6).is_empty());
+        tree.relevance.built(4, true, true, true);
+        tree.relevance.answer(4, false);
+        assert_eq!(skipped_ancestors(&tree, 6), vec![4]);
     }
 
     #[test]

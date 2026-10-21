@@ -122,6 +122,47 @@ Object.assign(scenes, {
     )
   },
 
+  // A read of the geometry of an element in a skipped entry lays the entry out, and leaves it skipped: the same list as `list`,
+  // read at the bar of four entries, near and far, after each step. The reads come before the state is looked at.
+  async forced() {
+    const events = []
+    const { page, scroller, entries } = listPage(0, 'auto 40px', events)
+    const bars = [10, 100, 150, 189]
+    return run(
+      events,
+      [['mounted', async () => document.body.append(page)], ...[4000, 0].map((top) => [`scrolled to ${top}`, async () => (scroller.scrollTop = top)])],
+      () => {
+        const rects = bars.map((index) => {
+          const box = entries[index].firstChild.getBoundingClientRect()
+          return [box.x, box.y, box.width, box.height]
+        })
+        return { rects, skipped: skippedOf(entries), height: scroller.scrollHeight, top: scroller.scrollTop }
+      }
+    )
+  },
+
+  // Two skipped elements, one in the other: the read at the bar lays out both.
+  async forcedNested() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller')
+    const outer = made('div', '', { flexShrink: 0, padding: '4px', contentVisibility: 'hidden', containIntrinsicSize: '60px' })
+    const inner = made('div', '', { margin: '6px', contentVisibility: 'hidden', containIntrinsicSize: '50px' })
+    const bar = made('div', 'bar', { margin: '3px' })
+    inner.append(bar)
+    outer.append(made('div', '', { height: '30px' }), inner)
+    scroller.append(outer, made('div', '', { height: '20px', flexShrink: 0 }))
+    page.append(scroller)
+    return run(events, [['mounted', async () => document.body.append(page)]], () => ({
+      rects: [bar, inner, outer].map((element) => {
+        const box = element.getBoundingClientRect()
+        return [box.x, box.y, box.width, box.height]
+      }),
+      height: scroller.scrollHeight,
+      top: scroller.scrollTop,
+    }))
+  },
+
   // A row of items scrolled along the x axis: the margin is a viewport width and a half there.
   async horizontal() {
     const events = []
