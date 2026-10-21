@@ -75,11 +75,13 @@ export declare class GpuixRenderer {
    */
   setSyncEventHandler(handler?: ((arg: EventPayload) => SyncDispatchResult) | undefined | null): void
   /**
-   * Wake JavaScript after the display link queues a frame. Returns true on macOS,
-   * false on other platforms. The callback should schedule the tick rather than run
-   * it inline, and tick() never blocks. A wake that lands while a tick is running, or
-   * after another wake that has not been ticked yet, is dropped: the next frame waits
-   * for the next vsync. Wakes do not keep the process alive.
+   * Wake JavaScript when the main run loop has work: input, a main-queue block (the
+   * display link's frame step among them), a timer. Returns true on macOS, false on
+   * other platforms. The callback should schedule the tick rather than run it inline,
+   * and tick() never blocks. A wake that lands while a tick is running, or after another
+   * wake that has not been ticked yet, is dropped; work that arrived meanwhile wakes
+   * again when the tick re-arms the watch. An idle app gets no wakes. Wakes do not keep
+   * the process alive.
    * Pass null to clear the callback. Already queued callbacks may still arrive.
    */
   setFrameWakeCallback(callback?: (() => void) | undefined | null): boolean

@@ -77,8 +77,8 @@ export const enableAutomation: (renderer: LiveAutomationRenderer) => void =
 /**
  * Drive GPUI until the last window closes, then run `onTerminated`.
  *
- * macOS pumps AppKit on display-link wakes, with a 100 ms fallback while occluded.
- * Explicit `frameMs` uses timer polling instead, as Windows and Linux do.
+ * macOS wakes JS only when the main run loop has work, with no fallback timer, so an idle
+ * window is not ticked at all. Explicit `frameMs` uses timer polling instead, as Windows and Linux do.
  * The pump never blocks JavaScript I/O and keeps running after a tick throws.
  */
 export function startFrameLoop(

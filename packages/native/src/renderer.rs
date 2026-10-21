@@ -1220,14 +1220,15 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 #[cfg(target_os = "macos")]
 type FrameWakeHook = Arc<dyn Fn() + Send + Sync>;
 
-/// The display-link wake path. `pending` is set by the wake that queues JS work and
-/// cleared only when `tick()` returns, so a wake that lands during a frame is dropped
-/// instead of queued behind it.
+/// The run-loop wake path. The wake means the main run loop has work (input, a main-queue
+/// block such as the display link's frame step, a timer). `pending` is set by the wake that
+/// queues JS work and cleared only when `tick()` returns, so a wake that lands during a frame
+/// is dropped instead of queued behind it.
 #[cfg(target_os = "macos")]
 #[derive(Default)]
 struct FrameWake {
     pending: Arc<std::sync::atomic::AtomicBool>,
-    /// The closure the display link calls, kept here so the test thread calls the same one.
+    /// The closure the run-loop watch calls, kept here so the test thread calls the same one.
     hook: Arc<Mutex<Option<FrameWakeHook>>>,
     #[cfg(feature = "test-support")]
     simulator: Mutex<Option<WakeSimulator>>,
@@ -1238,7 +1239,7 @@ struct FrameWake {
 #[cfg(target_os = "macos")]
 impl FrameWake {
     fn clear(&self) {
-        gpui_macos::set_frame_wake_hook(None);
+        gpui_macos::set_run_loop_wake_hook(None);
         self.hook.lock().unwrap().take();
         self.pending
             .store(false, std::sync::atomic::Ordering::Release);
@@ -1255,7 +1256,7 @@ impl FrameWake {
     }
 }
 
-/// Calls the wake closure from a Rust thread at a fixed interval, as the display link does.
+/// Calls the wake closure from a Rust thread at a fixed interval, as the run-loop watch does.
 #[cfg(all(target_os = "macos", feature = "test-support"))]
 struct WakeSimulator {
     stop: std::sync::mpsc::Sender<()>,
@@ -2079,10 +2080,12 @@ impl GpuixRenderer {
                 }
                 Ok(running)
             });
-            // After the frame, on every path: a wake that landed during it was dropped.
+            // After the frame, on every path: a wake that landed during it was dropped, and the
+            // watch only wakes again once it is told the run loop was pumped.
             self.frame_wake
                 .pending
                 .store(false, std::sync::atomic::Ordering::Release);
+            gpui_macos::run_loop_pumped();
             return result;
         }
 
@@ -2128,11 +2131,13 @@ impl GpuixRenderer {
         crate::events::sync_dispatch::register(&self.sync_handler, env, handler)
     }
 
-    /// Wake JavaScript after the display link queues a frame. Returns true on macOS,
-    /// false on other platforms. The callback should schedule the tick rather than run
-    /// it inline, and tick() never blocks. A wake that lands while a tick is running, or
-    /// after another wake that has not been ticked yet, is dropped: the next frame waits
-    /// for the next vsync. Wakes do not keep the process alive.
+    /// Wake JavaScript when the main run loop has work: input, a main-queue block (the
+    /// display link's frame step among them), a timer. Returns true on macOS, false on
+    /// other platforms. The callback should schedule the tick rather than run it inline,
+    /// and tick() never blocks. A wake that lands while a tick is running, or after another
+    /// wake that has not been ticked yet, is dropped; work that arrived meanwhile wakes
+    /// again when the tick re-arms the watch. An idle app gets no wakes. Wakes do not keep
+    /// the process alive.
     /// Pass null to clear the callback. Already queued callbacks may still arrive.
     #[napi]
     pub fn set_frame_wake_callback(&self, callback: Option<Function<(), ()>>) -> Result<bool> {
@@ -2164,7 +2169,7 @@ impl GpuixRenderer {
                 }
             });
             *self.frame_wake.hook.lock().unwrap() = Some(hook.clone());
-            gpui_macos::set_frame_wake_hook(Some(hook));
+            gpui_macos::set_run_loop_wake_hook(Some(hook));
             return Ok(true);
         }
 
@@ -5273,7 +5278,7 @@ impl Drop for GpuixRenderer {
         #[cfg(target_os = "macos")]
         {
             if *self.initialized.lock().unwrap() {
-                gpui_macos::set_frame_wake_hook(None);
+                gpui_macos::set_run_loop_wake_hook(None);
             }
             self.frame_wake.hook.lock().unwrap().take();
             #[cfg(feature = "test-support")]
@@ -12610,6 +12615,9 @@ pub(crate) fn to_gpui_window_options(
         is_resizable: options.resizable.unwrap_or(true),
         window_background,
         window_min_size,
+        // A visible window that is not key animates at the display rate. A hidden one gets no
+        // frames because its display link is stopped.
+        inactive_frame_interval: None,
         focus: options.focus.unwrap_or(true),
         show: options.show.unwrap_or(true),
         app_id: options.app_id.clone(),
@@ -13193,6 +13201,14 @@ mod window_options_tests {
         let gpui_options = mapped(WindowOptions::default());
         assert!(gpui_options.focus);
         assert!(gpui_options.show);
+    }
+
+    #[test]
+    fn an_unfocused_window_is_not_throttled() {
+        assert_eq!(
+            mapped(WindowOptions::default()).inactive_frame_interval,
+            None
+        );
     }
 
     #[test]

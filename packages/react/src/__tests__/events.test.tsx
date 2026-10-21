@@ -67,7 +67,7 @@ describe("frame loop", () => {
   )
 
   it.skipIf(process.platform !== "darwin")(
-    "uses the occluded-window fallback and keeps replacement loops registered",
+    "arms no timer on an idle wake loop and keeps replacement loops registered",
     () => {
       const script = [
         'import { GpuixRenderer } from "@gpuix/native"',
@@ -76,6 +76,7 @@ describe("frame loop", () => {
         "renderer.init({ focus: false, show: false })",
         "let clears = 0",
         "let ticks = 0",
+        "let wake",
         "let nextTick",
         "const host = {",
         "  requiresTick: () => renderer.requiresTick(),",
@@ -87,19 +88,28 @@ describe("frame loop", () => {
         "  },",
         "  setFrameWakeCallback: (callback) => {",
         "    if (callback === null) clears++",
+        "    else wake = callback",
         "    return renderer.setFrameWakeCallback(callback)",
         "  },",
         "}",
-        "const started = performance.now()",
+        "const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
         "const first = startFrameLoop(host)",
-        "await new Promise((resolve) => { nextTick = resolve })",
+        "const ticksAtStart = ticks",
+        // The hidden window's startup work wakes the loop for about the first 500 ms; the next wake is seconds away.
+        "await sleep(800)",
+        "const ticksSettled = ticks",
+        "await sleep(400)",
+        "const ticksIdle = ticks - ticksSettled",
         "first.stop()",
-        "nextTick = undefined",
         "const second = startFrameLoop(host)",
         "first.stop()",
-        "await new Promise((resolve) => { nextTick = resolve })",
+        "const clearsBeforeWake = clears",
+        "const ticksBeforeWake = ticks",
+        "const woken = new Promise((resolve) => { nextTick = resolve })",
+        "wake()",
+        "await woken",
         "second.stop()",
-        "console.log(JSON.stringify({ ticks, clears, elapsedMs: performance.now() - started }))",
+        "console.log(JSON.stringify({ ticksAtStart, ticksIdle, clearsBeforeWake, ticksAfterWake: ticks - ticksBeforeWake, clears }))",
         "process.exit(0)",
       ].join("\n")
       const result = spawnSync("bun", ["-e", script], {
@@ -107,9 +117,13 @@ describe("frame loop", () => {
         timeout: 5_000,
       })
       expect(result.status, result.stderr || result.error?.message).toBe(0)
-      const { ticks, clears, elapsedMs } = JSON.parse(result.stdout.trim())
-      expect({ ticks, clears }).toEqual({ ticks: 4, clears: 2 })
-      expect(elapsedMs).toBeGreaterThanOrEqual(180)
+      expect(JSON.parse(result.stdout.trim())).toEqual({
+        ticksAtStart: 1,
+        ticksIdle: 0,
+        clearsBeforeWake: 1,
+        ticksAfterWake: 1,
+        clears: 2,
+      })
     },
   )
 

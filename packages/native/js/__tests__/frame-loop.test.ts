@@ -64,7 +64,7 @@ describe("startFrameLoop on a platform with display-link wakes", () => {
     expect(ticks).toBe(1)
   })
 
-  it("falls back to a slow timer when no wakes arrive", async () => {
+  it("arms no timer while idle: no wake, no tick", async () => {
     let ticks = 0
     const loop = startFrameLoop(
       wakeableRenderer(() => {
@@ -74,11 +74,10 @@ describe("startFrameLoop on a platform with display-link wakes", () => {
     )
     await new Promise((resolve) => setTimeout(resolve, 250))
     loop.stop()
-    expect(ticks).toBeGreaterThanOrEqual(2)
-    expect(ticks).toBeLessThanOrEqual(4)
+    expect(ticks).toBe(1)
   })
 
-  it("does not run the fallback while wakes keep arriving", async () => {
+  it("ticks once per wake and not in between", async () => {
     let ticks = 0
     const renderer = wakeableRenderer(() => {
       ticks += 1
@@ -88,9 +87,12 @@ describe("startFrameLoop on a platform with display-link wakes", () => {
     const wakes = setInterval(() => renderer.wake?.(), 10)
     await new Promise((resolve) => setTimeout(resolve, 250))
     clearInterval(wakes)
+    await nextImmediate()
+    const ticksAtLastWake = ticks
+    await new Promise((resolve) => setTimeout(resolve, 150))
     loop.stop()
-    const wakeCount = Math.floor(250 / 10)
-    expect(ticks).toBeLessThanOrEqual(wakeCount + 2)
+    expect(ticks).toBe(ticksAtLastWake)
+    expect(ticks).toBeLessThanOrEqual(Math.floor(250 / 10) + 2)
   })
 
   it("stops, clears the wake and reports termination when tick returns false", () => {

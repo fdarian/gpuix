@@ -23,7 +23,6 @@ import { createRendererState, reportSyncErrors } from "./renderer-state.js"
 export type { WindowFontsOption }
 
 const DEFAULT_FRAME_MS = 8
-const FRAME_WAKE_FALLBACK_MS = 100
 
 // The browser entry has no `validateKeyframes`, so it is read off the namespace.
 if (typeof native.validateKeyframes === "function") {
@@ -144,10 +143,9 @@ export function startFrameLoop(
       windowClosed(renderer, options)
       return
     }
-    if (stopped) return
-    const delay = frameWake
-      ? FRAME_WAKE_FALLBACK_MS
-      : Math.max(0, (options.frameMs ?? DEFAULT_FRAME_MS) - (performance.now() - started))
+    // On the wake path nothing re-arms a timer: an idle app is not ticked until the run loop has work.
+    if (stopped || frameWake) return
+    const delay = Math.max(0, (options.frameMs ?? DEFAULT_FRAME_MS) - (performance.now() - started))
     timer = setTimeout(loop, delay)
   }
   // The frame runs as its own task, not inside the wake callback: Bun and Node run I/O
