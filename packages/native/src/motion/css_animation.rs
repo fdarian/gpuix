@@ -893,6 +893,10 @@ struct Run {
     progress: Option<f64>,
     plan: Option<Plan>,
     frozen: BTreeMap<AnimProp, f64>,
+    /// Until this instant a tick of the clock reports nothing and changes nothing a read can see
+    /// (`CssAnimations::advance_clock` leaves it out). Anything that changes the clock or the
+    /// parameters, or ticks it, forgets it.
+    quiet_until: Option<Instant>,
 }
 
 impl Run {
@@ -908,7 +912,47 @@ impl Run {
             progress: None,
             plan: None,
             frozen: BTreeMap::new(),
+            quiet_until: None,
         }
+    }
+
+    /// The instant the first change of phase, iteration or finish can have come, which ticks
+    /// before it can leave out; a clock that is held has none before an hour has gone, and what
+    /// moves it (a style, a command) forgets this. None when it cannot say.
+    fn quiet_after(&self, now: Instant) -> Option<Instant> {
+        const HELD: Duration = Duration::from_secs(3600);
+        /// A tick a little before the boundary is only a tick too many.
+        const MARGIN: f64 = 0.001;
+        if self.clock.pending() {
+            return None;
+        }
+        let rate = self.clock.rate();
+        if !self.clock.ticking() || rate == 0.0 {
+            return now.checked_add(HELD);
+        }
+        if rate < 0.0 {
+            return None;
+        }
+        let params = &self.params;
+        let active = active_duration(params);
+        let local = self.local(now);
+        let mut next = f64::INFINITY;
+        let mut consider = |boundary: f64| {
+            if boundary.is_finite() && boundary > local {
+                next = next.min(boundary);
+            }
+        };
+        consider(params.delay.max(0.0));
+        consider((params.delay + active).max(0.0));
+        consider(self.end_time());
+        if params.duration > 0.0 && params.duration.is_finite() {
+            consider(params.delay + params.duration * (((local - params.delay) / params.duration).floor() + 1.0));
+        }
+        if next.is_infinite() {
+            return now.checked_add(HELD);
+        }
+        let wait = Duration::try_from_secs_f64(((next - local) / rate - MARGIN).max(0.0)).ok()?;
+        now.checked_add(wait.min(HELD))
     }
 
     /// `@keyframes` is looked up at every style recalculation, so a redefinition
@@ -940,6 +984,7 @@ impl Run {
     /// Takes the other `animation-*` values from the style; play state changes
     /// freeze or resume the clock where it is.
     fn retune(&mut self, params: &Animation, now: Instant) {
+        self.quiet_until = None;
         let end = self.end_time();
         self.clock.follow_style(params.play_state == PlayState::Running, now, end);
         self.params = params.clone();
@@ -1002,6 +1047,7 @@ impl Run {
     /// The clock half of a frame: moves to `now` and reports a finish. It needs no style, which
     /// is what lets an element nothing is built for keep its animations on time.
     fn tick(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+        self.quiet_until = None;
         self.clock.resolve_pending(now);
         self.progress = self.advance(id, now, events).progress;
         if self.clock.take_finish(now, self.end_time()) {
@@ -1019,6 +1065,7 @@ impl Run {
     /// `animationend` is what is owed, not a cancel. The API hears of the
     /// cancel either way, as a finished animation is cancelled too.
     fn cancel(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+        self.quiet_until = None;
         self.advance(id, now, events);
         api.push(ApiEvent {
             element: id,
@@ -1395,10 +1442,18 @@ impl CssAnimations {
         let Some(state) = self.states.get_mut(&id) else {
             return;
         };
+        let mut ticked = false;
         for run in &mut state.runs {
+            if run.quiet_until.is_some_and(|until| now < until) {
+                continue;
+            }
             run.tick(id, now, &mut self.events, &mut self.api_events);
+            run.quiet_until = run.quiet_after(now);
+            ticked = true;
         }
-        state.moving = state.runs.iter().any(|run| run.wants_frame(now));
+        if ticked {
+            state.moving = state.runs.iter().any(|run| run.wants_frame(now));
+        }
         self.dormant_active |= state.moving;
     }
 
@@ -1544,6 +1599,7 @@ impl CssAnimations {
             .flat_map(|(element, state)| state.runs.iter_mut().map(move |run| (*element, run)))
             .find(|(_, run)| run.clock.id() == id)?;
         let end = run.end_time();
+        run.quiet_until = None;
         let outcome = run.clock.apply(command, now, end);
         self.commanded.push(element);
         Some(outcome)
@@ -3937,6 +3993,39 @@ mod tests {
         frames.animations.advance_clock(1, frames.at(3100));
         assert_eq!(frames.events(), [named(End, "fade", 3.0)]);
         assert!(!frames.animations.take_dormant_active(), "an animation that ended asks for nothing");
+    }
+
+    #[test]
+    fn a_clock_that_nothing_changes_before_its_next_boundary_is_not_ticked_and_reports_at_the_frame_that_passes_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear 3");
+        frames.frame(0, &animated);
+        frames.events();
+        frames.animations.set_dormant([1]);
+        let mut reported = Vec::new();
+        let mut ms = 0;
+        while ms < 3200 {
+            ms += 16;
+            frames.animations.advance_clock(1, frames.at(ms));
+            for event in frames.events() {
+                reported.push((ms, event));
+            }
+        }
+        assert_eq!(
+            reported,
+            [(1008, named(Iteration, "fade", 1.0)), (2000, named(Iteration, "fade", 2.0)), (3008, named(End, "fade", 3.0))]
+        );
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &animated);
+        frames.animations.set_dormant([1]);
+        frames.animations.advance_clock(1, frames.at(16));
+        let run = &frames.animations.states[&1].runs[0];
+        assert!(run.quiet_until.is_some_and(|until| until > frames.at(900)), "nothing is due before the second");
+        frames.animations.advance_clock(1, frames.at(32));
+        assert!(frames.animations.take_dormant_active(), "a run that is not ticked still asks for ticks");
     }
 
     #[test]

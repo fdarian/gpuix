@@ -204,6 +204,14 @@ impl Playback {
         self.id
     }
 
+    pub(super) fn ticking(&self) -> bool {
+        self.ticking
+    }
+
+    pub(super) fn pending(&self) -> bool {
+        self.pending
+    }
+
     pub(super) fn rate(&self) -> f64 {
         self.rate
     }

@@ -5316,6 +5316,7 @@ pub(crate) struct GpuixView {
     pub(crate) built_at: Option<web_time::Instant>,
     /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
     dormant_tick_armed: bool,
+    paint_statics: PaintStatics,
     /// Whether a tick of paint-only animations is drawn by patching the frame before it.
     pub(crate) patch: crate::retain::Patching,
     /// Resolved `highlight` state, keyed by the element that declared it.
@@ -5876,6 +5877,7 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             built_at: None,
             dormant_tick_armed: false,
+            paint_statics: PaintStatics::default(),
             patch: crate::retain::Patching::new(),
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
@@ -7888,6 +7890,7 @@ impl GpuixView {
             transitions: &self.css_transitions,
             motion_states: &self.motion_states,
             keyframes: &self.keyframes,
+            statics: &self.paint_statics,
         };
         let commanded: Vec<u64> = self
             .css_transitions
@@ -7963,21 +7966,102 @@ struct Dormancy<'a> {
     transitions: &'a crate::motion::CssTransitions,
     motion_states: &'a HashMap<u64, crate::motion::MotionState>,
     keyframes: &'a crate::motion::KeyframesRegistry,
+    statics: &'a PaintStatics,
 }
 
 impl Dormancy<'_> {
     fn holds(&self, id: u64) -> bool {
         crate::automation::was_culled(self.window, id)
             && self.tree.elements.get(&id).is_some_and(|element| {
-                runs_paint_only(
-                    self.tree,
-                    element,
-                    self.animations,
-                    self.transitions,
-                    self.motion_states,
-                    self.keyframes,
-                )
+                self.statics.of(self.tree, element, |statics| {
+                    paints_only_running(
+                        statics,
+                        id,
+                        self.animations,
+                        self.transitions,
+                        self.motion_states,
+                        self.keyframes,
+                    )
+                })
             })
+    }
+}
+
+/// What decides from the tree alone whether the animations that run on an element only change
+/// what it paints, kept for as long as the element and what is below it are as they were: the
+/// answer is asked for every element with an animation in every frame, and nothing in it moves
+/// with time.
+struct Fixed {
+    revision: u64,
+    parent: Option<u64>,
+    /// The element is never one whose frame is only paint, see [`runs_paint_only`].
+    excluded: bool,
+    /// The shapes an `<svg>` draws, whose animations change its picture.
+    shapes: Vec<u64>,
+    /// A `<text>` in a `<text>`: whether it is an SVG element depends on the elements above its
+    /// parent, which a change there does not tell it.
+    unkept: bool,
+}
+
+impl Fixed {
+    fn of(tree: &crate::retained_tree::RetainedTree, element: &crate::retained_tree::RetainedElement) -> Self {
+        // A span is painted by its paragraph, a shape of an `<svg>` by the raster of the `<svg>`, and a
+        // `layout` element glides between boxes: none is an element whose frame is only paint.
+        let excluded = element.element_type == "span"
+            || crate::custom_elements::svg_tree::is_svg_element(tree, element)
+            || element.custom_props().contains_key("layout")
+            || !element
+                .custom_props()
+                .get("motionValues")
+                .is_none_or(crate::motion::MotionValueStore::binding_paints_only);
+        Self {
+            revision: element.subtree_revision,
+            parent: element.parent,
+            excluded,
+            shapes: crate::custom_elements::svg_tree::shapes(tree, element).map(|shape| shape.id).collect(),
+            unkept: element.element_type == "text"
+                && element
+                    .parent
+                    .and_then(|parent| tree.elements.get(&parent))
+                    .is_some_and(|parent| parent.element_type == "text"),
+        }
+    }
+
+    fn holds_for(&self, element: &crate::retained_tree::RetainedElement) -> bool {
+        !self.unkept && self.revision == element.subtree_revision && self.parent == element.parent
+    }
+}
+
+/// [`Fixed`] of the elements asked about, which `Dormancy` asks of every dormant candidate in
+/// every frame.
+#[derive(Default)]
+pub(crate) struct PaintStatics {
+    by_element: std::cell::RefCell<rustc_hash::FxHashMap<u64, Fixed>>,
+    /// The size at which the elements that left the tree are dropped.
+    prune_at: std::cell::Cell<usize>,
+}
+
+impl PaintStatics {
+    fn of<R>(
+        &self,
+        tree: &crate::retained_tree::RetainedTree,
+        element: &crate::retained_tree::RetainedElement,
+        read: impl FnOnce(&Fixed) -> R,
+    ) -> R {
+        let mut kept = self.by_element.borrow_mut();
+        if kept.get(&element.id).is_none_or(|fixed| !fixed.holds_for(element)) {
+            kept.insert(element.id, Fixed::of(tree, element));
+        }
+        read(&kept[&element.id])
+    }
+
+    /// Drops what is kept of elements that are gone, when there is twice what there was.
+    fn prune(&self, exists: impl Fn(u64) -> bool) {
+        let mut kept = self.by_element.borrow_mut();
+        if kept.len() > self.prune_at.get() {
+            kept.retain(|id, _| exists(*id));
+            self.prune_at.set((kept.len() * 2).max(1024));
+        }
     }
 }
 
@@ -7991,31 +8075,27 @@ fn runs_paint_only(
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     keyframes: &crate::motion::KeyframesRegistry,
 ) -> bool {
-    let id = element.id;
-    // A span is painted by its paragraph, a shape of an `<svg>` by the raster of the `<svg>`, and a
-    // `layout` element glides between boxes: none is an element whose frame is only paint.
-    if element.element_type == "span"
-        || crate::custom_elements::svg_tree::is_svg_element(tree, element)
-        || element.custom_props().contains_key("layout")
-    {
-        return false;
-    }
+    paints_only_running(&Fixed::of(tree, element), element.id, animations, transitions, motion_states, keyframes)
+}
+
+fn paints_only_running(
+    fixed: &Fixed,
+    id: u64,
+    animations: &crate::motion::CssAnimations,
+    transitions: &crate::motion::CssTransitions,
+    motion_states: &HashMap<u64, crate::motion::MotionState>,
+    keyframes: &crate::motion::KeyframesRegistry,
+) -> bool {
     // What runs on the shapes of an `<svg>` changes its picture, never its box. An `<svg>` blocks
     // culling around it (`Subtree::block`), so it is a unit but never dormant.
-    let shapes_paint_only = || {
-        crate::custom_elements::svg_tree::shapes(tree, element).all(|shape| {
-            animations.paints_only(shape.id, keyframes)
-                && motion_states.get(&shape.id).is_none_or(crate::motion::MotionState::paints_only)
-        })
-    };
-    animations.paints_only(id, keyframes)
+    !fixed.excluded
+        && animations.paints_only(id, keyframes)
         && transitions.paints_only(id)
         && motion_states.get(&id).is_none_or(crate::motion::MotionState::paints_only)
-        && element
-            .custom_props()
-            .get("motionValues")
-            .is_none_or(crate::motion::MotionValueStore::binding_paints_only)
-        && shapes_paint_only()
+        && fixed.shapes.iter().all(|shape| {
+            animations.paints_only(*shape, keyframes)
+                && motion_states.get(shape).is_none_or(crate::motion::MotionState::paints_only)
+        })
 }
 
 /// What runs on the shapes of the `<svg>` `element` at `now`, as `retain::Dynamic` bits. A shape is
@@ -8159,6 +8239,7 @@ impl gpui::Render for GpuixView {
             .retain(|id, _| tree.elements.contains_key(id));
         self.containers.retain(|id| tree.elements.contains_key(&id));
         self.tapes.retain(|id| tree.elements.contains_key(&id));
+        self.paint_statics.prune(|id| tree.elements.contains_key(&id));
         // Pruned by listener, not existence: dropping `onLayout` and adding it
         // back reports the size again, like a fresh observer.
         {
@@ -8260,6 +8341,7 @@ impl gpui::Render for GpuixView {
             transitions: &self.css_transitions,
             motion_states: &self.motion_states,
             keyframes: &self.keyframes,
+            statics: &self.paint_statics,
         };
         self.retain.begin_frame(crate::retain::Sources {
             tree: &tree,
@@ -16234,5 +16316,40 @@ mod web_animation_event_tests {
         let mut retired = Retired::default();
         emit_web_animation_events(&None, &mut retired, vec![event(7, ApiEventKind::Finish, Status::Finished)]);
         assert_eq!(retired.len(), 0, "no release would ever come for it");
+    }
+}
+
+#[cfg(test)]
+mod paint_statics_tests {
+    use super::*;
+
+    fn excluded(statics: &PaintStatics, tree: &RetainedTree, id: u64) -> bool {
+        statics.of(tree, &tree.elements[&id], |fixed| fixed.excluded)
+    }
+
+    #[test]
+    fn what_the_tree_says_of_an_element_is_kept_until_the_element_or_what_is_below_it_changes() {
+        let mut tree = RetainedTree::new();
+        for (id, kind) in [(1, "div"), (2, "div"), (3, "span"), (4, "svg"), (5, "circle"), (6, "text")] {
+            tree.create_element(id, kind.to_string());
+        }
+        for (parent, child) in [(1, 2), (1, 3), (1, 4), (4, 5), (4, 6)] {
+            tree.append_child(parent, child);
+        }
+        let statics = PaintStatics::default();
+        assert!(!excluded(&statics, &tree, 2));
+        assert!(excluded(&statics, &tree, 3), "a span is painted by its paragraph");
+        assert!(excluded(&statics, &tree, 5) && excluded(&statics, &tree, 6), "shapes are painted by their <svg>");
+        statics.of(&tree, &tree.elements[&4], |fixed| assert_eq!(fixed.shapes.len(), 2));
+
+        tree.set_custom_prop(2, "layout".to_string(), serde_json::Value::Bool(true));
+        assert!(excluded(&statics, &tree, 2), "a change of the element is read again");
+        tree.destroy_element(5);
+        statics.of(&tree, &tree.elements[&4], |fixed| assert_eq!(fixed.shapes.len(), 1));
+
+        statics.prune(|id| id != 3);
+        assert_eq!(statics.by_element.borrow().len(), 4, "the elements that left the tree are dropped");
+        statics.prune(|_| false);
+        assert_eq!(statics.by_element.borrow().len(), 4, "and not again until there are twice as many");
     }
 }
