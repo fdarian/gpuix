@@ -221,6 +221,174 @@ describeNative("a scrollTop write", () => {
   })
 })
 
+function ListRows(props: { count: number; from?: number }) {
+  return Array.from({ length: props.count }, (_, index) => {
+    const row = (props.from ?? 0) + index
+    return (
+      <div key={row} testId={`row-${row}`} style={{ height: ROW, flexShrink: 0 }}>
+        {`row-${row};`}
+      </div>
+    )
+  })
+}
+
+describeNative("a scrollTop write on a virtual-list", () => {
+  const listStyle = { width: WIDTH, height: HEIGHT }
+
+  it("runs no layout when nothing is dirty, clamps to the rows and moves nothing it reads", () => {
+    let list: PublicInstance | null = null
+    const { renderer, unmount } = mount(
+      <virtual-list
+        ref={(instance: PublicInstance | null) => {
+          list = instance
+        }}
+        overdraw={0}
+        estimatedItemHeight={ROW}
+        style={listStyle}
+      >
+        <ListRows count={100} />
+      </virtual-list>
+    )
+    try {
+      const max = 100 * ROW - HEIGHT
+      expect(list!.scrollTop).toBe(0)
+      const layoutPasses = renderer.getLayoutPassCount()
+      const passes = renderer.getLayoutCounters().passes
+      const painted = renderer.getPaintedFrameCount()
+      for (let index = 1; index <= 50; index++) list!.scrollTop = index * 100
+      expect(list!.scrollTop, "clamped to the last row").toBe(max)
+      expect(list!.scrollHeight - list!.clientHeight).toBe(max)
+      list!.scrollTop = -20
+      expect(list!.scrollTop, "and to the start").toBe(0)
+      list!.scrollTop = 1000
+      expect(list!.scrollTop, "a write reads back").toBe(1000)
+      expect(renderer.getLayoutPassCount() - layoutPasses).toBe(0)
+      expect(renderer.getLayoutCounters().passes - passes).toBe(0)
+      expect(renderer.getPaintedFrameCount() - painted, "a write draws nothing itself").toBe(0)
+
+      renderer.drawFrame()
+      expect(renderer.getPaintedFrameCount() - painted, "the frame redraws").toBe(1)
+      expect(list!.scrollTop, "and keeps the offset").toBe(1000)
+    } finally {
+      renderer.setInlineDraws(true)
+      unmount()
+    }
+  })
+
+  it("lays out once when something else is dirty, and clamps against the rows it lays out", () => {
+    let list: PublicInstance | null = null
+    let setCount!: (count: number) => void
+    function Page() {
+      const [count, set] = useState(100)
+      setCount = set
+      return (
+        <virtual-list
+          ref={(instance: PublicInstance | null) => {
+            list = instance
+          }}
+          overdraw={0}
+          estimatedItemHeight={ROW}
+          style={listStyle}
+        >
+          <ListRows count={count} />
+        </virtual-list>
+      )
+    }
+    const { renderer, unmount } = mount(<Page />)
+    try {
+      expect(list!.scrollTop).toBe(0)
+      const layoutPasses = renderer.getLayoutPassCount()
+
+      flushSync(() => setCount(200))
+      list!.scrollTop = 1e6
+      expect(list!.scrollTop, "the rows grew before the write was clamped").toBe(200 * ROW - HEIGHT)
+      expect(renderer.getLayoutPassCount() - layoutPasses, "one layout for the change").toBe(1)
+      list!.scrollTop = 500
+      list!.scrollTop = 1e6
+      expect(renderer.getLayoutPassCount() - layoutPasses, "and none for the writes after it").toBe(1)
+    } finally {
+      renderer.setInlineDraws(true)
+      unmount()
+    }
+  })
+
+  it("is applied to a list that was never drawn", () => {
+    const root = createTestRoot({ width: WIDTH, height: HEIGHT })
+    root.renderer.clockPause()
+    root.renderer.setInlineDraws(false)
+    let list: PublicInstance | null = null
+    try {
+      root.render(
+        <virtual-list
+          ref={(instance: PublicInstance | null) => {
+            list = instance
+          }}
+          overdraw={0}
+          estimatedItemHeight={ROW}
+          style={listStyle}
+        >
+          <ListRows count={100} />
+        </virtual-list>
+      )
+      list!.scrollTop = 20 * ROW
+      expect(list!.scrollTop).toBe(20 * ROW)
+      root.renderer.drawFrame()
+      expect(root.renderer.getPaintedText()).toContain("row-20;")
+      expect(root.renderer.getPaintedText()).not.toContain("row-0;")
+    } finally {
+      root.renderer.setInlineDraws(true)
+      root.unmount()
+    }
+  })
+
+  it("moves what a bounds read sees and what the frame draws", () => {
+    let list: PublicInstance | null = null
+    let row: PublicInstance | null = null
+    const { renderer, unmount } = mount(
+      <virtual-list
+        ref={(instance: PublicInstance | null) => {
+          list = instance
+        }}
+        overdraw={0}
+        estimatedItemHeight={ROW}
+        style={listStyle}
+      >
+        <ListRows count={5} />
+        <div
+          ref={(instance) => {
+            row = instance
+          }}
+          testId="row-5"
+          style={{ height: ROW, flexShrink: 0 }}
+        >
+          row-5;
+        </div>
+        <ListRows from={6} count={94} />
+      </virtual-list>
+    )
+    try {
+      const top = row!.getBoundingClientRect().top
+      renderer.drawFrame()
+      const layoutPasses = renderer.getLayoutPassCount()
+
+      list!.scrollTop = 120
+      expect(renderer.getLayoutPassCount() - layoutPasses, "the write lays out nothing").toBe(0)
+      expect(row!.getBoundingClientRect().top, "a bounds read sees the rows at the new offset").toBe(top - 120)
+      expect(renderer.getLayoutPassCount() - layoutPasses, "and lays out for it, once").toBe(1)
+
+      list!.scrollTop = 30 * ROW
+      expect(renderer.getElementBounds(renderer.findByTestId("row-31")!.id).y, "rows that did not exist are there").toBe(ROW)
+      renderer.drawFrame()
+      const text = renderer.getPaintedText()
+      expect(text).toContain("row-30;")
+      expect(text).not.toContain("row-5;")
+    } finally {
+      renderer.setInlineDraws(true)
+      unmount()
+    }
+  })
+})
+
 describeNative("a layout pass a read forces", () => {
   it("advances no motion value and fires no change event", () => {
     let width!: MotionValue<number>

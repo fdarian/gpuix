@@ -1732,16 +1732,13 @@ impl TestGpuixRenderer {
         }
         window_call(|window, cx| window.draw_if_scroll_metrics_dirty(cx))?;
         update_view_or_defer(move |view, _window, cx| {
-            let write = if view.set_virtual_list_offset(id, offset) {
-                crate::renderer::ScrollWrite::Layout
-            } else {
+            if !view.set_virtual_list_offset(id, offset) {
                 if let Some(handle) = view.scrollable_handle(id) {
                     crate::scroll::scroll_to(id, handle, offset, behavior);
                 }
-                crate::renderer::ScrollWrite::Offset
-            };
+            }
             let entity = cx.entity_id();
-            crate::renderer::invalidate_after_scroll(cx, entity, write);
+            crate::renderer::invalidate_after_scroll(cx, entity);
         })
     }
 

@@ -524,3 +524,118 @@ describeNative("virtual-list row: display contents", () => {
     })
   })
 })
+
+interface ExtentCase {
+  axis: "x" | "y"
+  size: number
+  pad: number
+  padEnd: number
+  split: "single" | "two"
+  f: number | null
+  extent: number
+  client: number
+  st1: number
+  st2: number
+}
+
+/** What Chrome reports for a scroller of 700 with padding after it: `fixtures/scroll-extent-oracle.html`. */
+const extentOracle: Record<"x1" | "x2", ExtentCase[]> = JSON.parse(
+  fs.readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/scroll-extent-oracle.json"),
+    "utf8"
+  )
+)
+
+describeNative("virtual-list as a scroller", () => {
+  const rows = (props: { count: number; height: number }) =>
+    Array.from({ length: props.count }, (_, row) => <div key={row} style={{ height: props.height, flexShrink: 0 }} />)
+
+  /** `scrollHeight`, `clientHeight`, then where `scrollTo(0, scrollHeight - clientHeight)` and a write of 1e6 stop. */
+  function measured(scale: 1 | 2, padding: { paddingTop: number; paddingBottom: number }, list: boolean) {
+    const root = createTestRoot()
+    try {
+      root.renderer.setWindowScaleFactor(scale)
+      let scroller: PublicInstance | undefined
+      const ref = (instance: PublicInstance | null) => void (scroller = instance ?? scroller)
+      root.render(
+        list ? (
+          <virtual-list ref={ref} overdraw={0} estimatedItemHeight={35} style={{ width: 300, height: 300, ...padding }}>
+            {rows({ count: 20, height: 35 })}
+          </virtual-list>
+        ) : (
+          <div ref={ref} style={{ width: 300, height: 300, overflow: "auto", ...padding }}>
+            {rows({ count: 20, height: 35 })}
+          </div>
+        )
+      )
+      root.renderer.dispatchNativeEvents()
+      const element = scroller!
+      const extent = element.scrollHeight
+      const client = element.clientHeight
+      element.scrollTo(0, extent - client)
+      const st1 = element.scrollTop
+      element.scrollTo(0, 0)
+      element.scrollTop = 1e6
+      return { extent, client, st1, st2: element.scrollTop }
+    } finally {
+      root.unmount()
+    }
+  }
+
+  it("reads the offset of the list as scrollTop, and writes it", () => {
+    const root = createTestRoot()
+    try {
+      let scroller: PublicInstance | undefined
+      root.render(
+        <virtual-list
+          ref={(instance: PublicInstance | null) => void (scroller = instance ?? scroller)}
+          overdraw={0}
+          estimatedItemHeight={20}
+          style={list}
+        >
+          {rows({ count: 60, height: 20 })}
+        </virtual-list>
+      )
+      expect(scroller!.scrollTop).toBe(0)
+      expect([scroller!.clientWidth, scroller!.clientHeight]).toEqual([list.width, list.height])
+      expect(scroller!.scrollHeight).toBe(60 * 20)
+
+      scroller!.scrollTop = 130
+      expect(scroller!.scrollTop).toBe(130)
+      scroller!.scrollBy(0, 10)
+      expect(scroller!.scrollTop, "a relative scroll starts from where the list is").toBe(140)
+      root.renderer.scrollToItem(root.renderer.findByType("virtual-list")[0]!.id, 25)
+      expect(scroller!.scrollTop, "and so does a scroll to an item").toBe(25 * 20)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  for (const scale of [1, 2] as const) {
+    it(`reaches scrollHeight - clientHeight with padding as a div scroller does at scale ${scale}`, () => {
+      const paddings = [
+        { paddingTop: 0, paddingBottom: 0 },
+        { paddingTop: 0, paddingBottom: 0.5 },
+        { paddingTop: 0.5, paddingBottom: 0 },
+        { paddingTop: 10.25, paddingBottom: 15.125 },
+        { paddingTop: 3, paddingBottom: 7 },
+      ]
+      for (const padding of paddings) {
+        expect(measured(scale, padding, true), JSON.stringify(padding)).toEqual(measured(scale, padding, false))
+      }
+    }, 60_000)
+
+    it(`ends where Chrome's scroller of the same height and padding after it ends at scale ${scale}`, () => {
+      const cases = extentOracle[`x${scale}`].filter(
+        (entry) => entry.axis === "y" && entry.size === 300 && entry.pad === 0 && entry.split === "single" && entry.f === 0
+      )
+      expect(cases.map((entry) => entry.padEnd)).toEqual([0, 0.5])
+      for (const entry of cases) {
+        const expected = { extent: entry.extent, client: entry.client, st1: entry.st1, st2: entry.st2 }
+        expect(measured(scale, { paddingTop: 0, paddingBottom: entry.padEnd }, true), `padding after ${entry.padEnd}`).toEqual(
+          expected
+        )
+      }
+    }, 60_000)
+  }
+})

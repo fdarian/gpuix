@@ -183,28 +183,69 @@ pub(crate) fn metrics(
         let bars = handle.scrollbar_size();
         (f64::from(f32::from(bars.width)), f64::from(f32::from(bars.height)))
     });
-    // A collapsed table's outer halves are its border for `clientLeft` but not for its client size (see `ElementBounds::collapsed_table`).
-    let (border_x, border_y) = if painted.collapsed_table {
-        (0.0, 0.0)
-    } else {
-        (painted.client_left + painted.border_right, painted.client_top + painted.border_bottom)
-    };
-    let width = (painted.width - border_x - reserved_width).max(0.0);
-    let height = (painted.height - border_y - reserved_height).max(0.0);
-    let (client_width, client_height) = (round_half_up(width), round_half_up(height));
+    let client = ClientBox::of(painted, reserved_width, reserved_height);
     let Some(handle) = handle else {
-        return Some([0.0, 0.0, client_width, client_height, client_width, client_height]);
+        return Some(client.unscrolled());
     };
     let offset = clamp_offset(handle.offset(), handle.max_offset());
     Some([
         // `0.0 -` rather than negation: an offset of 0 must read +0, not -0.
         0.0 - f64::from(f32::from(offset.x)),
         0.0 - f64::from(f32::from(offset.y)),
-        round_half_up(width.max(painted.content_width)),
-        round_half_up(height.max(painted.content_height)),
+        round_half_up(client.width.max(painted.content_width)),
+        round_half_up(client.height.max(painted.content_height)),
+        client.rounded_width,
+        client.rounded_height,
+    ])
+}
+
+/// [`metrics`] of a virtual list, which scrolls by the rows it holds and not by a handle, from its
+/// last layout: `scrollTop` is its offset and `scrollHeight` the rows and the padding around them.
+/// `None` is a list that has not been laid out, which has no box to measure.
+pub(crate) fn list_metrics(list: Option<gpui::ListDomScroll>) -> Option<[f64; 6]> {
+    let list = list?;
+    let client_width = round_half_up(f64::from(f32::from(list.client.width)));
+    let client_height = round_half_up(f64::from(f32::from(list.client.height)));
+    Some([
+        0.0,
+        f64::from(f32::from(list.top)),
+        client_width,
+        round_half_up(f64::from(f32::from(list.client.height.max(list.content_height)))),
         client_width,
         client_height,
     ])
+}
+
+/// The padding box of an element less what is reserved for scrollbars, as layout measured it.
+struct ClientBox {
+    width: f64,
+    height: f64,
+    rounded_width: f64,
+    rounded_height: f64,
+}
+
+impl ClientBox {
+    fn of(painted: crate::automation::ElementBounds, reserved_width: f64, reserved_height: f64) -> Self {
+        // A collapsed table's outer halves are its border for `clientLeft` but not for its client size (see `ElementBounds::collapsed_table`).
+        let (border_x, border_y) = if painted.collapsed_table {
+            (0.0, 0.0)
+        } else {
+            (painted.client_left + painted.border_right, painted.client_top + painted.border_bottom)
+        };
+        let width = (painted.width - border_x - reserved_width).max(0.0);
+        let height = (painted.height - border_y - reserved_height).max(0.0);
+        Self {
+            width,
+            height,
+            rounded_width: round_half_up(width),
+            rounded_height: round_half_up(height),
+        }
+    }
+
+    /// An element with nothing to scroll: its content is as big as it is.
+    fn unscrolled(&self) -> [f64; 6] {
+        [0.0, 0.0, self.rounded_width, self.rounded_height, self.rounded_width, self.rounded_height]
+    }
 }
 
 /// `Math.round`, which is how Chrome rounds a `LayoutUnit` for `clientWidth` and `scrollWidth`.
