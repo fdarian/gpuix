@@ -8621,10 +8621,23 @@ little for each card the scroller holds. A state commit from JS, a motion write,
 programmatic scroll and a read of the automation tree keep this: they ask for a frame
 and do not force a full rebuild of it. Focus changes, `scrollIntoView`, the window
 title, text selection set from JS, a live image, a font and a background image still
-do. Counters you read off the renderer:
+do.
+
+A running animation costs the page what the animation costs. When all that changed
+since the last frame is the clock, and everything that runs only changes how an
+element paints (a colour, an opacity, a shadow, an `<svg>` stroke), the tick builds
+the elements that animate alone and paints them again in the frame already shown, so
+one loop on a page of 30000 nodes costs about what it does on a page of 500. An
+animation on content that is not shown (below the window, clipped by an `overflow`) is
+not built or drawn at all, and its events and `getAnimations()` still advance. A tick
+that moves a box (a `width` or inset loop, a `layout` element, a big `<svg>`), or that
+follows any other change (the pointer, focus, a scroll, a commit), is a full frame.
+Counters you read off the renderer:
 
 - `getBuildCounters()` (`resetBuildCounters()` to start over): elements built
-  and skipped, and the style and inherited-state copies the build made.
+  and skipped, the style and inherited-state copies the build made, and the
+  subtrees built whole as units of an animation (`unitsBuilt`, `unitsOversized`
+  for those over 256 elements).
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
   child lists set, passes, and measure calls, since the window was made, the
   text system's lines shaped, wrapped layouts built and line layout hits, and the
@@ -8638,6 +8651,12 @@ do. Counters you read off the renderer:
 - `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,
   how many a scroller moved without building them (`relocations`), and why a
   recording could not be replayed or moved.
+- `getPatchCounters()`, also on the live `GpuixRenderer` so a window with the display
+  link can tell a patched tick from one drawn whole: `patchedFrames` and
+  `patchedUnits`, and two JSON objects keyed by reason, `declines` (ticks GPUI drew
+  whole after trying to patch them) and `unpatchable` (ticks gpuix did not try to
+  patch, such as `Sourced` for a pointer move and `Edited` for a commit). A loop
+  that is patched has `patchedFrames` equal to its ticks.
 - `getCulledSubtreeCount()`: subtrees skipped for lying outside their clip. A test
   of what a clipped box still reports (its box, observers, tab order) reads it to
   be sure something was skipped.
@@ -8646,9 +8665,15 @@ do. Counters you read off the renderer:
   effects flush, which a display link never does, so `setInlineDraws(false)`
   stops that and `drawFrame()` ends a frame the way the display does.
 
+To measure a tick, pause the clock (`clockPause()`), call `setInlineDraws(false)`, and
+move the clock with `clockAdvance(ms)` before each `drawFrame()`. `clockFastForward(ms)`
+also tells the window, so the frame after it is built whole and never a tick.
+
 `setA11yActive(false)` removes the pretend screen reader the test window starts
 with. Set `GPUIX_RETAIN_OFF=1` (or call `setRetainEnabled(false)` on one window)
-to build every frame in full, for timing, and
+to build every frame in full, for timing, `GPUIX_PATCH_OFF=1` (or
+`setPatchEnabled(false)` on one window) to draw every tick of an animation whole
+instead of patching it, and
 `GPUIX_RETAIN_VERIFY=1` to build each frame that replayed a second time, whole,
 and compare the two: a difference is printed as `[retained]` and fails
 `unmount()`. Run your suite with it on after a change to a custom element.
