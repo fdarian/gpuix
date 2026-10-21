@@ -2653,7 +2653,7 @@ function ProgrammaticScroll() {
 
 | Member | |
 |---|---|
-| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range. |
+| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range, which ends where Chrome's does: the extent (with the padding after the content) and the client size, each rounded half up to a device pixel, apart from where the box sits. At scale 1 the farthest offset is `scrollHeight - clientHeight`; at scale 2 it can be half a pixel more, and `scrollTo(0, scrollHeight - clientHeight)` stops short of it, as in Chrome. |
 | `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. A whole number: the extent as layout measured it, rounded half up, as Chrome does. |
 | `clientWidth`, `clientHeight` | The padding box less the scrollbar. Overlay scrollbars take nothing from it; classic ones (see [Scrollbars](#scrollbars)) take 15 px, or 11 with `scrollbarWidth: "thin"`. A whole number: the size as layout measured it, rounded half up, as Chrome does, so a box 33.328125 px wide has a `clientWidth` of 33. |
 | `scrollTo({ top, left, behavior })`, `scrollTo(x, y)` | An axis you leave out stays where it is. |

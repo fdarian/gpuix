@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>scroll extent oracle</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
+  .wrap { position: absolute; left: 0; top: 0; }
+  .scroller { overflow: auto; scrollbar-width: none; }
+  .row { display: flex; width: max-content; }
+  .row > div { flex-shrink: 0; height: 20px; }
+</style>
+</head>
+<body>
+<script>
+// Scroll extents of overflow:auto boxes with fractional geometry. Every case is built, measured and removed in turn.
+// Results go to <body data-rects> as {scale, results: [...]}; scroll-extent-oracle.sh extracts them. A case is the axis,
+// the scroller's size along it (`size`), the wrapper padding that puts it at a fractional top or left (`pad`), the
+// padding after its content (`padEnd`) and the content: one child of 700 + `f`, or two of 350.3 and 350.45 (`two`).
+// Measured: scrollHeight/Width (`extent`), clientHeight/Width (`client`), the scroll offset after scrollTo(sh - ch)
+// (`st1`) and after an offset of 1e6 (`st2`).
+const DPR = window.devicePixelRatio;
+const SIZES = [300, 300.5];
+const PADS = [0, 0.25, 0.6];
+const PAD_END = [0, 0.5];
+const FRACS = [0, 0.25, 0.5, 0.75];
+
+function cases() {
+  const out = [];
+  for (const axis of ["y", "x"]) {
+    for (const size of SIZES) {
+      for (const pad of PADS) {
+        for (const padEnd of PAD_END) {
+          for (const f of FRACS) out.push({ axis, size, pad, padEnd, split: "single", f });
+          out.push({ axis, size, pad, padEnd, split: "two", f: null });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function caseId(c) {
+  return `${c.axis}|s${c.size}|p${c.pad}|e${c.padEnd}|${c.split}${c.f === null ? "" : c.f}`;
+}
+
+function build(c) {
+  const y = c.axis === "y";
+  const wrap = document.createElement("div");
+  wrap.className = "wrap";
+  if (y) wrap.style.paddingTop = `${c.pad}px`;
+  else wrap.style.paddingLeft = `${c.pad}px`;
+
+  const el = document.createElement("div");
+  el.className = "scroller";
+  el.style.width = `${y ? 300 : c.size}px`;
+  el.style.height = `${y ? c.size : 40}px`;
+  if (y) el.style.paddingBottom = `${c.padEnd}px`;
+  else el.style.paddingRight = `${c.padEnd}px`;
+
+  const content = document.createElement("div");
+  if (!y) content.className = "row";
+  const sizes = c.split === "single" ? [700 + c.f] : [350.3, 350.45];
+  for (const s of sizes) {
+    const child = document.createElement("div");
+    if (y) child.style.height = `${s}px`;
+    else child.style.width = `${s}px`;
+    content.appendChild(child);
+  }
+
+  el.appendChild(content);
+  wrap.appendChild(el);
+  document.body.appendChild(wrap);
+  return { wrap, el, content };
+}
+
+function measure(c) {
+  const y = c.axis === "y";
+  const { wrap, el, content } = build(c);
+
+  const sRect = el.getBoundingClientRect();
+  const cRect = content.getBoundingClientRect();
+  const extent = y ? el.scrollHeight : el.scrollWidth;
+  const client = y ? el.clientHeight : el.clientWidth;
+  const max = extent - client;
+
+  if (y) el.scrollTo(0, max);
+  else el.scrollTo(max, 0);
+  const st1 = y ? el.scrollTop : el.scrollLeft;
+
+  if (y) el.scrollTop = 0;
+  else el.scrollLeft = 0;
+  if (y) el.scrollTop = 1e6;
+  else el.scrollLeft = 1e6;
+  const st2 = y ? el.scrollTop : el.scrollLeft;
+
+  const sEnd = el.getBoundingClientRect();
+  const cEnd = content.getBoundingClientRect();
+  const endGap = y ? cEnd.bottom - sEnd.bottom : cEnd.right - sEnd.right;
+
+  wrap.remove();
+  return {
+    id: caseId(c),
+    axis: c.axis,
+    size: c.size,
+    pad: c.pad,
+    padEnd: c.padEnd,
+    split: c.split,
+    f: c.f,
+    sTop: sRect.top,
+    sLeft: sRect.left,
+    sSize: y ? sRect.height : sRect.width,
+    cTop: y ? cRect.top : cRect.left,
+    cSize: y ? cRect.height : cRect.width,
+    extent,
+    client,
+    max,
+    st1,
+    st2,
+    endGap,
+  };
+}
+
+const results = cases().map(measure);
+document.body.setAttribute("data-rects", JSON.stringify({ scale: DPR, results }));
+</script>
+</body>
+</html>
