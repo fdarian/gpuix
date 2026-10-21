@@ -253,6 +253,15 @@ function settle(renderer: TestRenderer): void {
   for (let step = 0; step < 5; step++) frame(renderer, 0)
 }
 
+/**
+ * The ring springs to the box the observer measured in the last frame. Solid sends the change in a microtask, which a
+ * synchronous test never reaches, so it is sent here, and the ring springs for a frame of its own.
+ */
+function followResize(app: Mounted): void {
+  app.flushSync(() => {})
+  frame(app.renderer, 1000)
+}
+
 function boundsOf(renderer: TestRenderer, testId: string) {
   const element = renderer.findByTestId(testId)
   if (element === undefined) throw new Error(`no element has the testId ${testId}`)
@@ -358,6 +367,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion below a cull wrapper in a 
       expect(rings[rings.length - 1]).toBeGreaterThan(rings[0])
 
       frame(app.renderer, 2000)
+      followResize(app)
       settle(app.renderer)
       const row = boundsOf(app.renderer, "row")
       const ring = boundsOf(app.renderer, "ring")
@@ -468,6 +478,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion below a cull wrapper in a 
       app.renderer.nativeSimulateMouseUp(track.x + 100, track.y + 10)
       expectIncreasing(trace(app.renderer, "mover", 3, 100, (box) => box.x))
       frame(app.renderer, 3000)
+      followResize(app)
       settle(app.renderer)
 
       expect(boundsOf(app.renderer, "mover").x).toBe(mover + 100)
