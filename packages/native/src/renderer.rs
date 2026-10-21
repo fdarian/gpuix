@@ -11400,7 +11400,11 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
         use crate::scroll::Overflow;
         let axes = crate::scroll::Axes::declared(style);
         let hides = |overflow| matches!(overflow, Overflow::Clip | Overflow::Hidden);
-        if hides(axes.x) && hides(axes.y) {
+        if axes.x == Overflow::Clip && axes.y == Overflow::Clip {
+            // Not `hidden`: a box that only clips is no scroll container, so a flex or grid item
+            // of it keeps the content-based minimum size it has when `overflow` is `visible`.
+            el = el.overflow_x_clip().overflow_y_clip();
+        } else if hides(axes.x) && hides(axes.y) {
             el = el.overflow_hidden();
         } else if axes.x == Overflow::Clip && axes.y == Overflow::Visible {
             // `clip` beside `visible` leaves the visible axis visible, which GPUI's `Hidden`
