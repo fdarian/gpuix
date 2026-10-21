@@ -107,6 +107,22 @@ pub struct FrameWorkCounters {
     pub replayed_primitives: f64,
 }
 
+/// How ticks were drawn by patching the frame before them, over the life of the window, see
+/// `get_patch_counters`.
+#[derive(Debug, Clone)]
+#[napi(object)]
+pub struct PatchCounters {
+    /// Frames drawn by patching.
+    pub patched_frames: f64,
+    /// Units painted again by those frames.
+    pub patched_units: f64,
+    /// JSON object: ticks gpui drew whole after the patcher tried, by reason (`PatchDecline`).
+    pub declines: String,
+    /// JSON object: ticks gpuix did not try to patch, by kind (`Unpatchable`, and the units it
+    /// could not build).
+    pub unpatchable: String,
+}
+
 /// What the retained subtrees of the window did since it was made, see `get_retained_counters`.
 #[derive(Debug, Clone)]
 #[napi(object)]
@@ -965,6 +981,41 @@ impl TestGpuixRenderer {
                 culled_painted: counters.culled_painted as f64,
                 painted_primitives: counters.painted_primitives as f64,
                 replayed_primitives: counters.replayed_primitives as f64,
+            }
+        })
+    }
+
+    /// Whether the ticks of animations that only change what they paint are drawn by patching the
+    /// frame before them. On unless `GPUIX_PATCH_OFF`, and never when the retention is off.
+    #[napi]
+    pub fn set_patch_enabled(&self, enabled: bool) -> Result<()> {
+        update_view(move |view, _window, _cx| view.patch.set_enabled(enabled))
+    }
+
+    /// How ticks were patched since the window was made: subtract two reads for a span of frames.
+    #[napi]
+    pub fn get_patch_counters(&self) -> Result<PatchCounters> {
+        update_view(|view, window, _cx| {
+            let counters = window.patch_counters();
+            let object = |entries: Vec<(String, u64)>| {
+                serde_json::Value::Object(entries.into_iter().map(|(key, count)| (key, count.into())).collect()).to_string()
+            };
+            PatchCounters {
+                patched_frames: counters.patched_frames as f64,
+                patched_units: counters.patched_units as f64,
+                declines: object(
+                    gpui::PatchDecline::ALL
+                        .into_iter()
+                        .map(|reason| (format!("{reason:?}"), counters.declines(reason)))
+                        .collect(),
+                ),
+                unpatchable: object(
+                    view.patch
+                        .declines()
+                        .iter()
+                        .map(|(kind, count)| (kind.to_string(), *count))
+                        .collect(),
+                ),
             }
         })
     }
@@ -2244,6 +2295,14 @@ impl TestGpuixRenderer {
             cx.notify();
             now_ms
         })
+    }
+
+    /// Moves a paused clock as time passing does: the window is not told, as a live window is not
+    /// when its clock runs. `clockFastForward` notifies the view, so the frame after it is built
+    /// whole; the frame after this one is a tick, which can be drawn by patching the frame before.
+    #[napi]
+    pub fn clock_advance(&self, delta_ms: f64) -> Result<f64> {
+        update_view(move |view, _window, _cx| view.clock.fast_forward_ms(delta_ms))
     }
 
     #[napi]

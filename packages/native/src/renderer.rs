@@ -5287,18 +5287,18 @@ pub(crate) struct GpuixView {
     /// here by JS through `defineKeyframes`.
     pub(crate) keyframes: crate::motion::KeyframesRegistry,
     /// CSS transition state of the elements that declare `transition*`.
-    css_transitions: crate::motion::CssTransitions,
+    pub(crate) css_transitions: crate::motion::CssTransitions,
     /// CSS animation state of the elements that declare `animation*`.
-    css_animations: crate::motion::CssAnimations,
+    pub(crate) css_animations: crate::motion::CssAnimations,
     /// Runs that finished or were cancelled, until JS has consumed the event.
-    retired_animations: crate::motion::web_animation::Retired,
+    pub(crate) retired_animations: crate::motion::web_animation::Retired,
     /// What the `display: contents` elements handed down in the frame being built, see `splice_overlay`.
     contents_styles: HashMap<u64, Arc<ContentsFrame>>,
     /// What the last paint measured for the elements that animate.
-    measurements: crate::motion::measure::Measurements,
+    pub(crate) measurements: crate::motion::measure::Measurements,
     /// Hover and press state for those elements, until the event model owns it.
     /// The glide of the elements that declare `layout`.
-    layout_flips: crate::motion::LayoutFlips,
+    pub(crate) layout_flips: crate::motion::LayoutFlips,
     /// Serialised markup of the `<svg>` elements that have shape children.
     pub(crate) svg_trees: crate::custom_elements::svg_tree::SvgTrees,
     /// Live text selection, shared with the paint closures and the napi methods.
@@ -5316,6 +5316,8 @@ pub(crate) struct GpuixView {
     pub(crate) built_at: Option<web_time::Instant>,
     /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
     dormant_tick_armed: bool,
+    /// Whether a tick of paint-only animations is drawn by patching the frame before it.
+    pub(crate) patch: crate::retain::Patching,
     /// Resolved `highlight` state, keyed by the element that declared it.
     /// Empty in every app that does not use search.
     highlights: HashMap<u64, HighlightCacheEntry>,
@@ -5375,7 +5377,7 @@ struct HighlightCacheEntry {
     reported: Option<u64>,
 }
 
-fn emit_motion_settled(
+pub(crate) fn emit_motion_settled(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
     completions: &[(u64, u64)],
@@ -5395,7 +5397,7 @@ fn emit_motion_settled(
 
 /// Samples the motion values the tree binds and the ones JS listens to. A
 /// virtual row rebuilt between two root frames reads what this sampled.
-fn sync_motion_values(
+pub(crate) fn sync_motion_values(
     tree: &crate::retained_tree::RetainedTree,
     store: &mut crate::motion::MotionValueStore,
     now: web_time::Instant,
@@ -5447,7 +5449,7 @@ fn sync_row_motion_values(
 
 /// The element id of these events is the motion value's, so the JS side tells
 /// them apart by event type.
-fn emit_motion_value_events(
+pub(crate) fn emit_motion_value_events(
     callback: &Option<EventCallback>,
     events: &[crate::motion::MotionValueEvent],
 ) {
@@ -5488,7 +5490,7 @@ fn parent_inherited(
 /// Which gestures are on an element: the states its `hover`, `active` and `focusVisible` styles
 /// answer to, whether or not it declares them, in a subtree that takes input. Targets that name
 /// a variant of a controlling ancestor answer to that ancestor's gestures.
-fn gestures_of(
+pub(crate) fn gestures_of(
     tree: &crate::retained_tree::RetainedTree,
     pointer: &crate::events::state::PointerState,
     focus: &crate::focus::FocusStyles,
@@ -5509,7 +5511,7 @@ fn gestures_of(
     }
 }
 
-fn sync_motion_states(
+pub(crate) fn sync_motion_states(
     tree: &crate::retained_tree::RetainedTree,
     states: &mut HashMap<u64, crate::motion::MotionState>,
     measurements: &crate::motion::measure::Measurements,
@@ -5623,7 +5625,7 @@ pub(crate) fn emit_bubbling_event(
     });
 }
 
-fn emit_transition_events(
+pub(crate) fn emit_transition_events(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
     events: Vec<crate::motion::TransitionEvent>,
@@ -5637,7 +5639,7 @@ fn emit_transition_events(
     }
 }
 
-fn emit_layout_events(
+pub(crate) fn emit_layout_events(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
     events: Vec<crate::motion::LayoutEvent>,
@@ -5654,7 +5656,7 @@ fn emit_layout_events(
     }
 }
 
-fn emit_animation_events(
+pub(crate) fn emit_animation_events(
     callback: &Option<EventCallback>,
     tree: &crate::retained_tree::RetainedTree,
     events: Vec<crate::motion::AnimationEvent>,
@@ -5675,7 +5677,7 @@ fn emit_animation_events(
 ///
 /// The run is retired as it showed then, so JS can still read it until it has
 /// consumed the event (`releaseAnimation`).
-fn emit_web_animation_events(
+pub(crate) fn emit_web_animation_events(
     callback: &Option<EventCallback>,
     retired: &mut crate::motion::web_animation::Retired,
     events: Vec<crate::motion::web_animation::ApiEvent>,
@@ -5874,6 +5876,7 @@ impl GpuixView {
             clock: crate::automation::AutomationClock::new(),
             built_at: None,
             dormant_tick_armed: false,
+            patch: crate::retain::Patching::new(),
             highlights: HashMap::new(),
             paint_reports: SharedPaintReports::default(),
             containers: Default::default(),
@@ -8009,7 +8012,7 @@ fn runs_paint_only(
 impl GpuixView {
     /// Asks for a frame callback that carries the dormant animations on without drawing: Chrome
     /// runs the animations of content it does not show without painting a frame for them.
-    fn arm_dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+    pub(crate) fn arm_dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         if std::mem::replace(&mut self.dormant_tick_armed, true) {
             return;
         }
@@ -8076,6 +8079,7 @@ impl gpui::Render for GpuixView {
 
         window.set_window_title(&self.window_title);
         self.apply_pointer_lock(window, cx);
+        self.install_patcher(window, cx);
         let verifies = self.retain.verifies_frames();
         self.tapes.verify(verifies);
         // A build is not the same twice in a frame here (anchor-size() reads the size the trigger
@@ -8395,7 +8399,7 @@ impl gpui::Render for GpuixView {
         PENDING_VIRTUAL_LIST_SCROLLS.with(|cell| cell.borrow_mut().clear());
 
         if motion_active || transitions_active || motion_value_frame.active || scroll_animating {
-            window.request_animation_frame();
+            self.request_next_frame(window, scroll_animating);
         } else if dormant_active || dormant_motion {
             self.arm_dormant_tick(window, cx);
         }

@@ -602,6 +602,13 @@ export declare class TestGpuixRenderer {
    * `getRetainedCounters`, which counts the replays themselves.
    */
   getFrameWorkCounters(): FrameWorkCounters
+  /**
+   * Whether the ticks of animations that only change what they paint are drawn by patching the
+   * frame before them. On unless `GPUIX_PATCH_OFF`, and never when the retention is off.
+   */
+  setPatchEnabled(enabled: boolean): void
+  /** How ticks were patched since the window was made: subtract two reads for a span of frames. */
+  getPatchCounters(): PatchCounters
   resetBuildCounters(): void
   /**
    * How many frames the window has painted. A test that must prove a read did not draw once
@@ -991,6 +998,12 @@ export declare class TestGpuixRenderer {
   clockPause(): number
   clockSet(nowMs: number): number
   clockFastForward(deltaMs: number): number
+  /**
+   * Moves a paused clock as time passing does: the window is not told, as a live window is not
+   * when its clock runs. `clockFastForward` notifies the view, so the frame after it is built
+   * whole; the frame after this one is a tick, which can be drawn by patching the frame before.
+   */
+  clockAdvance(deltaMs: number): number
   clockResume(): number
   /** A value that is written with `set` and `jump` or animated. */
   createMotionValue(id: number, initial: any): void
@@ -1761,6 +1774,24 @@ export interface ObservationClip {
   y: number
   width: number
   height: number
+}
+
+/**
+ * How ticks were drawn by patching the frame before them, over the life of the window, see
+ * `get_patch_counters`.
+ */
+export interface PatchCounters {
+  /** Frames drawn by patching. */
+  patchedFrames: number
+  /** Units painted again by those frames. */
+  patchedUnits: number
+  /** JSON object: ticks gpui drew whole after the patcher tried, by reason (`PatchDecline`). */
+  declines: string
+  /**
+   * JSON object: ticks gpuix did not try to patch, by kind (`Unpatchable`, and the units it
+   * could not build).
+   */
+  unpatchable: string
 }
 
 export interface PathPromptOptions {

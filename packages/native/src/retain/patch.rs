@@ -1,0 +1,204 @@
+//! The frame patcher: a tick whose only change is how some units paint (see `Retain::preview`) is
+//! drawn by building those units alone and having gpui paint them again in the frame it rendered
+//! last (`Window::repaint_in_place`), instead of building the page.
+//!
+//! A tick is asked for by the frame before it (`GpuixView::request_next_frame`), and gpui calls the
+//! patcher at the top of its draw. A tick the patcher does not take is drawn whole in the same
+//! draw, which is why it changes nothing a frame would not change itself: the clocks it moves are
+//! sampled at an instant and not stepped, so the frame that follows at a later instant finds the
+//! state it would have found, and the events the patcher emitted are not emitted again.
+
+use std::collections::BTreeMap;
+use std::rc::Rc;
+
+use super::Unpatchable;
+use crate::renderer::GpuixView;
+
+/// Whether ticks are patched, and why they were not.
+pub(crate) struct Patching {
+    /// `GPUIX_PATCH_OFF` and `setPatchEnabled` turn patching off, to time a run without it.
+    enabled: bool,
+    installed: bool,
+    declines: BTreeMap<&'static str, u64>,
+}
+
+impl Patching {
+    pub(crate) fn new() -> Self {
+        Self {
+            enabled: std::env::var_os("GPUIX_PATCH_OFF").is_none(),
+            installed: false,
+            declines: BTreeMap::new(),
+        }
+    }
+
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    /// How many ticks were not patched by gpuix, by kind (gpui counts its own declines).
+    pub(crate) fn declines(&self) -> &BTreeMap<&'static str, u64> {
+        &self.declines
+    }
+
+    fn decline(&mut self, kind: &'static str) {
+        *self.declines.entry(kind).or_default() += 1;
+    }
+}
+
+impl Unpatchable {
+    fn kind(self) -> &'static str {
+        match self {
+            Unpatchable::NoFrame => "NoFrame",
+            Unpatchable::LayoutPass => "LayoutPass",
+            Unpatchable::Unsteady => "Unsteady",
+            Unpatchable::ScrollAnimation => "ScrollAnimation",
+            Unpatchable::Edited => "Edited",
+            Unpatchable::Everything => "Everything",
+            Unpatchable::Sourced => "Sourced",
+            Unpatchable::Outside(_) => "Outside",
+        }
+    }
+}
+
+/// What a patch needs of the units built for it, once the view is no longer borrowed: gpui paints
+/// them, and paints may update the view.
+pub(crate) struct Built {
+    pub(crate) units: Vec<(gpui::ElementId, gpui::AnyElement)>,
+    tapes: Vec<(u64, crate::tape::SharedTape)>,
+    stepped: Stepped,
+}
+
+/// What the clocks that a tick moved say about the frames to come.
+struct Stepped {
+    motion: bool,
+    dormant_motion: bool,
+    motion_values: bool,
+}
+
+impl GpuixView {
+    /// Makes gpui ask this view to patch the ticks it requests. Once per window.
+    pub(crate) fn install_patcher(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        if std::mem::replace(&mut self.patch.installed, true) {
+            return;
+        }
+        let view = cx.weak_entity();
+        let patcher = move |window: &mut gpui::Window, app: &mut gpui::App| -> bool {
+            let Some(view) = view.upgrade() else {
+                return false;
+            };
+            let Some(built) = view.update(app, |view, cx| view.build_patch(window, cx)) else {
+                return false;
+            };
+            let tapes = view.read(app).tapes.clone();
+            let scratch = built.tapes;
+            let accepted = move |_: &mut gpui::Window, _: &mut gpui::App| {
+                scratch.iter().all(|(id, tape)| tapes.same_as_recorded(*id, tape))
+            };
+            if window.repaint_in_place(built.units, app, accepted).is_err() {
+                return false;
+            }
+            view.update(app, |view, cx| view.continue_after_patch(window, &built.stepped, cx));
+            true
+        };
+        window.set_frame_patcher(Some(Rc::new(patcher)));
+    }
+
+    /// Whether the frames of what runs are asked for as ticks that can be patched.
+    fn patches_ticks(&self) -> bool {
+        self.patch.enabled && self.retain.has_units()
+    }
+
+    /// Asks for the next frame of an animation that runs. A tick is drawn by patching the frame
+    /// before when it can be, and whole when it cannot (a scroll animation never is patched).
+    pub(crate) fn request_next_frame(&self, window: &mut gpui::Window, scroll_animating: bool) {
+        if self.patches_ticks() && !scroll_animating {
+            window.on_next_frame(|window, _| window.request_tick());
+        } else {
+            window.request_animation_frame();
+        }
+    }
+
+    /// Steps what a frame steps before it builds, at `now`, and builds the units the tick changes.
+    /// None if the tick cannot be patched: what was stepped stays, for the frame built whole in
+    /// its place to find at its own instant.
+    pub(crate) fn build_patch(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> Option<Built> {
+        if !self.patch.enabled {
+            return None;
+        }
+        let now = self.clock.now();
+        let ids = match self.preview_tick(window, now) {
+            Ok(ids) => ids,
+            Err(reason) => {
+                self.patch.decline(reason.kind());
+                return None;
+            }
+        };
+        if ids.is_empty() {
+            self.patch.decline("NoUnits");
+            return None;
+        }
+        let stepped = self.step_clocks(window, now);
+        let mut units = Vec::with_capacity(ids.len());
+        let mut tapes = Vec::with_capacity(ids.len());
+        for id in ids {
+            let Some(unit) = self.build_unit(id, now, window, cx) else {
+                self.patch.decline("NotAUnit");
+                return None;
+            };
+            tapes.push((id, unit.tape));
+            units.push((unit.id, unit.element));
+        }
+        Some(Built { units, tapes, stepped })
+    }
+
+    /// What a frame does to the clocks before it builds: motion and motion values are stepped, the
+    /// clocks of the dormant animations move, and the events of all of them are emitted.
+    fn step_clocks(&mut self, window: &mut gpui::Window, now: web_time::Instant) -> Stepped {
+        let tree_arc = self.tree.clone();
+        let tree = tree_arc.lock().unwrap();
+        let callback = self.event_callback.clone();
+        self.built_at = Some(now);
+        for &id in self.retain.dormant() {
+            self.css_animations.advance_clock(id, now);
+            self.css_transitions.advance_clock(id, now);
+        }
+        let (animating, settled) = if tree.motion_ids.is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
+            let pointer_state = self.pointer.clone();
+            let pointer = pointer_state.borrow();
+            crate::renderer::sync_motion_states(
+                &tree,
+                &mut self.motion_states,
+                &self.measurements,
+                window.appearance(),
+                window.viewport_size(),
+                &|id| crate::renderer::gestures_of(&tree, &pointer, &focus_styles, id),
+                now,
+            )
+        };
+        self.motion_values
+            .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
+        let motion_values = crate::renderer::sync_motion_values(&tree, &mut self.motion_values, now);
+        crate::renderer::emit_motion_settled(&callback, &tree, &settled);
+        crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
+        let dormant = self.retain.dormant();
+        Stepped {
+            motion: animating.iter().any(|id| !dormant.contains(id)),
+            dormant_motion: animating.iter().any(|id| dormant.contains(id)),
+            motion_values: motion_values.active,
+        }
+    }
+
+    /// Asks for the frames that what still runs after a patch needs, as the end of a frame does.
+    fn continue_after_patch(&mut self, window: &mut gpui::Window, stepped: &Stepped, cx: &mut gpui::Context<Self>) {
+        let running = self.css_transitions.take_active() | self.css_animations.take_active();
+        let dormant_running = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
+        if running || stepped.motion || stepped.motion_values {
+            self.request_next_frame(window, false);
+        } else if dormant_running || stepped.dormant_motion {
+            self.arm_dormant_tick(window, cx);
+        }
+    }
+}

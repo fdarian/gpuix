@@ -45,6 +45,9 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 
 mod debug;
+mod patch;
+
+pub(crate) use patch::Patching;
 
 use crate::renderer::{GroupScope, Inherited};
 use crate::tape::BuildEffect;
@@ -1406,7 +1409,6 @@ impl Retain {
             || !self.recording()
             || self.deferred
             || self.layout_only
-            || self.reference
             || self.unit.is_some()
         {
             return None;
@@ -1475,6 +1477,11 @@ impl Retain {
 
     /// Keeps the unit built since `begin_unit` for the ticks that follow the frame.
     pub(crate) fn add_unit(&mut self, unit: Unit) {
+        // The pass that rebuilds a frame for comparison (after a patch it is the frame shown) wraps
+        // the units of the frame it stands for, and leaves the plan as that frame made it.
+        if self.reference {
+            return;
+        }
         self.plan.ids.insert(unit.id);
         self.plan.units.push(unit);
     }
@@ -1487,6 +1494,11 @@ impl Retain {
     /// The unit of the last frame built whole that is the element `id`.
     pub(crate) fn unit(&self, id: u64) -> Option<&Unit> {
         self.plan.units.iter().find(|unit| unit.id == id)
+    }
+
+    /// Whether the last frame built whole made units, so that a tick after it could be patched.
+    pub(crate) fn has_units(&self) -> bool {
+        self.planning && !self.plan.units.is_empty()
     }
 
     /// The units of the last frame built whole, in the order it built them.
@@ -4250,6 +4262,80 @@ mod tests {
             scene.window.update(cx, |view, window, _| view.preview_tick(window, view.clock.now())).unwrap(),
             Ok(vec![20])
         );
+    }
+
+    impl Scene {
+        /// A frame that is a tick: the window is not told, the clock moved.
+        fn tick(&self, cx: &mut gpui::TestAppContext) {
+            cx.update_window(self.window.into(), |_, window, app| {
+                window.request_tick();
+                window.draw(app).clear(app);
+            })
+            .unwrap();
+            self.assert_sound(cx);
+        }
+
+        fn patches(&self, cx: &mut gpui::TestAppContext) -> gpui::PatchCounters {
+            cx.update_window(self.window.into(), |_, window, _| window.patch_counters()).unwrap()
+        }
+    }
+
+    #[gpui::test]
+    fn a_tick_of_a_colour_is_drawn_by_patching_the_frame_before(cx: &mut gpui::TestAppContext) {
+        let scene = tinted(cx, true);
+        let before = scene.patches(cx);
+        for _ in 0..4 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.tick(cx);
+        }
+        let after = scene.patches(cx);
+        assert_eq!(after.patched_frames - before.patched_frames, 4);
+        assert_eq!(after.patched_units - before.patched_units, 4);
+        assert_eq!(after.total_declines(), before.total_declines());
+        // The frame a pointer or a commit asks for (the test app draws it as the notification flushes)
+        // is built whole, and the ticks go on after it.
+        scene.window.update(cx, |view, _, cx| {
+            view.clock.fast_forward_ms(16.0);
+            cx.notify();
+        })
+        .unwrap();
+        assert_eq!(scene.patches(cx).patched_frames, after.patched_frames);
+        for _ in 0..2 {
+            scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+            scene.tick(cx);
+        }
+        assert_eq!(scene.patches(cx).patched_frames, after.patched_frames + 2);
+    }
+
+    #[gpui::test]
+    fn a_tick_declined_after_its_clocks_stepped_emits_each_event_once(cx: &mut gpui::TestAppContext) {
+        let scene = tinted(cx, false);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        scene
+            .window
+            .update(cx, |view, _, _| {
+                let seen = seen.clone();
+                view.event_callback = Some(Arc::new(move |payload| seen.lock().unwrap().push(payload.event_type)));
+            })
+            .unwrap();
+        scene.tree.lock().unwrap().set_event_listener(20, "animationiteration".to_owned(), true);
+        let iterations = || seen.lock().unwrap().iter().filter(|event| *event == "animationiteration").count();
+        // 600 ms loops, 96 ms in: a tick on each side of the end of the first iteration.
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(480.0)).unwrap();
+        scene.notified_draw(cx);
+        assert_eq!(iterations(), 0);
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(48.0)).unwrap();
+        let built = scene
+            .window
+            .update(cx, |view, window, cx| view.build_patch(window, cx).map(|built| built.units.len()))
+            .unwrap();
+        assert_eq!(built, Some(1), "the tick was stepped and its unit built; gpui declines the patch");
+        assert_eq!(iterations(), 1);
+        scene.notified_draw(cx);
+        assert_eq!(iterations(), 1, "the frame built whole in its place finds the iteration reported");
+        scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
+        scene.tick(cx);
+        assert_eq!(iterations(), 1);
     }
 
     #[gpui::test]

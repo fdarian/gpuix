@@ -20,6 +20,7 @@ import {
   type EventPayload,
   type MediaFeatures,
   type MotionValuePlayback,
+  type PatchCounters,
   type WebAnimationInfo,
   type WindowOptions,
 } from "../index.js"
@@ -148,6 +149,8 @@ interface NativeTestRendererApi
   setRetainVerify(verify: boolean): void
   setRetainPlanning(planning: boolean): void
   setRetainEnabled(enabled: boolean): void
+  setPatchEnabled(enabled: boolean): void
+  getPatchCounters(): PatchCounters
   setRetainLift(names: string[]): void
   getRetainMismatches(): string[]
   getPaintedFrameCount(): number
@@ -161,6 +164,7 @@ interface NativeTestRendererApi
   clockPause(): number
   clockSet(nowMs: number): number
   clockFastForward(deltaMs: number): number
+  clockAdvance(deltaMs: number): number
   clockResume(): number
   advanceTime(milliseconds: number): void
   getRootId(): number | null
@@ -980,6 +984,20 @@ export class TestRenderer implements NativeRenderer {
     this.native.setRetainEnabled(enabled)
   }
 
+  /** Whether a tick of animations that only change what they paint is drawn by painting the roots
+   *  they change again in the frame before it (on by default, as `GPUIX_PATCH_OFF` turns off for the
+   *  whole run). It is never patched while the retention is off. */
+  setPatchEnabled(enabled: boolean): void {
+    this.native.setPatchEnabled(enabled)
+  }
+
+  /** How ticks were drawn by patching since the window was made: the frames and roots patched, the
+   *  ticks gpui drew whole after the patch was tried (`declines`, by reason, as JSON) and the ones
+   *  gpuix did not try to patch (`unpatchable`, by kind, as JSON). */
+  getPatchCounters(): PatchCounters {
+    return this.native.getPatchCounters()
+  }
+
   /** Counts as if these exclusions (`svg`, `overflow-hidden`, `custom-element`, ...) were lifted,
    *  to see which are worth lifting first. Nothing is reused. */
   setRetainLift(names: string[]): void {
@@ -1050,6 +1068,12 @@ export class TestRenderer implements NativeRenderer {
 
   clockFastForward(deltaMs: number): number {
     return this.native.clockFastForward(deltaMs)
+  }
+
+  /** `clockFastForward` without telling the window, as time passing does in a live one: the frame
+   *  after it is a tick, which patches the frame before it when only paint-only animations ran. */
+  clockAdvance(deltaMs: number): number {
+    return this.native.clockAdvance(deltaMs)
   }
 
   clockResume(): number {
