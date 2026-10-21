@@ -9016,10 +9016,12 @@ struct StyleInputs<'a> {
 struct Animated {
     /// A `display` transition has hidden the element: no stage after it ran.
     hidden: bool,
-    transitioned: Option<crate::motion::DeclaredStyle>,
-    moved: Option<StyleDesc>,
-    bound: Option<StyleDesc>,
-    animated: Option<StyleDesc>,
+    // Boxed: `StyleDesc` is ~13 KB and an `Option` of it is moved whole into this struct even when
+    // it is `None`, which is nearly always.
+    transitioned: Option<Box<crate::motion::DeclaredStyle>>,
+    moved: Option<Box<StyleDesc>>,
+    bound: Option<Box<StyleDesc>>,
+    animated: Option<Box<StyleDesc>>,
     /// What the animations of an `<svg>` write on its root, for its shapes to inherit.
     svg_css: Vec<(&'static str, String)>,
     /// Whether the element is measured (and wrapped to be).
@@ -9038,9 +9040,9 @@ impl Animated {
 
     fn current<'s>(&'s self, base: Option<&'s StyleDesc>) -> Option<&'s StyleDesc> {
         self.animated
-            .as_ref()
-            .or(self.bound.as_ref())
-            .or(self.moved.as_ref())
+            .as_deref()
+            .or(self.bound.as_deref())
+            .or(self.moved.as_deref())
             .or_else(|| self.declared(base))
     }
 
@@ -9099,7 +9101,7 @@ fn animate_style(
             descendant: ctx.focus_styles.has_focus_visible(id),
         };
         focus_visible_own = Some(focus_visible.own);
-        crate::motion::resolve_declared_style(
+        Box::new(crate::motion::resolve_declared_style(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
             input.before_transition,
@@ -9114,7 +9116,7 @@ fn animate_style(
             ctx.inherited.interpolate_size,
             crate::motion::Scope::Element,
             ctx.now,
-        )
+        ))
     });
     // A `display` transition with `allow-discrete` kept the box until now.
     if input.may_hide
@@ -9148,7 +9150,7 @@ fn animate_style(
                 // `Arc<StyleDesc>` is shared, so the animated frame is applied to a
                 // copy. Mutating through the pointer would restyle every element
                 // that declared the same style.
-                let mut resolved = declared_style.cloned().unwrap_or_default();
+                let mut resolved = Box::new(declared_style.cloned().unwrap_or_default());
                 style.apply_to(&mut resolved);
                 resolved
             })
@@ -9157,11 +9159,11 @@ fn animate_style(
     };
     // Motion values are inline style as well, and come after `motion`.
     let bound = motion_binding.map(|binding| {
-        let mut resolved = moved.as_ref().or(declared_style).cloned().unwrap_or_default();
+        let mut resolved = Box::new(moved.as_deref().or(declared_style).cloned().unwrap_or_default());
         ctx.motion_values.apply(binding, &mut resolved, &ctx.inherited.parent_font());
         resolved
     });
-    let underlying_style = bound.as_ref().or(moved.as_ref()).or(declared_style);
+    let underlying_style = bound.as_deref().or(moved.as_deref()).or(declared_style);
     let css_values = animations_wanted
         .then(|| {
             let beneath = underlying_style.unwrap_or(&EMPTY_STYLE);
@@ -9186,7 +9188,7 @@ fn animate_style(
     // What the animations of an `<svg>` write on its root, for its shapes to inherit.
     let svg_css = css_values.as_ref().map(crate::motion::AnimationStyle::svg_attributes).unwrap_or_default();
     let animated = css_values.map(|values| {
-        let mut resolved = underlying_style.cloned().unwrap_or_default();
+        let mut resolved = Box::new(underlying_style.cloned().unwrap_or_default());
         values.apply_to(
             &mut resolved,
             transitioned

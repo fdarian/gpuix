@@ -7,7 +7,6 @@
 //! subscription order, so per-element listeners fired in whatever order the
 //! elements were created rather than blur(old) before focus(new).
 
-use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -45,6 +44,24 @@ pub(crate) fn gpui_tab_stop(dom_tab_index: isize) -> (isize, bool) {
     }
 }
 
+/// A style with the focus variants laid over it, or the style itself when none applies. Not a
+/// `Cow<StyleDesc>`: that is a `StyleDesc` wide (~13 KB) even when borrowed, and moves as one.
+pub(crate) enum FocusFolded<'a> {
+    Borrowed(&'a StyleDesc),
+    Owned(Box<StyleDesc>),
+}
+
+impl std::ops::Deref for FocusFolded<'_> {
+    type Target = StyleDesc;
+
+    fn deref(&self) -> &StyleDesc {
+        match self {
+            FocusFolded::Borrowed(style) => style,
+            FocusFolded::Owned(style) => style,
+        }
+    }
+}
+
 /// How the DOM focus state is read by the style pass.
 #[derive(Clone, Default)]
 pub(crate) struct FocusStyles {
@@ -62,10 +79,10 @@ impl FocusStyles {
     /// `apply_focus_variants` applies them to the element: `focusWithin`, `hasFocusVisible`,
     /// `focusVisible` (which needs a `focusable` element), weakest first. `style` already has the
     /// pointer states folded in.
-    pub fn folded<'a>(&self, id: u64, style: &'a StyleDesc, focusable: bool) -> Cow<'a, StyleDesc> {
-        let mut folded = Cow::Borrowed(style);
+    pub fn folded<'a>(&self, id: u64, style: &'a StyleDesc, focusable: bool) -> FocusFolded<'a> {
+        let mut folded = FocusFolded::Borrowed(style);
         for declared in self.applying(id, style, focusable) {
-            folded = Cow::Owned(crate::events::state_styles::overlay(&folded, declared));
+            folded = FocusFolded::Owned(Box::new(crate::events::state_styles::overlay(&folded, declared)));
         }
         folded
     }
