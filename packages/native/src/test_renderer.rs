@@ -23,7 +23,7 @@ use crate::element_tree::EventPayload;
 use crate::renderer::{
     apply_batch_to_tree, debug_frame_overlay_mode_name, debug_frame_overlay_stats_js,
     parse_debug_frame_overlay_mode, to_element_id, DebugFrameOverlayStats, EventCallback,
-    GpuixView, PathPromptOptions, PromptForPathsTask, Repaint, WindowOptions,
+    GpuixView, PatchCounters, PathPromptOptions, PromptForPathsTask, Repaint, WindowOptions,
 };
 use crate::retained_tree::RetainedTree;
 
@@ -105,22 +105,6 @@ pub struct FrameWorkCounters {
     pub painted_primitives: f64,
     /// Primitives a replay put into the scene again, which are not painted ones.
     pub replayed_primitives: f64,
-}
-
-/// How ticks were drawn by patching the frame before them, over the life of the window, see
-/// `get_patch_counters`.
-#[derive(Debug, Clone)]
-#[napi(object)]
-pub struct PatchCounters {
-    /// Frames drawn by patching.
-    pub patched_frames: f64,
-    /// Units painted again by those frames.
-    pub patched_units: f64,
-    /// JSON object: ticks gpui drew whole after the patcher tried, by reason (`PatchDecline`).
-    pub declines: String,
-    /// JSON object: ticks gpuix did not try to patch, by kind (`Unpatchable`, and the units it
-    /// could not build).
-    pub unpatchable: String,
 }
 
 /// What the retained subtrees of the window did since it was made, see `get_retained_counters`.
@@ -995,29 +979,7 @@ impl TestGpuixRenderer {
     /// How ticks were patched since the window was made: subtract two reads for a span of frames.
     #[napi]
     pub fn get_patch_counters(&self) -> Result<PatchCounters> {
-        update_view(|view, window, _cx| {
-            let counters = window.patch_counters();
-            let object = |entries: Vec<(String, u64)>| {
-                serde_json::Value::Object(entries.into_iter().map(|(key, count)| (key, count.into())).collect()).to_string()
-            };
-            PatchCounters {
-                patched_frames: counters.patched_frames as f64,
-                patched_units: counters.patched_units as f64,
-                declines: object(
-                    gpui::PatchDecline::ALL
-                        .into_iter()
-                        .map(|reason| (format!("{reason:?}"), counters.declines(reason)))
-                        .collect(),
-                ),
-                unpatchable: object(
-                    view.patch
-                        .declines()
-                        .iter()
-                        .map(|(kind, count)| (kind.to_string(), *count))
-                        .collect(),
-                ),
-            }
-        })
+        update_view(|view, window, _cx| crate::renderer::patch_counters_js(view, window))
     }
 
     #[napi]

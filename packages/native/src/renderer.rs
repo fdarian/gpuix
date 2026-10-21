@@ -2322,6 +2322,17 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// How ticks were drawn by patching the frame before them since the window was made, with why
+    /// the others were drawn whole: subtract two reads for a span of frames.
+    #[napi]
+    pub fn get_patch_counters(&self) -> Result<PatchCounters> {
+        #[cfg(target_os = "macos")]
+        return update_window(|view, window, _cx| patch_counters_js(view, window));
+
+        #[cfg(not(target_os = "macos"))]
+        Err(Error::from_reason("getPatchCounters needs macOS"))
+    }
+
     /// Bring the window forward and give it focus. This is how a window opened
     /// with `show: false` or `focus: false` is revealed later.
     #[napi]
@@ -12180,6 +12191,42 @@ pub struct DebugFrameOverlayStats {
     pub max_ms: Option<f64>,
     pub frames: f64,
     pub samples: f64,
+}
+
+/// How ticks were drawn by patching the frame before them, over the life of the window, see
+/// `get_patch_counters`.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[derive(Debug, Clone)]
+#[napi(object)]
+pub struct PatchCounters {
+    /// Frames drawn by patching.
+    pub patched_frames: f64,
+    /// Units painted again by those frames.
+    pub patched_units: f64,
+    /// JSON object: ticks gpui drew whole after the patcher tried, by reason (`PatchDecline`).
+    pub declines: String,
+    /// JSON object: ticks gpuix did not try to patch, by kind (`Unpatchable`, and the units it
+    /// could not build).
+    pub unpatchable: String,
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) fn patch_counters_js(view: &GpuixView, window: &gpui::Window) -> PatchCounters {
+    let counters = window.patch_counters();
+    let object = |entries: Vec<(String, u64)>| {
+        serde_json::Value::Object(entries.into_iter().map(|(key, count)| (key, count.into())).collect()).to_string()
+    };
+    PatchCounters {
+        patched_frames: counters.patched_frames as f64,
+        patched_units: counters.patched_units as f64,
+        declines: object(
+            gpui::PatchDecline::ALL
+                .into_iter()
+                .map(|reason| (format!("{reason:?}"), counters.declines(reason)))
+                .collect(),
+        ),
+        unpatchable: object(view.patch.declines().iter().map(|(kind, count)| (kind.to_string(), *count)).collect()),
+    }
 }
 
 /// Wayland `wlr-layer-shell` surface options. Linux/Wayland only; ignored on
