@@ -13144,10 +13144,6 @@ pub struct WindowOptions {
     /// Open the window as a Wayland `wlr-layer-shell` surface instead of a
     /// normal window. Linux/Wayland only; ignored elsewhere.
     pub layer_shell: Option<LayerShellOptions>,
-    /// Device pixels per CSS px the offscreen test window opens with, `1` when unset (headless
-    /// Chrome's own), whatever display the machine has. `TestRenderer` only: a live window takes
-    /// its display's scale and ignores this.
-    pub scale_factor: Option<f64>,
 }
 
 impl WindowOptions {
@@ -13180,7 +13176,6 @@ impl Default for WindowOptions {
             show: Some(true),
             app_id: None,
             layer_shell: None,
-            scale_factor: None,
         }
     }
 }

@@ -428,7 +428,6 @@ fn unset_window_options() -> WindowOptions {
         show: None,
         app_id: None,
         layer_shell: None,
-        scale_factor: None,
     }
 }
 
@@ -655,9 +654,9 @@ impl TestGpuixRenderer {
     /// and `focus` to false: the window is offscreen and must not take the OS's keyboard.
     /// `fullscreen` is ignored, because a fullscreen window would leave the offscreen
     /// position; see the README's test renderer section for what else the window cannot
-    /// represent.
+    /// represent. `scaleFactor` is the window's device pixels per CSS px, `1` when unset.
     #[napi(constructor)]
-    pub fn new(options: Option<WindowOptions>) -> Result<Self> {
+    pub fn new(options: Option<WindowOptions>, scale_factor: Option<f64>) -> Result<Self> {
         // Quiet unless RUST_LOG asks, so a suite can be run for its warnings.
         let _ = env_logger::try_init();
         let options = options.unwrap_or_else(unset_window_options);
@@ -667,7 +666,7 @@ impl TestGpuixRenderer {
         );
         let appearance =
             crate::renderer::appearance_override(&options).map_err(Error::from_reason)?;
-        let scale_factor = window_scale_factor(options.scale_factor.unwrap_or(DEFAULT_SCALE_FACTOR))?;
+        let scale_factor = window_scale_factor(scale_factor.unwrap_or(DEFAULT_SCALE_FACTOR))?;
         let title = options.title.clone().unwrap_or_else(|| "GPUIX".to_string());
         let frameless = options.frameless();
         let tree = Arc::new(Mutex::new(RetainedTree::new()));

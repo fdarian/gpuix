@@ -533,9 +533,9 @@ export declare class TestGpuixRenderer {
    * and `focus` to false: the window is offscreen and must not take the OS's keyboard.
    * `fullscreen` is ignored, because a fullscreen window would leave the offscreen
    * position; see the README's test renderer section for what else the window cannot
-   * represent.
+   * represent. `scaleFactor` is the window's device pixels per CSS px, `1` when unset.
    */
-  constructor(options?: WindowOptions | undefined | null)
+  constructor(options?: WindowOptions | undefined | null, scaleFactor?: number | undefined | null)
   /**
    * Tears the window and its GPUI app down. Every call that needs the window
    * throws afterwards; the retained tree stays readable. Call it after the
@@ -2116,12 +2116,6 @@ export interface WindowOptions {
    * normal window. Linux/Wayland only; ignored elsewhere.
    */
   layerShell?: LayerShellOptions
-  /**
-   * Device pixels per CSS px the offscreen test window opens with, `1` when unset (headless
-   * Chrome's own), whatever display the machine has. `TestRenderer` only: a live window takes
-   * its display's scale and ignores this.
-   */
-  scaleFactor?: number
 }
 
 export interface WindowSize {

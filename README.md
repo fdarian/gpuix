@@ -8653,7 +8653,7 @@ renderer.captureScreenshot('/tmp/test.png')
 const text = renderer.getAllText()
 ```
 
-`createTestRoot(options)` takes the same window options as a live window (`WindowOptions`), plus `fonts` to register font files, and opens the offscreen window with them through the same translation. The size defaults to 1280x800, not the live 800x600, and `focus` to `false`. What the window does with each option:
+`createTestRoot(options)` takes the same window options as a live window (`WindowOptions`), plus `fonts` to register font files and `scaleFactor`, which only the test window has, and opens the offscreen window with them through the same translation. The size defaults to 1280x800, not the live 800x600, and `focus` to `false`. What the window does with each option:
 
 | Option | In the test window |
 |---|---|
@@ -8667,7 +8667,7 @@ const text = renderer.getAllText()
 | `focus` | `true` makes the offscreen window key and takes the OS's keyboard focus, which is why it defaults to `false`. Focus events come from `setWindowActive`, not from this. |
 | `fullscreen` | **Ignored.** A fullscreen window would leave its offscreen position. |
 | `x`, `y` | **Ignored.** The test window stays offscreen. |
-| `scaleFactor` | Device pixels per CSS px, `1` when unset; test window only, a live window takes its display's. |
+| `scaleFactor` | Device pixels per CSS px, `1` when unset, whatever the display. |
 | `appName`, `appId`, `layerShell` | **Ignored.** The test window has no application menu, and `appId` and `layerShell` are Linux only. |
 
 Simulated input is dispatched the way a window's own input callback does it, so a
