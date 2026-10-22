@@ -2343,8 +2343,9 @@ impl Retain {
         }
     }
 
-    /// The element being built is a table with collapsed borders. A unit that is the table builds
-    /// its parts again with it, since it is the table that paints their borders.
+    /// The element being built is a table with collapsed borders, or holds an anonymous table with
+    /// them (no element is that table: the element around its parts is). A unit that is that element
+    /// builds the parts again with it, since it is the table that paints their borders.
     pub(crate) fn collapsed_table(&mut self) {
         if let Some(node) = self.top() {
             node.collapsed_table = true;

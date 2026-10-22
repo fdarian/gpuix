@@ -44,6 +44,7 @@ function Page({
   rule = 1,
   siblings = SIBLINGS,
   anonymous = false,
+  extraRows = 0,
 }: {
   lit: number
   transition: boolean
@@ -51,6 +52,8 @@ function Page({
   siblings?: number
   /** The rows are the parts of an anonymous table: no element of the page is the table. */
   anonymous?: boolean
+  /** Rows after the three, one cell each: enough of them make the element around the table too big for a unit. */
+  extraRows?: number
 }) {
   return (
     <div style={{ width: WIDTH, flexDirection: "column", backgroundColor: "#ffffff" }}>
@@ -73,6 +76,11 @@ function Page({
                   <text style={{ fontSize: 14, color: "#222222" }}>{label}</text>
                 </div>
               ))}
+            </div>
+          ))}
+          {Array.from({ length: extraRows }, (_, index) => (
+            <div key={`extra-${index}`} style={{ display: "table-row", height: 4 }}>
+              <div style={{ display: "table-cell" }} />
             </div>
           ))}
         </div>
@@ -120,6 +128,9 @@ type Glide = {
   transition: boolean
   siblings?: number
   anonymous?: boolean
+  extraRows?: number
+  /** Whether the ticks may be drawn by patching the unit; they are by default. */
+  patch?: boolean
   /** A screenshot takes the frame the window retained away, so the next frame is built whole: this says which to take. */
   capture?: "each" | number
   /** The frame at which the rule under the lit rows gets this wide, by an edit of the tree. */
@@ -137,7 +148,8 @@ async function glide(options: Glide) {
   const renderer = root.renderer
   try {
     renderer.clockPause()
-    root.render(<Page lit={0} transition={options.transition} siblings={siblings} anonymous={options.anonymous} />)
+    renderer.setPatchEnabled(options.patch ?? true)
+    root.render(<Page lit={0} transition={options.transition} siblings={siblings} anonymous={options.anonymous} extraRows={options.extraRows} />)
     for (let frame = 0; frame < 20; frame++) {
       renderer.flush()
       renderer.dispatchNativeEvents()
@@ -149,13 +161,14 @@ async function glide(options: Glide) {
     // The line under the middle row, where the rule is REST before the change and LIT after it.
     const line = options.capture === undefined ? undefined : ruleUnderMiddleRow(pixels(renderer, "rest"))
 
+    const patchesBefore = renderer.getPatchCounters()
     const frames: Work[] = []
     const colors: string[] = []
     const rules: number[] = []
-    root.render(<Page lit={2} transition={options.transition} siblings={siblings} anonymous={options.anonymous} />)
+    root.render(<Page lit={2} transition={options.transition} siblings={siblings} anonymous={options.anonymous} extraRows={options.extraRows} />)
     for (let frame = 0; frame < FRAMES; frame++) {
       if (options.widenAt?.frame === frame) {
-        root.render(<Page lit={2} transition={options.transition} siblings={siblings} rule={options.widenAt.rule} anonymous={options.anonymous} />)
+        root.render(<Page lit={2} transition={options.transition} siblings={siblings} rule={options.widenAt.rule} anonymous={options.anonymous} extraRows={options.extraRows} />)
       }
       const before = read(renderer)
       step(renderer, frame === 0 ? 0 : FRAME_MS)
@@ -168,10 +181,20 @@ async function glide(options: Glide) {
       }
     }
     if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
-    return { frames, colors, rules }
+    return { frames, colors, rules, unpatchable: gained(renderer.getPatchCounters().unpatchable, patchesBefore.unpatchable) }
   } finally {
     root.unmount()
   }
+}
+
+/** The counts of `after` over `before`, of the reasons that gained. */
+function gained(after: string, before: string): Record<string, number> {
+  const was = JSON.parse(before) as Record<string, number>
+  const out: Record<string, number> = {}
+  for (const [reason, count] of Object.entries(JSON.parse(after) as Record<string, number>)) {
+    if (count > (was[reason] ?? 0)) out[reason] = count - (was[reason] ?? 0)
+  }
+  return out
 }
 
 /** How many rows of pixels at the left edge, around the middle row's bottom, are not the white of the page. */
@@ -272,12 +295,68 @@ describeNative("a border-color transition on a row of a collapsed table", { time
     expect(run.frames[STEPS].patchedFrames).toBe(1)
   })
 
-  it("draws the ticks of a table that no element is whole, and paints the fade", async () => {
-    // The anonymous table around loose parts has no element to be a unit.
-    const { frames } = await glide({ transition: true, anonymous: true })
-    for (const tick of TICKS) expect(frames[tick].patchedFrames, `tick ${tick}`).toBe(0)
-    const { colors } = await glide({ transition: true, anonymous: true, capture: "each" })
-    colors.forEach((color, frame) => expectFade(color, frame))
+  describe("of an anonymous table, which no element is", () => {
+    // The element that holds the table is the unit: the parts of an anonymous table are built by it.
+    it("draws a tick of the transition by building the element around the table alone", async () => {
+      const { frames, unpatchable } = await glide({ transition: true, anonymous: true })
+      report("anonymous transition", frames)
+      expectNoBuilds(frames.slice(TICKS[0]))
+      for (const tick of TICKS) {
+        const frame = frames[tick]
+        expect(frame.patchedFrames, `tick ${tick} is patched`).toBe(1)
+        expect(frame.patchedUnits, `tick ${tick} repaints one unit`).toBe(1)
+        expect(frame.nodesCreated, `tick ${tick} makes no layout node`).toBe(0)
+        expect(frame.nodesRemoved).toBe(0)
+        expect(frame.replayedPrimitives, `tick ${tick} replays no root of the page`).toBe(0)
+      }
+      // The frame that commits the change has no unit yet, as for a table with an element.
+      expect(unpatchable).toEqual({ Outside: 1 })
+    })
+
+    it.skipIf(verifying)("does the same work in a tick whatever the page around the table", async () => {
+      const small = await glide({ transition: true, anonymous: true })
+      const large = await glide({ transition: true, anonymous: true, siblings: SIBLINGS * 4 })
+      for (const tick of TICKS) {
+        for (const key of TICK_WORK) expect(large.frames[tick][key], `tick ${tick}: ${key}`).toBe(small.frames[tick][key])
+      }
+    })
+
+    it("paints the same colour in each tick as a frame built whole", async () => {
+      for (const tick of [2, 5, STEPS, STEPS + 2]) {
+        const patched = await glide({ transition: true, anonymous: true, capture: tick })
+        const whole = await glide({ transition: true, anonymous: true, capture: tick, patch: false })
+        expect(patched.frames[tick].patchedFrames, `tick ${tick} is patched`).toBe(tick <= STEPS ? 1 : 0)
+        expect(whole.frames[tick].patchedFrames, `tick ${tick} is whole`).toBe(0)
+        expect(patched.colors).toEqual(whole.colors)
+        expectFade(patched.colors[0], tick)
+      }
+    })
+
+    it("paints the fade from one end to the other, frame by frame", async () => {
+      const { colors } = await glide({ transition: true, anonymous: true, capture: "each" })
+      colors.forEach((color, frame) => expectFade(color, frame))
+    })
+
+    it("draws the ticks whole, and counts why, when the element around the table is too big to be a unit", async () => {
+      const { frames, unpatchable } = await glide({ transition: true, anonymous: true, extraRows: 200 })
+      report("anonymous, too large", frames)
+      for (const tick of TICKS) expect(frames[tick].patchedFrames, `tick ${tick}`).toBe(0)
+      expect(Object.keys(unpatchable)).toEqual(["TooLarge"])
+      expect(unpatchable.TooLarge).toBeGreaterThanOrEqual(TICKS.length)
+      const { colors } = await glide({ transition: true, anonymous: true, extraRows: 200, capture: "each" })
+      colors.forEach((color, frame) => expectFade(color, frame))
+    })
+
+    it("lays out again when the width of the border changes in the middle of the transition", async () => {
+      const wide = 3
+      const run = await glide({ transition: true, anonymous: true, widenAt: { frame: 5, rule: wide } })
+      expect(run.frames[5].patchedFrames).toBe(0)
+      expect(run.frames[5].passes).toBeGreaterThanOrEqual(1)
+      expect(run.frames[STEPS].patchedFrames).toBe(1)
+      const { colors, rules } = await glide({ transition: true, anonymous: true, capture: "each", widenAt: { frame: 5, rule: wide } })
+      rules.slice(5).forEach((rule, index) => expect(rule, `frame ${5 + index}`).toBe(wide))
+      colors.slice(5).forEach((color, index) => expectFade(color, 5 + index))
+    })
   })
 
   it("changes in one frame, building none of the siblings, without a transition", async () => {

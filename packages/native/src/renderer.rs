@@ -10811,6 +10811,7 @@ fn build_plan(
                 *anonymous += 1;
                 let used_from = ctx.collapsed.used_len();
                 if ctx.inherited.table.collapse {
+                    ctx.retain.collapsed_table();
                     let ids: Vec<u64> = parts.iter().map(|(id, _)| *id).collect();
                     resolve_collapsed_borders(ctx, CollapsedTable::Anonymous(key, &ids), window.scale_factor());
                 }
