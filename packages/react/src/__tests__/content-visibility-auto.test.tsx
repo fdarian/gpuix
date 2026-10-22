@@ -11,7 +11,7 @@ import path from "path"
 import type { CSSProperties, ReactNode } from "react"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
-import { defineKeyframes } from "../index"
+import { defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from "../testing.js"
 import { verifying } from "./retained-harness.js"
 
@@ -871,6 +871,59 @@ describeNative("consecutive reads inside a hidden element", { timeout: 120_000 }
       expect(renderer.getElementBounds(ids.get("inner")!)).toMatchObject({ width: 40, height: 50 })
       expect(passes() - start, "and the reads after it share the pass").toBe(1)
       expect(renderer.getBuiltElementBounds(ids.get("inner-child")!), "the element is held still").toBeFalsy()
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
+describeNative("consecutive reads and a change that moves no box", { timeout: 120_000 }, () => {
+  it("a paint-only write leaves the shared pass, a layout write or a painted frame ends it", () => {
+    const tint = motionValue("#ff0000")
+    const width = motionValue(60)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <motion.div testId="tint" style={{ width: 20, height: 20, flexShrink: 0, backgroundColor: tint }} />
+          <motion.div testId="sized" style={{ width, height: 20, flexShrink: 0 }} />
+          <div testId="held" style={{ contentVisibility: "hidden", containIntrinsicSize: "30px", flexShrink: 0 } as CSSProperties}>
+            <div testId="held-child" style={{ height: 70, width: 40, margin: 5 }} />
+          </div>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      renderer.drawFrame()
+      renderer.getBuiltElementBounds(ids.get("tint")!)
+      const passes = () => renderer.getLayoutPassCount()
+      const start = passes()
+      const child = renderer.getElementBounds(ids.get("held-child")!)
+      expect(child).toMatchObject({ width: 40, height: 70 })
+      expect(passes() - start, "the first read forces the held element").toBe(1)
+
+      tint.set("#0000ff")
+      expect(renderer.getElementBounds(ids.get("held-child")!), "after a colour write").toEqual(child)
+      expect(renderer.getScrollMetrics(ids.get("held")!), "and a scroll metrics read").toBeDefined()
+      expect(passes() - start, "a paint-only write moves no box: Chrome's layout stays clean, so the read costs no pass").toBe(1)
+
+      width.set(90)
+      expect(renderer.getElementBounds(ids.get("sized")!).width).toBe(90)
+      expect(renderer.getElementBounds(ids.get("held-child")!)).toEqual(child)
+      expect(passes() - start, "a write of a width ends the share: the pass that lays it out and one that forces").toBeGreaterThan(1)
+      const forced = passes()
+      expect(renderer.getElementBounds(ids.get("held-child")!)).toEqual(child)
+      expect(passes() - forced, "and shares again").toBe(0)
+
+      tint.set("#00ff00")
+      renderer.drawFrame()
+      const framed = passes()
+      expect(renderer.getElementBounds(ids.get("held-child")!), "after a painted frame").toEqual(child)
+      expect(passes() - framed, "the held element is forced again").toBe(1)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
     } finally {
       root.unmount()
     }
