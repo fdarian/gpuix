@@ -8890,15 +8890,14 @@ fn build_element_in(
         ctx.inherited = outside;
     }
     let unit = unit.and_then(|env| ctx.retain.end_unit().map(|(subtree, lift_z)| (env, subtree, lift_z)));
-    if ctx.tree.elements.contains_key(&id) {
-        ctx.retain.exit();
-    }
     // Every style resolves while its element is built, and a virtual-list row is
     // built in list layout, so this is the one place that sees both.
     crate::background_images::pump(window, cx);
-    match unit {
-        Some((env, subtree, lift_z)) => unit_root(id, env, subtree, lift_z, element, ctx),
-        None => element,
+    let recording = if ctx.tree.elements.contains_key(&id) { ctx.retain.exit() } else { None };
+    match (unit, recording) {
+        (Some((env, subtree, lift_z)), _) => unit_root(id, env, subtree, lift_z, element, ctx),
+        (None, Some(recording)) => recorded_root(id, recording, element, ctx),
+        (None, None) => element,
     }
 }
 
@@ -9084,19 +9083,51 @@ fn unit_root(
 ) -> gpui::AnyElement {
     use gpui::IntoElement;
 
-    let tapes = ctx.tapes.clone();
-    let hook = replay_hook(id, tapes.clone(), ctx.measurements.clone());
-    let mut retained = gpui::retained(retained_id(id), ctx.retain.unit_key(), move |window, _| {
-        taped(&tapes, id, element, window)
-    })
-    .on_replay_translated(hook)
-    .cull_outset(subtree.outset());
+    let hook = replay_hook(id, ctx.tapes.clone(), ctx.measurements.clone());
+    let mut retained = gpui::retained(retained_id(id), ctx.retain.unit_key(), taped_build(id, element, ctx.tapes.clone()))
+        .on_replay_translated(hook)
+        .cull_outset(subtree.outset());
     if let Some(z) = lift_z {
         retained = retained.lift_z(z);
     }
     retained = retained.patchable();
     ctx.retain.add_unit(crate::retain::Unit { id, env });
     retained.into_any_element()
+}
+
+/// `element`, just built whole, as the root gpui records in this frame for the next to replay
+/// (`Retain::exit`): the key is the one the record this build leaves has, so the frame after enters
+/// the element with a key that gpui has a recording of, and builds nothing, where a root that is
+/// first recorded by the build that follows would be built twice.
+fn recorded_root(
+    id: u64,
+    recording: crate::retain::Recording,
+    element: gpui::AnyElement,
+    ctx: &mut BuildCtx,
+) -> gpui::AnyElement {
+    use gpui::IntoElement;
+
+    let hook = replay_hook(id, ctx.tapes.clone(), ctx.measurements.clone());
+    let mut retained = gpui::retained(retained_id(id), recording.token, taped_build(id, element, ctx.tapes.clone()))
+        .on_replay_translated(hook)
+        .cull_outset(recording.subtree.outset());
+    if let Some(overscan) = recording.overscan {
+        retained = retained.relocatable(overscan);
+    }
+    if let Some(z) = recording.lift_z {
+        retained = retained.lift_z(z);
+    }
+    retained.into_any_element()
+}
+
+/// What a retained root hands gpui for a subtree built already: the element, with the tape of what
+/// its prepaint and paint write into the registries when gpui records it.
+fn taped_build(
+    id: u64,
+    element: gpui::AnyElement,
+    tapes: crate::tape::Tapes,
+) -> impl FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyElement {
+    move |window, _| taped(&tapes, id, element, window)
 }
 
 /// Takes the query containers and custom properties of the `display: contents` ancestors a
@@ -10319,11 +10350,16 @@ pub(crate) fn build_host_container(
         // children are. A hidden one is only moved by script, and that is a change like any other.
         let offset = handle.offset();
         ctx.retain.scroll(offset);
-        let user = style.map(crate::scroll::Axes::of).is_some_and(|axes| axes.x.scrolls_for_user() || axes.y.scrolls_for_user());
-        if user {
+        let declared = style.map(crate::scroll::Axes::of).map_or(
+            gpui::point(false, false),
+            |axes| gpui::point(axes.x.scrolls_for_user(), axes.y.scrolls_for_user()),
+        );
+        if declared.x || declared.y {
             ctx.retain.exclude(crate::retain::Exclusion::Scroller);
         }
-        ctx.scroller = crate::retain::Scroller::of(handle, window.window_handle().window_id()).or(ctx.scroller);
+        ctx.scroller =
+            crate::retain::Scroller::of(handle, window.window_handle().window_id(), window.viewport_size(), declared)
+                .or(ctx.scroller);
     }
 
     // If a FocusHandle was pre-created for this element (by sync_focus_handles),

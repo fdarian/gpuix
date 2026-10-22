@@ -48,6 +48,15 @@ struct Requests {
 thread_local! {
     static REQUESTS: RefCell<Requests> = RefCell::new(Requests::default());
     static HAS_PENDING: Cell<bool> = const { Cell::new(false) };
+    static STILL_LOADING: Cell<u64> = const { Cell::new(0) };
+}
+
+/// How many times `pump` found an image it asked the loader for not ready yet. A build whose count
+/// moved between its start and its end painted something that its recording would not show once the
+/// image is there, and gpui, which learns of a pending asset from the build it runs itself, does not
+/// know to refuse the recording of a build made before it.
+pub(crate) fn still_loading() -> u64 {
+    STILL_LOADING.get()
 }
 
 /// Asks for the image at `url` to be loaded by the next `pump`. A layer calls
@@ -219,7 +228,10 @@ pub(crate) fn pump(window: &mut Window, cx: &mut App) {
             Step::Idle => continue,
             Step::Asset(resource) => match window.use_asset::<gpui::ImageAssetLoader>(&resource, cx) {
                 Some(result) => result.map_err(|error| error.to_string()),
-                None => continue,
+                None => {
+                    STILL_LOADING.set(STILL_LOADING.get() + 1);
+                    continue;
+                }
             },
             Step::Decode(image) => {
                 let renderer = cx.svg_renderer();

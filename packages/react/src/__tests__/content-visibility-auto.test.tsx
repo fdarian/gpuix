@@ -621,11 +621,13 @@ describeNative("a change of what is near", { timeout: 120_000 }, () => {
     // Verification builds every frame twice: only that it found no mismatch is left to hold.
     if (verifying) return
     expect(scrollRun(0, 120), "the sidebar is replayed: its 60 rows add no build").toEqual(moved)
-    expect(moved.builds.slice(0, 2), "the scroll costs what it costs without a change").toEqual(still.builds.slice(0, 2))
-    // Their own few subtrees, not the page: a refresh of the window builds the 150 roots of the entries alone.
-    expect(moved.builds[2], "the frame after the sweep builds the roots of the three entries").toBeGreaterThan(0)
-    expect(moved.builds[2]).toBeLessThanOrEqual(3 * 4)
-    expect(moved.builds[3], "and the frame after that builds nothing").toBe(0)
+    expect(moved.builds[0], "the scroll costs what it costs without a change").toBe(still.builds[0])
+    // The frame that shows the three entries builds them, and records their roots in that frame (a root built whole is
+    // recorded by the build that makes it): their roots are the only builds it adds, and no frame after it builds them again.
+    const added = moved.builds[1] - still.builds[1]
+    expect(added, "the roots of the three entries are built once, in the frame that shows them").toBeGreaterThan(0)
+    expect(added).toBeLessThanOrEqual(3 * 8)
+    expect(moved.builds.slice(2), "and the frames after that build nothing").toEqual([0, 0])
   })
 })
 

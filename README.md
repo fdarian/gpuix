@@ -8858,7 +8858,10 @@ Counters you read off the renderer:
   did not change.
 - `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,
   how many a scroller moved without building them (`relocations`), and why a
-  recording could not be replayed or moved.
+  recording could not be replayed or moved. A subtree a frame builds whole is
+  recorded by that frame (the first build of a page, a build because it changed),
+  so `builds` is the frame that made the recording and the frame after counts a
+  `hit` and a `replay`; an element with a motion running in it is not recorded.
 - `getPatchCounters()`, also on the live `GpuixRenderer` so a window with the display
   link can tell a patched tick from one drawn whole: `patchedFrames` and
   `patchedUnits`, and two JSON objects keyed by reason, `declines` (ticks GPUI drew

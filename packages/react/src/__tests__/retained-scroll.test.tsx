@@ -249,10 +249,11 @@ describeNative.each(["wheel", "wheel-fractional", "scroll-to", "scroll-to-fracti
         const off = run(mode, false)
         const on = run(mode, true)
         expect(on.counters.mismatches, on.mismatches.join("\n")).toBe(0)
-        // The page has to have been moved, not built: otherwise nothing here is a test. (A script
-        // that scrolls draws between its calls, and a frame that is compared with a build shows
-        // the build, whose rows cannot be moved by the frame after: only the wheel is a move.)
-        if (!verifying || mode.startsWith("wheel")) expect(on.counters.relocations).toBeGreaterThan(0)
+        // The page has to have been moved, not built: otherwise nothing here is a test. (Under verify a frame
+        // that only replays is built again for the comparison and shown as that build, whose recordings cannot
+        // be moved. The first frame of this page records its rows to be moved, the frames after it only replay,
+        // and the first scroll finds recordings that cannot be moved: it builds the rows where it puts them.)
+        if (!verifying) expect(on.counters.relocations).toBeGreaterThan(0)
         expect(off.counters.relocations).toBe(0)
 
         expect(on.steps.length).toBe(off.steps.length)

@@ -539,15 +539,28 @@ const OVERSCAN_VIEWPORTS: f32 = 0.5;
 
 impl Scroller {
     /// The scroller `handle` is, if its content can move: it scrolls for the user or by script
-    /// along an axis, and it has been laid out.
-    pub(crate) fn of(handle: &gpui::ScrollHandle, window: gpui::WindowId) -> Option<Self> {
-        let viewport = handle.padding_box().size;
-        if viewport.width <= gpui::px(0.0) || viewport.height <= gpui::px(0.0) {
-            return None;
-        }
+    /// along an axis, and it has been laid out. Before its first layout a scroller for the user has
+    /// the window for a viewport, which it cannot be bigger than, and the axes its style scrolls
+    /// (`declared`, which the handle learns when it paints): the first frame records its content to
+    /// be moved, as the frames after do, where it would else record it where it stands and build it
+    /// again when the scroller first moves it.
+    pub(crate) fn of(
+        handle: &gpui::ScrollHandle,
+        window: gpui::WindowId,
+        window_size: gpui::Size<gpui::Pixels>,
+        declared: gpui::Point<bool>,
+    ) -> Option<Self> {
         let (offset, max, user) = (handle.offset(), handle.max_offset(), handle.user_scrollable());
-        let moves_x = (user.x && max.x > gpui::px(0.0)) || offset.x != gpui::px(0.0);
-        let moves_y = (user.y && max.y > gpui::px(0.0)) || offset.y != gpui::px(0.0);
+        let laid_out = handle.padding_box().size;
+        let (viewport, moves_x, moves_y) = if laid_out.width <= gpui::px(0.0) || laid_out.height <= gpui::px(0.0) {
+            (window_size, declared.x, declared.y)
+        } else {
+            (
+                laid_out,
+                (user.x && max.x > gpui::px(0.0)) || offset.x != gpui::px(0.0),
+                (user.y && max.y > gpui::px(0.0)) || offset.y != gpui::px(0.0),
+            )
+        };
         let reach = match (moves_x, moves_y) {
             (false, false) => return None,
             (true, false) => viewport.width,
@@ -623,6 +636,12 @@ struct Node {
     paints_only: bool,
     /// The element is a table with collapsed borders, which paints the borders of its parts.
     collapsed_table: bool,
+    /// Whatever the build of the element turns out to be, the frame can hand it to gpui to record,
+    /// for the frame after to replay: it is built in a plain context, in a frame that plans, outside
+    /// a unit and a deferred build (see `Retain::to_record`).
+    records: bool,
+    /// `background_images::still_loading` when the element was entered.
+    loading: u64,
 }
 
 /// What a node adds up to with what is below it, filled in bottom-up when the build is done.
@@ -644,6 +663,8 @@ struct Below {
     /// Something below is absolutely positioned against a containing block that is not below this
     /// element, or is this element.
     escapes: bool,
+    /// Something below was built with a motion running on it.
+    dynamic: bool,
     digest: u64,
     size: u32,
 }
@@ -912,6 +933,7 @@ pub(crate) struct Retain {
     selection: u64,
     nodes: Vec<Node>,
     stack: Vec<u32>,
+    /// What each node adds up to with what is below it, settled when the build of the node ends.
     below: Vec<Below>,
     retained: Vec<bool>,
     moved: Vec<bool>,
@@ -990,6 +1012,15 @@ pub(crate) struct Entry<'a> {
     /// Whether building the element alone costs more than replaying it: it carries text or is
     /// not a plain host box (an image, an `<svg>`). Only a root of one element needs this.
     pub costly: bool,
+}
+
+/// An element built whole that gpui records in the frame, under the key the frame after enters it
+/// with. See `Retain::exit`.
+pub(crate) struct Recording {
+    pub token: u64,
+    pub lift_z: Option<i32>,
+    pub subtree: crate::layout::cull::Subtree,
+    pub overscan: Option<gpui::Pixels>,
 }
 
 /// An element that was skipped, and what its parent and the frame need of it.
@@ -1264,6 +1295,7 @@ impl Retain {
         self.deferred = false;
         self.selection = sources.selection;
         self.nodes.clear();
+        self.below.clear();
         self.stack.clear();
         // The pass that rebuilds a frame to compare it plans nothing, and builds the elements the
         // frame left dormant, which must stay dormant for what they ask of the window.
@@ -1592,6 +1624,7 @@ impl Retain {
         self.unit = None;
         self.inside_relocatable = inside_relocatable;
         self.nodes.clear();
+        self.below.clear();
         self.stack.clear();
     }
 
@@ -1914,6 +1947,16 @@ impl Retain {
             skipped: None,
             paints_only: false,
             collapsed_table: false,
+            loading: crate::background_images::still_loading(),
+            records: self.planning
+                && self.lifted == 0
+                && self.unit.is_none()
+                && !self.deferred
+                && !self.layout_only
+                && !self.inside_relocatable
+                && entry.plain
+                && entry.boxed
+                && entry.prekeyed.is_none(),
         };
         let at = self.nodes.len() as u32;
         match self.skippable(&node, &entry) {
@@ -1941,6 +1984,8 @@ impl Retain {
                     overscan,
                 };
                 self.nodes.push(node);
+                self.below.push(Below::default());
+                self.settle(at as usize);
                 self.relocation.planned += u32::from(planned);
                 if let Some(record) = self.records.get_mut(&entry.id) {
                     record.seasoned = true;
@@ -1951,6 +1996,7 @@ impl Retain {
         }
         self.stack.push(at);
         self.nodes.push(node);
+        self.below.push(Below::default());
         None
     }
 
@@ -2028,18 +2074,144 @@ impl Retain {
         Ok(record)
     }
 
-    pub(crate) fn exit(&mut self) {
+    /// Leaves the element built last, and says whether gpui is to record what was built of it.
+    pub(crate) fn exit(&mut self) -> Option<Recording> {
         self.exited_absent = false;
         if self.rows > 0 || !self.open {
-            return;
+            return None;
         }
         // A skipped element was never pushed.
-        let at = self.stack.pop().expect("exit without enter");
+        let at = self.stack.pop().expect("exit without enter") as usize;
         let end = self.nodes.len() as u32;
-        let node = &mut self.nodes[at as usize];
+        let node = &mut self.nodes[at];
         node.end = end;
         node.effects_end = crate::tape::build_effects_len();
         self.exited_absent = node.absent;
+        self.settle(at);
+        self.to_record(at)
+    }
+
+    /// Whether a frame that built the element `at` whole leaves it a root the frame after skips,
+    /// if nothing changes, and so is to have gpui record it now: the frame after then finds the
+    /// recording it asks for under the key it asks with, and does not build the element again to
+    /// make one. It is when `skippable` would take the record this build leaves, given the same
+    /// frame, and the element is not one that a frame builds again anyway (a motion runs in it:
+    /// recording it every frame costs, and no frame replays it).
+    fn to_record(&self, at: usize) -> Option<Recording> {
+        let node = &self.nodes[at];
+        let own = &self.below[at];
+        if !node.records || node.absent || node.moved || own.dynamic || node.vol.dynamic != 0 {
+            return None;
+        }
+        if crate::background_images::still_loading() != node.loading {
+            return None;
+        }
+        let escaped = node.absolute || (!node.positioned && own.escapes);
+        if node.exclusion.is_some() || own.excluded.is_some() || escaped {
+            return None;
+        }
+        if !self.worth(own.size, node.costly) {
+            return None;
+        }
+        if node.scroller.is_some_and(|scroller| scroller.too_big(node.id)) {
+            return None;
+        }
+        let lifts = node.lift_z.is_some() || (!node.forms_context && own.lifts);
+        let overscan = node
+            .scroller
+            .filter(|scroller| !lifts && scroller.fits(node.id) != Some(false))
+            .map(|scroller| scroller.overscan());
+        Some(Recording {
+            token: own.token,
+            lift_z: node.lift_z,
+            subtree: node.subtree,
+            overscan,
+        })
+    }
+
+    /// Adds the node `at` to what it is below, now that it and everything below it is built. A
+    /// skipped node is settled when it is entered, since it is never left.
+    fn settle(&mut self, at: usize) {
+        let node = &self.nodes[at];
+        let mut own = self.below[at];
+        if node.skipped.is_none() {
+            let before = self.records.get(&node.id);
+            own.changed = match before {
+                None => Some(Cause::New),
+                Some(before) if before.key.revision != node.key.revision => Some(Cause::Edited),
+                Some(before) if before.key.inherited != node.key.inherited => Some(Cause::Inherited),
+                Some(before) if before.key.shape != node.key.shape => Some(Cause::Shape),
+                Some(before) => node.vol.cause_against(&before.vol),
+            };
+            own.scrolled = before.is_some_and(|before| before.vol.scroll != node.vol.scroll);
+        }
+        let escaped = node.absolute || (!node.positioned && own.escapes);
+        let (escapes, epoch, token, holes) = match (&node.skipped, self.records.get(&node.id)) {
+            // Its children were never entered, so `own.lifts` is empty: what they lift is what its
+            // last build folded, which is `Record::lifts`.
+            (Some(_), Some(record)) => (record.lifts, record.epoch, record.token, record.holes),
+            (Some(_), None) => unreachable!("an element is skipped by the record of its last build"),
+            (None, before) => {
+                let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
+                let epoch = match (before, self.deferred) {
+                    (Some(before), true) => before.epoch,
+                    (Some(before), false) => before.epoch + 1,
+                    // Not 1: gpui keeps the recording of an element whose record was dropped (retention
+                    // turned off and on, `forget_unbuilt_dynamic`) until a frame passes it by, and a
+                    // build that took the old key would be replayed from it. The serial is more than
+                    // any epoch the element reached, since a build takes a frame.
+                    (None, _) => self.plan.serial,
+                };
+                let mut token = Fingerprint::new();
+                token.word(node.enter.revision);
+                token.word(node.enter.inherited);
+                token.word(node.enter.shape);
+                token.word(epoch);
+                // A hole is not asked for alone: the recording around it is of the build that
+                // made it, so it is not the one for another build of the hole.
+                token.word(own.holes);
+                (escapes, epoch, token.finish(), own.holes)
+            }
+        };
+        own.epoch = epoch;
+        own.token = token;
+        own.holes = holes;
+        let digest = match &node.skipped {
+            Some(skipped) => skipped.digest,
+            None => {
+                let mut fp = Fingerprint::new();
+                fp.word(node.digest);
+                fp.word(own.digest);
+                fp.finish()
+            }
+        };
+        let size = match &node.skipped {
+            Some(skipped) => skipped.size,
+            None => own.size + 1,
+        };
+        own.digest = digest;
+        own.size = size;
+        self.below[at] = own;
+        if node.parent == NO_PARENT {
+            return;
+        }
+        let parent = &mut self.below[node.parent as usize];
+        parent.changed_below |= own.changed.is_some() || own.changed_below;
+        parent.lifts |= escapes;
+        if node.lift_z.is_some() {
+            parent.holes = parent.holes.rotate_left(7) ^ token;
+        } else if !node.forms_context {
+            parent.holes = parent.holes.rotate_left(7) ^ holes;
+        }
+        parent.escapes |= escaped;
+        parent.size += size;
+        parent.dynamic |= own.dynamic || (node.skipped.is_none() && node.vol.dynamic != 0);
+        if parent.excluded.is_none() {
+            parent.excluded = node.exclusion.or(own.excluded);
+        }
+        if !node.absent {
+            parent.digest = parent.digest.rotate_left(5).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ digest;
+        }
     }
 
     /// The element being built is a `display: none` host. A parent that built it anyway, because
@@ -2381,91 +2553,6 @@ impl Retain {
         debug_assert!(self.stack.is_empty(), "an element was entered and never exited");
         self.stack.clear();
         let count = self.nodes.len();
-
-        self.below.clear();
-        self.below.resize(count, Below::default());
-        for (at, node) in self.nodes.iter().enumerate() {
-            let below = &mut self.below[at];
-            if node.skipped.is_some() {
-                continue;
-            }
-            let before = self.records.get(&node.id);
-            below.changed = match before {
-                None => Some(Cause::New),
-                Some(before) if before.key.revision != node.key.revision => Some(Cause::Edited),
-                Some(before) if before.key.inherited != node.key.inherited => Some(Cause::Inherited),
-                Some(before) if before.key.shape != node.key.shape => Some(Cause::Shape),
-                Some(before) => node.vol.cause_against(&before.vol),
-            };
-            below.scrolled = before.is_some_and(|before| before.vol.scroll != node.vol.scroll);
-        }
-        // Children come after their parent, so walking backwards finishes a node before its parent
-        // hears of it. Later siblings are folded first, so the first excluded one is left in the end.
-        for at in (0..count).rev() {
-            let node = &self.nodes[at];
-            let own = self.below[at];
-            let escaped = node.absolute || (!node.positioned && own.escapes);
-            let (escapes, epoch, token, holes) = match (&node.skipped, self.records.get(&node.id)) {
-                // Its children were never entered, so `own.lifts` is empty: what they lift is what its
-                // last build folded, which is `Record::lifts`.
-                (Some(_), Some(record)) => (record.lifts, record.epoch, record.token, record.holes),
-                (Some(_), None) => unreachable!("an element is skipped by the record of its last build"),
-                (None, before) => {
-                    let escapes = node.lift_z.is_some() || (!node.forms_context && own.lifts);
-                    let epoch = match (before, self.deferred) {
-                        (Some(before), true) => before.epoch,
-                        (Some(before), false) => before.epoch + 1,
-                        (None, _) => 1,
-                    };
-                    let mut token = Fingerprint::new();
-                    token.word(node.enter.revision);
-                    token.word(node.enter.inherited);
-                    token.word(node.enter.shape);
-                    token.word(epoch);
-                    // A hole is not asked for alone: the recording around it is of the build that
-                    // made it, so it is not the one for another build of the hole.
-                    token.word(own.holes);
-                    (escapes, epoch, token.finish(), own.holes)
-                }
-            };
-            self.below[at].epoch = epoch;
-            self.below[at].token = token;
-            self.below[at].holes = holes;
-            let digest = match &node.skipped {
-                Some(skipped) => skipped.digest,
-                None => {
-                    let mut fp = Fingerprint::new();
-                    fp.word(node.digest);
-                    fp.word(own.digest);
-                    fp.finish()
-                }
-            };
-            let size = match &node.skipped {
-                Some(skipped) => skipped.size,
-                None => own.size + 1,
-            };
-            self.below[at].digest = digest;
-            self.below[at].size = size;
-            if node.parent == NO_PARENT {
-                continue;
-            }
-            let parent = &mut self.below[node.parent as usize];
-            parent.changed_below |= own.changed.is_some() || own.changed_below;
-            parent.lifts |= escapes;
-            if node.lift_z.is_some() {
-                parent.holes = parent.holes.rotate_left(7) ^ token;
-            } else if !node.forms_context {
-                parent.holes = parent.holes.rotate_left(7) ^ holes;
-            }
-            parent.escapes |= escaped;
-            parent.size += size;
-            if let Some(excluded) = node.exclusion.or(own.excluded) {
-                parent.excluded = Some(excluded);
-            }
-            if !node.absent {
-                parent.digest = parent.digest.rotate_left(5).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ digest;
-            }
-        }
 
         self.retained.clear();
         self.retained.resize(count, false);
@@ -2868,6 +2955,144 @@ mod tests {
         assert_eq!(retain.summary().roots, Vec::<u64>::new());
         build(&mut retain, &inherited, "");
         assert_eq!(retain.summary().roots, vec![1]);
+    }
+
+    /// A frame of element 1 with the child 2 in it, each built whole (or skipped), for the recordings
+    /// `exit` asks gpui for: `(skipped, recordings of 2 and 1)`.
+    fn nested_frame(retain: &mut Retain, motion_in_child: bool) -> (bool, Vec<Option<(u64, bool)>>) {
+        let (tree, focus) = (RetainedTree::new(), crate::focus::FocusStyles::default());
+        let (handles, scrolls) = (HashMap::new(), HashMap::new());
+        retain.begin_frame(Sources {
+            tree: &tree,
+            hovered: &[],
+            active: &[],
+            focus: &focus,
+            focusable: &handles,
+            keyboard: false,
+            scrolls: &scrolls,
+            measured: Vec::new(),
+            links: Vec::new(),
+            commanded: Vec::new(),
+            relevance: Vec::new(),
+            customs: Vec::new(),
+            motion: Vec::new(),
+            dormant: &|_| false,
+            clock_due: &|_| false,
+            verdicts: 0,
+            selection: 0,
+            pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
+            layout_only: false,
+        });
+        let inherited = root_inherited();
+        let entry = |id, at| Entry {
+            id,
+            revision: 7,
+            inherited: &inherited,
+            at,
+            stacking_root: false,
+            stacking_item: false,
+            atomic_root: false,
+            contents_overlay: None,
+            anchor_scope: false,
+            text_box_trim: Default::default(),
+            plain: true,
+            boxed: true,
+            container: None,
+            prekeyed: None,
+            scroller: None,
+            opacity_run: &|| false,
+            costly: true,
+        };
+        let mut recordings = Vec::new();
+        let skipped = retain.enter(entry(1, 0)).is_some();
+        if !skipped {
+            if retain.enter(entry(2, 0)).is_none() {
+                if motion_in_child {
+                    retain.dynamic(Dynamic::Animation);
+                }
+                recordings.push(retain.exit().map(|recording| (recording.token, recording.lift_z.is_some())));
+            }
+            recordings.push(retain.exit().map(|recording| (recording.token, recording.lift_z.is_some())));
+        }
+        retain.finish_frame();
+        (skipped, recordings)
+    }
+
+    #[test]
+    fn an_element_built_whole_is_recorded_under_the_token_its_record_has_and_the_frame_after_skips_it() {
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        // The first frame has nothing known from before: everything is built, and recorded.
+        let (skipped, recordings) = nested_frame(&mut retain, false);
+        assert!(!skipped);
+        let [Some((child, _)), Some((parent, _))] = recordings[..] else { panic!("both are recorded: {recordings:?}") };
+        assert_eq!(retain.records[&2].token, child);
+        assert_eq!(retain.records[&1].token, parent);
+        // The frame after skips the root under the key gpui has the recording of.
+        let tree = RetainedTree::new();
+        let focus = crate::focus::FocusStyles::default();
+        let (handles, scrolls) = (HashMap::new(), HashMap::new());
+        retain.begin_frame(Sources {
+            tree: &tree,
+            hovered: &[],
+            active: &[],
+            focus: &focus,
+            focusable: &handles,
+            keyboard: false,
+            scrolls: &scrolls,
+            measured: Vec::new(),
+            links: Vec::new(),
+            commanded: Vec::new(),
+            relevance: Vec::new(),
+            customs: Vec::new(),
+            motion: Vec::new(),
+            dormant: &|_| false,
+            clock_due: &|_| false,
+            verdicts: 0,
+            selection: 0,
+            pass: 1,
+            lazy_builds: 0,
+            relocations: 0,
+            reference: false,
+            layout_only: false,
+        });
+        let inherited = root_inherited();
+        let skip = retain
+            .enter(Entry {
+                id: 1,
+                revision: 7,
+                inherited: &inherited,
+                at: 0,
+                stacking_root: false,
+                stacking_item: false,
+                atomic_root: false,
+                contents_overlay: None,
+                anchor_scope: false,
+                text_box_trim: Default::default(),
+                plain: true,
+                boxed: true,
+                container: None,
+                prekeyed: None,
+                scroller: None,
+                opacity_run: &|| false,
+                costly: true,
+            })
+            .expect("the root is skipped by the frame after the one that built it");
+        assert_eq!(skip.token, parent);
+        retain.finish_frame();
+    }
+
+    #[test]
+    fn an_element_with_a_motion_in_it_is_not_recorded_and_nor_is_the_one_above_it() {
+        let mut retain = Retain::new();
+        retain.set_planning(true);
+        let (_, recordings) = nested_frame(&mut retain, true);
+        assert_eq!(recordings.len(), 2);
+        assert!(recordings[0].is_none(), "the element the motion runs on is built by every frame");
+        assert!(recordings[1].is_none(), "and so is the one above it");
     }
 
     /// What a frame is told changed, by the sources the tests below vary.
