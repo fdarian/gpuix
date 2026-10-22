@@ -1629,6 +1629,11 @@ export interface FrameWorkCounters {
   paintedPrimitives: number
   /** Primitives a replay put into the scene again, which are not painted ones. */
   replayedPrimitives: number
+  /**
+   * Draw orders worked out with a scene's bounds tree. A scene a patch makes again from the
+   * orders it had pays none, so the cost of a patched tick is not that of the page.
+   */
+  boundsInserts: number
 }
 
 /** Every display, in the order the OS lists them. */

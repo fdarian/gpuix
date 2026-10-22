@@ -1649,6 +1649,40 @@ describeNative("a tick beside native motions that rest", { timeout: TIMEOUT }, (
   })
 })
 
+/** A tick makes the scene it patches again from the draw orders it had, so what is painted beside the loop is not paid for again. */
+describeNative("a tick beside boxes that are painted", { timeout: TIMEOUT }, () => {
+  const visible = (count: number) =>
+    Array.from({ length: count }, (_, index) => <div key={index} style={{ height: 2, backgroundColor: "#99ccff" }} />)
+  const beside = (count: number) => (
+    <>
+      {colourHead()}
+      <div style={{ height: 300, overflow: "hidden" }}>{visible(count)}</div>
+    </>
+  )
+
+  counted("works out the draw orders of the loop alone, however many boxes are in view", async () => {
+    const alone = await ticksOf(colourHead(), 500)
+    const crowded = await ticksOf(beside(120), 500)
+    for (let index = 0; index < TICKS; index++) {
+      expect(crowded[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+      expect(crowded[index].boundsInserts, `tick ${index}`).toBe(alone[index].boundsInserts)
+      expect(crowded[index].boundsInserts, `tick ${index}`).toBeLessThanOrEqual(5)
+      expect(crowded[index].painted, `tick ${index}`).toBe(alone[index].painted)
+    }
+  })
+
+  counted("works them out again for the frame built whole", async () => {
+    const page = await mount(beside(120), 500)
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      const whole = work(page.renderer, () => page.renderer.setWindowSize(SIZE.width - 1, SIZE.height))
+      expect(whole.boundsInserts).toBeGreaterThanOrEqual(120)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
 /** The ticks around the end of an animation are the ones where a value stops being a source: each shows what a frame built whole shows. */
 describeNative("an animation of a motion value that ends beside values that rest", { timeout: TIMEOUT }, () => {
   const ending = (animation: (value) => any) => (

@@ -120,6 +120,9 @@ pub struct FrameWorkCounters {
     pub painted_primitives: f64,
     /// Primitives a replay put into the scene again, which are not painted ones.
     pub replayed_primitives: f64,
+    /// Draw orders worked out with a scene's bounds tree. A scene a patch makes again from the
+    /// orders it had pays none, so the cost of a patched tick is not that of the page.
+    pub bounds_inserts: f64,
 }
 
 /// What the retained subtrees of the window did since it was made, see `get_retained_counters`.
@@ -989,6 +992,7 @@ impl TestGpuixRenderer {
                 culled_painted: counters.culled_painted as f64,
                 painted_primitives: counters.painted_primitives as f64,
                 replayed_primitives: counters.replayed_primitives as f64,
+                bounds_inserts: counters.bounds_inserts as f64,
             }
         })
     }
