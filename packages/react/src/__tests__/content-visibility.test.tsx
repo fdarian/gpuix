@@ -44,13 +44,6 @@ const BASE = { display: "block", margin: "0", padding: "0", flexGrow: 0, flexShr
 const CASE = { position: "relative", width: "400px", fontFamily: "Menlo", fontSize: "16px", lineHeight: "20px", color: "#000" }
 const UNIT = 1 / 64
 
-/**
- * Known deviation: under a skipped flex container with an `auto` height, Chrome resolves a child's `height: 50%` as
- * `auto` (0) like it does in a block, and gpuix resolves it against the `containIntrinsicSize` height (100). Only the
- * block is fixed (`LayoutInput::height_from_containment`); a grid agrees with Chrome (100: its area is definite).
- */
-const FLEX_PERCENT_DEVIATIONS = new Set(["contain-percent-hidden-flex-col", "contain-percent-hidden-flex-row"])
-
 const style = (...styles: Style[]): CSSProperties => Object.assign({}, BASE, ...styles) as CSSProperties
 
 function CaseView({ spec }: { spec: Spec }) {
@@ -85,10 +78,7 @@ describeNative("content-visibility against Chrome", () => {
   })
 
   for (const spec of CASES) {
-    const deviation = FLEX_PERCENT_DEVIATIONS.has(spec.name)
-    // `it.fails` turns green when gpuix is fixed, so the entry has to be dropped then.
-    const run = deviation ? it.fails : it
-    run(`lays out ${spec.name} as Chrome does`, () => {
+    it(`lays out ${spec.name} as Chrome does`, () => {
       root.render(<CaseView spec={spec} />)
       root.renderer.dispatchNativeEvents()
       root.renderer.drawFrame()
