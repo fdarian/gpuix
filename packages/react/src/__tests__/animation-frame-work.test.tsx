@@ -1634,20 +1634,25 @@ describeNative("an animation of a motion value that ends beside values that rest
   }
   for (const [name, head] of Object.entries(heads)) {
     it.skipIf(!patching)(`shows the picture of a frame built whole at every tick, the last included: ${name}`, async () => {
-      const page = await mount(head, 500)
-      try {
-        const renderer = page.renderer
-        const file = name.replace(/\W+/g, "-")
-        for (let step = 0; step < 60; step++) {
-          tick(renderer)
-          const patched = shot(renderer, `${file}-patched`)
-          renderer.flush()
-          expect(patched.equals(shot(renderer, `${file}-whole`)), `tick ${step}`).toBe(true)
+      // A screenshot makes the frame after it whole, so three passes look at every third tick and leave the others patched.
+      for (let pass = 0; pass < 3; pass++) {
+        const page = await mount(head, 500)
+        try {
+          const renderer = page.renderer
+          const file = name.replace(/\W+/g, "-")
+          let patchedTicks = 0
+          for (let step = 0; step < 45; step++) {
+            patchedTicks += tick(renderer).patchedFrames
+            if (step % 3 !== pass) continue
+            const patched = shot(renderer, `${file}-patched`)
+            renderer.flush()
+            expect(patched.equals(shot(renderer, `${file}-whole`)), `pass ${pass}, tick ${step}`).toBe(true)
+          }
+          expect(patchedTicks, "the ticks of the animation are patched").toBeGreaterThanOrEqual(10)
+          if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+        } finally {
+          page.root.unmount()
         }
-        expect(renderer.getPatchCounters().patchedFrames, "the ticks of the animation are patched").toBeGreaterThanOrEqual(10)
-        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
-      } finally {
-        page.root.unmount()
       }
     })
   }
@@ -1907,23 +1912,83 @@ describeNative("a motion value written by a script", { timeout: TIMEOUT }, () =>
   })
 
   it.skipIf(!patching)("shows the picture of a frame built whole", async () => {
-    const { head, handle } = writing({})
-    const page = await mount(head, 500)
-    try {
-      const renderer = page.renderer
-      for (let index = 0; index < 8; index++) {
-        step(renderer, handle, index)
-        const patched = shot(renderer, `written-${index}-patched`)
-        renderer.setPatchEnabled(false)
-        tick(renderer, 0)
-        expect(patched.equals(shot(renderer, `written-${index}-whole`)), `write ${index}`).toBe(true)
-        renderer.setPatchEnabled(true)
+    // A screenshot makes the frame after it whole, so three passes look at every third write and leave the others patched.
+    for (let pass = 0; pass < 3; pass++) {
+      const { head, handle } = writing({})
+      const page = await mount(head, 500)
+      try {
+        const renderer = page.renderer
+        let patchedWrites = 0
+        for (let index = 0; index < 12; index++) {
+          patchedWrites += step(renderer, handle, index).patchedFrames
+          if (index % 3 !== pass) continue
+          const patched = shot(renderer, `written-${index}-patched`)
+          renderer.flush()
+          expect(patched.equals(shot(renderer, `written-${index}-whole`)), `pass ${pass}, write ${index}`).toBe(true)
+        }
+        expect(patchedWrites, "the writes are patched").toBeGreaterThanOrEqual(6)
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        page.root.unmount()
       }
-      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
-    } finally {
-      page.root.unmount()
     }
   })
+
+  // The writes that start and end a run are the ones where an opacity becomes a group, or stops being one.
+  const runs = {
+    opacity: { initial: 1, loop: [0.9, 0.3, 0.9], rest: 1, to: 0.5 },
+    color: { initial: "#000000", loop: swing, rest: "#0000ff", to: "#606060" },
+  }
+  for (const [prop, run] of Object.entries(runs)) {
+    it.skipIf(!patching)(`shows the picture of a frame built whole at every tick of an animation started, stopped and replaced, bound to ${prop}`, async () => {
+      const handle: { value?: any } = {}
+      const head = (
+        <BoundHead
+          initial={run.initial}
+          start={(value) => {
+            handle.value = value
+            return { stop() {} }
+          }}
+          render={(value) => (
+            <div testId="animated" style={{ height: 24, backgroundColor: "#99ccff", [prop]: value }}>
+              <text style={{ fontSize: 20, color: "#222222" }}>animated</text>
+            </div>
+          )}
+        />
+      )
+      // A screenshot makes the frame after it whole, so three passes look at every third tick and leave the others patched.
+      for (let pass = 0; pass < 3; pass++) {
+        const page = await mount(head, 500)
+        try {
+          const renderer = page.renderer
+          const value = handle.value
+          const steps: (() => void)[] = [
+            () => animate(value, run.loop, loop),
+            ...Array.from({ length: 3 }, () => () => {}),
+            () => value.stop(),
+            () => {},
+            () => value.set(run.rest),
+            () => {},
+            () => animate(value, run.to, { duration: 0.2, ease: "linear" }),
+            ...Array.from({ length: 14 }, () => () => {}),
+          ]
+          let patchedTicks = 0
+          for (const [index, step] of steps.entries()) {
+            step()
+            patchedTicks += tick(renderer).patchedFrames
+            if (index % 3 !== pass) continue
+            const patched = shot(renderer, `written-run-${prop}-patched`)
+            renderer.flush()
+            expect(patched.equals(shot(renderer, `written-run-${prop}-whole`)), `pass ${pass}, step ${index}`).toBe(true)
+          }
+          expect(patchedTicks, "the writes and ticks are patched").toBeGreaterThanOrEqual(10)
+          if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+        } finally {
+          page.root.unmount()
+        }
+      }
+    })
+  }
 
   // The case of FF: a loop on a value nothing is bound to, and a script that copies it into the one the element paints.
   counted("is patched when the change of a value that nothing paints writes the one that does", async () => {
@@ -1972,6 +2037,39 @@ describeNative("a motion value written by a script", { timeout: TIMEOUT }, () =>
       expect(after.patchedFrames - before.patchedFrames, "the writes are patched").toBeGreaterThanOrEqual(20)
       expect(gained(after.declines, before.declines)).toEqual({})
       expect(gained(after.unpatchable, before.unpatchable)).toEqual({})
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  // A write to an element that is no unit (a scroller, a span) is drawn whole in the draw the tick asked for, with the new value.
+  it.skipIf(!patching)("draws a write to the value of an element that is no unit whole, with the value written", async () => {
+    const handle: { value?: any } = {}
+    const head = (
+      <BoundHead
+        initial="#ff0000"
+        start={(value) => {
+          handle.value = value
+          return { stop() {} }
+        }}
+        render={(value) => (
+          <div testId="animated" style={{ width: 100, height: 40, flexShrink: 0, overflow: "scroll", backgroundColor: value }}>
+            <div style={{ width: 300, height: 10 }} />
+          </div>
+        )}
+      />
+    )
+    const page = await mount(head, 500)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      const red = shot(renderer, "no-unit-red")
+      const done = work(renderer, () => handle.value.set("#0000ff"))
+      expect(done.paintedFrames, "a frame built whole").toBe(1)
+      const blue = shot(renderer, "no-unit-blue")
+      expect(blue.equals(red), "the picture moved").toBe(false)
+      renderer.flush()
+      expect(blue.equals(shot(renderer, "no-unit-flushed")), "the picture of a frame built whole").toBe(true)
     } finally {
       page.root.unmount()
     }

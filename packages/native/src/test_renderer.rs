@@ -2614,7 +2614,7 @@ impl TestGpuixRenderer {
             let now = view.clock.now();
             let result = run(view, now);
             let entity = cx.entity_id();
-            repaint.invalidate(&view.motion_values, cx, entity);
+            repaint.invalidate(view, window, cx, entity);
             result
         })?
         .map_err(Error::from_reason)

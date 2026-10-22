@@ -546,18 +546,27 @@ impl Repaint {
     /// classification fails is a layout one.
     pub(crate) fn invalidate(
         self,
-        motion_values: &crate::motion::MotionValueStore,
+        view: &GpuixView,
+        window: &mut gpui::Window,
         cx: &mut gpui::App,
-        view: gpui::EntityId,
+        entity: gpui::EntityId,
     ) {
         match self {
             Self::None => {}
-            Self::MotionWrite(id) if matches!(motion_values.writes_paint_only(id), Ok(true)) => {
-                // The frame that follows still draws; only a read of bounds before it learns
-                // that no layout is due.
-                cx.notify_paint_only(view);
+            Self::MotionWrite(id) if matches!(view.motion_values.writes_paint_only(id), Ok(true)) => {
+                if view.patches_ticks() {
+                    // The write is a source for a patch, as the clock is for a tick: the elements bound to
+                    // the value are built alone and painted again in the frame shown, and a tick that
+                    // cannot be patched is drawn whole in the same draw. The layout stays current, so a
+                    // read of bounds before the frame lays nothing out.
+                    window.request_tick();
+                } else {
+                    // The frame that follows still draws; only a read of bounds before it learns
+                    // that no layout is due.
+                    cx.notify_paint_only(entity);
+                }
             }
-            Self::MotionWrite(_) | Self::Layout => invalidate_after_commit(cx, view),
+            Self::MotionWrite(_) | Self::Layout => invalidate_after_commit(cx, entity),
         }
     }
 }
@@ -1665,7 +1674,7 @@ impl GpuixRenderer {
                 .set_viewport(f64::from(f32::from(viewport.width)), f64::from(f32::from(viewport.height)));
             let result = run(view, now);
             let entity = cx.entity_id();
-            repaint.invalidate(&view.motion_values, cx, entity);
+            repaint.invalidate(view, window, cx, entity);
             result
         };
 

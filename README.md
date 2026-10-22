@@ -8808,7 +8808,10 @@ frame still pays per subtree is its replay: cards below the window are not reach
 but in a scroller each card is a recorded subtree that is replayed, so a frame costs a
 little for each card the scroller holds. A state commit from JS, a motion write, a
 programmatic scroll and a read of the automation tree keep this: they ask for a frame
-and do not force a full rebuild of it. Focus changes, `scrollIntoView`, the window
+and do not force a full rebuild of it. A write to a motion value that only paints
+(`set`, `animate`, `stop` from a `requestAnimationFrame` loop or the `change` of another
+value) is drawn as a tick of a loop is: the elements bound to it are built alone and
+painted again in the frame already shown. Focus changes, `scrollIntoView`, the window
 title, text selection set from JS, a live image, a font and a background image still
 do.
 

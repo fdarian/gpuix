@@ -108,7 +108,7 @@ impl GpuixView {
     /// Whether the frames of what runs are asked for as ticks, which are patched when they can be
     /// and counted under the reason when they cannot. A page with no unit asks for them too: a tick
     /// that is drawn whole there would otherwise leave nothing to say why.
-    fn patches_ticks(&self) -> bool {
+    pub(crate) fn patches_ticks(&self) -> bool {
         self.patch.enabled
     }
 
