@@ -52,6 +52,9 @@ pub struct BuildCounters {
     pub units_built: f64,
     /// Subtrees that were that but hold more elements than a unit may.
     pub units_oversized: f64,
+    /// Motions a sync read the element of: every motion of the page in a frame built whole, the ones
+    /// that move in a tick that is patched.
+    pub motions_synced: f64,
     /// A JSON object: elements by the reason they are, or are not, in a retainable subtree, for
     /// the builds since the reset. `retained` is the share that is; every built element is counted
     /// once.
@@ -817,6 +820,7 @@ impl TestGpuixRenderer {
             retain_mismatches: counts.retain_mismatches as f64,
             units_built: counts.units_built as f64,
             units_oversized: counts.units_oversized as f64,
+            motions_synced: counts.motions_synced as f64,
             retain_reasons: serde_json::Value::Object(
                 crate::perf_counters::retain_reasons()
                     .into_iter()

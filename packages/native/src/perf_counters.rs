@@ -17,6 +17,7 @@ thread_local! {
     static RETAIN_MISMATCHES: Cell<u64> = const { Cell::new(0) };
     static UNITS_BUILT: Cell<u64> = const { Cell::new(0) };
     static UNITS_OVERSIZED: Cell<u64> = const { Cell::new(0) };
+    static MOTIONS_SYNCED: Cell<u64> = const { Cell::new(0) };
     /// Elements by the reason they are, or are not, in a subtree a retained replay could reuse.
     static RETAIN_SLOTS: RefCell<[u64; crate::retain::SLOTS]> = const { RefCell::new([0; crate::retain::SLOTS]) };
 }
@@ -39,6 +40,8 @@ pub(crate) struct Counts {
     pub units_built: u64,
     /// Elements that would have been the root of a unit, but hold more elements than a unit may.
     pub units_oversized: u64,
+    /// Motions a sync read the element of: all of them in a frame, the ones that move in a tick.
+    pub motions_synced: u64,
 }
 
 /// A frame left `elements` unbuilt because it found them unchanged.
@@ -65,6 +68,10 @@ pub(crate) fn unit_built() {
 
 pub(crate) fn unit_oversized() {
     UNITS_OVERSIZED.with(|count| count.set(count.get() + 1));
+}
+
+pub(crate) fn motion_synced() {
+    MOTIONS_SYNCED.with(|count| count.set(count.get() + 1));
 }
 
 pub(crate) fn retain_slot(slot: usize, elements: u64) {
@@ -106,6 +113,7 @@ pub(crate) fn snapshot() -> Counts {
         retain_mismatches: RETAIN_MISMATCHES.with(Cell::get),
         units_built: UNITS_BUILT.with(Cell::get),
         units_oversized: UNITS_OVERSIZED.with(Cell::get),
+        motions_synced: MOTIONS_SYNCED.with(Cell::get),
     }
 }
 
@@ -119,6 +127,7 @@ pub(crate) fn reset() {
     RETAIN_MISMATCHES.with(|count| count.set(0));
     UNITS_BUILT.with(|count| count.set(0));
     UNITS_OVERSIZED.with(|count| count.set(0));
+    MOTIONS_SYNCED.with(|count| count.set(0));
     RETAIN_SLOTS.with(|slots| *slots.borrow_mut() = [0; crate::retain::SLOTS]);
 }
 

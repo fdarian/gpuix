@@ -5426,6 +5426,8 @@ pub(crate) struct GpuixView {
     pub(crate) scroll_handles: HashMap<u64, gpui::ScrollHandle>,
     /// Native animation clocks keyed by retained element ID.
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
+    /// What the last sync of `motion_states` read, and which of them were moving, see `sync_motions`.
+    motion_synced: Option<MotionSynced>,
     /// The motion value graph JS creates through `createMotionValue` and friends.
     pub(crate) motion_values: crate::motion::MotionValueStore,
     /// The `@keyframes` analogue: the sets `animation-name` refers to, pushed
@@ -5486,6 +5488,12 @@ pub(crate) struct GpuixView {
     /// Shared with the window's mouse-down listener, which dispatches a press
     /// without reaching the view.
     pub(crate) pointer: Rc<RefCell<crate::events::state::PointerState>>,
+}
+
+/// What `GpuixView::sync_motions` read, and the motions that were moving when it did.
+struct MotionSynced {
+    inputs: u64,
+    moving: Vec<u64>,
 }
 
 #[derive(Default)]
@@ -5700,6 +5708,38 @@ pub(crate) fn sync_motion_states(
     gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
     now: web_time::Instant,
 ) -> (Vec<u64>, Vec<(u64, u64)>) {
+    states.retain(|id, _| tree.motion_ids.contains(id));
+    sync_motions(tree, states, tree.motion_ids.iter().copied(), measurements, appearance, viewport, gestures, now)
+}
+
+/// [`sync_motion_states`] for the motions in `ids` only: the ones that were moving when the tree,
+/// the pointer and the rest of what a sync reads last were as they are. A sync of the others is
+/// nothing but the clock, which only a motion that moves has to be told of.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn step_motion_states(
+    tree: &crate::retained_tree::RetainedTree,
+    states: &mut HashMap<u64, crate::motion::MotionState>,
+    ids: &[u64],
+    measurements: &crate::motion::measure::Measurements,
+    appearance: gpui::WindowAppearance,
+    viewport: gpui::Size<gpui::Pixels>,
+    gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
+    now: web_time::Instant,
+) -> (Vec<u64>, Vec<(u64, u64)>) {
+    sync_motions(tree, states, ids.iter().copied(), measurements, appearance, viewport, gestures, now)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sync_motions(
+    tree: &crate::retained_tree::RetainedTree,
+    states: &mut HashMap<u64, crate::motion::MotionState>,
+    ids: impl Iterator<Item = u64>,
+    measurements: &crate::motion::measure::Measurements,
+    appearance: gpui::WindowAppearance,
+    viewport: gpui::Size<gpui::Pixels>,
+    gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
+    now: web_time::Instant,
+) -> (Vec<u64>, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
     let mut root_font = crate::motion::ParentFont::initial();
     root_font.lengths = LengthContext::initial(
@@ -5708,17 +5748,17 @@ pub(crate) fn sync_motion_states(
     );
     let root = (crate::color::ColorContext::root(color_scheme_of(appearance)), root_font);
     let mut known_colors = HashMap::new();
-    states.retain(|id, _| tree.motion_ids.contains(id));
     let mut animating = Vec::new();
     let mut settled = Vec::new();
 
-    for &id in &tree.motion_ids {
+    for id in ids {
         let Some(element) = tree.elements.get(&id) else {
             continue;
         };
         let Some(source) = element.custom_props().get("motion") else {
             continue;
         };
+        crate::perf_counters::motion_synced();
         let base = element.style.as_deref();
         let (parent_colors, parent_font) = parent_inherited(tree, id, &root, &mut known_colors);
         let colors = crate::motion::Colors::inheriting(&parent_colors, &parent_font, base);
@@ -6056,6 +6096,7 @@ impl GpuixView {
             custom_registry: CustomElementRegistry::with_defaults(),
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
+            motion_synced: None,
             motion_values: Default::default(),
             keyframes: Default::default(),
             css_transitions: Default::default(),
@@ -6536,15 +6577,7 @@ impl GpuixView {
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let (motion_animating, motion_settled) =
-            sync_motion_states(
-                &tree,
-                &mut self.motion_states,
-                &self.measurements,
-                window.appearance(),
-                window.viewport_size(),
-                &|id| gestures_of(&tree, &pointer, &focus_styles, id),
-                now,
-            );
+            self.sync_motions(&tree, window, now, &focus_styles, &pointer);
         let motion_active = !motion_animating.is_empty();
         let motion_values_active =
             sync_row_motion_values(&tree, &mut self.motion_values, expected_child_id, now);
@@ -8072,6 +8105,88 @@ impl GpuixView {
         })
     }
 
+    /// Everything a sync of the motions reads but the clock, as one number: what a motion that is
+    /// not moving does with a sync is the same while it is the same. None while a measurement
+    /// waits for a frame to take it, which a motion reads.
+    fn motion_inputs(
+        &self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+        focus: &crate::focus::FocusStyles,
+        pointer: &crate::events::state::PointerState,
+    ) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+
+        if !self.measurements.peek_changed().is_empty() {
+            return None;
+        }
+        let mut hasher = rustc_hash::FxHasher::default();
+        tree.id().hash(&mut hasher);
+        tree.revision().hash(&mut hasher);
+        std::mem::discriminant(&window.appearance()).hash(&mut hasher);
+        let viewport = window.viewport_size();
+        f32::from(viewport.width).to_bits().hash(&mut hasher);
+        f32::from(viewport.height).to_bits().hash(&mut hasher);
+        pointer.chains().hash(&mut hasher);
+        focus.visible.hash(&mut hasher);
+        Some(hasher.finish())
+    }
+
+    /// Syncs every motion with the tree, as a frame does, and notes which are moving.
+    pub(crate) fn sync_motions(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+        now: web_time::Instant,
+        focus: &crate::focus::FocusStyles,
+        pointer: &crate::events::state::PointerState,
+    ) -> (Vec<u64>, Vec<(u64, u64)>) {
+        let inputs = self.motion_inputs(tree, window, focus, pointer);
+        let synced = sync_motion_states(
+            tree,
+            &mut self.motion_states,
+            &self.measurements,
+            window.appearance(),
+            window.viewport_size(),
+            &|id| gestures_of(tree, pointer, focus, id),
+            now,
+        );
+        self.motion_synced = inputs.map(|inputs| MotionSynced { inputs, moving: synced.0.clone() });
+        synced
+    }
+
+    /// What a sync of the motions does for a tick: the motions that were moving are stepped, and
+    /// the rest of them stay as the sync that found them still left them, unless something it
+    /// reads has changed since, which is a sync of all of them. The cost of a tick does not follow
+    /// the number of motions on the page.
+    pub(crate) fn step_motions(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+        now: web_time::Instant,
+        focus: &crate::focus::FocusStyles,
+        pointer: &crate::events::state::PointerState,
+    ) -> (Vec<u64>, Vec<(u64, u64)>) {
+        let inputs = self.motion_inputs(tree, window, focus, pointer);
+        let Some(synced) = self.motion_synced.as_ref().filter(|synced| inputs == Some(synced.inputs)) else {
+            return self.sync_motions(tree, window, now, focus, pointer);
+        };
+        let stepped = step_motion_states(
+            tree,
+            &mut self.motion_states,
+            &synced.moving,
+            &self.measurements,
+            window.appearance(),
+            window.viewport_size(),
+            &|id| gestures_of(tree, pointer, focus, id),
+            now,
+        );
+        if let Some(synced) = self.motion_synced.as_mut() {
+            synced.moving = stepped.0.clone();
+        }
+        stepped
+    }
+
     /// Whether the tick at `now` can be drawn by building the units that hold what changed, and
     /// which they are, see `Retain::preview`. Changes nothing: what the frame takes when it reads
     /// the measurements, links and commands of the animations stays for it.
@@ -8098,6 +8213,10 @@ impl GpuixView {
             keyframes: &self.keyframes,
             statics: &self.paint_statics,
         };
+        let moving = self
+            .motion_inputs(&tree, window, &focus_styles, &pointer)
+            .and_then(|inputs| self.motion_synced.as_ref().filter(|synced| synced.inputs == inputs))
+            .map(|synced| synced.moving.as_slice());
         let commanded: Vec<u64> = self
             .css_transitions
             .peek_commanded()
@@ -8118,7 +8237,7 @@ impl GpuixView {
             commanded,
             relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
-            motion: running_motion(&tree, &self.motion_states, &self.css_animations, &self.keyframes, now),
+            motion: running_motion(&tree, &self.motion_states, moving, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
             verdicts: self.dormancy_verdicts(&tree, window),
@@ -8169,15 +8288,23 @@ fn motion_value_due(store: &crate::motion::MotionValueStore, tree: &crate::retai
 /// The elements with a motion that runs at `now`, see `retain::Sources::motion`. The motion of a
 /// shape is its `<svg>`'s: the shape is never built, and the `<svg>` is what is culled, left dormant
 /// or built again for it.
+///
+/// `moving` are the motions that were moving when the last sync read what it reads as it is now, if
+/// they are known: a motion that moves now was one of them, since a motion starts only with a
+/// change of what a sync reads, and the others need not be asked.
 fn running_motion(
     tree: &crate::retained_tree::RetainedTree,
     motion_states: &HashMap<u64, crate::motion::MotionState>,
+    moving: Option<&[u64]>,
     animations: &crate::motion::CssAnimations,
     keyframes: &crate::motion::KeyframesRegistry,
     now: web_time::Instant,
 ) -> Vec<u64> {
-    motion_states
-        .iter()
+    let candidates: Box<dyn Iterator<Item = (&u64, &crate::motion::MotionState)>> = match moving {
+        Some(ids) => Box::new(ids.iter().filter_map(|id| Some((id, motion_states.get(id)?)))),
+        None => Box::new(motion_states.iter()),
+    };
+    candidates
         .filter(|(_, state)| state.is_animating(now))
         .map(|(id, _)| *id)
         .chain(animations.svg_shapes(keyframes))
@@ -8401,15 +8528,7 @@ impl GpuixView {
             let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
             let pointer_state = self.pointer.clone();
             let pointer = pointer_state.borrow();
-            sync_motion_states(
-                &tree,
-                &mut self.motion_states,
-                &self.measurements,
-                window.appearance(),
-                window.viewport_size(),
-                &|id| gestures_of(&tree, &pointer, &focus_styles, id),
-                now,
-            )
+            self.sync_motions(&tree, window, now, &focus_styles, &pointer)
         };
         emit_motion_settled(&callback, &tree, &settled);
         // Motion's `change` follows the animation and not the element being seen, so the events of a
@@ -8546,15 +8665,7 @@ impl gpui::Render for GpuixView {
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let (motion_animating, motion_settled) =
-            sync_motion_states(
-                &tree,
-                &mut self.motion_states,
-                &self.measurements,
-                window.appearance(),
-                window.viewport_size(),
-                &|id| gestures_of(&tree, &pointer, &focus_styles, id),
-                now,
-            );
+            self.sync_motions(&tree, window, now, &focus_styles, &pointer);
         self.motion_values
             .set_appearance(color_scheme_of(window.appearance()));
         let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
@@ -8612,7 +8723,7 @@ impl gpui::Render for GpuixView {
             commanded,
             relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
-            motion: running_motion(&tree, &self.motion_states, &self.css_animations, &self.keyframes, now),
+            motion: running_motion(&tree, &self.motion_states, None, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
             verdicts: self.dormancy_verdicts(&tree, window),

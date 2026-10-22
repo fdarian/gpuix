@@ -173,15 +173,7 @@ impl GpuixView {
             let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
             let pointer_state = self.pointer.clone();
             let pointer = pointer_state.borrow();
-            crate::renderer::sync_motion_states(
-                &tree,
-                &mut self.motion_states,
-                &self.measurements,
-                window.appearance(),
-                window.viewport_size(),
-                &|id| crate::renderer::gestures_of(&tree, &pointer, &focus_styles, id),
-                now,
-            )
+            self.step_motions(&tree, window, now, &focus_styles, &pointer)
         };
         self.motion_values
             .set_appearance(crate::renderer::color_scheme_of(window.appearance()));

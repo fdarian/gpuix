@@ -80,6 +80,7 @@ function read(renderer): Work {
   const out: Work = {
     elementsBuilt: renderer.getBuildCounters().elementsBuilt,
     unitsBuilt: renderer.getBuildCounters().unitsBuilt,
+    motionsSynced: renderer.getBuildCounters().motionsSynced,
     patchedFrames: patches.patchedFrames,
     patchedUnits: patches.patchedUnits,
     paintedFrames: renderer.getPaintedFrameCount(),
@@ -103,8 +104,8 @@ function work(renderer, change: () => void): Work {
   change()
   renderer.drawFrame()
   const after = read(renderer)
-  const done: Work = { elementsBuilt: after.elementsBuilt, unitsBuilt: after.unitsBuilt }
-  for (const key of Object.keys(after)) if (key !== "elementsBuilt" && key !== "unitsBuilt") done[key] = after[key] - before[key]
+  const done: Work = { elementsBuilt: after.elementsBuilt, unitsBuilt: after.unitsBuilt, motionsSynced: after.motionsSynced }
+  for (const key of Object.keys(after)) if (!(key in done)) done[key] = after[key] - before[key]
   return done
 }
 
@@ -416,8 +417,8 @@ const WARM = 12
 const TICKS = 8
 
 /** `TICKS` ticks of a mounted page, after the frames that hand it over to ticks. */
-async function ticksOf(head: React.ReactNode, nodes: number, a11y = false) {
-  const page = await mount(head, nodes, a11y)
+async function ticksOf(head: React.ReactNode, nodes: number, a11y = false, tail?: React.ReactNode) {
+  const page = await mount(head, nodes, a11y, tail)
   try {
     for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
     const done: Work[] = []
@@ -1605,6 +1606,46 @@ describeNative("a tick beside motion values that rest", { timeout: TIMEOUT }, ()
       </div>,
     )
     expect(await patchesOf(head, 500)).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+  })
+})
+
+/** What a tick reads of the motions of the page: the ones that move, however many rest beside them. */
+describeNative("a tick beside native motions that rest", { timeout: TIMEOUT }, () => {
+  const resting = (count: number) =>
+    Array.from({ length: count }, (_, index) => (
+      <motion.div key={index} style={{ height: 4, backgroundColor: "#99ccff" }} initial={false} animate={{ opacity: 0.5 }} />
+    ))
+  const beside = (count: number) => (
+    <>
+      {motionHead}
+      {resting(count)}
+    </>
+  )
+
+  counted("syncs the motion that moves and none of the 400 that rest", async () => {
+    const alone = await ticksOf(motionHead, 500)
+    const crowded = await ticksOf(beside(400), 500)
+    for (let index = 0; index < TICKS; index++) {
+      expect(alone[index].motionsSynced, `tick ${index}`).toBe(1)
+      expect(crowded[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+      expect(crowded[index], `tick ${index}`).toEqual(alone[index])
+    }
+  })
+
+  counted("syncs them all again in the frame built whole after the tree changed", async () => {
+    const page = await mount(beside(400), 500)
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      const before = tick(page.renderer)
+      expect(before.motionsSynced).toBe(1)
+      const whole = work(page.renderer, () => page.renderer.setWindowSize(SIZE.width - 1, SIZE.height))
+      expect(whole.patchedFrames).toBe(0)
+      expect(whole.motionsSynced).toBeGreaterThanOrEqual(401)
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      expect(tick(page.renderer).motionsSynced).toBe(1)
+    } finally {
+      page.root.unmount()
+    }
   })
 })
 

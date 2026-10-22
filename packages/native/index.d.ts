@@ -1171,6 +1171,11 @@ export interface BuildCounters {
   /** Subtrees that were that but hold more elements than a unit may. */
   unitsOversized: number
   /**
+   * Motions a sync read the element of: every motion of the page in a frame built whole, the ones
+   * that move in a tick that is patched.
+   */
+  motionsSynced: number
+  /**
    * A JSON object: elements by the reason they are, or are not, in a retainable subtree, for
    * the builds since the reset. `retained` is the share that is; every built element is counted
    * once.
