@@ -1445,6 +1445,622 @@
    "measureChild": true,
    "before": {},
    "after": {}
+  },
+  {
+   "name": "contain-margin-child-hidden",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "40px"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-auto",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-visible",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-hidden-no-intrinsic",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-auto-fixed-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "height": "100px"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-visible-fixed-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "height": "100px"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-auto-padding",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "padding": "1px 0"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-child-visible-padding",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "padding": "1px 0"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-margin-own-hidden",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "margin": "25px 0 35px 0",
+    "containIntrinsicSize": "40px"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {
+    "marginBottom": "15px"
+   },
+   "after": {
+    "marginTop": "10px"
+   }
+  },
+  {
+   "name": "contain-margin-own-smaller-hidden",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "margin": "5px 0 8px 0",
+    "containIntrinsicSize": "40px"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {
+    "marginBottom": "15px"
+   },
+   "after": {
+    "marginTop": "10px"
+   }
+  },
+  {
+   "name": "contain-margin-own-auto",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "margin": "25px 0 35px 0"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {
+    "marginBottom": "15px"
+   },
+   "after": {
+    "marginTop": "10px"
+   }
+  },
+  {
+   "name": "contain-margin-own-smaller-auto",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "margin": "5px 0 8px 0"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {
+    "marginBottom": "15px"
+   },
+   "after": {
+    "marginTop": "10px"
+   }
+  },
+  {
+   "name": "contain-margin-own-visible",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "margin": "25px 0 35px 0"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {
+    "marginBottom": "15px"
+   },
+   "after": {
+    "marginTop": "10px"
+   }
+  },
+  {
+   "name": "contain-margin-own-smaller-visible",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "margin": "5px 0 8px 0"
+   },
+   "child": {
+    "margin": "20px 0 30px 0"
+   },
+   "measureChild": true,
+   "before": {
+    "marginBottom": "15px"
+   },
+   "after": {
+    "marginTop": "10px"
+   }
+  },
+  {
+   "name": "contain-fixed-auto",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "top": "0px",
+    "left": "0px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-insets-auto",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "width": "200px",
+    "height": "100px",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "top": "10px",
+    "left": "20px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-bottom-right-auto",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "width": "200px",
+    "height": "100px",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "bottom": "5px",
+    "right": "6px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-hidden",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000",
+    "containIntrinsicSize": "60px"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "top": "0px",
+    "left": "0px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-insets-hidden",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "width": "200px",
+    "height": "100px",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "top": "10px",
+    "left": "20px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-bottom-right-hidden",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "width": "200px",
+    "height": "100px",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "bottom": "5px",
+    "right": "6px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-visible",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "top": "0px",
+    "left": "0px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-fixed-insets-visible",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "width": "200px",
+    "height": "100px",
+    "margin": "13px 0 0 100px",
+    "padding": "7px 9px",
+    "border": "3px solid #000"
+   },
+   "child": {
+    "width": "50px",
+    "height": "50px",
+    "position": "fixed",
+    "top": "10px",
+    "left": "20px"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-block",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-block-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "height": "200px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-flex-col",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "display": "flex",
+    "flexDirection": "column"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-flex-col-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "height": "200px",
+    "display": "flex",
+    "flexDirection": "column"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-flex-row",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "display": "flex"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-flex-row-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "height": "200px",
+    "display": "flex"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-grid",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "display": "grid"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-grid-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "height": "200px",
+    "display": "grid"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-block-no-intrinsic",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-block-padding",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "padding": "10px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-block-padding-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px",
+    "padding": "10px",
+    "height": "200px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-auto-block",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "containIntrinsicSize": "100px 200px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-auto-block-height",
+   "outer": {},
+   "target": {
+    "contentVisibility": "auto",
+    "containIntrinsicSize": "100px 200px",
+    "height": "200px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-visible-block",
+   "outer": {},
+   "target": {
+    "contentVisibility": "visible",
+    "containIntrinsicSize": "100px 200px"
+   },
+   "child": {
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
+  },
+  {
+   "name": "contain-percent-hidden-block-width",
+   "outer": {},
+   "target": {
+    "contentVisibility": "hidden",
+    "containIntrinsicSize": "100px 200px"
+   },
+   "child": {
+    "width": "50%",
+    "height": "50%"
+   },
+   "measureChild": true,
+   "before": {},
+   "after": {}
   }
  ]
 }

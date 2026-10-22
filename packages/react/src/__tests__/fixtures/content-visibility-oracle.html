@@ -29,11 +29,18 @@ const rect = (element, origin) => {
   return [box.x - origin.x, box.y - origin.y, box.width, box.height]
 }
 
-// Headless Chrome never fires requestAnimationFrame here, and runs one rendering update, the first, before a timer: a
-// `content-visibility: auto` case is only told whether it is on screen if it is the first to be added to the page, so
-// the `auto` cases are run one to a page (`?case=<name>`), and the page without a name runs the others.
-const frame = () => new Promise((resolve) => setTimeout(resolve, 50))
 const only = new URLSearchParams(location.search).get('case')
+
+// A `content-visibility: auto` case is only told whether it is on screen if it is the first to be added to the page, so
+// the `auto` cases are run one to a page (`?case=<name>`), and the page without a name runs the others. Headless Chrome
+// runs a rendering update only when something asks for a frame, and not always before a timer: the `auto` page asks
+// for one, and a case that no frame decided is told apart (`data-skipped`), for the script to run again. The page of
+// the other cases has nothing to decide and waits a timer.
+const frame = () =>
+  new Promise((resolve) => {
+    if (only) requestAnimationFrame(() => setTimeout(resolve, 50))
+    setTimeout(resolve, only ? 1000 : 50)
+  })
 
 // The cases are read synchronously, as the first rendering update of the page comes as soon as the script is done. One case
 // is on the page at a time, at the top.
@@ -57,6 +64,10 @@ request.send()
     const origin = holder.getBoundingClientRect()
     const found = { outer: rect(outer, origin), before: rect(before, origin), target: rect(target, origin), after: rect(after, origin) }
     if (spec.measureChild) found.child = rect(child, origin)
+    // The first rendering update came before the case was on the page: it is skipped, and the script runs it again.
+    if (spec.target.contentVisibility === 'auto' && !child.checkVisibility({ contentVisibilityAuto: true })) {
+      document.body.setAttribute('data-skipped', 'true')
+    }
     results[spec.name] = found
     holder.remove()
   }
