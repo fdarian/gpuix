@@ -910,6 +910,28 @@ const Scrolled = ({ children }: { children: ReactNode }) => (
 const hidden = (intrinsic: string, padding: number) =>
   ({ flexShrink: 0, contentVisibility: "hidden", containIntrinsicSize: intrinsic, padding }) as CSSProperties
 
+/** The page of the scene `firstReadKept`: a `hidden` element of 8 cards of 3 lines, between two boxes that change. */
+function KeptPage({ step, visibility = "hidden" }: { step: number; visibility?: "hidden" | "visible" }) {
+  // No scroll container around the page, unlike the oracle's (and `Page`, which clips): the first layout pass that finds a scroll
+  // handle takes the content under it as moved, which gets no layout record, so a cold page in a scroller is built whole once
+  // more in its second pass. The boxes are the same.
+  return (
+    <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column" }}>
+      <div style={{ height: [20, 20, 30, 30][step], flexShrink: 0 }} />
+      <div testId="held" style={{ ...hidden("30px", 4), contentVisibility: visibility } as CSSProperties}>
+        {Array.from({ length: 8 }, (_, card) => (
+          <div key={card} testId={`card-${card}`} style={{ margin: 3, padding: 2, flexShrink: 0 }}>
+            {Array.from({ length: 3 }, (_, line) => (
+              <div key={line} testId={`line-${card}-${line}`} style={{ height: 10 + line * 4 + card, width: 40, margin: 1, flexShrink: 0 }} />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div testId="after" style={{ height: [20, 36, 36, 20][step], flexShrink: 0 }} />
+    </div>
+  )
+}
+
 /** A scene of the oracle that is read right after each change, and what the page looks like at each step. */
 interface FirstRead {
   render: (step: number) => ReactNode
@@ -930,6 +952,10 @@ const FIRST_READ_SCENES: Record<string, FirstRead> = {
         <After />
       </Scrolled>
     ),
+  },
+  // Changes outside a `hidden` element that holds many elements, with the boxes inside it read after each.
+  firstReadKept: {
+    render: (step) => <KeptPage step={step} />,
   },
   // A write that turns the ancestor `hidden` or `visible` in the turn of a write inside it.
   firstReadTurns: {
@@ -1077,6 +1103,84 @@ describeNative("the first read after a change", { timeout: 120_000 }, () => {
         if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
       } finally {
         root.unmount()
+      }
+    })
+  }
+})
+
+describeNative("forced reads inside hidden content that is laid out once and kept", { timeout: 120_000 }, () => {
+  /** How the page was drawn before the reads: `never` has no frame at all, `visible` draws the content shown and makes it hidden
+   *  with no frame after, `hidden` draws the frames that skip it. */
+  type Drawn = "never" | "visible" | "hidden"
+
+  function reads(drawn: Drawn) {
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      const frames = () => {
+        for (let index = 0; index < 6; index++) {
+          renderer.drawFrame()
+          renderer.dispatchNativeEvents()
+        }
+      }
+      if (drawn !== "never") {
+        root.render(<KeptPage step={0} visibility="visible" />)
+        renderer.flush()
+        frames()
+      }
+      const painted = () => renderer.getPaintedFrameCount()
+      let drawnFrames = painted()
+      const steps = FIRST_READS.firstReadKept!.map((expected, step) => {
+        root.render(<KeptPage step={step} />)
+        renderer.flush()
+        if (step === 0 && drawn === "hidden") {
+          frames()
+          drawnFrames = painted()
+        }
+        const ids = idsOf(renderer)
+        const names = expected.names!
+        const before = renderer.getRetainedCounters()
+        renderer.resetBuildCounters()
+        const first = reading(renderer, ids, names.slice(0, 1))
+        const built = renderer.getBuildCounters().elementsBuilt
+        const rest = reading(renderer, ids, names.slice(1))
+        const after = renderer.getRetainedCounters()
+        const seen = [...first.read, ...rest.read].map((box) => [box!.x, box!.y, box!.width, box!.height])
+        expected.rects!.forEach((rect, index) =>
+          rect.forEach((value, side) =>
+            expect(Math.abs(seen[index]![side]! - value), `${drawn}, ${expected.step}: ${names[index]} is [${seen[index]}], Chrome's [${rect}]`).toBeLessThanOrEqual(UNIT)
+          )
+        )
+        expect(first.passes, `${drawn}, ${expected.step}: the first read is one pass`).toBe(1)
+        expect(rest.passes, `${drawn}, ${expected.step}: and the reads after it share it`).toBe(0)
+        expect(painted() - drawnFrames, "no frame is drawn between the reads").toBe(0)
+        return {
+          built,
+          skips: after.layoutSkips - before.layoutSkips,
+          records: after.layoutRecords - before.layoutRecords,
+          builds: after.layoutBuilds - before.layoutBuilds,
+        }
+      })
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return steps
+    } finally {
+      root.unmount()
+    }
+  }
+
+  for (const drawn of ["never", "visible", "hidden"] as const) {
+    it(`builds the hidden subtree for the first read and not for the next, whatever changes outside it: ${drawn}`, () => {
+      const steps = reads(drawn)
+      expect(steps[0]!.built, "the first read builds the page, the subtree in it included").toBeGreaterThanOrEqual(36)
+      expect(steps[0]!.records, "and leaves a layout record of each card and of the page").toBeGreaterThanOrEqual(9)
+      // A box above it grows (step 2) and the subtree is not where it was: it is built again where it is, which Chrome does not
+      // need. Only a change that leaves it in place is cheap.
+      // A verified pass builds the page a second time to compare it, which is not the cost being measured.
+      for (const step of verifying ? [] : [1, 3]) {
+        expect(steps[step]!.built, `step ${step}: the box that changed and the page, not the subtree`).toBeLessThanOrEqual(8)
+        expect(steps[step]!.skips, `step ${step}: the cards are skipped with their layout records`).toBeGreaterThanOrEqual(8)
       }
     })
   }

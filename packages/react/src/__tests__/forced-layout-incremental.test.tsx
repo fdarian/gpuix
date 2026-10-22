@@ -746,7 +746,7 @@ function mountWithoutAFrame(entries: number, retention: boolean, icons = false) 
 describeNative("a forced read on a page that has not been presented since it changed", { timeout: 120_000 }, () => {
   const verifying = process.env.GPUIX_RETAIN_VERIFY !== undefined
 
-  it("builds the changed subtree and not the page, after the pass that records it", () => {
+  it("builds the page in its first pass, and the changed subtree and not the page after it", () => {
     const entries = 500
     const kept = mountWithoutAFrame(entries, true)
     const built = mountWithoutAFrame(entries, false)
@@ -757,6 +757,9 @@ describeNative("a forced read on a page that has not been presented since it cha
     expect(kept.counters.layoutReplays, "and the passes after them skipped with them").toBeGreaterThan(0)
     if (!verifying) {
       expect(kept.rounds[0]!.built).toBeGreaterThanOrEqual(entries * 10)
+      // The pass after the first builds ~120 elements: 11 subtrees (about the entries in view of the list) that gpui had no
+      // layout record to skip with, beside the changed entry and the spine.
+      expect(kept.rounds[1]!.built, "the entries in view, not the page").toBeLessThanOrEqual(200)
       for (const round of kept.rounds.slice(2)) {
         expect(round.built, "the entry that changed and the spine above it, not the page").toBeLessThanOrEqual(60)
       }
@@ -777,7 +780,10 @@ describeNative("a forced read on a page that has not been presented since it cha
 
     expect(kept.counters.layoutReplays, "the passes after the first that built skipped with layout records").toBeGreaterThan(0)
     if (!verifying) {
-      for (const round of kept.rounds.slice(3)) {
+      // The 500 icons are a source of the second pass (the planner names them "custom"), so it builds the entries they are in:
+      // half of the page.
+      expect(kept.rounds[1]!.built, "less than the page").toBeLessThan(kept.rounds[0]!.built / 2)
+      for (const round of kept.rounds.slice(2)) {
         expect(round.built, "the entry that changed and the spine above it, not the icons of the page").toBeLessThanOrEqual(60)
       }
     }

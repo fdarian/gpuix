@@ -365,6 +365,28 @@ Object.assign(scenes, {
     ])
   },
 
+  // Changes outside a `hidden` element with a subtree of many elements, read inside it after each: the layout of the subtree is the
+  // same at every step but for where the element is.
+  async firstReadKept() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px', padding: '4px' })
+    for (let group = 0; group < 8; group++) {
+      const card = named(`card-${group}`, '', { margin: '3px', padding: '2px', flexShrink: 0 })
+      for (let line = 0; line < 3; line++) card.append(named(`line-${group}-${line}`, '', { height: `${10 + line * 4 + group}px`, width: '40px', margin: '1px', flexShrink: 0 }))
+      held.append(card)
+    }
+    const above = made('div', '', { height: '20px', flexShrink: 0 })
+    const after = named('after', '', { height: '20px', flexShrink: 0 })
+    scroller.append(above, held, after)
+    const names = ['line-2-1', 'line-7-2', 'card-4', 'held', 'after']
+    return firstRead(page, scroller, [names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['after grows', () => (after.style.height = '36px')],
+      ['above grows', () => (above.style.height = '30px')],
+      ['after shrinks', () => (after.style.height = '20px')],
+    ])
+  },
+
   // A write that turns the ancestor of the element `hidden` or `visible` in the same turn as a layout write inside it.
   async firstReadTurns() {
     const { page, scroller } = pageOf()

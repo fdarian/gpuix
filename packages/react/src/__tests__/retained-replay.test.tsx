@@ -501,7 +501,8 @@ describeNative("a page of retained cards", () => {
       const during = renderer.getRetainedCounters()
       // The cards were not touched: every one but the one written is skipped and publishes its boxes.
       expect(during.layoutReplays - counters.layoutReplays).toBeGreaterThanOrEqual(COUNT - 1)
-      if (!verifying) expect(during.layoutBuilds - counters.layoutBuilds).toBe(0)
+      // What is built is the page and the card written, each in a root of its own that leaves a layout record.
+      if (!verifying) expect(during.layoutBuilds - counters.layoutBuilds).toBe(2)
       expect(boxes()).toEqual(before)
       // The page, the card and what changed in it: nowhere near the 2000 elements a build makes.
       if (!verifying) expect(built).toBeLessThan(30)
