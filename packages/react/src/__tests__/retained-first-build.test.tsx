@@ -172,4 +172,48 @@ describeNative("a root recorded by the frame that builds it", () => {
       view.unmount()
     }
   })
+
+  /**
+   * A rounded scroller cannot hold a recording in a region, so a root in it is not moved by a scroll, but the
+   * wrapper of a root is still kept (not culled) within the overscan past the clip. The roots nested in a root that
+   * the first build records are wrapped too, and a box in such a wrapper was recorded where a build culls it: the
+   * verifier found its hitbox and its listeners in the replay and not in the build.
+   */
+  it("replays the roots of a rounded scroller as a build culls them", () => {
+    const view = setup(<div />, { width: 1280, height: 800 })
+    try {
+      view.renderer.setRetainVerify(true)
+      const sections = ["#e94560", "#0f3460", "#533483", "#e94560", "#0f3460"]
+      const page = (
+        <div testId="page" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", backgroundColor: "#1a1a2e" }}>
+          <div
+            testId="rounded"
+            style={{
+              width: 300,
+              height: 200,
+              overflow: "scroll",
+              backgroundColor: "#16213e",
+              borderRadius: 8,
+              borderWidth: 2,
+              borderStyle: "solid",
+              borderColor: "#0f3460",
+            }}
+          >
+            {sections.map((color, index) => (
+              <div key={index} testId={`section-${index}`} style={{ height: 80, backgroundColor: color, padding: 16 }}>
+                <text style={{ color: "#ffffff", fontSize: 20 }}>{`Section ${index + 1}`}</text>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+      view.render(page)
+      view.renderer.flush()
+      const scroller = view.bounds("rounded")
+      view.renderer.nativeSimulateScrollWheel(scroller.x + 50, scroller.y + 50, 0, 150)
+      view.finish(false)
+    } finally {
+      view.unmount()
+    }
+  })
 })
