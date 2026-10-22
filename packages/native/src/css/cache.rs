@@ -35,6 +35,8 @@ pub(crate) struct Inputs<'a> {
 #[derive(Clone, Copy, Default)]
 struct Reads {
     colors: bool,
+    /// The text names `currentColor`: a hit is a read of the colour the element has, as a parse is.
+    current: bool,
     lengths: LengthReads,
 }
 
@@ -42,6 +44,7 @@ impl Reads {
     fn of(text: &str, inputs: &Inputs) -> Self {
         Self {
             colors: inputs.colors.is_some() && reads_colors(text),
+            current: inputs.colors.is_some() && names(text, "currentcolor"),
             lengths: LengthReads::of(text),
         }
     }
@@ -94,6 +97,9 @@ impl<V: Clone> Cache<V> {
             Some(Entry::Free(value)) => return value.clone(),
             Some(Entry::PerContext(reads, results)) => {
                 if let Some((_, value)) = results.iter().find(|(key, _)| key.agrees(&inputs, *reads)) {
+                    if let Some(colors) = inputs.colors.filter(|_| reads.current) {
+                        colors.note_read();
+                    }
                     return value.clone();
                 }
             }
@@ -137,11 +143,13 @@ impl<V: Clone> Cache<V> {
 /// Whether a colour in `text` can resolve differently per element. Conservative:
 /// a match inside another word only costs a cache entry per context.
 fn reads_colors(text: &str) -> bool {
-    ["currentcolor", "light-dark(", "color-mix("].iter().any(|name| {
-        text.as_bytes()
-            .windows(name.len())
-            .any(|window| window.eq_ignore_ascii_case(name.as_bytes()))
-    })
+    ["currentcolor", "light-dark(", "color-mix("].iter().any(|name| names(text, name))
+}
+
+fn names(text: &str, name: &str) -> bool {
+    text.as_bytes()
+        .windows(name.len())
+        .any(|window| window.eq_ignore_ascii_case(name.as_bytes()))
 }
 
 #[cfg(test)]
@@ -154,7 +162,7 @@ mod tests {
     fn colors(scheme: Scheme, current: f32) -> ColorContext {
         let mut context = ColorContext::root(scheme);
         context.scheme = scheme;
-        context.current = gpui::Rgba { r: current, g: current, b: current, a: 1.0 };
+        context = context.with_current(gpui::Rgba { r: current, g: current, b: current, a: 1.0 });
         context
     }
 
@@ -213,7 +221,7 @@ mod tests {
         let lengths = lengths();
         let text = "linear-gradient(currentColor, blue)";
         let mut other = colors(Scheme::Light, 0.5);
-        other.declared = Some(gpui::Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 });
+        other = other.with_declared(gpui::Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 });
         other.appearance = Scheme::Dark;
         let first = cache.get_or_parse(text, with_colors(&colors(Scheme::Light, 0.5), &lengths), || 1);
         let second = cache.get_or_parse(text, with_colors(&other, &lengths), || 2);

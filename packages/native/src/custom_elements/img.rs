@@ -898,7 +898,7 @@ impl CustomElement for SvgElement {
             Some(markup) => Some(std::sync::Arc::from(markup.as_bytes())),
             None => self.source.clone().or_else(|| self.bytes.clone()),
         };
-        let color = ctx.colors.current;
+        let color = ctx.colors.current();
         self.drawing = bytes.clone().map(|bytes| (bytes, color));
         self.shapes_run = ctx.shapes_run;
         if let Some(outset) = ctx.cull_outset {

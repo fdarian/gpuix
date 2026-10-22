@@ -179,6 +179,9 @@ impl SvgTrees {
         frame: Frame,
     ) -> Option<Arc<str>> {
         let element = tree.elements.get(&svg_id)?;
+        // A markup that is kept was made for the colours of its frame, and says `currentColor` as the
+        // colour of the element it is on.
+        frame.colors.note_read();
         let mut frame = frame;
         let mut above = Above {
             colors: *frame.colors,

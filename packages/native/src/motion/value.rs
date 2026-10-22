@@ -186,8 +186,8 @@ impl Colors {
     pub(super) fn with_current_color_pinned(&self) -> Self {
         const PINNED: gpui::Rgba = gpui::Rgba { r: 0.2, g: 0.4, b: 0.6, a: 1.0 };
         let mut pinned = self.clone();
-        pinned.element.current = PINNED;
-        pinned.text.current = PINNED;
+        pinned.element = pinned.element.with_current(PINNED);
+        pinned.text = pinned.text.with_current(PINNED);
         pinned
     }
 }

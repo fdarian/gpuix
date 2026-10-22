@@ -104,7 +104,7 @@ impl TextDecoration {
         self.color
             .as_deref()
             .and_then(|value| colors.resolve(value))
-            .unwrap_or(colors.current)
+            .unwrap_or_else(|| colors.current())
             .into()
     }
 }

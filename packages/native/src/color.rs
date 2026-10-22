@@ -81,10 +81,11 @@ impl Scheme {
 /// A context describes one element. `descend` makes the context its children
 /// inherit; `for_state` makes the context a `hover`/`active` refinement of the
 /// same element paints with.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ColorContext {
-    /// This element's computed `color`.
-    pub current: gpui::Rgba,
+    /// This element's computed `color`. Read through [`ColorContext::current`], which says so to the
+    /// retained element being built.
+    current: gpui::Rgba,
     /// This element's computed `color-scheme`.
     pub scheme: Scheme,
     /// The window's appearance.
@@ -93,32 +94,141 @@ pub(crate) struct ColorContext {
     inherited: gpui::Rgba,
     /// The text colour this element sets on gpui, if any: its own `color` when that
     /// resolved, or the new default text colour when its `colorScheme` changed it.
-    pub declared: Option<gpui::Rgba>,
+    declared: Option<gpui::Rgba>,
     /// No element up to this one declared a `color`, so the text colour is still
     /// the initial `CanvasText`, which follows `colorScheme`.
     canvas_text: bool,
+    /// Where `current` comes from, see [`reads`].
+    current_origin: u64,
+    /// Where `inherited` comes from.
+    inherited_origin: u64,
+}
+
+/// Contexts are equal when they resolve every colour alike: where a colour comes from is how a
+/// retained element finds out what it read, not what it resolves to.
+impl PartialEq for ColorContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.current == other.current
+            && self.scheme == other.scheme
+            && self.appearance == other.appearance
+            && self.inherited == other.inherited
+            && self.declared == other.declared
+            && self.canvas_text == other.canvas_text
+    }
 }
 
 impl ColorContext {
-    /// Everything a colour is resolved from, for the key of a retained subtree.
+    /// Everything a colour is resolved from but the colours themselves, for the key of a retained
+    /// subtree: which side `light-dark()` takes does not depend on what the subtree reads.
     pub(crate) fn fingerprint(&self, fp: &mut crate::retain::Fingerprint) {
-        let rgba = |fp: &mut crate::retain::Fingerprint, color: gpui::Rgba| {
-            fp.f32(color.r);
-            fp.f32(color.g);
-            fp.f32(color.b);
-            fp.f32(color.a);
-        };
-        rgba(fp, self.current);
-        rgba(fp, self.inherited);
-        if let Some(declared) = self.declared {
-            rgba(fp, declared);
-        }
         fp.bits(&[
             self.scheme == Scheme::Dark,
             self.appearance == Scheme::Dark,
             self.declared.is_some(),
             self.canvas_text,
         ]);
+    }
+
+    /// The colour the elements below inherit, for the key of a retained subtree that read the colour
+    /// it inherits (see [`reads`]). The colour of the parent and the one `declared` sets on gpui are
+    /// the context's own: no element below reads them, each has `current` of its parent for its
+    /// `inherited`.
+    pub(crate) fn fingerprint_colors(&self, fp: &mut crate::retain::Fingerprint) {
+        fp.f32(self.current.r);
+        fp.f32(self.current.g);
+        fp.f32(self.current.b);
+        fp.f32(self.current.a);
+    }
+
+    /// This element's computed `color`. A build that reads it reads the colour the element inherits
+    /// unless an element between declared its own.
+    pub(crate) fn current(&self) -> gpui::Rgba {
+        self.note_read();
+        self.current
+    }
+
+    /// Notes that what is built from this context depends on `current` without asking for it: text
+    /// takes its colour from gpui's text style, which `declared` of the nearest element above sets.
+    pub(crate) fn note_read(&self) {
+        reads::note(self.current_origin);
+    }
+
+    /// The text colour this element sets on gpui, which is not a read: it sets it.
+    pub(crate) fn declared(&self) -> Option<gpui::Rgba> {
+        self.declared
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_declared(mut self, declared: gpui::Rgba) -> Self {
+        self.declared = Some(declared);
+        self
+    }
+
+    /// The same context with `color` another colour, which is no read of the first.
+    pub(crate) fn with_current(mut self, current: gpui::Rgba) -> Self {
+        self.current = current;
+        self
+    }
+}
+
+/// Which retained elements read the colour they inherit.
+///
+/// A colour a style declares gives the elements below it a colour of their own: a change of the
+/// `color` of the page is no change to a card whose text sets its own, and the card is skipped.
+/// For that the build says what it read. A context carries where its colour comes from: the
+/// element being built when a `color` was declared, and for an element that declares none the
+/// place its parent's colour came from. Reading the colour notes that place, and an element that
+/// is built reads the colour it inherits when something in it noted a place above it. Retained
+/// elements are numbered as they are entered, so "above" is "numbered less", and a build that
+/// runs later (gpui asks for the subtree of a skipped element when it cannot replay it) is below
+/// every place a build before it numbered.
+pub(crate) mod reads {
+    use std::cell::Cell;
+
+    thread_local! {
+        static NEXT: Cell<u64> = const { Cell::new(1) };
+        /// The retained element being built, 0 outside one.
+        static OPEN: Cell<u64> = const { Cell::new(0) };
+        /// The least place noted while the open element was built, with what is below it.
+        static LOWEST: Cell<u64> = const { Cell::new(u64::MAX) };
+    }
+
+    /// A retained element being built: closing it says what it read.
+    #[must_use]
+    pub(crate) struct Frame {
+        number: u64,
+        outer: u64,
+        outer_lowest: u64,
+    }
+
+    pub(crate) fn open() -> Frame {
+        let number = NEXT.get();
+        NEXT.set(number + 1);
+        Frame {
+            number,
+            outer: OPEN.replace(number),
+            outer_lowest: LOWEST.replace(u64::MAX),
+        }
+    }
+
+    impl Frame {
+        /// Whether the element read the colour it inherits. What it read goes on to the element
+        /// around it, which reads what is above that.
+        pub(crate) fn close(self) -> bool {
+            let lowest = LOWEST.get();
+            OPEN.set(self.outer);
+            LOWEST.set(self.outer_lowest.min(lowest));
+            lowest < self.number
+        }
+    }
+
+    /// The place a colour declared by the element being built comes from.
+    pub(super) fn here() -> u64 {
+        OPEN.get()
+    }
+
+    pub(super) fn note(origin: u64) {
+        LOWEST.set(LOWEST.get().min(origin));
     }
 }
 
@@ -143,30 +253,32 @@ impl ColorContext {
             inherited: black,
             declared: None,
             canvas_text: true,
+            current_origin: 0,
+            inherited_origin: 0,
         }
     }
 
     /// The context of an element styled by `style`, whose parent has `self`.
     pub(crate) fn descend(&self, style: &crate::style::StyleDesc) -> Self {
-        Self::resolve_style(*self, self.current, self.current, style)
+        Self::resolve_style(*self, (self.current, self.current_origin), self.current_origin, style)
     }
 
     /// The context of a state refinement (`hover`, `active`, `focusVisible`) of
     /// the element that has `self`. Its `currentColor` is still the parent's
     /// colour, as in CSS, and a state that sets no `color` keeps the base one.
     pub(crate) fn for_state(&self, style: &crate::style::StyleDesc) -> Self {
-        Self::resolve_style(*self, self.inherited, self.current, style)
+        Self::resolve_style(*self, (self.inherited, self.inherited_origin), self.current_origin, style)
     }
 
     /// The context an element's own `color` resolves in: its `colorScheme`, with
     /// `currentColor` meaning the parent's colour. Motion animates `color` in it.
     pub(crate) fn for_color_property(&self, style: &crate::style::StyleDesc) -> Self {
-        Self::color_property_context(*self, self.current, style)
+        Self::color_property_context(*self, (self.current, self.current_origin), style)
     }
 
     fn color_property_context(
         base: Self,
-        parent_color: gpui::Rgba,
+        (parent_color, parent_origin): (gpui::Rgba, u64),
         style: &crate::style::StyleDesc,
     ) -> Self {
         let scheme = style
@@ -179,30 +291,42 @@ impl ColorContext {
             inherited: parent_color,
             declared: None,
             current: parent_color,
+            current_origin: parent_origin,
+            inherited_origin: parent_origin,
             ..base
         }
     }
 
+    /// `parent` is the colour `currentColor` means, with where it comes from. A style that sets no
+    /// `color` keeps `base.current`.
     fn resolve_style(
         base: Self,
-        parent_color: gpui::Rgba,
-        kept_color: gpui::Rgba,
+        parent: (gpui::Rgba, u64),
+        kept_origin: u64,
         style: &crate::style::StyleDesc,
     ) -> Self {
-        let mut context = Self::color_property_context(base, parent_color, style);
+        let kept_color = base.current;
+        let mut context = Self::color_property_context(base, parent, style);
         let scheme = context.scheme;
         context.declared = style
             .color
             .as_deref()
             .and_then(|value| resolve_color(value, &context));
         context.canvas_text = base.canvas_text && context.declared.is_none();
+        // A colour set here is read as this element's own by the ones below it, not as the one its
+        // parent hands down. Canvas text is set by nobody: gpui's text style has it from the window.
+        context.current_origin = kept_origin;
         context.current = match context.declared {
-            Some(color) => color,
+            Some(color) => {
+                context.current_origin = reads::here();
+                color
+            }
             None if context.canvas_text => {
                 let color = canvas_text(scheme);
                 // gpui's text colour is black until told otherwise.
                 if scheme != base.scheme {
                     context.declared = Some(color);
+                    context.current_origin = reads::here();
                 }
                 color
             }
@@ -289,7 +413,7 @@ pub(crate) fn resolve_unclamped(value: &str, context: &ColorContext) -> Option<S
 
     let value = value.trim();
     if value.eq_ignore_ascii_case("currentcolor") {
-        return Some(context.current.into());
+        return Some(context.current().into());
     }
     if let Some(args) = function_args(value, "light-dark") {
         let [light, dark] = split_commas(args).as_slice().try_into().ok()?;
@@ -615,5 +739,95 @@ mod tests {
             parse_color_hex("oklch(0.62796 0.25768 29.23388 / 50%)"),
             Some(u32::from(rgba))
         );
+    }
+
+    /// What an element at each depth of `declare` (the `color` it declares, if any) reads, when the
+    /// innermost reads the colour it has. Outermost first. The page declares its own.
+    fn reads_of(declare: &[Option<&str>]) -> Vec<bool> {
+        let mut context = ColorContext::root(Scheme::Light);
+        let mut frames = Vec::new();
+        for (depth, color) in std::iter::once(&Some("#223344")).chain(declare).enumerate() {
+            frames.push(reads::open());
+            context = context.descend(&style(*color, None));
+            let _ = depth;
+        }
+        context.current();
+        let mut closed: Vec<bool> = frames.into_iter().rev().map(reads::Frame::close).collect();
+        closed.reverse();
+        closed.remove(0);
+        closed
+    }
+
+    #[test]
+    fn an_element_reads_the_colour_it_inherits_when_the_one_it_has_is_not_declared_below_it() {
+        assert_eq!(reads_of(&[None, None, None]), [true, true, true]);
+    }
+
+    #[test]
+    fn a_colour_declared_cuts_the_read_for_what_is_above_it() {
+        assert_eq!(reads_of(&[None, Some("#ff0000"), None, None]), [false, false, true, true]);
+        assert_eq!(reads_of(&[Some("#ff0000"), None]), [false, true]);
+        assert_eq!(reads_of(&[Some("#ff0000")]), [false]);
+        assert_eq!(reads_of(&[None, Some("#ff0000"), Some("#00ff00")]), [false, false, false]);
+    }
+
+    #[test]
+    fn a_colour_declared_from_the_one_inherited_reads_it_and_does_not_cut() {
+        for declared in ["currentColor", "color-mix(in srgb, currentColor 50%, white)", "light-dark(currentColor, red)"] {
+            assert_eq!(reads_of(&[None, Some(declared)]), [true, true], "{declared}");
+            assert_eq!(reads_of(&[None, Some("#ff0000"), Some(declared)]), [false, false, true], "{declared}");
+        }
+    }
+
+    #[test]
+    fn canvas_text_is_read_by_every_element_it_reaches_and_set_by_a_scheme_that_changes_it() {
+        let page = reads::open();
+        let context = ColorContext::root(Scheme::Light).descend(&style(None, None));
+        let card = reads::open();
+        context.current();
+        assert!(card.close() && page.close(), "the text colour of a page that declares none is the window's");
+        let page = reads::open();
+        let context = ColorContext::root(Scheme::Light).descend(&style(None, Some("dark")));
+        let card = reads::open();
+        context.current();
+        assert!(card.close(), "the card reads what the page set");
+        assert!(!page.close(), "the page set it");
+    }
+
+    #[test]
+    fn a_colour_that_names_no_colour_of_the_context_reads_none() {
+        let context = ColorContext::root(Scheme::Light);
+        let frame = reads::open();
+        for value in ["#ff0000", "rgb(0 0 0)", "light-dark(red, blue)", "color-mix(in srgb, red, blue)"] {
+            context.resolve(value);
+        }
+        assert!(!frame.close());
+    }
+
+    #[test]
+    fn a_state_reads_the_colour_of_its_parent_for_its_own_currentcolor() {
+        let page = ColorContext::root(Scheme::Light).descend(&style(Some("#223344"), None));
+        let frame = reads::open();
+        let own = page.descend(&style(Some("#ff0000"), None));
+        own.for_state(&style(None, None)).current();
+        assert!(!frame.close(), "a state that sets none keeps the colour the element declared");
+        let frame = reads::open();
+        let own = page.descend(&style(None, None));
+        own.for_state(&style(Some("currentColor"), None)).current();
+        assert!(frame.close(), "currentColor in a state is the colour of the parent");
+    }
+
+    #[test]
+    fn the_key_of_a_context_names_the_colour_below_and_not_the_one_beside_it() {
+        let key = |context: &ColorContext| {
+            let mut fp = crate::retain::Fingerprint::new();
+            context.fingerprint_colors(&mut fp);
+            fp.finish()
+        };
+        let page = ColorContext::root(Scheme::Light).descend(&style(Some("#ff0000"), None));
+        let child = page.descend(&style(Some("#00ff00"), None));
+        let other = ColorContext::root(Scheme::Light).descend(&style(Some("#0000ff"), None)).descend(&style(Some("#00ff00"), None));
+        assert_eq!(key(&child), key(&other));
+        assert_ne!(key(&page), key(&child));
     }
 }

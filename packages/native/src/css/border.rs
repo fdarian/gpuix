@@ -284,7 +284,7 @@ pub(crate) fn outline(style: &StyleDesc, colors: &ColorContext, lengths: &Length
         .as_deref()
         .and_then(|value| colors.resolve(value))
         .or_else(|| shorthand.and_then(|shorthand| colors.resolve(&shorthand.color)))
-        .unwrap_or(colors.current);
+        .unwrap_or_else(|| colors.current());
     Some(gpui::Outline {
         width,
         color: color.into(),
@@ -636,7 +636,7 @@ mod tests {
     #[test]
     fn an_outline_is_painted_only_with_a_style_and_the_rest_is_medium_and_current_colour() {
         let lone = outline_of(r#"{"outlineStyle": "solid"}"#, 16.0).unwrap();
-        let current = ColorContext::root(crate::color::Scheme::Light).current;
+        let current = ColorContext::root(crate::color::Scheme::Light).current();
         assert_eq!((lone.width, lone.color), (gpui::px(3.0), current.into()));
         for none in [
             r#"{"outlineWidth": 4, "outlineColor": "red"}"#,
@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn an_invalid_outline_colour_is_as_if_it_was_not_written() {
-        let current = ColorContext::root(crate::color::Scheme::Light).current;
+        let current = ColorContext::root(crate::color::Scheme::Light).current();
         let found = outline_of(r#"{"outlineStyle": "solid", "outlineColor": "not a colour"}"#, 16.0).unwrap();
         assert_eq!(found.color, current.into());
         let under_shorthand = outline_of(r#"{"outline": "solid red", "outlineColor": "not a colour"}"#, 16.0).unwrap();

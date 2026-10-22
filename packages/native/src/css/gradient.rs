@@ -324,7 +324,7 @@ mod tests {
     fn colors(scheme: Scheme, current: f32) -> ColorContext {
         let mut context = ColorContext::root(scheme);
         context.scheme = scheme;
-        context.current = gpui::Rgba { r: current, g: current, b: current, a: 1.0 };
+        context = context.with_current(gpui::Rgba { r: current, g: current, b: current, a: 1.0 });
         context
     }
 
@@ -514,7 +514,7 @@ mod tests {
     fn stop_colours_use_the_element_context() {
         let mut context = ColorContext::root(Scheme::Dark);
         context.scheme = Scheme::Dark;
-        context.current = gpui::Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+        context = context.with_current(gpui::Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 });
         let gradient = parse(
             "linear-gradient(currentColor, light-dark(red, green), color-mix(in srgb, red, red))",
             &context,
@@ -522,7 +522,7 @@ mod tests {
         )
         .unwrap();
         let hues: Vec<f32> = gradient.items.iter().map(|item| stop(item).0).collect();
-        assert!((hues[0] - gpui::Hsla::from(context.current).h).abs() < 1e-6);
+        assert!((hues[0] - gpui::Hsla::from(context.current()).h).abs() < 1e-6);
         assert!((hues[1] - gpui::Hsla::from(gpui::Rgba { r: 0.0, g: 0.5019608, b: 0.0, a: 1.0 }).h).abs() < 1e-3);
         assert_eq!(hues[2], 0.0);
     }

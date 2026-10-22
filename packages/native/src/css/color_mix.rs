@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn nests_and_resolves_current_color() {
         let mut context = ColorContext::root(Scheme::Light);
-        context.current = gpui::Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+        context = context.with_current(gpui::Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 });
         let result = parse("in srgb, currentColor, color-mix(in srgb, red, red)", &context).unwrap();
         close(result.rgb, [0.5, 0.0, 0.5]);
     }

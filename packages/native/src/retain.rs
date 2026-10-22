@@ -148,6 +148,14 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
     fp.finish()
 }
 
+/// The colours `inherited` hands down, which the key holds apart from the rest: only a subtree
+/// that read the colour it inherits (`Record::reads_colors`) is another build for a change in them.
+fn colors_fingerprint(inherited: &Inherited) -> u64 {
+    let mut fp = Fingerprint::new();
+    inherited.colors.fingerprint_colors(&mut fp);
+    fp.finish()
+}
+
 fn group_fingerprint(scope: &GroupScope, fp: &mut Fingerprint) {
     fp.str(&scope.name);
     fp.bits(&[scope.state.hovered, scope.state.active, scope.state.focused_within]);
@@ -332,7 +340,17 @@ impl Dynamic {
 struct Key {
     revision: u64,
     inherited: u64,
+    /// The colours in `Inherited`, see [`colors_fingerprint`].
+    colors: u64,
     shape: u64,
+}
+
+impl Key {
+    /// Whether an element built under `self` is built differently under `now`, given whether it
+    /// read the colour it inherits.
+    fn inherits_differently(&self, now: &Key, reads_colors: bool) -> bool {
+        self.inherited != now.inherited || (reads_colors && self.colors != now.colors)
+    }
 }
 
 /// The key an element had when it was entered, before its own build added to its shape: all a
@@ -411,6 +429,10 @@ struct Record {
     holes: u64,
     /// Elements in the subtree.
     size: u32,
+    /// The build read the colour the element inherits (`color::reads`): a text that sets no colour of
+    /// its own, a `currentColor`, an element that paints as it likes. A colour is part of the key of
+    /// the record only then.
+    reads_colors: bool,
     /// The element is costly to build, see [`Entry::costly`]: all that makes a root of one worth it.
     costly: bool,
     subtree: crate::layout::cull::Subtree,
@@ -642,6 +664,9 @@ struct Node {
     records: bool,
     /// `background_images::still_loading` when the element was entered.
     loading: u64,
+    /// Open while the element is built, see [`Record::reads_colors`].
+    colors_frame: Option<crate::color::reads::Frame>,
+    reads_colors: bool,
 }
 
 /// What a node adds up to with what is below it, filled in bottom-up when the build is done.
@@ -1019,6 +1044,8 @@ pub(crate) struct Entry<'a> {
 pub(crate) struct Recording {
     pub token: u64,
     pub lift_z: Option<i32>,
+    /// Nothing in the root reads the colour of the text style around it, see [`Skip::ignores_text_color`].
+    pub ignores_text_color: bool,
     pub subtree: crate::layout::cull::Subtree,
     pub overscan: Option<gpui::Pixels>,
 }
@@ -1028,6 +1055,10 @@ pub(crate) struct Skip {
     pub token: u64,
     pub enter: EnterKey,
     pub lift_z: Option<i32>,
+    /// Nothing in the root reads the colour it inherits (`Record::reads_colors`), so gpui replays its
+    /// recording under another colour of the text style around it. Not for a root a stacking context
+    /// paints, or one that hands something to one: that is painted under the colour it has.
+    pub ignores_text_color: bool,
     pub subtree: crate::layout::cull::Subtree,
     pub effects: Option<Rc<[BuildEffect]>>,
     /// How far past the clip of its scroller the subtree is recorded, if it is to be put
@@ -1904,6 +1935,7 @@ impl Retain {
                 Key {
                     revision: entry.revision,
                     inherited: inherited_fingerprint(entry.inherited),
+                    colors: colors_fingerprint(entry.inherited),
                     shape: shape.finish(),
                 }
             }
@@ -1948,6 +1980,8 @@ impl Retain {
             paints_only: false,
             collapsed_table: false,
             loading: crate::background_images::still_loading(),
+            colors_frame: None,
+            reads_colors: false,
             records: self.planning
                 && self.lifted == 0
                 && self.unit.is_none()
@@ -1966,10 +2000,14 @@ impl Retain {
                 node.lift_z = record.lift_z;
                 node.forms_context = record.forms_context;
                 node.opacity_run = record.opacity_run;
+                node.reads_colors = record.reads_colors;
                 node.subtree = record.subtree;
                 node.end = at + 1;
                 node.skipped = Some(Skipped { size: record.size, digest: record.digest });
                 crate::perf_counters::elements_skipped(u64::from(record.size));
+                if record.reads_colors {
+                    entry.inherited.colors.note_read();
+                }
                 let overscan = node
                     .scroller
                     .filter(|scroller| scroller.holds(node.id) && !record.lifts)
@@ -1979,6 +2017,7 @@ impl Retain {
                     token: record.token,
                     enter: EnterKey(enter),
                     lift_z: record.lift_z,
+                    ignores_text_color: !record.reads_colors && !record.lifts,
                     subtree: record.subtree,
                     effects: record.effects.clone(),
                     overscan,
@@ -1994,6 +2033,7 @@ impl Retain {
             }
             Err(kept) => self.debug_kept(kept, node.id),
         }
+        node.colors_frame = Some(crate::color::reads::open());
         self.stack.push(at);
         self.nodes.push(node);
         self.below.push(Below::default());
@@ -2060,7 +2100,7 @@ impl Retain {
         if record.enter.revision != node.enter.revision {
             return Err(Kept::Revision);
         }
-        if record.enter.inherited != node.enter.inherited {
+        if record.enter.inherits_differently(&node.enter, record.reads_colors) {
             return Err(Kept::Inherited);
         }
         if record.enter.shape != node.enter.shape {
@@ -2086,6 +2126,7 @@ impl Retain {
         let node = &mut self.nodes[at];
         node.end = end;
         node.effects_end = crate::tape::build_effects_len();
+        node.reads_colors = node.colors_frame.take().is_some_and(crate::color::reads::Frame::close);
         self.exited_absent = node.absent;
         self.settle(at);
         self.to_record(at)
@@ -2124,6 +2165,7 @@ impl Retain {
         Some(Recording {
             token: own.token,
             lift_z: node.lift_z,
+            ignores_text_color: !node.reads_colors && !lifts,
             subtree: node.subtree,
             overscan,
         })
@@ -2139,7 +2181,7 @@ impl Retain {
             own.changed = match before {
                 None => Some(Cause::New),
                 Some(before) if before.key.revision != node.key.revision => Some(Cause::Edited),
-                Some(before) if before.key.inherited != node.key.inherited => Some(Cause::Inherited),
+                Some(before) if before.key.inherits_differently(&node.key, before.reads_colors) => Some(Cause::Inherited),
                 Some(before) if before.key.shape != node.key.shape => Some(Cause::Shape),
                 Some(before) => node.vol.cause_against(&before.vol),
             };
@@ -2165,6 +2207,10 @@ impl Retain {
                 let mut token = Fingerprint::new();
                 token.word(node.enter.revision);
                 token.word(node.enter.inherited);
+                // A subtree that reads no colour it inherits is the same build under another one.
+                if node.reads_colors {
+                    token.word(node.enter.colors);
+                }
                 token.word(node.enter.shape);
                 token.word(epoch);
                 // A hole is not asked for alone: the recording around it is of the build that
@@ -2676,6 +2722,7 @@ impl Retain {
                     lifts,
                     holes,
                     size: own.size,
+                    reads_colors: node.reads_colors,
                     costly: node.costly,
                     subtree: node.subtree,
                     effects,
@@ -2837,7 +2884,7 @@ mod tests {
     fn the_fingerprint_names_every_field_of_inherited() {
         // `inherited_fingerprint` lists the fields by hand. Adding one changes this size, and the
         // fingerprint has to learn it or the key will not see it change.
-        assert_eq!(std::mem::size_of::<Inherited>(), 440);
+        assert_eq!(std::mem::size_of::<Inherited>(), 456);
     }
 
     #[test]
@@ -4080,6 +4127,42 @@ mod tests {
             1,
             r##"{"display": "flex", "flexDirection": "column", "width": 400, "height": 300, "color": "#ffaa00", "backgroundColor": "#101010"}"##,
         );
+        scene.draw(cx);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+    }
+
+    #[gpui::test]
+    fn a_card_that_sets_its_own_colour_is_not_changed_by_the_colour_of_the_page(cx: &mut gpui::TestAppContext) {
+        const OWN: &str = r##"{"color": "#00aa44", "borderWidth": 3, "borderStyle": "solid", "borderColor": "currentColor"}"##;
+        let scene = Scene::new(cx, page([OWN; 3]));
+        scene.settle(cx);
+        scene.set_style(
+            1,
+            r##"{"display": "flex", "flexDirection": "column", "width": 400, "height": 300, "color": "#ffaa00"}"##,
+        );
+        scene.draw(cx);
+        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+    }
+
+    #[gpui::test]
+    fn a_card_whose_text_sets_its_own_colour_is_not_changed_by_the_colour_of_the_page(cx: &mut gpui::TestAppContext) {
+        let mut elements = vec![div(
+            1,
+            None,
+            r##"{"display": "flex", "flexWrap": "wrap", "width": 640, "color": "#223344"}"##,
+        )];
+        for card in [10, 20, 30] {
+            elements.push(div(card, Some(1), r##"{"width": 140, "height": 60, "backgroundColor": "#335577"}"##));
+            for line in 1..=2 {
+                elements.push(div(card + line, Some(card), r##"{"height": 20}"##));
+                let host = card * 10 + line;
+                elements.push(typed(host, card + line, "text", r##"{"color": "#ffffff"}"##));
+                elements.push(text(host * 10, host, "some words"));
+            }
+        }
+        let scene = Scene::new(cx, elements);
+        scene.settle(cx);
+        scene.set_style(1, r##"{"display": "flex", "flexWrap": "wrap", "width": 640, "color": "#ffaa00"}"##);
         scene.draw(cx);
         assert_eq!(scene.roots(cx), vec![10, 20, 30]);
     }

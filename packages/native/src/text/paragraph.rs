@@ -288,7 +288,7 @@ pub fn styles(
             if let Some(line_height) = declared.line_height.as_ref() {
                 style.line_height = Some(line_height.text_style_value(&lengths));
             }
-            if let Some(color) = colors.declared {
+            if let Some(color) = colors.declared() {
                 style.color = Some(color.into());
             }
             if let Some(weight) = declared.font_weight.as_ref() {

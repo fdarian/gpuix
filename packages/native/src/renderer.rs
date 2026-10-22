@@ -9011,6 +9011,9 @@ fn retained_root(
     if let Some(overscan) = skip.overscan {
         retained = retained.relocatable(overscan);
     }
+    if skip.ignores_text_color {
+        retained = retained.ignoring_text_color();
+    }
     retained = retained.cull_outset(skip.subtree.outset());
     if let Some(z) = skip.lift_z {
         retained = retained.lift_z(z);
@@ -9113,6 +9116,9 @@ fn recorded_root(
         .cull_outset(recording.subtree.outset());
     if let Some(overscan) = recording.overscan {
         retained = retained.relocatable(overscan);
+    }
+    if recording.ignores_text_color {
+        retained = retained.ignoring_text_color();
     }
     if let Some(z) = recording.lift_z {
         retained = retained.lift_z(z);
@@ -9241,6 +9247,11 @@ fn animate_style(
     // A plain element has no measurement to read: it is not wrapped below, and
     // the root render prunes the measurement of any element that was not.
     let measured = has_motion || transitions_wanted || animations_wanted;
+    // Motion and bound values resolve their colours when they are stepped, before the build, so the
+    // `currentColor` of one is not read as it is built.
+    if has_motion || motion_binding.is_some() {
+        ctx.inherited.colors.note_read();
+    }
     let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
     let mut dynamic = 0;
     if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
@@ -9953,6 +9964,9 @@ fn build_element_unpumped(
                 stacking_root,
                 resolved,
             };
+            // What an adapter paints is not read by the build: it takes its text colour, and the
+            // `currentColor` of its icons, when gpui paints it.
+            inherited.colors.note_read();
             let built = ctx
                 .custom_registry
                 .render(custom_type, element.custom_props(), render_ctx, window, cx);
@@ -10706,6 +10720,7 @@ fn build_content(
     if element.children.is_empty() {
         if let Some(content) = crate::text::search::leaf_text(ctx.tree, element) {
             ctx.retain.text();
+            ctx.inherited.colors.note_read();
             ctx.retain.digest(|| content.to_string());
             content_elements.push(text_content(element, &content, trim, ctx));
             ctx.subtree.merge(crate::layout::cull::Subtree::of_text(
@@ -11016,6 +11031,7 @@ fn paragraph_content(
     cx: &mut gpui::Context<GpuixView>,
 ) -> (gpui::AnyElement, crate::layout::cull::Subtree) {
     let motion = ctx.inline_styles(paragraph);
+    ctx.inherited.colors.note_read();
     if ctx.retain.recording() {
         ctx.retain.text();
         let inline_pointer = {
@@ -11564,7 +11580,7 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     if !fill.layers.is_empty() || style.declares_background_layers() {
         el.style().background_layers = Some(fill.layers);
     }
-    if let Some(color) = colors.declared {
+    if let Some(color) = colors.declared() {
         el = el.text_color(color);
     }
     if style.font_size.is_some() {

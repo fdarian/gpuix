@@ -227,7 +227,7 @@ mod tests {
         let value = "drop-shadow(1px 2px currentColor)";
         let mut context = ColorContext::root(crate::color::Scheme::Light);
         let black = parse_resolved(value, &context, &LengthContext::for_tests()).unwrap();
-        context.current = gpui::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+        context = context.with_current(gpui::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
         let white = parse_resolved(value, &context, &LengthContext::for_tests()).unwrap();
         assert_ne!(black, white);
         assert_eq!(white, resolve(&parse_uncached(value).unwrap(), &context).unwrap());

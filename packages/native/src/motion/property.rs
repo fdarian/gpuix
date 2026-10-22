@@ -1162,11 +1162,11 @@ impl AnimProp {
             Initial::FontWeight => Some(AnimValue::Number(colors.font.weight)),
             Initial::FontVariations => Some(AnimValue::Variations(axes_of(&colors.font.variations))),
             Initial::Transparent => Some(AnimValue::Color(Color::TRANSPARENT)),
-            Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, false))),
+            Initial::CurrentColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current(), false))),
             // The context keeps the resolved colour, not the syntax it was
             // written in. Hex, names and `rgb()` are what a colour is nearly
             // always written in, so it counts as legacy and blends in sRGB.
-            Initial::ComputedColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current, true))),
+            Initial::ComputedColor => Some(AnimValue::Color(Color::from_rgba(colors.element.current(), true))),
             Initial::NoShadows => Some(AnimValue::Shadows(Vec::new())),
             Initial::Keyword(keyword) => Some(AnimValue::Keyword(Some(keyword.to_string()))),
             Initial::Unset => Some(AnimValue::Keyword(None)),
