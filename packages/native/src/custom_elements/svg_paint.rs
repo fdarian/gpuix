@@ -75,6 +75,31 @@ impl Job {
     }
 }
 
+/// Why painting the same box again would not draw what the last paint did, see [`SvgPaint::unsettled`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unsettled {
+    /// No paint has made an image (before the first paint, a box with no area, a culled subtree).
+    NeverPainted,
+    /// A job for the newest key runs; the image shown stays until it lands.
+    JobRunning,
+    /// A job landed in the inbox and no paint has installed its image.
+    ResultWaiting,
+    /// The document or the colour is another than the one shown and too big to be rasterised in
+    /// paint: a paint starts a job, which a replay of the last paint would not.
+    Stale,
+}
+
+impl Unsettled {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::NeverPainted => "never painted",
+            Self::JobRunning => "job running",
+            Self::ResultWaiting => "job result not shown yet",
+            Self::Stale => "big document or colour changed",
+        }
+    }
+}
+
 /// What a paint needs to do after [`SvgPaint::resolve`].
 struct Outcome {
     image: Option<Arc<RenderImage>>,
@@ -230,12 +255,20 @@ impl SvgPaint {
     /// when a document that changed is too big to be rasterised in paint (the image shown stays
     /// until its job lands), it does not.
     pub fn paints_in_place(&self, bytes: &Arc<[u8]>, current_color: Rgba, in_paint: bool) -> bool {
-        let Some(shown) = &self.shown else {
-            return false;
-        };
-        if self.running.is_some() || self.inbox.borrow().is_some() {
-            return false;
+        self.unsettled(bytes, current_color, in_paint).is_none()
+    }
+
+    /// Why [`Self::paints_in_place`] is false.
+    pub fn unsettled(&self, bytes: &Arc<[u8]>, current_color: Rgba, in_paint: bool) -> Option<Unsettled> {
+        if self.inbox.borrow().is_some() {
+            return Some(Unsettled::ResultWaiting);
         }
+        if self.running.is_some() {
+            return Some(Unsettled::JobRunning);
+        }
+        let Some(shown) = &self.shown else {
+            return Some(Unsettled::NeverPainted);
+        };
         let asked = Key {
             bytes: bytes.clone(),
             width: shown.key.width,
@@ -243,7 +276,7 @@ impl SvgPaint {
             color: color_bits(current_color),
             in_paint,
         };
-        shown.key.same_as(&asked) || asked.is_inline()
+        (!shown.key.same_as(&asked) && !asked.is_inline()).then_some(Unsettled::Stale)
     }
 
     /// Whether a document of the size of the last paint is rasterised in the paint that needs it
@@ -684,6 +717,21 @@ mod tests {
         assert!(!paint.paints_in_place(&other, RED, false), "another document would be a job, and the image stays");
         assert!(!paint.paints_in_place(&bytes, green, false), "and so would another colour");
         assert!(!paint.rasterises_in_paint(&bytes, false), "a box this big is rasterised by a job");
+    }
+
+    #[test]
+    fn what_keeps_a_paint_from_being_the_same_again_is_named() {
+        let (bytes, other) = (doc(), Arc::<[u8]>::from(&b"y"[..]));
+        let mut paint = SvgPaint::default();
+        assert_eq!(paint.unsettled(&bytes, RED, false), Some(Unsettled::NeverPainted));
+        let job = paint.resolve(big(&bytes, 1200), never_in_paint).job.unwrap();
+        assert_eq!(paint.unsettled(&bytes, RED, false), Some(Unsettled::JobRunning));
+        let landed = fake_raster(&job.key);
+        job.finish(landed);
+        assert_eq!(paint.unsettled(&bytes, RED, false), Some(Unsettled::ResultWaiting));
+        paint.resolve(big(&bytes, 1200), never_in_paint);
+        assert_eq!(paint.unsettled(&bytes, RED, false), None);
+        assert_eq!(paint.unsettled(&other, RED, false), Some(Unsettled::Stale));
     }
 
     #[test]

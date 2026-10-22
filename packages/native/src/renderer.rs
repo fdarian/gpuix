@@ -9980,16 +9980,20 @@ fn build_element_unpumped(
                 // Its box is its style and its document (both in the key), whether or not a paint
                 // has shown it yet: only a pass that paints needs the raster state to settle.
                 None if is_svg && window.is_layout_pass() => ctx.retain.shape(0),
-                None => ctx.retain.exclude(if is_svg {
-                    crate::retain::Exclusion::Svg
-                } else {
-                    crate::retain::Exclusion::CustomElement
-                }),
+                None => {
+                    ctx.retain.exclude(if is_svg {
+                        crate::retain::Exclusion::Svg
+                    } else {
+                        crate::retain::Exclusion::CustomElement
+                    });
+                    ctx.retain.explain_exclusion(|| ctx.custom_registry.unretained_because(id));
+                }
             }
             if is_svg {
                 // A big document that moves is drawn a paint late, by a job: a tick cannot show it.
                 if running_shapes && !ctx.custom_registry.draws_changes_at_once(id) {
                     ctx.retain.exclude(crate::retain::Exclusion::Svg);
+                    ctx.retain.explain_exclusion(|| "shapes run on a document too big to rasterise in paint");
                 }
                 ctx.retain.shape(ctx.svg_trees.generation(id));
                 ctx.retain.digest(|| format!("{svg_drawn:?}"));

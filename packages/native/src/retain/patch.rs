@@ -133,6 +133,9 @@ impl GpuixView {
         let ids = match self.preview_tick(window, now) {
             Ok(ids) => ids,
             Err(reason) => {
+                if let Unpatchable::Outside(id) = reason {
+                    self.retain.debug_outside(id);
+                }
                 self.patch.decline(reason.kind());
                 return None;
             }

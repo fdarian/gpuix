@@ -35,7 +35,7 @@ import { describe, expect, it } from "vitest"
 import { animate, defineKeyframes, motion, useMotionValue, useSpring, useTransform } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
-import { SHOTS_DIR } from "./test-utils.js"
+import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 const retained = process.env.GPUIX_RETAIN_OFF === undefined
@@ -781,11 +781,12 @@ function gained(after: string, before: string): Record<string, number> {
   return out
 }
 
-/** What `TICKS` ticks of a page after its warm-up did to the patch counters. */
-async function patchesOf(head: React.ReactNode, nodes = 500) {
+/** What `TICKS` ticks of a page after its warm-up did to the patch counters. `ready` waits for whatever arrives on its own. */
+async function patchesOf(head: React.ReactNode, nodes = 500, ready?: (renderer) => Promise<void>) {
   const page = await mount(head, nodes)
   try {
     const renderer = page.renderer
+    await ready?.(renderer)
     for (let warm = 0; warm < WARM; warm++) tick(renderer)
     const before = renderer.getPatchCounters()
     for (let frame = 0; frame < TICKS; frame++) tick(renderer)
@@ -2102,4 +2103,290 @@ describeNative("a motion value written by a script", { timeout: TIMEOUT }, () =>
       page.root.unmount()
     }
   })
+})
+
+
+/** A document past what is rasterised in the paint that needs it (200 x 200 is 40000 pixels at any scale), so a job makes its image. */
+const BIG_DOCUMENT =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="#cc2222"/><circle cx="10" cy="10" r="6" fill="#2222cc"/></svg>'
+const ICON_DOCUMENT =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 12h16M12 4v16" stroke="currentColor" stroke-width="2" fill="none"/></svg>'
+
+/** The same size as the big document and another picture, so that swapping them starts a job. */
+const GREEN_DOCUMENT =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="#cc2222"/><circle cx="10" cy="10" r="6" fill="#22cc22"/></svg>'
+
+const bigSvg = <svg testId="big" source={BIG_DOCUMENT} style={{ width: 200, height: 200, flexShrink: 0 }} />
+
+/** The centre of the big document is blue (the slow one red) once its raster has been painted, and the page's grey or white before. */
+function bigIsDrawn(renderer): boolean {
+  const bounds = renderer.getElementBounds(renderer.findByTestId("big").id)
+  const file = shotFile("big-pixel")
+  fs.rmSync(file, { force: true })
+  renderer.captureScreenshot(file)
+  const at = readLogicalPixels(file, renderer).at(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  return Math.abs(at[0] - at[2]) > 100
+}
+
+/** Frames the display link would draw, while the job of the big document runs on its own thread. */
+async function untilBigIsDrawn(renderer) {
+  for (let frame = 0; frame < 400 && !bigIsDrawn(renderer); frame++) {
+    renderer.flush()
+    renderer.dispatchNativeEvents()
+    await sleep(10)
+  }
+  expect(bigIsDrawn(renderer), "the raster of the big document landed").toBe(true)
+  await settle(renderer, 6)
+}
+
+const svgsHead = (
+  <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+    {bigSvg}
+    <svg testId="icon" source={ICON_DOCUMENT} style={{ width: 24, height: 24, color: "#333333", flexShrink: 0 }} />
+    <svg testId="drawn" viewBox="0 0 24 24" width={24} height={24} style={{ color: "#333333" }}>
+      <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth={2} fill="none" />
+    </svg>
+    {colourHead()}
+  </div>
+)
+
+const GLYPH_A = "M3 12 L12 4 L21 12 L12 20 Z"
+const GLYPH_B = "M3 12 L12 9 L21 12 L12 15 Z"
+
+/** FF's thinking indicator: a glyph that morphs `d` on a path of a 24 x 24 svg, beside a text with a colour loop. */
+const glyphHead = (
+  <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <svg testId="glyph" viewBox="0 0 24 24" width={24} height={24} style={{ color: "#333333" }}>
+      <motion.path
+        d={GLYPH_A}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        animate={{ d: [GLYPH_A, GLYPH_B, GLYPH_A] }}
+        transition={{ duration: 1.5, ease: "linear", repeat: Infinity }}
+      />
+    </svg>
+    {colourHead()}
+  </div>
+)
+
+describeNative("an svg that is not changing", { timeout: TIMEOUT }, () => {
+  for (const nodes of [500, 5000]) {
+    it.skipIf(!patching)(`does not stop a colour loop elsewhere from being patched at every tick: a job-rasterised svg, an icon, an svg of shapes, ${nodes} nodes`, async () => {
+      const done = await patchesOf(svgsHead, nodes, untilBigIsDrawn)
+      if (verifying) return
+      expect(done).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+    })
+
+    it.skipIf(!patching)(`patches every tick of a path that morphs d in a 24 x 24 svg beside a colour loop, ${nodes} nodes`, async () => {
+      const done = await patchesOf(glyphHead, nodes)
+      if (verifying) return
+      expect(done).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+    })
+  }
+
+  /** Svgs no paint reaches: a paint that makes no image leaves nothing to wait for. */
+  const unpainted = {
+    "has no area": <svg source={ICON_DOCUMENT} style={{ width: 0, height: 0, color: "#333333" }} />,
+    "is a big document with no height": <svg source={BIG_DOCUMENT} style={{ width: 200, height: 0 }} />,
+    "is in a box with opacity 0": (
+      <div style={{ opacity: 0 }}>
+        <svg source={ICON_DOCUMENT} style={{ width: 24, height: 24 }} />
+        <svg source={BIG_DOCUMENT} style={{ width: 200, height: 200 }} />
+      </div>
+    ),
+    "is in a box with visibility hidden": (
+      <div style={{ visibility: "hidden" }}>
+        <svg source={ICON_DOCUMENT} style={{ width: 24, height: 24 }} />
+        <svg source={BIG_DOCUMENT} style={{ width: 200, height: 200 }} />
+      </div>
+    ),
+    "is in a box that clips it to nothing": (
+      <div style={{ height: 0, overflow: "hidden" }}>
+        <svg source={ICON_DOCUMENT} style={{ width: 24, height: 24 }} />
+        <svg source={BIG_DOCUMENT} style={{ width: 200, height: 200 }} />
+      </div>
+    ),
+  }
+  for (const [name, carrier] of Object.entries(unpainted)) {
+    it.skipIf(!patching)(`does not stop a colour loop from being patched while the page holds an svg that ${name}`, async () => {
+      const head = (
+        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {carrier}
+          {colourHead()}
+        </div>
+      )
+      for (const nodes of [500, 5000]) {
+        const done = await patchesOf(head, nodes)
+        if (verifying) continue
+        expect(done, `${nodes} nodes`).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+      }
+    })
+  }
+
+  it.skipIf(!patching)("draws the raster of a changed document as it arrives, and patches the ticks around it", async () => {
+    let swap: () => void = () => {}
+    function Swapping() {
+      const [swapped, setSwapped] = useState(false)
+      swap = () => setSwapped(true)
+      return (
+        <Page
+          nodes={500}
+          head={
+            <>
+              {colourHead()}
+              <svg testId="big" source={swapped ? GREEN_DOCUMENT : BIG_DOCUMENT} style={{ width: 200, height: 200, flexShrink: 0 }} />
+            </>
+          }
+        />
+      )
+    }
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(<Swapping />)
+      await settle(renderer)
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      await untilBigIsDrawn(renderer)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      const centre = () => {
+        const bounds = renderer.getElementBounds(renderer.findByTestId("big").id)
+        const file = shotFile("centre")
+        fs.rmSync(file, { force: true })
+        renderer.captureScreenshot(file)
+        return readLogicalPixels(file, renderer).at(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+      }
+      expect(centre()[2], "the first document is drawn").toBeGreaterThan(150)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      swap()
+      await sleep(20)
+      // The commit is drawn whole and its paint starts the job, which lands when the executor runs.
+      const started = tick(renderer)
+      const ticks: number[] = []
+      for (let index = 0; index < 12; index++) ticks.push(tick(renderer).patchedFrames)
+      const whole = ticks.filter((patched) => patched === 0).length
+      if (!verifying) {
+        expect(started.patchedFrames, "the commit is drawn whole").toBe(0)
+        // The tick that finds the job running is the first to see it, and is drawn whole.
+        expect(whole, `ticks after the commit: ${ticks}`).toBeLessThanOrEqual(2)
+      }
+      renderer.flush()
+      const arrival: number[] = []
+      for (let index = 0; index < 12; index++) arrival.push(tick(renderer).patchedFrames)
+      if (!verifying) {
+        expect(arrival.slice(0, 4).filter((patched) => patched === 0).length, `the arrival: ${arrival}`).toBeLessThanOrEqual(3)
+        expect(arrival.slice(4), `patching resumed: ${arrival}`).toEqual(new Array(8).fill(1))
+      }
+      expect(centre()[1], "the second document is drawn").toBeGreaterThan(150)
+      const patched = shot(renderer, "swap-patched")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      expect(patched.equals(shot(renderer, "swap-whole")), "the picture of a frame built whole").toBe(true)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it.skipIf(!patching)("draws the picture of the page built whole at every tick", async () => {
+    const page = await mount(svgsHead, 500)
+    try {
+      const renderer = page.renderer
+      await untilBigIsDrawn(renderer)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      for (let index = 0; index < 3; index++) tick(renderer)
+      const patched = shot(renderer, "svgs-patched")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      expect(patched.equals(shot(renderer, "svgs-whole")), "the picture of a frame built whole").toBe(true)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  it.skipIf(!patching)("draws the arrival of a raster as a frame of its own, and patches the ticks after it", async () => {
+    let show: () => void = () => {}
+    function Late() {
+      const [shown, setShown] = useState(false)
+      show = () => setShown(true)
+      return <Page nodes={500} head={<>{colourHead()}{shown ? bigSvg : null}</>} />
+    }
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(<Late />)
+      await settle(renderer)
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      if (!verifying) expect(tick(renderer).patchedFrames).toBe(1)
+      show()
+      await sleep(20)
+      const whole: number[] = []
+      let patchedInARow = 0
+      for (let frame = 0; frame < 400 && patchedInARow < 6; frame++) {
+        await sleep(10)
+        const done = tick(renderer)
+        if (done.patchedFrames === 1) patchedInARow++
+        else {
+          patchedInARow = 0
+          whole.push(frame)
+        }
+      }
+      expect(bigIsDrawn(renderer), "the raster landed").toBe(true)
+      if (!verifying) {
+        expect(patchedInARow, "patching resumed").toBe(6)
+        // The commit that adds the svg, the frame that paints and starts the job, the frame that paints what landed.
+        expect(whole.length, `whole ticks: ${whole}`).toBeLessThanOrEqual(4)
+      }
+      const patched = shot(renderer, "arrival-patched")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      expect(patched.equals(shot(renderer, "arrival-whole")), "the picture of a frame built whole").toBe(true)
+      renderer.setPatchEnabled(true)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
+describeNative("an animation that nothing draws because its box is not generated", { timeout: TIMEOUT }, () => {
+  const hidden = {
+    "a native motion colour loop": (
+      <motion.div
+        style={{ height: 24, backgroundColor: "#99ccff" }}
+        animate={{ backgroundColor: ["#ff0000", "#0000ff", "#ff0000"] }}
+        transition={{ duration: 1.5, ease: "linear", repeat: Infinity }}
+      />
+    ),
+    "a keyframes colour loop": <text style={{ fontSize: 20, color: "#000000", animation: "afw-pulse 1.5s linear infinite" }}>hidden</text>,
+    "a native motion colour loop under a box of its own": (
+      <div style={{ position: "relative" }}>
+        <motion.div
+          style={{ height: 24, backgroundColor: "#99ccff" }}
+          animate={{ backgroundColor: ["#ff0000", "#0000ff", "#ff0000"] }}
+          transition={{ duration: 1.5, ease: "linear", repeat: Infinity }}
+        />
+      </div>
+    ),
+  }
+  for (const [name, loop] of Object.entries(hidden)) {
+    it.skipIf(!patching)(`does not stop a colour loop elsewhere from being patched: ${name} in a display: none box`, async () => {
+      const head = (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "none" }}>{loop}</div>
+          {colourHead()}
+        </div>
+      )
+      for (const nodes of [500, 5000]) {
+        const done = await patchesOf(head, nodes)
+        if (verifying) continue
+        expect(done, `${nodes} nodes`).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+      }
+    })
+  }
 })

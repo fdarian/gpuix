@@ -1856,6 +1856,11 @@ impl Retain {
             if self.asleep_in(&found, id) || self.between_changes(sources, id) {
                 continue;
             }
+            // Motion runs on an element that has no box (`display: none`), which no build reaches and no
+            // frame paints: a tick has nothing of it to draw.
+            if sources.tree.elements.get(&id).is_some_and(|element| crate::layout::box_generation::is_hidden(sources.tree, element)) {
+                continue;
+            }
             let mut at = Some(id);
             let unit = loop {
                 match at {
@@ -4523,12 +4528,12 @@ mod tests {
     }
 
     #[gpui::test]
-    fn an_svg_too_big_to_raster_in_paint_is_not_retained_until_the_raster_lands(cx: &mut gpui::TestAppContext) {
+    fn an_svg_waiting_for_its_raster_is_built_again_when_the_raster_lands_and_not_every_frame(cx: &mut gpui::TestAppContext) {
         let scene = Scene::new(cx, icon(r#"{"width": 300, "height": 200}"#, None));
         crate::perf_counters::reset();
         scene.draw(cx);
-        assert!(Scene::counted("excluded:svg") >= 1, "{:?}", crate::perf_counters::retain_reasons());
-        assert_eq!(scene.roots(cx), vec![10, 20, 30]);
+        assert_eq!(Scene::counted("excluded:svg"), 0, "{:?}", crate::perf_counters::retain_reasons());
+        assert_eq!(scene.roots(cx), vec![1], "the page is one root while the job runs");
         cx.run_until_parked();
         scene.settle(cx);
         assert_eq!(scene.roots(cx), vec![1]);
@@ -5236,6 +5241,24 @@ mod tests {
         assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
         let sources = Sources { dormant: &|id| id == 5, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
         assert_eq!(page.retain.preview(&sources, false), Ok(vec![2]), "dormant: the tick carries its clock without building it");
+    }
+
+    #[test]
+    fn motion_on_an_element_that_has_no_box_does_not_block_a_tick() {
+        let mut page = Units::new();
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        let motion_on_5 = |page: &Units| {
+            let mut sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
+            sources.motion = vec![5];
+            page.retain.preview(&sources, false)
+        };
+        assert_eq!(motion_on_5(&page), Err(Unpatchable::Outside(5)), "a box that is drawn and runs something outside the unit");
+        let none = serde_json::json!({"display": "none"});
+        page.tree.set_style(5, std::sync::Arc::new(serde_json::from_value(none).expect("a style")));
+        page.page(&[], Some(true), None);
+        page.page(&[], Some(true), None);
+        assert_eq!(motion_on_5(&page), Ok(vec![2]), "no frame builds or paints it");
     }
 
     /// A frame of the page in which 3 and 4 run something that paints, and `culled` says which

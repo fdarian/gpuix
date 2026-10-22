@@ -291,6 +291,11 @@ pub trait CustomElement: 'static {
         None
     }
 
+    /// What made `retain_state` `None` just now, for `getRetainDebug`.
+    fn unretained_because(&self) -> &'static str {
+        "no retain_state"
+    }
+
     /// Whether what it paints now changes with the clock and nothing else of it does (a caret
     /// that blinks), so that a tick which builds only this element again, at the instant of the
     /// tick, paints the change. It asks for those ticks itself (`Window::request_tick`), when the
@@ -495,6 +500,13 @@ impl CustomElementRegistry {
     /// See [`CustomElement::retain_state`].
     pub(crate) fn retain_state(&self, id: u64) -> Option<u64> {
         self.instances.get(&id)?.element.retain_state()
+    }
+
+    /// See [`CustomElement::unretained_because`].
+    pub(crate) fn unretained_because(&self, id: u64) -> &'static str {
+        self.instances
+            .get(&id)
+            .map_or("gone", |instance| instance.element.unretained_because())
     }
 
     /// See [`CustomElement::follows_clock`].

@@ -668,6 +668,18 @@ impl CustomElement for ImgElement {
             && !matches!(self.source, ImgSource::Pending);
         settled.then_some(self.epoch)
     }
+
+    fn unretained_because(&self) -> &'static str {
+        if self.awaiting_outcome {
+            "awaiting load outcome"
+        } else if !self.dropped.is_empty() {
+            "dropped images"
+        } else if self.animated {
+            "animated"
+        } else {
+            "source pending"
+        }
+    }
 }
 
 /// Byte order of a packed `setImagePixels` buffer. Alpha is straight in both.
@@ -971,18 +983,42 @@ impl CustomElement for SvgElement {
             .is_none_or(|(bytes, _)| self.paint.borrow().rasterises_in_paint(bytes, self.shapes_run))
     }
 
+    /// A word for where the image is: one that is on its way (a job running, a box nobody painted)
+    /// is a state of its own, as it changes nothing a replay of the last paint draws and the
+    /// arrival changes the word, which is how the element is built again to paint it. Only a
+    /// document that a paint would start a job for is built every frame until it has.
     fn retain_state(&self) -> Option<u64> {
+        use super::svg_paint::Unsettled;
         let paint = self.paint.borrow();
         // A paint nobody saw made no image and has none to wait for: the subtree is built again
         // when it is seen, and it is not the same build as one that drew.
         if paint.was_culled() {
             return Some(1);
         }
-        let settled = match &self.drawing {
-            None => true,
-            Some((bytes, color)) => paint.paints_in_place(bytes, *color, self.shapes_run),
+        let Some((bytes, color)) = &self.drawing else {
+            return Some(0);
         };
-        settled.then_some(0)
+        match paint.unsettled(bytes, *color, self.shapes_run) {
+            None => Some(0),
+            Some(Unsettled::NeverPainted) => Some(2),
+            Some(Unsettled::JobRunning) => Some(3),
+            // A build before a paint cannot know that the paint starts a job (a box that is
+            // another size than the image shown), so a frame that finds the result waiting is
+            // never a replay of one that recorded the settled word.
+            Some(Unsettled::ResultWaiting) => Some(4),
+            Some(Unsettled::Stale) => None,
+        }
+    }
+
+    fn unretained_because(&self) -> &'static str {
+        match &self.drawing {
+            None => "no document",
+            Some((bytes, color)) => self
+                .paint
+                .borrow()
+                .unsettled(bytes, *color, self.shapes_run)
+                .map_or("settled", super::svg_paint::Unsettled::name),
+        }
     }
 }
 

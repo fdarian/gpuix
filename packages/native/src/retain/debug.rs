@@ -24,6 +24,11 @@ pub(super) struct Debug {
     kept: Vec<(&'static str, u64, u32)>,
     /// The subtrees gpui asked for after the frame was built, and how many elements each held.
     deferred: Vec<(u64, u32)>,
+    /// Why an element that was built asked to be excluded, where the exclusion has more than one
+    /// cause: (reason, element id).
+    exclusions: Vec<(&'static str, u64)>,
+    /// The elements ticks were refused for as outside every unit, distinct, in the order met.
+    outside: Vec<u64>,
     nodes: Vec<DebugNode>,
 }
 
@@ -49,6 +54,7 @@ impl Debug {
             self.sources.clear();
             self.kept.clear();
             self.deferred.clear();
+            self.exclusions.clear();
         }
     }
 
@@ -73,6 +79,24 @@ impl Retain {
         }
         if let Some(record) = self.records.get(&id).filter(|record| record.eligible && record.size >= self.min_root) {
             self.debug.kept.push((kept.name(), id, record.size));
+        }
+    }
+
+    /// Notes the element a tick was refused for as outside every unit.
+    pub(crate) fn debug_outside(&mut self, id: u64) {
+        if self.debug.on && self.debug.outside.len() < 16 && !self.debug.outside.contains(&id) {
+            self.debug.outside.push(id);
+        }
+    }
+
+    /// Says why the element being built excluded itself, see [`Debug::exclusions`]. `why` runs only
+    /// with `GPUIX_RETAIN_DEBUG`.
+    pub(crate) fn explain_exclusion(&mut self, why: impl FnOnce() -> &'static str) {
+        if !self.debug.on || self.pass != 1 {
+            return;
+        }
+        if let Some(id) = self.top().map(|node| node.id) {
+            self.debug.exclusions.push((why(), id));
         }
     }
 
@@ -202,6 +226,37 @@ impl Retain {
             .map(|(size, id, bits)| json!({"label": label(id), "size": size, "bits": bits}))
             .collect();
 
+        let mut why: BTreeMap<&str, Vec<(u32, u64, u32)>> = BTreeMap::new();
+        for (reason, id) in &self.debug.exclusions {
+            why.entry(reason).or_default().push((0, *id, 0));
+        }
+        let why: Map<String, Value> = why
+            .into_iter()
+            .map(|(reason, list)| {
+                let count = list.len();
+                (reason.to_owned(), json!({"count": count, "top": top(list, 8)}))
+            })
+            .collect();
+
+        let outside: Vec<Value> = self
+            .debug
+            .outside
+            .iter()
+            .map(|id| {
+                let record = self.records.get(id);
+                json!({
+                    "label": label(*id),
+                    "id": id,
+                    "unit": self.plan.ids.contains(id),
+                    "record": record.is_some(),
+                    "refusal": record.and_then(|record| record.refusal).map(Refusal::key),
+                    "eligible": record.map(|record| record.eligible),
+                    "unitEligible": record.map(|record| record.unit_eligible),
+                    "size": record.map(|record| record.size),
+                    "unbuilt": self.unbuilt.contains(id),
+                })
+            })
+            .collect();
         let named = |list: &[(u32, u64, u32)]| -> Vec<Value> {
             let mut list = list.to_vec();
             list.sort_by(|left, right| right.0.cmp(&left.0));
@@ -218,6 +273,8 @@ impl Retain {
             "causes": causes,
             "dynamicNodes": dynamics,
             "sources": sources,
+            "exclusionWhy": why,
+            "outside": outside,
             "notSkippedWhy": kept,
             "skippedTop": named(&skipped_roots),
             "retainableButBuiltRoots": {
@@ -249,6 +306,9 @@ fn element_label(tree: &crate::retained_tree::RetainedTree, id: u64) -> String {
         if let Some(style) = element.style.as_deref() {
             if let Some(position) = &style.position {
                 part.push_str(&format!("[{position}]"));
+            }
+            if let Some(display) = style.display.as_ref().filter(|display| display.as_str() != "flex") {
+                part.push_str(&format!("[d:{display}]"));
             }
             if let Some(overflow) = style.overflow.as_ref().or(style.overflow_x.as_ref()).or(style.overflow_y.as_ref()) {
                 part.push_str(&format!("[ov:{overflow}]"));
