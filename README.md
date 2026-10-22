@@ -3858,7 +3858,10 @@ the space that shows.
   positioned child is not a first or last child. A flex or grid container trims
   nothing and passes nothing down. `none` on a descendant does not take off a trim
   from above.
-- The metrics are those of the font of the block that holds the line. A trimmed
+- The metrics are those of the font of the block that holds the line. The cap height and
+  x-height are those of the font's OS/2 table (version 2 or later) of its default instance, as
+  Chrome takes them from Skia, and not CoreText's, which differ for some fonts and follow a
+  variable font's `wght` and `opsz`. A trimmed
   box is as tall as the metric to the nearest 1/64 of a pixel, as in Chrome, and its edges
   are painted on device pixels.
 - **Baselines.** The baseline of a trimmed text is counted from the top of its trimmed

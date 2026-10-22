@@ -1,0 +1,2882 @@
+{
+ "12-18.normal.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  6.5546875
+ ],
+ "12-18.normal.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  6.5546875
+ ],
+ "12-18.normal.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.normal.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.normal.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.normal.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.normal.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "12-18.normal.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "12-18.normal.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13.734375
+ ],
+ "12-18.normal.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13.734375
+ ],
+ "12-18.normal.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.normal.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.normal.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  9.5546875
+ ],
+ "12-18.normal.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  9.5546875
+ ],
+ "12-18.normal.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.normal.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.normal.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.normal.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.normal.trim-both.text": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "12-18.normal.trim-both.text.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "12-18.normal.trim-start.text": [
+  0,
+  0,
+  300,
+  16.5
+ ],
+ "12-18.normal.trim-start.text.label": [
+  0,
+  0,
+  100,
+  16.5
+ ],
+ "12-18.normal.trim-end.text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.normal.trim-end.text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.bold.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  6.5546875
+ ],
+ "12-18.bold.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  6.5546875
+ ],
+ "12-18.bold.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.bold.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.bold.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.bold.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.bold.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "12-18.bold.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "12-18.bold.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13.734375
+ ],
+ "12-18.bold.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13.734375
+ ],
+ "12-18.bold.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.bold.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.bold.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  9.5546875
+ ],
+ "12-18.bold.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  9.5546875
+ ],
+ "12-18.bold.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.bold.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.bold.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.bold.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.bold.trim-both.text": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "12-18.bold.trim-both.text.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "12-18.bold.trim-start.text": [
+  0,
+  0,
+  300,
+  16.5
+ ],
+ "12-18.bold.trim-start.text.label": [
+  0,
+  0,
+  100,
+  16.5
+ ],
+ "12-18.bold.trim-end.text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.bold.trim-end.text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.wght550.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  6.5546875
+ ],
+ "12-18.wght550.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  6.5546875
+ ],
+ "12-18.wght550.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.wght550.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.wght550.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.wght550.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.wght550.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "12-18.wght550.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "12-18.wght550.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13.734375
+ ],
+ "12-18.wght550.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13.734375
+ ],
+ "12-18.wght550.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.wght550.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.wght550.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  9.5546875
+ ],
+ "12-18.wght550.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  9.5546875
+ ],
+ "12-18.wght550.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.wght550.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.wght550.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.wght550.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.wght550.trim-both.text": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "12-18.wght550.trim-both.text.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "12-18.wght550.trim-start.text": [
+  0,
+  0,
+  300,
+  16.5
+ ],
+ "12-18.wght550.trim-start.text.label": [
+  0,
+  0,
+  100,
+  16.5
+ ],
+ "12-18.wght550.trim-end.text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.wght550.trim-end.text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.opsz32.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  6.5546875
+ ],
+ "12-18.opsz32.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  6.5546875
+ ],
+ "12-18.opsz32.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.opsz32.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.opsz32.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.opsz32.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.opsz32.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "12-18.opsz32.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "12-18.opsz32.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13.734375
+ ],
+ "12-18.opsz32.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13.734375
+ ],
+ "12-18.opsz32.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.opsz32.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.opsz32.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  9.5546875
+ ],
+ "12-18.opsz32.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  9.5546875
+ ],
+ "12-18.opsz32.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.opsz32.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.opsz32.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.opsz32.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.opsz32.trim-both.text": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "12-18.opsz32.trim-both.text.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "12-18.opsz32.trim-start.text": [
+  0,
+  0,
+  300,
+  16.5
+ ],
+ "12-18.opsz32.trim-start.text.label": [
+  0,
+  0,
+  100,
+  16.5
+ ],
+ "12-18.opsz32.trim-end.text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.opsz32.trim-end.text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.heavy.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  6.5546875
+ ],
+ "12-18.heavy.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  6.5546875
+ ],
+ "12-18.heavy.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.heavy.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.heavy.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.heavy.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.heavy.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "12-18.heavy.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "12-18.heavy.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13.734375
+ ],
+ "12-18.heavy.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13.734375
+ ],
+ "12-18.heavy.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  13
+ ],
+ "12-18.heavy.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  13
+ ],
+ "12-18.heavy.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  9.5546875
+ ],
+ "12-18.heavy.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  9.5546875
+ ],
+ "12-18.heavy.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  11.5546875
+ ],
+ "12-18.heavy.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  11.5546875
+ ],
+ "12-18.heavy.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.heavy.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "12-18.heavy.trim-both.text": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "12-18.heavy.trim-both.text.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "12-18.heavy.trim-start.text": [
+  0,
+  0,
+  300,
+  16.5
+ ],
+ "12-18.heavy.trim-start.text.label": [
+  0,
+  0,
+  100,
+  16.5
+ ],
+ "12-18.heavy.trim-end.text": [
+  0,
+  0,
+  300,
+  16
+ ],
+ "12-18.heavy.trim-end.text.label": [
+  0,
+  0,
+  100,
+  16
+ ],
+ "13-20.normal.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  7.09375
+ ],
+ "13-20.normal.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  7.09375
+ ],
+ "13-20.normal.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.normal.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.normal.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.normal.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.normal.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  9.4609375
+ ],
+ "13-20.normal.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  9.4609375
+ ],
+ "13-20.normal.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.9609375
+ ],
+ "13-20.normal.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.9609375
+ ],
+ "13-20.normal.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.normal.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.normal.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  10.09375
+ ],
+ "13-20.normal.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  10.09375
+ ],
+ "13-20.normal.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.normal.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.normal.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.normal.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.normal.trim-both.text": [
+  0,
+  0,
+  300,
+  15.5
+ ],
+ "13-20.normal.trim-both.text.label": [
+  0,
+  0,
+  100,
+  15.5
+ ],
+ "13-20.normal.trim-start.text": [
+  0,
+  0,
+  300,
+  18
+ ],
+ "13-20.normal.trim-start.text.label": [
+  0,
+  0,
+  100,
+  18
+ ],
+ "13-20.normal.trim-end.text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.normal.trim-end.text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.bold.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  7.09375
+ ],
+ "13-20.bold.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  7.09375
+ ],
+ "13-20.bold.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.bold.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.bold.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.bold.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.bold.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  9.4609375
+ ],
+ "13-20.bold.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  9.4609375
+ ],
+ "13-20.bold.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.9609375
+ ],
+ "13-20.bold.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.9609375
+ ],
+ "13-20.bold.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.bold.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.bold.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  10.09375
+ ],
+ "13-20.bold.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  10.09375
+ ],
+ "13-20.bold.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.bold.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.bold.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.bold.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.bold.trim-both.text": [
+  0,
+  0,
+  300,
+  15.5
+ ],
+ "13-20.bold.trim-both.text.label": [
+  0,
+  0,
+  100,
+  15.5
+ ],
+ "13-20.bold.trim-start.text": [
+  0,
+  0,
+  300,
+  18
+ ],
+ "13-20.bold.trim-start.text.label": [
+  0,
+  0,
+  100,
+  18
+ ],
+ "13-20.bold.trim-end.text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.bold.trim-end.text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.wght550.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  7.09375
+ ],
+ "13-20.wght550.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  7.09375
+ ],
+ "13-20.wght550.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.wght550.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.wght550.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.wght550.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.wght550.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  9.4609375
+ ],
+ "13-20.wght550.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  9.4609375
+ ],
+ "13-20.wght550.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.9609375
+ ],
+ "13-20.wght550.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.9609375
+ ],
+ "13-20.wght550.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.wght550.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.wght550.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  10.09375
+ ],
+ "13-20.wght550.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  10.09375
+ ],
+ "13-20.wght550.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.wght550.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.wght550.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.wght550.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.wght550.trim-both.text": [
+  0,
+  0,
+  300,
+  15.5
+ ],
+ "13-20.wght550.trim-both.text.label": [
+  0,
+  0,
+  100,
+  15.5
+ ],
+ "13-20.wght550.trim-start.text": [
+  0,
+  0,
+  300,
+  18
+ ],
+ "13-20.wght550.trim-start.text.label": [
+  0,
+  0,
+  100,
+  18
+ ],
+ "13-20.wght550.trim-end.text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.wght550.trim-end.text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.opsz32.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  7.09375
+ ],
+ "13-20.opsz32.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  7.09375
+ ],
+ "13-20.opsz32.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.opsz32.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.opsz32.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.opsz32.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.opsz32.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  9.4609375
+ ],
+ "13-20.opsz32.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  9.4609375
+ ],
+ "13-20.opsz32.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.9609375
+ ],
+ "13-20.opsz32.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.9609375
+ ],
+ "13-20.opsz32.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.opsz32.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.opsz32.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  10.09375
+ ],
+ "13-20.opsz32.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  10.09375
+ ],
+ "13-20.opsz32.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.opsz32.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.opsz32.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.opsz32.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.opsz32.trim-both.text": [
+  0,
+  0,
+  300,
+  15.5
+ ],
+ "13-20.opsz32.trim-both.text.label": [
+  0,
+  0,
+  100,
+  15.5
+ ],
+ "13-20.opsz32.trim-start.text": [
+  0,
+  0,
+  300,
+  18
+ ],
+ "13-20.opsz32.trim-start.text.label": [
+  0,
+  0,
+  100,
+  18
+ ],
+ "13-20.opsz32.trim-end.text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.opsz32.trim-end.text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.heavy.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  7.09375
+ ],
+ "13-20.heavy.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  7.09375
+ ],
+ "13-20.heavy.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.heavy.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.heavy.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.heavy.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.heavy.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  9.4609375
+ ],
+ "13-20.heavy.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  9.4609375
+ ],
+ "13-20.heavy.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.9609375
+ ],
+ "13-20.heavy.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.9609375
+ ],
+ "13-20.heavy.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5
+ ],
+ "13-20.heavy.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5
+ ],
+ "13-20.heavy.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  10.09375
+ ],
+ "13-20.heavy.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  10.09375
+ ],
+ "13-20.heavy.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  12.59375
+ ],
+ "13-20.heavy.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  12.59375
+ ],
+ "13-20.heavy.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.heavy.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "13-20.heavy.trim-both.text": [
+  0,
+  0,
+  300,
+  15.5
+ ],
+ "13-20.heavy.trim-both.text.label": [
+  0,
+  0,
+  100,
+  15.5
+ ],
+ "13-20.heavy.trim-start.text": [
+  0,
+  0,
+  300,
+  18
+ ],
+ "13-20.heavy.trim-start.text.label": [
+  0,
+  0,
+  100,
+  18
+ ],
+ "13-20.heavy.trim-end.text": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "13-20.heavy.trim-end.text.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.normal.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "16-24.normal.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "16-24.normal.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.normal.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.normal.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.normal.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.normal.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  11.640625
+ ],
+ "16-24.normal.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.640625
+ ],
+ "16-24.normal.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  18.140625
+ ],
+ "16-24.normal.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  18.140625
+ ],
+ "16-24.normal.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.normal.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.normal.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  12.734375
+ ],
+ "16-24.normal.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  12.734375
+ ],
+ "16-24.normal.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.normal.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.normal.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.normal.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.normal.trim-both.text": [
+  0,
+  0,
+  300,
+  19.5
+ ],
+ "16-24.normal.trim-both.text.label": [
+  0,
+  0,
+  100,
+  19.5
+ ],
+ "16-24.normal.trim-start.text": [
+  0,
+  0,
+  300,
+  22
+ ],
+ "16-24.normal.trim-start.text.label": [
+  0,
+  0,
+  100,
+  22
+ ],
+ "16-24.normal.trim-end.text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.normal.trim-end.text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.bold.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "16-24.bold.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "16-24.bold.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.bold.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.bold.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.bold.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.bold.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  11.640625
+ ],
+ "16-24.bold.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.640625
+ ],
+ "16-24.bold.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  18.140625
+ ],
+ "16-24.bold.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  18.140625
+ ],
+ "16-24.bold.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.bold.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.bold.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  12.734375
+ ],
+ "16-24.bold.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  12.734375
+ ],
+ "16-24.bold.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.bold.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.bold.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.bold.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.bold.trim-both.text": [
+  0,
+  0,
+  300,
+  19.5
+ ],
+ "16-24.bold.trim-both.text.label": [
+  0,
+  0,
+  100,
+  19.5
+ ],
+ "16-24.bold.trim-start.text": [
+  0,
+  0,
+  300,
+  22
+ ],
+ "16-24.bold.trim-start.text.label": [
+  0,
+  0,
+  100,
+  22
+ ],
+ "16-24.bold.trim-end.text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.bold.trim-end.text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.wght550.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "16-24.wght550.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "16-24.wght550.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.wght550.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.wght550.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.wght550.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.wght550.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  11.640625
+ ],
+ "16-24.wght550.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.640625
+ ],
+ "16-24.wght550.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  18.140625
+ ],
+ "16-24.wght550.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  18.140625
+ ],
+ "16-24.wght550.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.wght550.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.wght550.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  12.734375
+ ],
+ "16-24.wght550.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  12.734375
+ ],
+ "16-24.wght550.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.wght550.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.wght550.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.wght550.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.wght550.trim-both.text": [
+  0,
+  0,
+  300,
+  19.5
+ ],
+ "16-24.wght550.trim-both.text.label": [
+  0,
+  0,
+  100,
+  19.5
+ ],
+ "16-24.wght550.trim-start.text": [
+  0,
+  0,
+  300,
+  22
+ ],
+ "16-24.wght550.trim-start.text.label": [
+  0,
+  0,
+  100,
+  22
+ ],
+ "16-24.wght550.trim-end.text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.wght550.trim-end.text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.opsz32.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "16-24.opsz32.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "16-24.opsz32.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.opsz32.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.opsz32.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.opsz32.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.opsz32.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  11.640625
+ ],
+ "16-24.opsz32.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.640625
+ ],
+ "16-24.opsz32.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  18.140625
+ ],
+ "16-24.opsz32.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  18.140625
+ ],
+ "16-24.opsz32.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.opsz32.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.opsz32.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  12.734375
+ ],
+ "16-24.opsz32.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  12.734375
+ ],
+ "16-24.opsz32.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.opsz32.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.opsz32.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.opsz32.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.opsz32.trim-both.text": [
+  0,
+  0,
+  300,
+  19.5
+ ],
+ "16-24.opsz32.trim-both.text.label": [
+  0,
+  0,
+  100,
+  19.5
+ ],
+ "16-24.opsz32.trim-start.text": [
+  0,
+  0,
+  300,
+  22
+ ],
+ "16-24.opsz32.trim-start.text.label": [
+  0,
+  0,
+  100,
+  22
+ ],
+ "16-24.opsz32.trim-end.text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.opsz32.trim-end.text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.heavy.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  8.734375
+ ],
+ "16-24.heavy.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  8.734375
+ ],
+ "16-24.heavy.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.heavy.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.heavy.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.heavy.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.heavy.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  11.640625
+ ],
+ "16-24.heavy.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  11.640625
+ ],
+ "16-24.heavy.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  18.140625
+ ],
+ "16-24.heavy.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  18.140625
+ ],
+ "16-24.heavy.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  17.5
+ ],
+ "16-24.heavy.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.5
+ ],
+ "16-24.heavy.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  12.734375
+ ],
+ "16-24.heavy.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  12.734375
+ ],
+ "16-24.heavy.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  15.234375
+ ],
+ "16-24.heavy.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  15.234375
+ ],
+ "16-24.heavy.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.heavy.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "16-24.heavy.trim-both.text": [
+  0,
+  0,
+  300,
+  19.5
+ ],
+ "16-24.heavy.trim-both.text.label": [
+  0,
+  0,
+  100,
+  19.5
+ ],
+ "16-24.heavy.trim-start.text": [
+  0,
+  0,
+  300,
+  22
+ ],
+ "16-24.heavy.trim-start.text.label": [
+  0,
+  0,
+  100,
+  22
+ ],
+ "16-24.heavy.trim-end.text": [
+  0,
+  0,
+  300,
+  21.5
+ ],
+ "16-24.heavy.trim-end.text.label": [
+  0,
+  0,
+  100,
+  21.5
+ ],
+ "20-28.normal.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  10.921875
+ ],
+ "20-28.normal.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  10.921875
+ ],
+ "20-28.normal.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.normal.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.normal.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.normal.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.normal.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5546875
+ ],
+ "20-28.normal.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5546875
+ ],
+ "20-28.normal.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21.5546875
+ ],
+ "20-28.normal.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21.5546875
+ ],
+ "20-28.normal.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.normal.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.normal.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  15.921875
+ ],
+ "20-28.normal.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  15.921875
+ ],
+ "20-28.normal.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.normal.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.normal.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.normal.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.normal.trim-both.text": [
+  0,
+  0,
+  300,
+  24.5
+ ],
+ "20-28.normal.trim-both.text.label": [
+  0,
+  0,
+  100,
+  24.5
+ ],
+ "20-28.normal.trim-start.text": [
+  0,
+  0,
+  300,
+  26.5
+ ],
+ "20-28.normal.trim-start.text.label": [
+  0,
+  0,
+  100,
+  26.5
+ ],
+ "20-28.normal.trim-end.text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.normal.trim-end.text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.bold.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  10.921875
+ ],
+ "20-28.bold.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  10.921875
+ ],
+ "20-28.bold.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.bold.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.bold.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.bold.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.bold.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5546875
+ ],
+ "20-28.bold.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5546875
+ ],
+ "20-28.bold.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21.5546875
+ ],
+ "20-28.bold.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21.5546875
+ ],
+ "20-28.bold.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.bold.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.bold.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  15.921875
+ ],
+ "20-28.bold.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  15.921875
+ ],
+ "20-28.bold.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.bold.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.bold.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.bold.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.bold.trim-both.text": [
+  0,
+  0,
+  300,
+  24.5
+ ],
+ "20-28.bold.trim-both.text.label": [
+  0,
+  0,
+  100,
+  24.5
+ ],
+ "20-28.bold.trim-start.text": [
+  0,
+  0,
+  300,
+  26.5
+ ],
+ "20-28.bold.trim-start.text.label": [
+  0,
+  0,
+  100,
+  26.5
+ ],
+ "20-28.bold.trim-end.text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.bold.trim-end.text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.wght550.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  10.921875
+ ],
+ "20-28.wght550.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  10.921875
+ ],
+ "20-28.wght550.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.wght550.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.wght550.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.wght550.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.wght550.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5546875
+ ],
+ "20-28.wght550.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5546875
+ ],
+ "20-28.wght550.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21.5546875
+ ],
+ "20-28.wght550.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21.5546875
+ ],
+ "20-28.wght550.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.wght550.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.wght550.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  15.921875
+ ],
+ "20-28.wght550.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  15.921875
+ ],
+ "20-28.wght550.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.wght550.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.wght550.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.wght550.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.wght550.trim-both.text": [
+  0,
+  0,
+  300,
+  24.5
+ ],
+ "20-28.wght550.trim-both.text.label": [
+  0,
+  0,
+  100,
+  24.5
+ ],
+ "20-28.wght550.trim-start.text": [
+  0,
+  0,
+  300,
+  26.5
+ ],
+ "20-28.wght550.trim-start.text.label": [
+  0,
+  0,
+  100,
+  26.5
+ ],
+ "20-28.wght550.trim-end.text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.wght550.trim-end.text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.opsz32.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  10.921875
+ ],
+ "20-28.opsz32.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  10.921875
+ ],
+ "20-28.opsz32.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.opsz32.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.opsz32.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.opsz32.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.opsz32.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5546875
+ ],
+ "20-28.opsz32.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5546875
+ ],
+ "20-28.opsz32.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21.5546875
+ ],
+ "20-28.opsz32.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21.5546875
+ ],
+ "20-28.opsz32.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.opsz32.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.opsz32.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  15.921875
+ ],
+ "20-28.opsz32.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  15.921875
+ ],
+ "20-28.opsz32.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.opsz32.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.opsz32.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.opsz32.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.opsz32.trim-both.text": [
+  0,
+  0,
+  300,
+  24.5
+ ],
+ "20-28.opsz32.trim-both.text.label": [
+  0,
+  0,
+  100,
+  24.5
+ ],
+ "20-28.opsz32.trim-start.text": [
+  0,
+  0,
+  300,
+  26.5
+ ],
+ "20-28.opsz32.trim-start.text.label": [
+  0,
+  0,
+  100,
+  26.5
+ ],
+ "20-28.opsz32.trim-end.text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.opsz32.trim-end.text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.heavy.trim-both.ex-alphabetic": [
+  0,
+  0,
+  300,
+  10.921875
+ ],
+ "20-28.heavy.trim-both.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  10.921875
+ ],
+ "20-28.heavy.trim-start.ex-alphabetic": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.heavy.trim-start.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.heavy.trim-end.ex-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.heavy.trim-end.ex-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.heavy.trim-both.cap-alphabetic": [
+  0,
+  0,
+  300,
+  14.5546875
+ ],
+ "20-28.heavy.trim-both.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  14.5546875
+ ],
+ "20-28.heavy.trim-start.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21.5546875
+ ],
+ "20-28.heavy.trim-start.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21.5546875
+ ],
+ "20-28.heavy.trim-end.cap-alphabetic": [
+  0,
+  0,
+  300,
+  21
+ ],
+ "20-28.heavy.trim-end.cap-alphabetic.label": [
+  0,
+  0,
+  100,
+  21
+ ],
+ "20-28.heavy.trim-both.ex-text": [
+  0,
+  0,
+  300,
+  15.921875
+ ],
+ "20-28.heavy.trim-both.ex-text.label": [
+  0,
+  0,
+  100,
+  15.921875
+ ],
+ "20-28.heavy.trim-start.ex-text": [
+  0,
+  0,
+  300,
+  17.921875
+ ],
+ "20-28.heavy.trim-start.ex-text.label": [
+  0,
+  0,
+  100,
+  17.921875
+ ],
+ "20-28.heavy.trim-end.ex-text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.heavy.trim-end.ex-text.label": [
+  0,
+  0,
+  100,
+  26
+ ],
+ "20-28.heavy.trim-both.text": [
+  0,
+  0,
+  300,
+  24.5
+ ],
+ "20-28.heavy.trim-both.text.label": [
+  0,
+  0,
+  100,
+  24.5
+ ],
+ "20-28.heavy.trim-start.text": [
+  0,
+  0,
+  300,
+  26.5
+ ],
+ "20-28.heavy.trim-start.text.label": [
+  0,
+  0,
+  100,
+  26.5
+ ],
+ "20-28.heavy.trim-end.text": [
+  0,
+  0,
+  300,
+  26
+ ],
+ "20-28.heavy.trim-end.text.label": [
+  0,
+  0,
+  100,
+  26
+ ]
+}

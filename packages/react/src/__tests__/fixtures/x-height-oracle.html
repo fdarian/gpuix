@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  Oracle for text-box-metrics.test.tsx: how tall headless Chrome lays out a label trimmed to the x-height or the cap
+  height of Inter Variable (`inter-subset.ttf`, an OS/2 v4 table with sxHeight 1118 and sCapHeight 1490 of 2048, where
+  CoreText reports an x-height of 1056 for the same font). Skia's Mac scaler context takes both heights from the OS/2
+  table of the default instance, so a `wght` or `opsz` variation does not move them. `dsf-oracle.sh x-height`
+  regenerates the JSON at device scale 1 and 2.
+
+  Every case is a block `line` of font 16px/24px (the case may change that) holding the `label`, a block of the text
+  "Hxg" with `text-box` set; numbers are [x, y, width, height] relative to the `line` box of the case.
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: 'Inter Variable'; src: url('inter-subset.ttf') format('truetype'); font-weight: 100 900; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 1280px; font-family: 'Inter Variable'; color: #000; }
+.line { width: 300px; }
+.line > div { width: 100px; }
+</style></head><body>
+<script>
+  const sizes = [[12, 18], [13, 20], [16, 24], [20, 28]]
+  const edges = ['ex alphabetic', 'cap alphabetic', 'ex text', 'text']
+  const trims = ['trim-both', 'trim-start', 'trim-end']
+  // A variation the font draws and Chrome must not measure: the OS/2 table of the default instance has the heights.
+  const variations = {
+    normal: '',
+    bold: 'font-weight: 700;',
+    wght550: "font-variation-settings: 'wght' 550, 'opsz' 18;",
+    opsz32: "font-variation-settings: 'opsz' 32;",
+    heavy: "font-variation-settings: 'wght' 900, 'opsz' 32;",
+  }
+  const page = []
+  for (const [size, line] of sizes) {
+    for (const [name, style] of Object.entries(variations)) {
+      for (const edge of edges) {
+        for (const trim of trims) {
+          const id = `${size}-${line}.${name}.${trim}.${edge.replace(' ', '-')}`
+          page.push(`<div class="line" data-case data-id="${id}" style="font-size:${size}px;line-height:${line}px;${style}"><div data-id="${id}.label" style="text-box: ${trim} ${edge}">Hxg</div></div>`)
+        }
+      }
+    }
+  }
+  document.body.insertAdjacentHTML('beforeend', page.join('\n'))
+  Promise.all([document.fonts.load("400 16px 'Inter Variable'"), document.fonts.load("700 16px 'Inter Variable'")]).then(() => {
+    const rects = {}
+    for (const element of document.querySelectorAll('[data-id]')) {
+      const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+      const { x, y, width, height } = element.getBoundingClientRect()
+      rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body></html>
