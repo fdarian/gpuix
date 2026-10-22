@@ -2721,6 +2721,18 @@ renderer.getScrollOffset(elementId)                        // [scrollLeft, scrol
 renderer.getScrollMetrics(elementId)                       // [scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]
 ```
 
+### Keeping the view in place: `overflowAnchor`
+
+A scroller that is scrolled away from its start keeps what it shows where it is when the layout moves it, as in Chrome (CSS scroll anchoring). Insert a row above the first one in view, grow or shrink one, or remove one, and the offset moves by the same distance, so the rows on screen do not jump. A list that loads older pages above the reader needs nothing else.
+
+The scroller picks an **anchor**: the first box of its content, in layout order, that is fully in view, or the first partly in view. When a layout moves the anchor, the offset moves by the same whole pixels, clamped to the range, and a `scroll` event follows in the next frame, like a clamp. Reading `scrollTop` or a bounds right after the change sees the new offset. Nothing is anchored at offset 0, so a row prepended to a list at its start shows.
+
+`overflowAnchor: 'none'` keeps a box and everything in it from being the anchor (the next box in view takes over), and on the scroller turns its anchoring off. It is not inherited, so set it on each box that opts out. Fixed boxes, sticky boxes with an inset, and absolute boxes placed by something outside the scroller are never the anchor either.
+
+A change the page makes to the anchor itself is its own move and is not compensated: the `top`, `margin`, `padding`, `width`, `height`, `min-`/`max-` size, `position` or `containIntrinsicSize` of the anchor or of any box between it and the scroller, whenever the anchor ends up somewhere else because of it. An explicit scroll (a wheel, a scrollbar, `scrollTop`, `scrollTo`) drops the anchor, and the next one is picked from the layout as it was before the frame's changes, so content that arrives in the frame of a scroll is still compensated. The same goes for an anchor that is removed, hidden, or turned `overflowAnchor: 'none'`: the box after it takes over.
+
+Where gpuix differs from Chrome: a nested scroller inside the scroller is anchored as one box and not looked into, there is no priority for the focused input or a find-in-page match, and `scroll-padding` does not shrink the area an anchor must be in. `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
+
 ### Sticky positioning
 
 `position: "sticky"` with `top`, `right`, `bottom` and `left` works as in CSS. The element lays out like a relative one and its insets do not move its siblings. Then it is moved to stay inside the scrollport of its nearest scroll container less that container's padding on every side (the window, if none scrolls around it), that far from the edges its insets name, and never out of its parent's content box. A header sticks at the top of the scroller while its section is in view, and the next section's header pushes it out as the section ends. A sticky element also sticks sideways with `left` or `right`.
@@ -7462,7 +7474,7 @@ The shape also clips hit testing, as in CSS: a pointer over the clipped-away par
 hits what is underneath instead, and the element's descendants are cut the same
 way, overflow included.
 
-**Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content and is no scroll container (a flex or grid item of it keeps its content-based minimum size; of a `"hidden"` one it shrinks to 0), `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`) and `scrollBehavior` (`"auto"` | `"smooth"`) — see [Scrolling](#scrolling)
+**Overflow:** `overflow`, `overflowX`, `overflowY` — `"clip"` clips content and is no scroll container (a flex or grid item of it keeps its content-based minimum size; of a `"hidden"` one it shrinks to 0), `"hidden"` clips and scrolls only from code, `"scroll"` and `"auto"` create a native scrollable container with persistent scroll state. `overscrollBehavior`, `overscrollBehaviorX`, `overscrollBehaviorY` (`"auto"` | `"contain"` | `"none"`), `scrollBehavior` (`"auto"` | `"smooth"`) and `overflowAnchor` (`"auto"` | `"none"`, not inherited) — see [Scrolling](#scrolling) and [`overflowAnchor`](#keeping-the-view-in-place-overflowanchor)
 
 **Containment:** `contentVisibility` (`"visible"` (default) | `"auto"` | `"hidden"`) skips the content of an element and `containIntrinsicSize` (`none`, a length or `auto <length>` per axis; longhands `containIntrinsicWidth`, `containIntrinsicHeight`, `containIntrinsicInlineSize`, `containIntrinsicBlockSize`) sizes it while it is skipped — see [Skipping content with `contentVisibility`](#skipping-content-with-contentvisibility). Neither inherits.
 

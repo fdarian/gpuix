@@ -11563,7 +11563,12 @@ fn scroll_reporter(
     let handle = ctx.scroll_handles.get(&id)?.clone();
     let callback = ctx.event_callback.clone()?;
     let reports = ctx.paint_reports.clone();
-    Some(Rc::new(move |_, _, _, cx| {
+    Some(Rc::new(move |_, _, window, cx| {
+        // A layout-only pass paints nothing, and the event of the offset it left is the next
+        // frame's, as the DOM's is: an anchoring adjustment of a forced layout runs it a frame later.
+        if window.is_layout_pass() {
+            return;
+        }
         report_scroll(id, handle.offset(), &reports, &callback, cx);
     }))
 }

@@ -966,6 +966,11 @@ pub struct StyleDesc {
     pub overscroll_behavior_y: Option<String>,
     /// `"smooth"` animates `scrollTo` and `scrollIntoView` calls that name no behavior.
     pub scroll_behavior: Option<String>,
+    /// `"auto"` (default) or `"none"`: whether the box can be the anchor that keeps a scroller
+    /// from moving what it shows when the layout above it changes. Not inherited, not animatable.
+    /// A value CSS does not have is ignored.
+    #[serde(default, deserialize_with = "crate::css::overflow_anchor::deserialize_ignoring_invalid")]
+    pub overflow_anchor: Option<crate::css::overflow_anchor::OverflowAnchor>,
 
     // Cursor
     pub cursor: Option<String>,

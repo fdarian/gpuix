@@ -1084,6 +1084,15 @@ export interface StyleDesc {
   /** `"smooth"` animates `scrollTo` and `scrollIntoView` calls that name no `behavior`
    *  (about 300 to 450 ms, firing `onScroll` each frame). An explicit `behavior` wins. */
   scrollBehavior?: "auto" | "smooth"
+  /** Like CSS `overflow-anchor`, scroll anchoring. A scroller that is scrolled away from its start
+   *  keeps what it shows where it is when the layout moves it (content inserted or resized above):
+   *  the scroller picks the first box in view as its anchor, and when the layout moves the anchor
+   *  along the block axis it scrolls by the same distance, as Chrome does. `"none"` on a box keeps
+   *  it and what is in it from being the anchor (the next box in view anchors instead), and on a
+   *  scroller turns its anchoring off. Not inherited, so it is set on each box that opts out. Not
+   *  animatable. Not modelled: a nested scroller is anchored whole, and a focused editable has no
+   *  priority. */
+  overflowAnchor?: "auto" | "none"
 
   cursor?: CursorValue
   /** `"none"` makes the element never the target of a pointer event, so the

@@ -152,6 +152,9 @@ pub(crate) fn apply<E: Styled>(
     if style.content_visibility.is_some_and(super::content_visibility::ContentVisibility::contains) {
         el.style().contain_layout = Some(true);
     }
+    if let Some(value) = style.overflow_anchor {
+        el = el.overflow_anchor(value.to_gpui());
+    }
     el = super::stacking::apply_z_index(el, style, colors, lengths);
     el = apply_flex_basis(el, style, lengths);
     if let Some(value) = style.effective_justify_items().and_then(align_items) {

@@ -224,7 +224,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         order, justify_items, justify_self, grid_auto_columns, grid_auto_rows, grid_auto_flow,
         grid_template_areas, grid_area, grid_column, grid_row, grid_column_start,
         grid_column_end, grid_row_start, grid_row_end, z_index, overscroll_behavior,
-        overscroll_behavior_x, overscroll_behavior_y, scroll_behavior,
+        overscroll_behavior_x, overscroll_behavior_y, scroll_behavior, overflow_anchor,
     )
 }
 
@@ -1150,6 +1150,15 @@ mod tests {
         assert_eq!(resolve_state_styles(&base, false, false).webkit_font_smoothing, Some(FontSmoothing::Antialiased));
         assert_eq!(resolve_state_styles(&base, true, false).webkit_font_smoothing, Some(FontSmoothing::Auto));
         assert_eq!(resolve_state_styles(&base, false, true).webkit_font_smoothing, Some(FontSmoothing::Antialiased));
+    }
+
+    #[test]
+    fn a_state_overflow_anchor_overlays_the_base_and_an_invalid_one_leaves_it() {
+        use crate::css::overflow_anchor::OverflowAnchor;
+        let base = style(r##"{"overflowAnchor":"none","hover":{"overflowAnchor":"auto"},"active":{"overflowAnchor":"visible"}}"##);
+        assert_eq!(resolve_state_styles(&base, false, false).overflow_anchor, Some(OverflowAnchor::None));
+        assert_eq!(resolve_state_styles(&base, true, false).overflow_anchor, Some(OverflowAnchor::Auto));
+        assert_eq!(resolve_state_styles(&base, false, true).overflow_anchor, Some(OverflowAnchor::None));
     }
 
     #[test]

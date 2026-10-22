@@ -30,6 +30,7 @@ pub(crate) mod mask_border;
 #[cfg(test)]
 mod parse_cost;
 pub(crate) mod outline;
+pub(crate) mod overflow_anchor;
 pub(crate) mod place;
 pub(crate) mod position;
 pub(crate) mod shorthand;

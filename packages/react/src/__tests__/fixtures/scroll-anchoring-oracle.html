@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  Oracle for scroll-anchoring.test.tsx: where headless Chrome leaves the scroll offset of a scroller when the layout moves the
+  content it shows (`overflow-anchor`), in the scenes of `scroll-anchoring-scenes.ts`. `scroll-anchoring-oracle.ts` hands this page
+  a scene, one page per scene, and writes `scroll-anchoring-oracle.json`: {scene: [{step, top, first, rowTop, events, forced?}]}.
+  `top` is `scrollTop` after the frames, `first` the first row that is in view and `rowTop` its top from the top of the scroller, and
+  `events` the rendering update (counted from the step) in which each `scroll` event ran. `forced` is the same read in the task of the
+  mutation, before any frame.
+-->
+<html><head><meta charset="utf-8"><style>
+html, body { margin: 0; overflow: hidden }
+* { box-sizing: border-box }
+#scroller { overflow: auto; width: 300px; height: 300px }
+</style></head><body>
+<script>
+const FRAMES = 6
+const count = { frame: 0 }
+
+const raf = () => new Promise((resolve) => requestAnimationFrame(resolve))
+const frames = async () => {
+  for (let index = 0; index < FRAMES; index++) {
+    await raf()
+    count.frame++
+  }
+  await new Promise((resolve) => setTimeout(resolve, 60))
+}
+
+const apply = (element, style) => {
+  for (const [key, value] of Object.entries(style)) element.style[key] = value
+}
+
+window.__run = async (name, def) => {
+  const events = []
+  const scroller = document.createElement('div')
+  scroller.id = 'scroller'
+  apply(scroller, def.scrollerStyle ?? {})
+  const wrapper = def.wrapper ? document.createElement('div') : null
+  if (wrapper) {
+    wrapper.id = 'wrapper'
+    apply(wrapper, def.wrapper)
+    scroller.append(wrapper)
+  }
+  const parent = wrapper ?? scroller
+  const row = (id, height, style) => {
+    const element = document.createElement('div')
+    element.id = id
+    element.className = 'row'
+    apply(element, def.rowStyle ?? {})
+    if (def.child) {
+      const child = document.createElement('div')
+      child.style.height = height
+      element.append(child)
+    } else {
+      element.style.height = height
+    }
+    apply(element, style ?? {})
+    return element
+  }
+  for (let index = 0; index < def.rows; index++) parent.append(row(`r${index}`, def.rowHeight, def.rowStyles?.[`r${index}`]))
+  scroller.addEventListener('scroll', () => events.push(count.frame + 1))
+
+  const target = (id) => (id === 'scroller' ? scroller : id === 'wrapper' ? wrapper : document.getElementById(id))
+  const to = (y) => (y === 'max' ? 1e7 : y)
+  const read = () => {
+    const box = scroller.getBoundingClientRect()
+    const first = [...scroller.querySelectorAll('.row')].find((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.height > 0 && rect.bottom > box.top && rect.top < box.bottom
+    })
+    return { top: scroller.scrollTop, first: first?.id ?? null, rowTop: first ? first.getBoundingClientRect().top - box.top : null }
+  }
+  const op = (o) => {
+    if (o.op === 'insert') {
+      const element = row(o.id, o.height, o.style)
+      parent.insertBefore(element, o.before ? document.getElementById(o.before) : null)
+    } else if (o.op === 'remove') {
+      target(o.id).remove()
+    } else if (o.op === 'style') {
+      apply(target(o.id), o.style)
+    } else if (o.op === 'scrollTo') {
+      scroller.scrollTop = to(o.y)
+    } else if (o.op === 'scrollBy') {
+      scroller.scrollTop = scroller.scrollTop + o.dy
+    }
+  }
+
+  const steps = []
+  const run = async (stepName, ops, forced) => {
+    events.length = 0
+    count.frame = 0
+    for (const o of ops) op(o)
+    const sync = forced ? read() : undefined
+    await frames()
+    steps.push({ step: stepName, ...read(), events: events.slice(), ...(forced ? { forced: sync } : {}) })
+  }
+  document.body.append(scroller)
+  await run('mounted', [{ op: 'scrollTo', y: def.scrollTo }], false)
+  for (const step of def.steps) await run(step.name, step.ops, step.forced)
+  return steps
+}
+</script>
+</body></html>
