@@ -305,10 +305,15 @@ const CHAIN = 5
 
 /** An entry of ten elements, nine `div` and one `text`: the shape of a row of a long list. The first
  *  entry's box is the only one that ever changes. */
-function Entry(props: { probe: number | null }) {
+function Entry(props: { probe: number | null; icon?: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", padding: 8, gap: 4, flexShrink: 0 }}>
       <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {props.icon && (
+          <svg testId={props.probe === null ? undefined : "icon"} viewBox="0 0 24 24" style={{ width: 16, height: 16, flexShrink: 0, color: "#222222" }}>
+            <path d="M2 2 L22 22 M22 2 L2 22" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        )}
         <div testId={props.probe === null ? undefined : "probe"} style={{ width: props.probe ?? 16, height: 16, backgroundColor: "#999999" }}>
           <div style={{ width: 8, height: 8, backgroundColor: "#ffffff" }} />
         </div>
@@ -659,6 +664,7 @@ describeNative("a forced read and the labels and id references of the tree", { t
 })
 
 type Mounting = {
+  icons: boolean
   setEntries: (entries: number) => void
   setWidth: (width: number) => void
   setExtra: (extra: boolean) => void
@@ -685,7 +691,7 @@ function Mounting(props: { page: Mounting }) {
       >
         {Array.from({ length: entries }, (_, index) => (
           <div key={index} testId={`entry-${index}`} style={{ flexShrink: 0 }}>
-            <Entry probe={index === 0 ? width : null} />
+            <Entry probe={index === 0 ? width : null} icon={props.page.icons} />
           </div>
         ))}
         {extra && <div testId="extra" style={{ height: 24, width: 50 + width, flexShrink: 0, backgroundColor: "#00ff00" }} />}
@@ -700,8 +706,8 @@ const WATCHED = ["list", "probe", "entry-0", "entry-1", "entry-250", "entry-498"
 /** A page that mounts its entries and then changes one small subtree of them, with a scroll write after each
  *  step and no frame drawn since the entries mounted, as a page does while it mounts: what each round
  *  built, and the boxes it read after it. */
-function mountWithoutAFrame(entries: number, retention: boolean) {
-  const page: Mounting = { setEntries: () => {}, setWidth: () => {}, setExtra: () => {}, scroller: null }
+function mountWithoutAFrame(entries: number, retention: boolean, icons = false) {
+  const page: Mounting = { icons, setEntries: () => {}, setWidth: () => {}, setExtra: () => {}, scroller: null }
   const root = createTestRoot({ width: 900, height: 780 })
   const renderer = root.renderer
   try {
@@ -724,8 +730,9 @@ function mountWithoutAFrame(entries: number, retention: boolean) {
       })
       page.scroller!.scrollTop = 0
       const built = renderer.getBuildCounters().elementsBuilt
-      if (round === 0) ids = new Map(WATCHED.map((testId) => [testId, renderer.findByTestId(testId)!.id]))
-      const boxes = WATCHED.map((testId) => renderer.getElementBounds(ids.get(testId)!))
+      const watched = icons ? [...WATCHED, "icon"] : WATCHED
+      if (round === 0) ids = new Map(watched.map((testId) => [testId, renderer.findByTestId(testId)!.id]))
+      const boxes = watched.map((testId) => renderer.getElementBounds(ids.get(testId)!))
       rounds.push({ built, boxes, passes: renderer.getLayoutPassCount() - passes })
     }
     expect(renderer.getPaintedFrameCount() - painted, "no frame was drawn").toBe(0)
@@ -758,6 +765,24 @@ describeNative("a forced read on a page that has not been presented since it cha
     expect(kept.mismatches).toEqual([])
     expect(kept.counters.mismatches).toBe(0)
     if (verifying) expect(kept.counters.verified, "the passes that skipped were compared with a build").toBeGreaterThan(0)
+    kept.rounds.forEach((round, index) => {
+      expect(round.boxes, `the boxes read after round ${index} are the ones a build gives`).toEqual(built.rounds[index]!.boxes)
+    })
+  })
+
+  it("skips the subtrees that hold an svg no frame has painted, and reads the boxes a build gives", () => {
+    const entries = 500
+    const kept = mountWithoutAFrame(entries, true, true)
+    const built = mountWithoutAFrame(entries, false, true)
+
+    expect(kept.counters.layoutReplays, "the passes after the first that built skipped with layout records").toBeGreaterThan(0)
+    if (!verifying) {
+      for (const round of kept.rounds.slice(3)) {
+        expect(round.built, "the entry that changed and the spine above it, not the icons of the page").toBeLessThanOrEqual(60)
+      }
+    }
+    expect(kept.mismatches).toEqual([])
+    expect(kept.counters.mismatches).toBe(0)
     kept.rounds.forEach((round, index) => {
       expect(round.boxes, `the boxes read after round ${index} are the ones a build gives`).toEqual(built.rounds[index]!.boxes)
     })

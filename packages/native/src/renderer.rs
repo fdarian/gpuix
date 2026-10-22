@@ -9803,6 +9803,9 @@ fn build_element_unpumped(
             // adapter that cannot name it is rebuilt every frame.
             match ctx.custom_registry.retain_state(id) {
                 Some(state) => ctx.retain.shape(state),
+                // Its box is its style and its document (both in the key), whether or not a paint
+                // has shown it yet: only a pass that paints needs the raster state to settle.
+                None if is_svg && window.is_layout_pass() => ctx.retain.shape(0),
                 None => ctx.retain.exclude(if is_svg {
                     crate::retain::Exclusion::Svg
                 } else {
