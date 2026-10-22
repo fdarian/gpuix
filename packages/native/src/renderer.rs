@@ -6202,13 +6202,19 @@ impl GpuixView {
         id: u64,
         options: crate::scroll::IntoView,
     ) -> bool {
+        let target = painted_rect(window.window_handle().window_id(), id);
+        self.scroll_element_into_view_at(window, id, options, target)
+    }
+
+    /// [`Self::scroll_element_into_view`] for an element whose box the caller read.
+    pub(crate) fn scroll_element_into_view_at(
+        &self,
+        window: &gpui::Window,
+        id: u64,
+        options: crate::scroll::IntoView,
+        mut target: Option<crate::scroll::Rect>,
+    ) -> bool {
         let window_id = window.window_handle().window_id();
-        let mut target = crate::automation::get_bounds(window_id, id).map(|painted| crate::scroll::Rect {
-            x: painted.x as f32,
-            y: painted.y as f32,
-            width: painted.width as f32,
-            height: painted.height as f32,
-        });
         let tree = self.tree.lock().unwrap();
         let mut scrolled = false;
         let mut child = id;
@@ -7830,8 +7836,18 @@ impl GpuixView {
     }
 }
 
+/// The box `id` was last painted or laid out with, for the scrolls that align it.
+pub(crate) fn painted_rect(window_id: gpui::WindowId, id: u64) -> Option<crate::scroll::Rect> {
+    crate::automation::get_bounds(window_id, id).map(|painted| crate::scroll::Rect {
+        x: painted.x as f32,
+        y: painted.y as f32,
+        width: painted.width as f32,
+        height: painted.height as f32,
+    })
+}
+
 /// A text control without a `tabIndex` is a tab stop at 0.
-fn focus_handle_tab(element: &crate::retained_tree::RetainedElement) -> (isize, bool) {
+pub(crate) fn focus_handle_tab(element: &crate::retained_tree::RetainedElement) -> (isize, bool) {
     element
         .tab_index()
         .map_or((0, true), crate::focus::gpui_tab_stop)

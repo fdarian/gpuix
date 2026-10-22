@@ -1,6 +1,9 @@
-/// The accessibility tree for the content that `content-visibility` skips. Chrome keeps the content of a skipped
-/// `auto` element in the accessibility tree; `hidden` content is not. What the tree holds is held to headless Chrome
-/// (`fixtures/content-visibility-a11y-oracle.*`, regenerate with `bun fixtures/content-visibility-a11y-oracle.ts`).
+/// The accessibility tree and Tab for the content that `content-visibility` skips. Chrome keeps the content of a
+/// skipped `auto` element in the accessibility tree and lets Tab reach a focusable element in it (the page scrolls to
+/// the element and the element is relevant); `hidden` content is neither. Where Tab goes, and what the accessibility
+/// tree holds, is held to headless Chrome (`fixtures/content-visibility-a11y-oracle.*`, regenerate with
+/// `bun fixtures/content-visibility-a11y-oracle.ts`). Chrome centers a focus target that is out of view; gpuix scrolls
+/// it to the nearest edge, as it does for a built one, so the scroll offsets are held to that.
 
 import fs from "fs"
 import path from "path"
@@ -96,6 +99,8 @@ function settle(renderer: TestRenderer) {
 }
 
 const isBuilt = (renderer: TestRenderer, ids: Map<string, number>, name: string) => Boolean(renderer.getBuiltElementBounds(ids.get(name)!))
+const scrollTop = (renderer: TestRenderer, ids: Map<string, number>) => renderer.getScrollMetrics(ids.get("scroller")!)![1]!
+const focusedTestId = (renderer: TestRenderer) => renderer.getElement(renderer.getFocusedElementId())?.testId ?? null
 
 describeNative("the accessibility tree of skipped content", { timeout: 120_000 }, () => {
   it("has the heading, the button and the text of a far skipped auto entry", () => {
@@ -319,6 +324,110 @@ describeNative("the accessibility tree of skipped content", { timeout: 120_000 }
   })
 })
 
+interface TabStep {
+  step: string
+  focused: string | null
+}
+
 type AxOracle = { headings: string[]; buttons: string[] }
 
-const ORACLE: { ax: AxOracle } = JSON.parse(fs.readFileSync(path.join(FIXTURES, "content-visibility-a11y-oracle.json"), "utf8"))
+const ORACLE: Record<string, TabStep[]> & { ax: AxOracle } = JSON.parse(fs.readFileSync(path.join(FIXTURES, "content-visibility-a11y-oracle.json"), "utf8"))
+
+/** The last entry that is built when the page starts, which the walks start from. */
+const LAST_BUILT = 19
+
+const TAB_PAGE = (hidden: number[]) => (
+  <Page entry={(index) => <Entry key={index} index={index} value={hidden.includes(index) ? "hidden" : "auto"} />} />
+)
+
+describeNative("Tab into skipped content", { timeout: 120_000 }, () => {
+  const scenes: Record<string, { hidden: number[]; keys: string[] }> = {
+    forward: { hidden: [], keys: ["Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"] },
+    hidden: { hidden: [LAST_BUILT + 1, LAST_BUILT + 2], keys: ["Tab", "Tab", "Shift+Tab", "Shift+Tab"] },
+  }
+
+  it("has the scenes of the oracle", () => {
+    expect(Object.keys(ORACLE).filter((name) => name !== "ax").sort()).toEqual(Object.keys(scenes).sort())
+  })
+
+  for (const [name, scene] of Object.entries(scenes)) {
+    it(`goes where Chrome goes, and scrolls it into view: ${name}`, () => {
+      const { root, renderer, ids } = mount(TAB_PAGE(scene.hidden))
+      try {
+        const expected = ORACLE[name]!
+        expect(isBuilt(renderer, ids, `btn-${LAST_BUILT}`), "the last button the page builds").toBe(true)
+        expect(isBuilt(renderer, ids, `btn-${LAST_BUILT + 1}`), "the first button it skips").toBe(false)
+        renderer.focusElement(ids.get(`btn-${LAST_BUILT}`)!)
+        settle(renderer)
+        expect(focusedTestId(renderer)).toBe(expected[0]!.focused)
+        expect(scrollTop(renderer, ids)).toBe(0)
+        scene.keys.forEach((key, index) => {
+          const want = expected[index + 1]!
+          const before = scrollTop(renderer, ids)
+          renderer.simulateKeystrokes(key)
+          settle(renderer)
+          expect(focusedTestId(renderer), `${key}: ${want.step}`).toBe(want.focused)
+          expect(isBuilt(renderer, ids, want.focused!), `${key}: the entry holding the focus is built`).toBe(true)
+          // The button is in the window, which the scroller fills: at its nearest edge when the key scrolled.
+          const box = renderer.getElementBounds(ids.get(want.focused!)!)!
+          expect(box.y, `${key}: top of the button`).toBeGreaterThanOrEqual(0)
+          expect(box.y + box.height, `${key}: bottom of the button`).toBeLessThanOrEqual(SIZE.height)
+          if (index === 0) {
+            expect(scrollTop(renderer, ids), "the first Tab scrolled").toBeGreaterThan(before)
+            expect(box.y + box.height, "to the bottom edge").toBe(SIZE.height)
+          }
+        })
+      } finally {
+        finish(root, renderer)
+      }
+    })
+  }
+
+  it("wraps around over the skipped entries as it does over built ones", () => {
+    const { root, renderer, ids } = mount(<Page />)
+    try {
+      renderer.focusElement(ids.get("btn-0")!)
+      settle(renderer)
+      renderer.simulateKeystrokes("Shift+Tab")
+      settle(renderer)
+      // From the first stop backwards: the last button of the page, which is in a skipped entry.
+      expect(focusedTestId(renderer)).toBe(`btn-${ENTRIES - 1}`)
+      renderer.simulateKeystrokes("Tab")
+      settle(renderer)
+      expect(focusedTestId(renderer)).toBe("btn-0")
+    } finally {
+      finish(root, renderer)
+    }
+  })
+
+  it("does not reach a disabled or display none control in skipped content", () => {
+    const { root, renderer, ids } = mount(
+      <Page
+        entry={(index) =>
+          index === LAST_BUILT + 1 ? (
+            <Entry key={index} index={index}>
+              <div style={{ display: "none" }}>
+                <div testId="gone" tabIndex={0} />
+              </div>
+              <div testId="unreachable" tabIndex={-1} />
+            </Entry>
+          ) : (
+            <Entry key={index} index={index} />
+          )
+        }
+      />
+    )
+    try {
+      renderer.focusElement(ids.get(`btn-${LAST_BUILT}`)!)
+      settle(renderer)
+      renderer.simulateKeystrokes("Tab")
+      settle(renderer)
+      expect(focusedTestId(renderer)).toBe(`btn-${LAST_BUILT + 1}`)
+      renderer.simulateKeystrokes("Tab")
+      settle(renderer)
+      expect(focusedTestId(renderer)).toBe(`btn-${LAST_BUILT + 2}`)
+    } finally {
+      finish(root, renderer)
+    }
+  })
+})

@@ -3156,6 +3156,10 @@ and the extent changes as they are built.
   referenced, with no bounds and no actions. A skipped element with no role of its own
   is a `Group` to hold them. `hidden` content is not in the tree, and neither is what
   is `aria-hidden`, `display: none` or `visibility: hidden` below an `auto` one.
+- Tab and Shift+Tab reach a focusable element inside skipped `auto` content, in tab
+  order. The element takes the focus, the frame after builds what holds it, and the
+  scrollers around it scroll it to the nearest edge (see Tab below). Tab skips
+  `hidden` content.
 - `onContentVisibilityAutoStateChange` (and `…Capture`) fires on an `auto` element
   after the frame that skipped it or showed it, once for the first answer and then when
   it changes. `skipped` is in the payload. It bubbles and is cancelable, and
@@ -4586,7 +4590,9 @@ the focused element of the window that heard a focus event last.
 
 **Tab** and **Shift+Tab** move focus through the tab order, like a browser, and
 scroll the newly focused element into view: every scrolling ancestor moves to the
-nearest edge, and only if the element is not already in view. The
+nearest edge, and only if the element is not already in view. A focusable element
+inside the skipped content of a `contentVisibility: "auto"` element is in the tab
+order too; `"hidden"` content is not. The
 default runs after every handler of that keystroke, so any handler can cancel
 it:
 

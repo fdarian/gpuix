@@ -12,6 +12,8 @@ use std::sync::Arc;
 
 use gpui::{App, Window};
 
+mod skipped;
+
 use crate::element_tree::EventPayload;
 use crate::events::keyboard::{path_to_root, InputRouting};
 use crate::events::state_styles::PointerStates;
@@ -366,6 +368,9 @@ pub(crate) fn step_focus(
     cx: &mut App,
     backwards: bool,
 ) -> Result<(), String> {
+    if let Some(id) = skipped::target(window, cx, backwards)? {
+        return skipped::enter(window, cx, id);
+    }
     if backwards {
         window.focus_prev(cx);
     } else {
