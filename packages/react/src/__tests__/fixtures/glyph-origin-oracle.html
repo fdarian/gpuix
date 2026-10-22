@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>glyph origin oracle</title>
+<style>
+@font-face{font-family:'Inter Variable';src:url('inter-subset.ttf') format('truetype');font-weight:100 900}
+html,body{margin:0;width:1920px;height:400px;overflow:hidden;background:#171717}
+body{font-family:'Inter Variable';color:#fafafa}
+.col{position:absolute;width:100px;display:flex;flex-direction:column;gap:4px}
+.label{white-space:nowrap}
+.row{display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chip{display:inline-flex;flex-direction:row;align-items:center;height:20px;padding:0 8px;gap:4px;background:#525252;border-radius:6px;white-space:nowrap;font-size:11px;line-height:14px}
+.chiptext{display:block;text-box:trim-both cap alphabetic}
+</style>
+<body>
+<script>
+// The label and Sources row of FF's ThinkingSteps (a label, then a flex-wrap row whose block wrapper holds a 20px
+// inline-flex chip with cap-trimmed 11px/14px text), in four bands of label sizes. Column k of a band has its top at
+// the band's top + 20 + k/16, so a baseline lands on every 1/16 of a pixel, among them the device pixel ties.
+const CONFIGS=[{size:13,line:20},{size:11,line:14},{size:16,line:24},{size:24,line:36}];
+const STEPS=16, BAND=100, PITCH=112, LEFT=10;
+const cases=[];
+CONFIGS.forEach((config,band)=>{
+  for(let k=0;k<=STEPS;k++){
+    const id=`${config.size}-${config.line}-${k}`;
+    const col=document.createElement('div');
+    col.className='col';
+    col.style.left=(LEFT+PITCH*k)+'px';
+    col.style.top=(BAND*band+20+k/STEPS)+'px';
+    col.innerHTML=`<div class=label id="label-${id}" style="font-size:${config.size}px;line-height:${config.line}px">Hamb</div>`
+      +`<div class=row><div id="wrap-${id}"><div class=chip id="chip-${id}"><span class=chiptext id="chiptext-${id}">Hamb</span></div></div></div>`;
+    document.body.append(col);
+    cases.push({id,config,band,k,top:BAND*band+20+k/STEPS});
+  }
+});
+const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();return [r.x,r.y,r.width,r.height]};
+Promise.all([11,13,16,24].map(px=>document.fonts.load(`${px}px 'Inter Variable'`))).then(()=>document.fonts.ready).then(()=>{
+  const fontsLoaded=[11,13,16,24].every(px=>document.fonts.check(`${px}px 'Inter Variable'`));
+  document.body.dataset.rects=JSON.stringify({
+    fontsLoaded,
+    cases:cases.map(c=>({...c,label:rect('label-'+c.id),wrap:rect('wrap-'+c.id),chip:rect('chip-'+c.id),chiptext:rect('chiptext-'+c.id)}))
+  });
+});
+</script>
