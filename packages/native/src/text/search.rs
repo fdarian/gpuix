@@ -319,6 +319,9 @@ enum MatchId {
     /// Generated during `render()`; identified by the run and the position
     /// inside it, because nothing located it earlier.
     Native(Arc<str>, usize),
+    /// The matches in the content a `content-visibility: auto` element skips: nothing paints
+    /// them, and they take as many ordinals as there are, where the element sits.
+    Skipped(u64),
 }
 
 /// Per-frame match numbering, shared by retained and native runs.
@@ -326,17 +329,30 @@ enum MatchId {
 struct Ordinals {
     /// Matches announced during prepaint and not numbered yet, per `(declaration, spec)`.
     announced: HashMap<(u64, usize), Vec<Announced>>,
+    /// What numbering a `(declaration, spec)` needs of its spec, noted with its first announcement.
+    numbering: HashMap<(u64, usize), Numbering>,
     /// Next ordinal per `(declaration, spec)` for a match nobody announced.
     cursor: HashMap<(u64, usize), usize>,
     /// Ordinals already handed out, so a match painted by two runs, or a row
     /// gpui paints twice, keeps the number it got the first time.
     assigned: HashMap<(u64, usize, MatchId), usize>,
+    /// The `auto` elements around a match that is active, whether it paints or is skipped.
+    around_active: Vec<u64>,
 }
 
-/// One match a run will paint, with where in the document it starts.
+#[derive(Clone)]
+struct Numbering {
+    offset: usize,
+    active: Option<usize>,
+    matches: Arc<MatchSet>,
+}
+
+/// One match a run will paint, with where in the document it starts, or the matches of one
+/// skipped element, which take `weight` ordinals.
 struct Announced {
     at: DocPos,
     id: MatchId,
+    weight: usize,
 }
 
 thread_local! {
@@ -369,6 +385,7 @@ pub fn announce_retained_run(
             entry.spec,
             doc.at(entry.range.start),
             MatchId::Retained(entry.index),
+            1,
         );
     }
 }
@@ -383,7 +400,18 @@ pub fn announce_native_run(
 ) {
     for (spec_index, position, range) in native_matches(ctx, text) {
         let id = MatchId::Native(key.clone(), position);
-        announce(window, ctx, spec_index, doc.at(range.start), id);
+        announce(window, ctx, spec_index, doc.at(range.start), id, 1);
+    }
+}
+
+/// Announce the matches in the content `element`, a `content-visibility: auto` element, skips, so
+/// the matches after it are numbered as if it painted them. Chrome numbers the matches of its
+/// skipped content the same: they are in the find buffer.
+pub fn announce_skipped(window: WindowId, ctx: &HighlightContext, element: u64, doc: &DocPos) {
+    for spec_index in 0..ctx.set.specs.len() {
+        if let Some(&(count, _)) = ctx.matches.held.get(&(element, spec_index)) {
+            announce(window, ctx, spec_index, doc.clone(), MatchId::Skipped(element), count);
+        }
     }
 }
 
@@ -393,6 +421,7 @@ fn announce(
     spec_index: usize,
     at: DocPos,
     id: MatchId,
+    weight: usize,
 ) {
     ORDINALS.with(|states| {
         let mut states = states.borrow_mut();
@@ -402,8 +431,63 @@ fn announce(
         if state.cursor.contains_key(&group) {
             return;
         }
-        state.announced.entry(group).or_default().push(Announced { at, id });
+        let spec = &ctx.set.specs[spec_index];
+        state.numbering.entry(group).or_insert_with(|| Numbering {
+            offset: spec.match_index_offset,
+            active: spec.active_index,
+            matches: ctx.matches.clone(),
+        });
+        state.announced.entry(group).or_default().push(Announced { at, id, weight });
     });
+}
+
+/// Hands out the ordinals of what `group` announced, in document order, and notes the `auto`
+/// elements around the active match.
+fn number(state: &mut Ordinals, group: (u64, usize)) {
+    let Some(mut announced) = state.announced.remove(&group) else {
+        return;
+    };
+    let numbering = state.numbering[&group].clone();
+    announced.sort_by(|a, b| a.at.cmp(&b.at));
+    let mut next = numbering.offset;
+    for announce in announced {
+        let slot = (group.0, group.1, announce.id);
+        if state.assigned.contains_key(&slot) {
+            continue;
+        }
+        let holds_active = numbering.active.is_some_and(|active| (next..next + announce.weight).contains(&active));
+        if holds_active {
+            match &slot.2 {
+                MatchId::Skipped(element) => state.around_active.push(*element),
+                MatchId::Retained(index) => {
+                    if let Some(autos) = numbering.matches.autos.get(&(group.1, *index)) {
+                        state.around_active.extend(autos.iter().copied());
+                    }
+                }
+                MatchId::Native(..) => {}
+            }
+        }
+        state.assigned.insert(slot, next);
+        next += announce.weight;
+    }
+    state.cursor.insert(group, next);
+}
+
+/// Numbers everything announced this frame, which a frame with no wash to paint would not, and
+/// says which `auto` elements hold the active match of a search: the ones whose content is to be
+/// built because Ctrl+F made a match in it the current one. Called once every run has prepainted.
+pub fn settle_frame(window: WindowId) -> Vec<u64> {
+    ORDINALS.with(|states| {
+        let mut states = states.borrow_mut();
+        let Some(state) = states.get_mut(&window) else {
+            return Vec::new();
+        };
+        let groups: Vec<_> = state.announced.keys().copied().collect();
+        for group in groups {
+            number(state, group);
+        }
+        state.around_active.clone()
+    })
 }
 
 /// The wash for one match, numbered in DOCUMENT order.
@@ -417,6 +501,9 @@ fn announce(
 /// siblings that follow it, but Ctrl+F counts it where it sits in the document. So every run
 /// announces its matches in prepaint, and the first wash of a frame numbers them all. A match
 /// that nobody announced takes the next number after those, which is the old paint-order count.
+///
+/// The matches in content a skipped `auto` element does not build are announced by the element,
+/// so they take their ordinals and the matches after them are numbered as Ctrl+F does.
 fn wash(
     window: WindowId,
     ctx: &HighlightContext,
@@ -430,20 +517,7 @@ fn wash(
         let mut states = states.borrow_mut();
         let state = states.entry(window).or_default();
         let group = (slot.0, slot.1);
-        if let Some(mut announced) = state.announced.remove(&group) {
-            announced.sort_by(|a, b| a.at.cmp(&b.at));
-            let mut next = spec.match_index_offset;
-            for announce in announced {
-                let numbered = (group.0, group.1, announce.id);
-                if let std::collections::hash_map::Entry::Vacant(entry) =
-                    state.assigned.entry(numbered)
-                {
-                    entry.insert(next);
-                    next += 1;
-                }
-            }
-            state.cursor.insert(group, next);
-        }
+        number(state, group);
         if let Some(assigned) = state.assigned.get(&slot) {
             return *assigned;
         }
@@ -578,6 +652,9 @@ fn matches_in(
 /// single logical line the author wrote.
 #[derive(Debug)]
 pub struct Group {
+    /// The `content-visibility: auto` elements the text is in, innermost first. The group is
+    /// searched whether they skip it or not; a match in one that skips it has to show it.
+    autos: Option<Arc<[u64]>>,
     /// Selection key of each painted run, with its byte range inside `text` and the byte
     /// of the run's own text that range starts at (0 unless a run is split into groups).
     pub parts: Vec<(Arc<str>, Range<usize>, usize)>,
@@ -601,6 +678,7 @@ impl Group {
     fn of_parts(parts: Vec<(Arc<str>, Range<usize>, usize)>, text: String) -> Self {
         let (folded, fold_map) = fold(&text);
         Self {
+            autos: None,
             parts,
             text,
             folded,
@@ -618,6 +696,9 @@ impl GroupList {
     /// Collect the groups of `id`'s subtree, skipping any descendant that
     /// declares its own `highlight`: the nearest declaration wins, so an
     /// ancestor must not resolve or count matches that will never paint.
+    ///
+    /// Content that find-in-page leaves out is left out here: what is below a
+    /// `content-visibility: hidden` element and what is `display: none`.
     pub fn collect(tree: &RetainedTree, id: u64) -> Self {
         let mut groups = Vec::new();
         collect_into(tree, id, true, &mut groups);
@@ -731,6 +812,24 @@ fn collect_into(tree: &RetainedTree, id: u64, is_root: bool, out: &mut Vec<Group
     if !is_root && element.custom_props().contains_key("highlight") {
         return;
     }
+    let found = crate::layout::content_visibility::found_in(element);
+    if found == crate::layout::content_visibility::Found::Left {
+        return;
+    }
+    if found == crate::layout::content_visibility::Found::Activatable {
+        let first = out.len();
+        collect_content(tree, element, out);
+        for group in &mut out[first..] {
+            let around: Vec<u64> = group.autos.iter().flat_map(|autos| autos.iter().copied()).chain([id]).collect();
+            group.autos = Some(around.into());
+        }
+        return;
+    }
+    collect_content(tree, element, out);
+}
+
+fn collect_content(tree: &RetainedTree, element: &RetainedElement, out: &mut Vec<Group>) {
+    let id = element.id;
     // Only for built-ins: `build_custom` renders from props and ignores
     // `content`, so collecting it there would invent matches that never paint.
     if super::inline::is_host_container(element) {
@@ -817,6 +916,11 @@ pub struct MatchSet {
     by_key: HashMap<Arc<str>, Vec<MatchRef>>,
     /// Matches found, counted once even when split across runs. Reported to JS.
     pub total: usize,
+    /// The `content-visibility: auto` elements around each match that is in one, by `(spec, index)`.
+    autos: HashMap<(usize, usize), Arc<[u64]>>,
+    /// How many matches of a spec an `auto` element has in it, with the index of the last one
+    /// counted so that a match split over groups counts once.
+    held: HashMap<(u64, usize), (usize, usize)>,
 }
 
 impl MatchSet {
@@ -907,6 +1011,16 @@ fn push_match(
     spec: usize,
     index: usize,
 ) {
+    if let Some(autos) = &group.autos {
+        matches.autos.entry((spec, index)).or_insert_with(|| autos.clone());
+        for &auto in autos.iter() {
+            let held = matches.held.entry((auto, spec)).or_insert((0, usize::MAX));
+            if held.1 != index {
+                held.0 += 1;
+                held.1 = index;
+            }
+        }
+    }
     for (key, part, run_start) in &group.parts {
         let lo = range.start.max(part.start);
         let hi = range.end.min(part.end);
@@ -1746,5 +1860,75 @@ mod tests {
         a.whole_word = true;
         let set_c = HighlightSet { specs: vec![a] };
         assert_ne!(set_a.matcher_hash(), set_c.matcher_hash());
+    }
+
+    // ── content-visibility ───────────────────────────────────────────
+
+    /// `<div><text auto>alpha a</text><text hidden>alpha b</text><text>alpha c</text></div>`
+    fn skipping_tree() -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        for (id, text, style) in [
+            (2, "alpha a", r#"{"contentVisibility":"auto"}"#),
+            (3, "alpha b", r#"{"contentVisibility":"hidden"}"#),
+            (4, "alpha c", "{}"),
+        ] {
+            tree.create_element(id, "text".to_string());
+            tree.append_child(1, id);
+            tree.set_text(id, text.to_string());
+            tree.set_style(id, Arc::new(serde_json::from_str(style).expect("a style")));
+        }
+        tree
+    }
+
+    #[test]
+    fn find_leaves_out_hidden_content_and_keeps_auto_content() {
+        let groups = GroupList::collect(&skipping_tree(), 1);
+        let texts: Vec<_> = groups.groups.iter().map(|group| group.text.as_str()).collect();
+        assert_eq!(texts, ["alpha a", "alpha c"]);
+        assert_eq!(groups.groups[0].autos.as_deref(), Some(&[2_u64][..]));
+        assert_eq!(groups.groups[1].autos, None);
+        let matches = resolve(&groups, &HighlightSet { specs: vec![spec("alpha")] });
+        assert_eq!(matches.total, 2);
+        assert_eq!(matches.held.get(&(2, 0)).map(|held| held.0), Some(1));
+        assert_eq!(matches.autos.get(&(0, 0)).map(|autos| autos.to_vec()), Some(vec![2]));
+        assert!(!matches.autos.contains_key(&(0, 1)));
+    }
+
+    #[test]
+    fn a_skipped_auto_elements_matches_take_their_ordinals_where_it_is() {
+        let tree = skipping_tree();
+        let groups = GroupList::collect(&tree, 1);
+        let mut active = spec("alpha");
+        active.active_index = Some(0);
+        let ctx = context(&groups, HighlightSet { specs: vec![active] });
+        let path = |ix: u32| DocPos::new(Arc::<[u32]>::from([ix]), 0);
+        ordinal_frame_reset(window());
+        // The element skips its content: only the last run paints, after the one match that was skipped.
+        announce_skipped(window(), &ctx, 2, &path(0));
+        announce_retained_run(window(), &ctx, &crate::text::selection_key(4, 0), &path(2));
+        let washes = washes_for_retained_run(window(), &ctx, &crate::text::selection_key(4, 0));
+        assert_eq!(washes.len(), 1);
+        assert!(!washes[0].active, "the active one is the match that is skipped");
+        assert_eq!(settle_frame(window()), vec![2], "and the element around it is to show it");
+    }
+
+    #[test]
+    fn the_active_match_that_is_painted_keeps_its_auto_elements_shown() {
+        let tree = skipping_tree();
+        let groups = GroupList::collect(&tree, 1);
+        let mut active = spec("alpha");
+        active.active_index = Some(0);
+        let ctx = context(&groups, HighlightSet { specs: vec![active] });
+        let path = |ix: u32| DocPos::new(Arc::<[u32]>::from([ix]), 0);
+        ordinal_frame_reset(window());
+        announce_retained_run(window(), &ctx, &crate::text::selection_key(2, 0), &path(0));
+        announce_retained_run(window(), &ctx, &crate::text::selection_key(4, 0), &path(2));
+        // Nothing paints in a frame that has no wash; settling numbers it all the same.
+        assert_eq!(settle_frame(window()), vec![2]);
+        let washes = washes_for_retained_run(window(), &ctx, &crate::text::selection_key(2, 0));
+        assert!(washes[0].active);
+        ordinal_frame_reset(window());
+        assert!(settle_frame(window()).is_empty());
     }
 }

@@ -529,6 +529,10 @@ pub(crate) fn frame_sweep(
                 return;
             }
             let handle = window.window_handle();
+            if relevant {
+                // The sweep below finds the frame to build for it, before anything else is read.
+                relevance.set_found(crate::text::search::settle_frame(handle.window_id()));
+            }
             let viewport = window.viewport_size();
             let reports = reports.clone();
             let tree = tree.clone();

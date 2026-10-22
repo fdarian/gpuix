@@ -99,8 +99,9 @@ fn lays_out_items_as(style: Option<&StyleDesc>, display_value: Option<&str>) -> 
     x == Some("scroll") && y != Some("scroll")
 }
 
-/// Whether swapping `old` for `new` leaves every paragraph where it was: none
-/// of the properties [`plan_children`] reads changed.
+/// Whether swapping `old` for `new` leaves every paragraph where it was and what search finds:
+/// none of the properties [`plan_children`] reads changed, and nor did `content-visibility`,
+/// which decides whether find-in-page reads what is below the element.
 pub fn same_paragraphs(old: Option<&StyleDesc>, new: Option<&StyleDesc>) -> bool {
     fn read(style: Option<&StyleDesc>) -> [Option<&str>; 6] {
         let field = |get: fn(&StyleDesc) -> Option<&str>| style.and_then(get);
@@ -114,6 +115,7 @@ pub fn same_paragraphs(old: Option<&StyleDesc>, new: Option<&StyleDesc>) -> bool
         ]
     }
     read(old) == read(new)
+        && old.and_then(|style| style.content_visibility) == new.and_then(|style| style.content_visibility)
 }
 
 fn is_out_of_flow(element: &RetainedElement) -> bool {
@@ -1145,6 +1147,8 @@ mod tests {
             Some(&style(serde_json::json!({"display": "none"})))
         ));
         assert!(same_paragraphs(None, None));
+        let hidden = style(serde_json::json!({"contentVisibility": "hidden"}));
+        assert!(!same_paragraphs(None, Some(&hidden)), "find reads what is below it");
         assert!(!same_paragraphs(Some(&flex), None));
     }
 

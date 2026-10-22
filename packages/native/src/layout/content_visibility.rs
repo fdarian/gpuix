@@ -212,8 +212,22 @@ pub(crate) fn proximity_reach(viewport_width: f64, viewport_height: f64) -> f32 
 /// Asks, when the element is prepainted, whether an `auto` element that has not been asked is
 /// near, and remembers the content box of one that is laid out without being skipped. An element in
 /// a culled subtree is not near, see [`proximity_reach`].
-pub(crate) fn watch<E: gpui::InteractiveElement>(element: E, id: u64, relevance: Relevance) -> E {
+///
+/// `skipped_matches` is the search that has matches in the content a skipped element does not
+/// build, and where the element is in the document: it announces them, see
+/// [`crate::text::search::announce_skipped`].
+pub(crate) fn watch<E: gpui::InteractiveElement>(
+    element: E,
+    id: u64,
+    relevance: Relevance,
+    skipped_matches: Option<(Arc<crate::text::HighlightContext>, crate::text::selection::DocPos)>,
+) -> E {
     element.on_prepainted_layout(move |bounds, layout_id, window, _| {
+        if let Some((highlight, at)) = &skipped_matches {
+            if window.visibility() != gpui::Visibility::Hidden {
+                crate::text::search::announce_skipped(window.window_handle().window_id(), highlight, id, at);
+            }
+        }
         if relevance.wants_answer(id) {
             let near = !window.is_culling()
                 && is_near(bounds, [window.content_mask().bounds], window.viewport_size());
@@ -291,6 +305,8 @@ struct Known {
     forced_read: Option<ForcedRead>,
     /// The focused element and its ancestors, which hold the focus.
     focus_within: Arc<[u64]>,
+    /// The `auto` elements around the active match of a text search, which find-in-page activates.
+    found: Arc<[u64]>,
     clips: Option<Clips>,
 }
 
@@ -319,8 +335,21 @@ struct Element {
 }
 
 impl Element {
-    fn wanted_skipped(&self, focus_within: &[u64], id: u64) -> bool {
-        !(self.near == Some(true) || focus_within.contains(&id))
+    fn wanted_skipped(&self, known: &Holds, id: u64) -> bool {
+        !(self.near == Some(true) || known.focus_within.contains(&id) || known.found.contains(&id))
+    }
+}
+
+/// What keeps an `auto` element from skipping its content besides being near: the focus within it
+/// and a match of a search in it that is active.
+struct Holds<'a> {
+    focus_within: &'a [u64],
+    found: &'a [u64],
+}
+
+impl Known {
+    fn holds(&self) -> Holds<'_> {
+        Holds { focus_within: &self.focus_within, found: &self.found }
     }
 }
 
@@ -347,7 +376,7 @@ impl Relevance {
     /// The build of `id` is about to decide, for an `auto` element: whether it skips.
     pub(crate) fn is_skipped(&self, id: u64) -> bool {
         let known = self.0.lock();
-        known.elements.get(&id).is_none_or(|element| element.wanted_skipped(&known.focus_within, id))
+        known.elements.get(&id).is_none_or(|element| element.wanted_skipped(&known.holds(), id))
     }
 
     /// Whether the last build of `id` skipped its content. An element never built is skipped.
@@ -371,7 +400,7 @@ impl Relevance {
         }
         let known = self.0.lock();
         let skipped = match known.elements.get(&id) {
-            Some(element) if element.auto => element.wanted_skipped(&known.focus_within, id),
+            Some(element) if element.auto => element.wanted_skipped(&known.holds(), id),
             _ if declared => true,
             _ => return None,
         };
@@ -414,12 +443,12 @@ impl Relevance {
     /// skipped an element that is near.
     pub(crate) fn answer(&self, id: u64, near: bool) -> bool {
         let mut known = self.0.lock();
-        let focus_within = known.focus_within.clone();
+        let (focus_within, found) = (known.focus_within.clone(), known.found.clone());
         let Some(element) = known.elements.get_mut(&id).filter(|element| element.auto) else {
             return false;
         };
         element.near = Some(near);
-        element.wanted_skipped(&focus_within, id) != element.skipped_in_build
+        element.wanted_skipped(&Holds { focus_within: &focus_within, found: &found }, id) != element.skipped_in_build
     }
 
     /// `id` was laid out without being skipped, with this content box.
@@ -442,6 +471,16 @@ impl Relevance {
         }
     }
 
+    /// The `auto` elements around the active match of a text search, which stay built for as long
+    /// as it is active: Chrome activates the display lock of a match it makes active
+    /// (`ActivateFindInPageMatchRangeIfNeeded`).
+    pub(crate) fn set_found(&self, around: Vec<u64>) {
+        let mut known = self.0.lock();
+        if *known.found != *around {
+            known.found = around.into();
+        }
+    }
+
     /// The `auto` elements that are to skip or show their content otherwise than their last build
     /// did, which that build has to be made again for.
     pub(crate) fn pending(&self) -> Vec<u64> {
@@ -449,7 +488,7 @@ impl Relevance {
         known
             .elements
             .iter()
-            .filter(|(id, element)| element.auto && element.wanted_skipped(&known.focus_within, **id) != element.skipped_in_build)
+            .filter(|(id, element)| element.auto && element.wanted_skipped(&known.holds(), **id) != element.skipped_in_build)
             .map(|(id, _)| *id)
             .chain(known.forced.iter().copied())
             .collect()
@@ -521,6 +560,7 @@ impl Relevance {
             known.clips = Some(Clips { stamp, ancestors: FxHashMap::default() });
         }
         let clips = known.clips.as_mut().expect("the clips were just made");
+        let holds = Holds { focus_within: &known.focus_within, found: &known.found };
         for (id, element) in known.elements.iter_mut() {
             let Some(painted) = crate::automation::get_bounds(window, *id) else {
                 continue;
@@ -537,7 +577,7 @@ impl Relevance {
             let ancestors = clips.ancestors.entry(*id).or_insert_with(|| crate::observers::clipping_ancestors(tree, *id, None));
             let boxes = crate::observers::clip_rects(window, ancestors).into_iter().map(|(_, bounds)| bounds);
             element.near = Some(is_near(crate::observers::border_box(&painted), boxes, viewport));
-            let wanted = element.wanted_skipped(&known.focus_within, *id);
+            let wanted = element.wanted_skipped(&holds, *id);
             if wanted != element.skipped_in_build {
                 swept.rebuild |= !std::mem::replace(&mut element.rebuild_requested, true);
             } else {
@@ -592,6 +632,30 @@ pub(crate) fn is_forced_by_ancestor(tree: &RetainedTree, element: &RetainedEleme
         current = ancestor.parent.and_then(|parent| tree.elements.get(&parent));
     }
     false
+}
+
+/// What find-in-page makes of the content of `element`: Chrome's `FindBuffer` leaves out the content
+/// of a locked element that find-in-page cannot activate, which is a `hidden` one, and searches the
+/// content of an `auto` one whether it is skipped or not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Found {
+    Searched,
+    /// Searched, and shown when a match in it is the active one.
+    Activatable,
+    Left,
+}
+
+pub(crate) fn found_in(element: &RetainedElement) -> Found {
+    if !crate::text::inline::is_host_container(element) || crate::layout::contents::is_display_contents(element) {
+        return Found::Searched;
+    }
+    // The declared value, which is what moves the search revision: the groups of a search are cached
+    // by it.
+    match element.style.as_deref().and_then(|style| style.content_visibility).unwrap_or_default() {
+        ContentVisibility::Visible => Found::Searched,
+        ContentVisibility::Auto => Found::Activatable,
+        ContentVisibility::Hidden => Found::Left,
+    }
 }
 
 /// Whether `element` is a host element that skips its content, as it was last built.
@@ -783,6 +847,19 @@ mod tests {
         assert!(!skips(&relevance, ContentVisibility::Auto, 1));
         relevance.set_focus_within(&Arc::from([]));
         assert!(skips(&relevance, ContentVisibility::Auto, 1));
+    }
+
+    #[test]
+    fn the_active_match_of_a_search_keeps_an_element_from_skipping() {
+        let relevance = Relevance::default();
+        relevance.built(1, true, true, true);
+        relevance.answer(1, false);
+        relevance.set_found(vec![1]);
+        assert!(!skips(&relevance, ContentVisibility::Auto, 1));
+        assert_eq!(relevance.pending(), vec![1], "the build that skipped it is made again");
+        relevance.set_found(Vec::new());
+        assert!(skips(&relevance, ContentVisibility::Auto, 1));
+        assert!(relevance.pending().is_empty());
     }
 
     #[test]

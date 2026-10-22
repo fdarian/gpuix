@@ -10158,7 +10158,14 @@ pub(crate) fn build_host_container(
         ctx.retain.show_content(element.id);
     }
     if remembers_size {
-        el = crate::layout::content_visibility::watch(el, element.id, ctx.tree.relevance.clone());
+        // The matches of a search in the content it skips are numbered where the element is.
+        let skipped_matches = ctx
+            .inherited
+            .highlight
+            .clone()
+            .filter(|_| skipped && content_visibility == crate::layout::content_visibility::ContentVisibility::Auto)
+            .map(|highlight| (highlight, crate::text::selection::DocPos::new(ctx.doc_path(), 0)));
+        el = crate::layout::content_visibility::watch(el, element.id, ctx.tree.relevance.clone(), skipped_matches);
     }
 
     let collapsed_table = ctx.inherited.table.collapse

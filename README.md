@@ -3149,7 +3149,10 @@ and the extent changes as they are built.
   The first answer comes in the frame that builds the element, which draws again to
   build what is near; a later change takes effect in the next frame, with no hysteresis.
 - `focus()` on an element inside a skipped one builds what holds it in the same frame.
-  Search does not find skipped content.
+- The [`highlight` search](#text-highlighting-and-search) finds the text of skipped `auto`
+  content, as Ctrl+F does, and counts it; it does not find the text below a `hidden`
+  element. The `auto` element around the active match (`activeIndex`) is built, and its
+  match paints as the active one, for as long as it is active.
 - Skipped `auto` content is in the accessibility tree, as in Chrome (a screen reader can
   find its headings and buttons, and `aria-labelledby` into it names a control): the
   skipped element holds a node for each element below it that has a role or is
@@ -5447,6 +5450,15 @@ window and a container searches only that container.
 
 It reaches `<text>`, `<code>`, `<markdown>` and `<diff>` with no extra props,
 because every string GPUIX paints goes through the same funnel.
+
+Text in a [`contentVisibility`](#skipping-content-with-contentvisibility) subtree is
+searched as a browser's find does: the text of a skipped `"auto"` element is found
+and counted, and the element is built (and the match painted as the active one) when
+`activeIndex` reaches a match in it; the text below a `"hidden"` element, and
+`display: none` text, is not found. Matches in `<code>`, `<markdown>` and `<diff>` text
+inside skipped content are not counted, since that text exists only while the
+element renders. Scrolling to the active match is the app's: a skipped element has the
+box `containIntrinsicSize` gives it, so scrolling to the element works before it is built.
 
 ### A find bar
 
