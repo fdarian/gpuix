@@ -7,6 +7,8 @@
     lh|family|size|line-height        a block of one line of `Hxg`: its height is the line height
     w|family|size|text                an inline-block text: its width is the text's inline size
     mc|family|size|text               the same at `width: min-content`
+    (Helvetica and Times, whose kerning is a legacy `kern` table that HarfBuzz splits between the two glyphs of a pair,
+    have the KERNED_TEXTS of the pair kinds above and the KERNED_PARAGRAPHS of `wrap` as well)
     wrap|family|size|width|text       a text in a block `width` wide (`line-height: 1.3`): its height says how many lines
     mix|family|size                   an inline-block of three runs, each shaped and snapped on its own
     trim|family|size|line-height|text a cap-trimmed flex item centred in a 40px box
@@ -27,6 +29,13 @@
   const LINE_HEIGHTS = ['normal', '1', '1.2', '1.15', '1.3', '1.25', '1.5', '17px', '14.95px', '15.3px', '20px', '120%', '115%', '133%', '150%']
   const TEXTS = ['Label text', 'Settings', 'Hello world', 'Fractional widths', 'Quick brown fox jumps']
   const WIDTHS = [97.3, 120.7, 143.1]
+  const KERNED_FAMILIES = ['Helvetica', 'Times']
+  const KERNED_SIZES = [13, 16]
+  // A word after a kerned space (a To), a word before one (bA b), and both (To To).
+  const KERNED_TEXTS = ['a To', 'a Yo', 'a AV', 'a Ta', 'a Wa', 'To To', 'Hello To', 'bA b', 'bL b', 'bP b', 'bT b', 'bV b', 'bW b', 'bY b']
+  // Lines that start after kerned spaces, in widths that put the breaks at different words.
+  const KERNED_PARAGRAPHS = ['To Yo AV Ta Wa To Yo AV Ta Wa', 'Hello To Yo AV and Ta Wa words after bA bT b']
+  const KERNED_WIDTHS = [48.3, 63.9, 79.5, 95.1, 110.7, 126.3]
   const html = []
   const add = (id, style, inner, tag = 'div') => html.push(`<${tag} class="case" data-case data-id="${id}" style="${style}">${inner}</${tag}>`)
   const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -45,6 +54,17 @@
         add(`mc|${family}|${size}|${text}`, `${font}; display: inline-block; width: min-content`, escape(text))
         for (const width of WIDTHS) {
           add(`wrap|${family}|${size}|${width}|${text}`, `font: 400 ${size}px/1.3 '${family}'; width: ${width}px`, escape(text))
+        }
+      }
+      if (KERNED_FAMILIES.includes(family) && KERNED_SIZES.includes(size)) {
+        for (const text of KERNED_TEXTS) {
+          add(`w|${family}|${size}|${text}`, `${font}; display: inline-block`, escape(text))
+          add(`mc|${family}|${size}|${text}`, `${font}; display: inline-block; width: min-content`, escape(text))
+        }
+        for (const text of KERNED_PARAGRAPHS) {
+          for (const width of KERNED_WIDTHS) {
+            add(`wrap|${family}|${size}|${width}|${text}`, `font: 400 ${size}px/1.3 '${family}'; width: ${width}px`, escape(text))
+          }
         }
       }
       add(`mix|${family}|${size}`, `${font}; display: inline-block`, 'Fractional <b>widths</b> of <i>the</i> quick')

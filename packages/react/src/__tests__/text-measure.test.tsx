@@ -1,5 +1,8 @@
 /// How wide and how tall a text is laid out, in Chrome's unit at the scale of the window: the inline size of a text is its
-/// advance ceiled to 1/64 of a device pixel (`ShapeResult::SnappedWidth`), so 1/128 of a pixel at scale 2, and a line
+/// advance ceiled to 1/64 of a device pixel (`ShapeResult::SnappedWidth`), so 1/128 of a pixel at scale 2, per style run
+/// (an item), and a piece of an item (a word for `min-content`) is the difference of the ceils of its edges. A font with a
+/// legacy kern table (Helvetica, Times) kerns a pair as HarfBuzz splits it between the two glyphs, so a word after a kerned
+/// space starts half a kern later than CoreText puts it, as far as the measure goes. A line
 /// height is a multiple of 1/64 of a device pixel too: a number (`12px` at `1.2`) is cut, a length or a percentage is rounded
 /// (`14.95px` and `115%` of 13px are 14.953125px; `1.15` is 14.9375px at scale 1 and 14.9453125px at scale 2).
 ///
@@ -195,12 +198,6 @@ function differences(scale: Scale, kind: string, read: (id: string, rect: Rect, 
 const off = (what: string, actual: number, expected: number) =>
   Math.abs(actual - expected) > EXACT ? [`${what} ${actual} != Chrome's ${expected}`] : []
 
-/** `actual` is Chrome's or up to `over` layout units of this scale above it (`under` below it). */
-const nearly = (scale: Scale, what: string, actual: number, expected: number, under: number, over: number) => {
-  const units = (actual - expected) * 64 * scale
-  return units < -under - EXACT || units > over + EXACT ? [`${what} ${actual} is ${units} units from Chrome's ${expected}`] : []
-}
-
 describeNative.each(SCALES)("text measured at scale %i", (scale) => {
   it("has the line height of Chrome: a number cut, a length and a percentage rounded", () => {
     const found = differences(scale, "lh", (id, rect, chrome) => off(`${id}: height`, rect[3], chrome[3]))
@@ -215,16 +212,15 @@ describeNative.each(SCALES)("text measured at scale %i", (scale) => {
     expect(found).toEqual([])
   })
 
-  // Chrome measures a word in the shaping of the text around it, kerning included, where the line layout here has its
-  // advance alone: a word that kerns with the space before it (`o w`) is up to a unit narrower in Chrome. Never wider.
-  it("has the min-content width of Chrome, up to a unit over it where a word kerns with the space before it", () => {
-    let exact = 0
-    const found = differences(scale, "mc", (id, rect, chrome) => {
-      if (Math.abs(rect[2] - chrome[2]) <= EXACT) exact += 1
-      return [...nearly(scale, `${id}: width`, rect[2], chrome[2], 0, 1), ...off(`${id}: height`, rect[3], chrome[3])]
-    })
+  // A word is the difference of the ceils of its edges from the start of its run, so the second word of `Hello world` is
+  // a unit narrower than the word alone where the edges fall that way, and a word after a kerned space (`a To`) is narrower
+  // by half the kern.
+  it("has the min-content width of Chrome: the widest word as the difference of the ceils of its edges", () => {
+    const found = differences(scale, "mc", (id, rect, chrome) => [
+      ...off(`${id}: width`, rect[2], chrome[2]),
+      ...off(`${id}: height`, rect[3], chrome[3]),
+    ])
     expect(found).toEqual([])
-    expect(exact, "most of the 140 are Chrome's to the unit").toBeGreaterThan(100)
   })
 
   it("wraps in a width as Chrome does", () => {
@@ -232,10 +228,9 @@ describeNative.each(SCALES)("text measured at scale %i", (scale) => {
     expect(found).toEqual([])
   })
 
-  // Chrome ceils the width of each run of a line (a text item has its own `SnappedWidth`) and adds them up; the line
-  // layout here ceils the line once, so a line of five runs is up to four units narrower.
-  it("is as wide as the runs of a text, up to a unit per run under Chrome's, which ceils each", () => {
-    const found = differences(scale, "mix", (id, rect, chrome) => nearly(scale, `${id}: width`, rect[2], chrome[2], 4, 0))
+  // Chrome ceils the width of each run of a line (a text item has its own `SnappedWidth`) and adds them up.
+  it("is as wide as the runs of a text, each ceiled on its own", () => {
+    const found = differences(scale, "mix", (id, rect, chrome) => off(`${id}: width`, rect[2], chrome[2]))
     expect(found).toEqual([])
   })
 
