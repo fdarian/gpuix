@@ -3274,8 +3274,11 @@ display, so a font's lines do not scale with its size, and Times, Helvetica and 
 taller ascent, as in Chrome. `lineHeight: 'normal'`, which is also what an element that sets
 none has, is the three together (Helvetica at 16px is 18px, Menlo 19px at scale 1; Menlo 20px is
 24px at scale 1 and 23px at scale 2, where the metrics are 37 and 9 device pixels). A number or a
-length is laid out in sixty-fourths of a pixel, so `lineHeight: 1.2` at 12px is 14.390625px and not
-14 or 15. What a line has over the font's ascent and descent is shared around them, the half above
+length is laid out in sixty-fourths of a device pixel, so `lineHeight: 1.2` at 12px is 14.390625px and not
+14 or 15 on a 1x display and 14.3984375px on a 2x one. A number is cut to that unit and a length or a
+percentage is rounded to it, as in Chrome (`lineHeight: 1.15` at 13px is 14.9375px at 1x, `14.95px` and `115%`
+are 14.953125px). A text is as wide as its advance ceiled to the same unit, which is 1/64 px at 1x and
+1/128 px at 2x. What a line has over the font's ascent and descent is shared around them, the half above
 rounded down to a whole device pixel: a 24px line around a 19px content area of Menlo 16px has a
 baseline at 17px on a 1x display and at 17.5px on a 2x one, as in Chrome. A window that moves to a
 display of another scale shapes its text again. Boxes are snapped to the pixel grid when they are painted, so a stack of such lines is as
@@ -3893,15 +3896,14 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
 
 #### Deviations
 
-- A text is as wide as its advance up to 1/64 of a pixel, as in Chrome, and boxes are laid out in
+- A text is as wide as its advance up to 1/64 of a device pixel (1/128 px at 2x), as in Chrome, and boxes are laid out in
   fractions of a pixel: a length you write keeps its fraction, cut toward zero to 1/64 of a device pixel as
   Chrome's `LayoutUnit` cuts it (`100.4px` is `100.390625`, `-10.01px` is `-10` at 1x and `-10.0078125` at 2x, and the
   result of a `calc()` is cut, not its terms). The edges of a box snap, half up, to the device pixel it is painted on, and a box with a size is
   never snapped to none, so `33.3px`, `33.3px` and `33.4px` side by side paint 33, 34 and 33 pixels with no gap, and a
   border width is snapped as a border width (floored to whole device pixels, a width under one is one pixel). Painted
   positions are snapped but `getBoundingClientRect` is not, it reports the layout in 1/64 of a device pixel as Chrome
-  does. A percentage is not cut (`25%` of 101.296875 is 25.324219 where Chrome has 25.3125), and a text measures in
-  1/64 of a CSS pixel, which is coarser than Chrome's unit at 2x. Chrome rounds the ascent and descent of a font to whole pixels,
+  does. A percentage is not cut (`25%` of 101.296875 is 25.324219 where Chrome has 25.3125). Chrome rounds the ascent and descent of a font to whole pixels,
   gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic

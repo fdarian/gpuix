@@ -334,8 +334,10 @@ function expectFraction(name: string, scale: 1 | 2) {
     within(rect[2], chrome[2], UNIT, "width")
     // The baseline of a cap-trimmed label is in the layout unit its box is, so a badge sits exactly where Chrome puts
     // it: a 64th above it is a device pixel when it is painted on a tie (#80).
-    // The exception is a badge centred in a table cell: it is placed by the height of its Menlo 13px line, which is 20.02
-    // here and 20 in Chrome (the text measure, a later item), so it is a 64th off.
+    // The exception is a badge centred in a table cell. It is not the text measure (the line is 20px in both): the
+    // badge's label is centred in it at (20 - 8.015625) / 2 = 5.9921875, which Chrome's LayoutUnit division cuts to
+    // 5.984375 and taffy keeps for the baseline it reports (the label is placed at 5.984375 as in Chrome), so the line
+    // grows to 20.015625 and the badge sits a 64th off. With the label at 5.984375 by padding the line is 20.
     const exact = expected.spec.place !== "cell"
     within(rect[1], chrome[1], exact ? 1e-4 : UNIT, "y")
     within(rect[3], chrome[3], UNIT, "height")

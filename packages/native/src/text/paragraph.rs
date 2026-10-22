@@ -506,8 +506,9 @@ pub fn box_lengths(
 
 /// What turns the line height of a run into the pixels its line box is laid out with.
 pub struct RunHeights<'a> {
-    /// Lays a height out as `TextLayout::layout` does the line's.
-    pub snap: &'a dyn Fn(Pixels) -> Pixels,
+    /// The device pixels to a pixel of the window: a line height is laid out in 1/64 of one, as
+    /// `TextLayout::layout` does the line's (`gpui::LineHeight::to_laid_out_pixels`).
+    pub scale_factor: f32,
     /// The height `line-height: normal` gives text of a font and size.
     pub normal: &'a dyn Fn(&gpui::Font, Pixels) -> Pixels,
 }
@@ -533,9 +534,9 @@ fn run_line_height(
         return None;
     }
     let font_size = run_font_size.unwrap_or_else(|| base.font_size.to_pixels(rem_size));
-    Some((heights.snap)(line_height.to_pixels(font_size.into(), rem_size, || {
+    Some(line_height.to_laid_out_pixels(font_size.into(), rem_size, heights.scale_factor, || {
         (heights.normal)(run_font, font_size)
-    })))
+    }))
 }
 
 /// `StyledText` whose runs are `styles` laid over the inherited text style.
@@ -790,7 +791,7 @@ impl gpui::Element for InlineText {
         let text_system = window.text_system().clone();
         let scale_factor = window.scale_factor();
         let heights = RunHeights {
-            snap: &gpui::floor_to_layout_unit,
+            scale_factor,
             normal: &|font, font_size| {
                 text_system
                     .line_box(text_system.resolve_font(font), font_size, scale_factor)
@@ -953,11 +954,11 @@ mod tests {
         )
     }
 
-    /// Heights as the font and the device would give them if neither rounded: a `normal`
-    /// line is a quarter taller than its text.
+    /// Heights of a window of scale 1 whose font has no metrics of its own: a `normal` line is a
+    /// quarter taller than its text.
     fn exact_heights() -> RunHeights<'static> {
         RunHeights {
-            snap: &|height| height,
+            scale_factor: 1.0,
             normal: &|_, font_size| font_size * 1.25,
         }
     }

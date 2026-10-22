@@ -8,7 +8,7 @@
 /// descent of a font at its size to whole device pixels (zoomed to the display first, so at scale 2 a half CSS pixel is
 /// a step), widens the ascent of Times, Helvetica and Courier,
 /// takes `line-height: normal` as the ascent, descent and line gap together, lays a number or a
-/// length out in sixty-fourths of a pixel, and shares what a line height has over the font as
+/// length out in sixty-fourths of a device pixel, and shares what a line height has over the font as
 /// half-leading that is floored above the text. A span in another font, weight or size is a box of
 /// its own on the line, so the line is as tall as the strut and every box together need.
 
@@ -209,11 +209,9 @@ describeNative.each(SCALES)("a line box at scale %i", (scale) => {
     }
   })
 
-  // Chrome lays the line height out in sixty-fourths of a device pixel (14.3984375px at scale 2 for 12px text at 1.2),
-  // gpuix in sixty-fourths of a CSS pixel: the same unit as the text measure, which is item 4 of round 15a.
-  it.skipIf(scale !== 1)("lays a number or a length line height out in sixty-fourths of a pixel", () => {
+  it("lays a number or a length line height out in sixty-fourths of a device pixel", () => {
     // A block is on the pixel grid, so a stack of 64 lines is what shows the fraction of one:
-    // Chrome makes 12px text at 1.2 a line of 14.390625px, and 13px text one of 15.59375px.
+    // Chrome makes 12px text at 1.2 a line of 14.390625px at scale 1 and 14.3984375px at scale 2.
     for (const size of [12, 13, 14]) {
       const id = `helvetica-neue.400.${size}.1_2`
       const root = createTestRoot({ width: 1280, height: 800 })

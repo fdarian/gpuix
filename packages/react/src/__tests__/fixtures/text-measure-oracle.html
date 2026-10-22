@@ -1,0 +1,73 @@
+<!doctype html>
+<!--
+  Oracle for text-measure.test.tsx: how wide and how tall Chrome lays a text out, at device scale 1 and 2
+  (`sh dsf-oracle.sh text-measure` writes text-measure-oracle.json and text-measure-oracle-x2.json).
+
+  The id of a box is its parameters, which the test reads back to build the same page:
+    lh|family|size|line-height        a block of one line of `Hxg`: its height is the line height
+    w|family|size|text                an inline-block text: its width is the text's inline size
+    mc|family|size|text               the same at `width: min-content`
+    wrap|family|size|width|text       a text in a block `width` wide (`line-height: 1.3`): its height says how many lines
+    mix|family|size                   an inline-block of three runs, each shaped and snapped on its own
+    trim|family|size|line-height|text a cap-trimmed flex item centred in a 40px box
+  The numbers are `[x, y, width, height]` relative to the box of the case.
+-->
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .case { color: #000; }
+</style>
+</head>
+<body>
+<script>
+  const FAMILIES = ['Helvetica Neue', 'Menlo', 'Times', 'Helvetica']
+  const SIZES = [11, 12, 13, 13.5, 14, 15.5, 16]
+  const LINE_HEIGHTS = ['normal', '1', '1.2', '1.15', '1.3', '1.25', '1.5', '17px', '14.95px', '15.3px', '20px', '120%', '115%', '133%', '150%']
+  const TEXTS = ['Label text', 'Settings', 'Hello world', 'Fractional widths', 'Quick brown fox jumps']
+  const WIDTHS = [97.3, 120.7, 143.1]
+  const html = []
+  const add = (id, style, inner, tag = 'div') => html.push(`<${tag} class="case" data-case data-id="${id}" style="${style}">${inner}</${tag}>`)
+  const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  for (const family of ['Helvetica Neue', 'Menlo']) {
+    for (const size of SIZES) {
+      for (const lh of LINE_HEIGHTS) {
+        add(`lh|${family}|${size}|${lh}`, `font: 400 ${size}px/${lh} '${family}'`, '<span>Hxg</span>')
+      }
+    }
+  }
+  for (const family of FAMILIES) {
+    for (const size of SIZES) {
+      const font = `font: 400 ${size}px/20px '${family}'`
+      for (const text of TEXTS) {
+        add(`w|${family}|${size}|${text}`, `${font}; display: inline-block`, escape(text))
+        add(`mc|${family}|${size}|${text}`, `${font}; display: inline-block; width: min-content`, escape(text))
+        for (const width of WIDTHS) {
+          add(`wrap|${family}|${size}|${width}|${text}`, `font: 400 ${size}px/1.3 '${family}'; width: ${width}px`, escape(text))
+        }
+      }
+      add(`mix|${family}|${size}`, `${font}; display: inline-block`, 'Fractional <b>widths</b> of <i>the</i> quick')
+    }
+  }
+  for (const [family, size, lh, text] of [
+    ['Helvetica Neue', 13, '20px', 'Label'],
+    ['Helvetica Neue', 12, '16px', 'Settings'],
+    ['Menlo', 14, '1.5', 'Hello'],
+    ['Helvetica Neue', 11, '1.3', 'Priority'],
+    ['Menlo', 13, '20px', 'Hello world'],
+  ]) {
+    add(`trim|${family}|${size}|${lh}|${text}`, `height: 40px; display: flex; align-items: center; font: 400 ${size}px/${lh} '${family}'`,
+      `<span data-id="trim|${family}|${size}|${lh}|${text}.label" style="text-box: trim-both cap alphabetic">${text}</span>`)
+  }
+  document.body.innerHTML = html.join('\n')
+  const rects = {}
+  for (const element of document.querySelectorAll('[data-id]')) {
+    const origin = (element.closest('[data-case]') ?? element).getBoundingClientRect()
+    const { x, y, width, height } = element.getBoundingClientRect()
+    rects[element.dataset.id] = [x - origin.x, y - origin.y, width, height]
+  }
+  document.body.setAttribute('data-rects', JSON.stringify(rects))
+</script>
+</body>
+</html>
