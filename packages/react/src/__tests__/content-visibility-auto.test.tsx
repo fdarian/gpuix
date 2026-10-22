@@ -483,7 +483,7 @@ function TextEntry({ index, value, events, intrinsic = "auto 40px" }: { index: n
       onContentVisibilityAutoStateChange={(event) => events.push([index, event.skipped])}
       style={{ display: "flex", flexDirection: "column", flexShrink: 0, padding: 8, gap: 4, contentVisibility: value, containIntrinsicSize: intrinsic } as CSSProperties}
     >
-      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <div testId={`row-${index}`} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
         <div testId={`bar-${index}`} style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#999999" }} />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <text style={{ fontSize: 14, color: "#222222" }}>{`Entry ${index}: the sidebar row keeps its fluid hover while the page behind it swaps`}</text>
@@ -493,17 +493,17 @@ function TextEntry({ index, value, events, intrinsic = "auto 40px" }: { index: n
           <div style={{ width: 6, height: 6, backgroundColor: "#dddddd" }} />
         </div>
       </div>
-      <div style={{ height: 1, backgroundColor: "#dddddd" }} />
+      <div testId={`rule-${index}`} style={{ height: 1, backgroundColor: "#dddddd" }} />
     </div>
   )
 }
 
-function TextPage({ value, events }: { value: "visible" | "auto"; events: Events }) {
+function TextPage({ value, events, intrinsic }: { value: "visible" | "auto"; events: Events; intrinsic?: string }) {
   return (
     <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column", fontFamily: "GpuixTestSquare" }}>
       <div testId="scroller" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
         {Array.from({ length: ENTRIES }, (_, index) => (
-          <TextEntry key={index} index={index} value={value} events={events} />
+          <TextEntry key={index} index={index} value={value} events={events} intrinsic={intrinsic} />
         ))}
       </div>
     </div>
@@ -658,6 +658,199 @@ describeNative("a read of geometry below a skipped element", { timeout: 120_000 
       expect(text.some((line) => line.startsWith("Entry 150:")), "and the one that was read is not").toBe(false)
       expect(skippedIn(renderer, ids, ENTRIES)).toEqual(skippedBefore)
       if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
+describeNative("consecutive reads of geometry below skipped elements", { timeout: 120_000 }, () => {
+  type Bounds = ReturnType<TestRenderer["getElementBounds"]>
+
+  /** The page of `TextPage`, drawn to rest, and what a read of `names` costs in passes and nodes. */
+  function open(intrinsic?: string) {
+    const events: Events = []
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    renderer.registerFont(SQUARE_FONT)
+    renderer.setInlineDraws(false)
+    root.render(<TextPage value="auto" events={events} intrinsic={intrinsic} />)
+    renderer.flush()
+    const ids = idsOf(renderer)
+    for (let index = 0; index < 6; index++) {
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
+    }
+    return { root, renderer, ids, events }
+  }
+
+  const reading = (renderer: TestRenderer, ids: Map<string, number>, names: string[]) => {
+    const layout = renderer.getLayoutCounters()
+    const passes = renderer.getLayoutPassCount()
+    const read = names.map((name) => renderer.getElementBounds(ids.get(name)!))
+    const after = renderer.getLayoutCounters()
+    return {
+      read,
+      passes: renderer.getLayoutPassCount() - passes,
+      enginePasses: after.passes - layout.passes,
+      nodes: after.nodesCreated - layout.nodesCreated,
+      laidOut: after.nodesLaidOut - layout.nodesLaidOut,
+    }
+  }
+
+  /** A frame, and a read of a built element, which leaves a window that has nothing to lay out. */
+  const clean = (renderer: TestRenderer, ids: Map<string, number>) => {
+    renderer.drawFrame()
+    renderer.getBuiltElementBounds(ids.get("bar-3")!)
+  }
+
+  // 53 entries of 37px are near and built, the rest skipped at 56px (40px and the padding).
+  const BAR_150 = 53 * 37 + 97 * 56 + 8
+  const BAR_160 = 53 * 37 + 107 * 56 + 8
+
+  it("share the pass that forced the entry: ten reads inside one entry run one pass", () => {
+    const { root, renderer, ids } = open()
+    try {
+      clean(renderer, ids)
+      const names = Array.from({ length: 10 }, (_, read) => ["bar-150", "row-150", "rule-150"][read % 3]!)
+      const first = reading(renderer, ids, names.slice(0, 1))
+      expect(first.read[0]!.y, "where Chrome puts the bar of a skipped entry").toBe(BAR_150)
+      expect(first.passes).toBe(1)
+      const rest = reading(renderer, ids, names.slice(1))
+      expect(rest, "the nine that follow cost nothing").toMatchObject({ passes: 0, enginePasses: 0, nodes: 0, laidOut: 0 })
+      const [row, rule] = [rest.read[0]!, rest.read[1]!]
+      expect(row.y, "the row holds the bar").toBeLessThanOrEqual(BAR_150)
+      expect(rule.y, "and the rule is under it, a gap away").toBe(row.y + row.height + 4)
+      for (const [index, bounds] of rest.read.entries()) expect(bounds, `read ${index + 1}`).toEqual(reading(renderer, ids, [names[index + 1]!]).read[0])
+
+      // A read of an element that is built, and of the scroller's metrics, is answered by the same pass.
+      clean(renderer, ids)
+      reading(renderer, ids, ["bar-150"])
+      const near = reading(renderer, ids, ["bar-3", "scroller"])
+      expect(near, "the built elements are those of the forced pass").toMatchObject({ passes: 0, nodes: 0 })
+      const before = renderer.getLayoutPassCount()
+      expect(renderer.getScrollMetrics(ids.get("scroller")!)![3]).toBeGreaterThan(SIZE.height)
+      expect(renderer.getLayoutPassCount() - before, "and so are the scroll metrics").toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("take one more pass for each entry that is not forced yet, and that pass forces it with the entries read before", () => {
+    const { root, renderer, ids } = open()
+    try {
+      clean(renderer, ids)
+      const first = reading(renderer, ids, ["bar-150"])
+      expect(first.passes).toBe(1)
+      const second = reading(renderer, ids, ["bar-160"])
+      expect(second.read[0]!.y).toBe(BAR_160)
+      expect(second.passes, "the union of the two entries is forced in one pass").toBe(1)
+      // Verification builds a pass twice, so the engine counts what a pass takes, not one.
+      expect(second.enginePasses, "and the engine's passes are those of the layout passes").toBe(first.enginePasses)
+      const again = reading(renderer, ids, ["bar-150", "bar-160", "bar-150", "bar-160", "row-160"])
+      expect(again, "both are forced now").toMatchObject({ passes: 0, enginePasses: 0, nodes: 0, laidOut: 0 })
+      expect(again.read[0], "the first entry kept its box through the second pass").toEqual(first.read[0])
+      expect(again.read[1]).toEqual(second.read[0])
+      // A third entry makes the union of three.
+      const third = reading(renderer, ids, ["bar-170", "bar-150"])
+      expect(third.passes).toBe(1)
+      expect(third.read[0]!.y).toBe(BAR_160 + 10 * 56)
+      expect(third.read[1]).toEqual(first.read[0])
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("end with a change: the next read lays out the new content", () => {
+    const { root, renderer, ids, events } = open()
+    try {
+      clean(renderer, ids)
+      expect(reading(renderer, ids, ["bar-150"]).read[0]!.y).toBe(BAR_150)
+      expect(reading(renderer, ids, ["bar-150", "row-150"]).passes).toBe(0)
+
+      root.render(<TextPage value="auto" events={events} intrinsic="auto 60px" />)
+      renderer.flush()
+      const changed = reading(renderer, ids, ["bar-150"])
+      expect(changed.read[0]!.y, "the 97 skipped entries above are 20px taller").toBe(BAR_150 + 97 * 20)
+      // One pass lays out the change, and one forces the entry: laying out first is what finds which ancestors are skipped.
+      expect(changed.passes).toBe(2)
+      const shared = reading(renderer, ids, ["bar-150", "rule-150"])
+      expect(shared.passes, "and the pass that followed the change is shared").toBe(0)
+      expect(shared.read[0]).toEqual(changed.read[0])
+
+      // A scroll write moves the boxes: the next read lays out again.
+      renderer.scrollTo(ids.get("scroller")!, 0, 30)
+      const scrolled = reading(renderer, ids, ["bar-150"])
+      expect(scrolled.read[0]!.y, "where it is now").toBe(BAR_150 + 97 * 20 - 30)
+      expect(scrolled.passes).toBeGreaterThan(0)
+      expect(reading(renderer, ids, ["bar-150"]).passes).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("end with a painted frame: the next read forces the entry again and the frames skip it", () => {
+    const { root, renderer, ids } = open()
+    try {
+      clean(renderer, ids)
+      const skippedBefore = Array.from({ length: ENTRIES }, (_, index) => index).filter((index) => !renderer.getBuiltElementBounds(ids.get(`bar-${index}`)!))
+      expect(skippedBefore).toContain(150)
+
+      const first = reading(renderer, ids, ["bar-150"])
+      expect(first.passes).toBe(1)
+      const frames = renderer.getPaintedFrameCount()
+      renderer.drawFrame()
+      expect(renderer.getPaintedFrameCount() - frames, "the frame paints").toBe(1)
+      expect(renderer.getPaintedText().some((line) => line.startsWith("Entry 150:")), "and does not paint the entry").toBe(false)
+
+      clean(renderer, ids)
+      const after = reading(renderer, ids, ["bar-150", "row-150"])
+      expect(after.passes, "the frame skipped the entry again, so the read forces it again").toBe(1)
+      expect(after.read[0]).toEqual(first.read[0])
+      expect(reading(renderer, ids, ["bar-150"]).passes).toBe(0)
+
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
+      expect(renderer.getPaintedText().some((line) => line.startsWith("Entry 150:"))).toBe(false)
+      expect(renderer.getPaintedText().some((line) => line.startsWith("Entry 3:"))).toBe(true)
+      const skippedAfter = Array.from({ length: ENTRIES }, (_, index) => index).filter((index) => !renderer.getBuiltElementBounds(ids.get(`bar-${index}`)!))
+      expect(skippedAfter, "the entries are skipped still").toEqual(skippedBefore)
+      expect(renderer.getBuiltElementBounds(ids.get("bar-150")!), "and not built").toBeFalsy()
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
+describeNative("consecutive reads inside a hidden element", { timeout: 120_000 }, () => {
+  it("share the pass for the bounds and the scroll metrics of what it holds", () => {
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      root.render(
+        <Page>
+          <div testId="held" style={{ contentVisibility: "hidden", containIntrinsicSize: "30px", flexShrink: 0 } as CSSProperties}>
+            <div testId="inner" style={{ height: 50, width: 40, overflowY: "scroll" }}>
+              <div testId="inner-child" style={{ height: 200, width: 40, flexShrink: 0 }} />
+            </div>
+          </div>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      renderer.drawFrame()
+      renderer.getBuiltElementBounds(ids.get("held")!)
+      const passes = () => renderer.getLayoutPassCount()
+      const start = passes()
+      const metrics = renderer.getScrollMetrics(ids.get("inner")!)!
+      expect(passes() - start, "a scroll metrics read forces the held element").toBe(1)
+      expect([metrics[4], metrics[5]], "the client size of the scroller").toEqual([40, 50])
+      expect(renderer.getElementBounds(ids.get("inner-child")!)).toMatchObject({ width: 40, height: 200 })
+      expect(renderer.getScrollMetrics(ids.get("inner")!)).toEqual(metrics)
+      expect(renderer.getElementBounds(ids.get("inner")!)).toMatchObject({ width: 40, height: 50 })
+      expect(passes() - start, "and the reads after it share the pass").toBe(1)
+      expect(renderer.getBuiltElementBounds(ids.get("inner-child")!), "the element is held still").toBeFalsy()
     } finally {
       root.unmount()
     }

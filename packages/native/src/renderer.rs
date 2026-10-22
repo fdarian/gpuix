@@ -480,6 +480,11 @@ pub(crate) fn invalidate_after_mutation(cx: &mut gpui::App, view: gpui::EntityId
 /// frame that follows is not the forced one. Nothing about their state changes (see
 /// `content_visibility::Relevance::force`). An element outside any skipped subtree costs the walk
 /// up its ancestors.
+///
+/// The forced pass is shared with the reads that follow it: while the window is as it left it
+/// (see `Relevance::forced_by_last_read`), a read whose skipped ancestors that pass forced
+/// reads its boxes without another pass, and one that needs others forces them together with
+/// those, in one pass, so the boxes read before stay what they were.
 pub(crate) fn read_after_layout<R>(
     tree: &Mutex<RetainedTree>,
     id: u64,
@@ -488,26 +493,40 @@ pub(crate) fn read_after_layout<R>(
     lay_out: fn(&mut gpui::Window, &mut gpui::App) -> bool,
     read: impl FnOnce(gpui::WindowId) -> R,
 ) -> Result<R> {
-    lay_out(window, cx);
     let window_id = window.window_handle().window_id();
-    let (relevance, skipped) = {
-        let tree = tree.lock().unwrap();
-        (tree.relevance.clone(), crate::layout::content_visibility::skipped_ancestors(&tree, id))
-    };
-    if skipped.is_empty() {
+    let relevance = tree.lock().unwrap().relevance.clone();
+    let shared = relevance.forced_by_last_read(window.layout_stamp());
+    // A window nothing happened to since the forced pass has nothing to lay out but the content
+    // that pass did not force.
+    if shared.is_none() {
+        lay_out(window, cx);
+    }
+    let skipped = crate::layout::content_visibility::skipped_ancestors(&tree.lock().unwrap(), id);
+    let mut forcing = shared.unwrap_or_default();
+    if skipped.iter().all(|ancestor| forcing.contains(ancestor)) {
+        // Nothing is forced and nothing recorded when `skipped` is empty and the window was laid
+        // out above.
         return Ok(read(window_id));
+    }
+    for ancestor in skipped {
+        if !forcing.contains(&ancestor) {
+            forcing.push(ancestor);
+        }
     }
     let view = window
         .root::<GpuixView>()
         .flatten()
         .ok_or_else(|| Error::from_reason("the window has no view to lay out"))?
         .entity_id();
-    relevance.force(skipped);
+    relevance.force(forcing.clone());
     invalidate_after_commit(cx, view);
-    lay_out(window, cx);
+    let laid_out = lay_out(window, cx);
     let read = read(window_id);
     relevance.unforce();
     invalidate_after_commit(cx, view);
+    if laid_out {
+        relevance.remember_forced_read(forcing, window.layout_stamp());
+    }
     Ok(read)
 }
 

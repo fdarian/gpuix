@@ -287,9 +287,18 @@ struct Known {
     elements: FxHashMap<u64, Element>,
     /// The elements a read of geometry below them lays out the content of, see [`Relevance::force`].
     forced: Vec<u64>,
+    /// The last forced layout pass of a read, while nothing has happened to the window since.
+    forced_read: Option<ForcedRead>,
     /// The focused element and its ancestors, which hold the focus.
     focus_within: Arc<[u64]>,
     clips: Option<Clips>,
+}
+
+/// A layout pass that a read forced the content of `forced` for, and the window's state right
+/// after it, trailing invalidation included.
+struct ForcedRead {
+    forced: Vec<u64>,
+    stamp: gpui::LayoutStamp,
 }
 
 #[derive(Default)]
@@ -464,6 +473,22 @@ impl Relevance {
 
     pub(crate) fn unforce(&self) {
         self.force(Vec::new());
+    }
+
+    /// The elements the last forced pass of a read laid out the content of, if the window is as
+    /// that read left it: nothing invalidated it and no frame or pass was built since, so the boxes
+    /// it published are still the window's (Chrome's locked subtree stays clean while nothing
+    /// dirties it). A frame skips them again and a mutation, a scroll write or a resize
+    /// invalidates, so each ends it.
+    pub(crate) fn forced_by_last_read(&self, now: gpui::LayoutStamp) -> Option<Vec<u64>> {
+        let known = self.0.lock();
+        known.forced_read.as_ref().filter(|read| read.stamp == now).map(|read| read.forced.clone())
+    }
+
+    /// Records the pass that forced `forced`, with the stamp of the window after the read made
+    /// it skip them again.
+    pub(crate) fn remember_forced_read(&self, forced: Vec<u64>, stamp: gpui::LayoutStamp) {
+        self.0.lock().forced_read = Some(ForcedRead { forced, stamp });
     }
 
     /// Drops what is known of elements the tree no longer has.
