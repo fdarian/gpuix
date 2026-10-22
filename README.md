@@ -2700,7 +2700,7 @@ function ProgrammaticScroll() {
 
 | Member | |
 |---|---|
-| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range, which ends where Chrome's does: the extent (with the padding after the content) and the client size, each rounded half up to a device pixel, apart from where the box sits. At scale 1 the farthest offset is `scrollHeight - clientHeight`; at scale 2 it can be half a pixel more, and `scrollTo(0, scrollHeight - clientHeight)` stops short of it, as in Chrome. A write lays out only what is pending, then clamps against that layout, so any number of writes in a task cost no layout, and a write after a style change in the same task is clamped to the new extent. |
+| `scrollTop`, `scrollLeft` | Read, or set for an instant `scrollTo`. Clamped to the scrollable range, which ends where Chrome's does: the extent (with the padding after the content) and the client size, each rounded half up to a device pixel, apart from where the box sits. At scale 1 the farthest offset is `scrollHeight - clientHeight`; at scale 2 it can be half a pixel more, and `scrollTo(0, scrollHeight - clientHeight)` stops short of it, as in Chrome. A write lays out only what is pending, then clamps against that layout, so any number of writes in a task cost no layout, and a write after a style change in the same task is clamped to the new extent. What is pending is nothing after a style change of only `opacity`, `boxShadow`, `color`, `backgroundColor`, the border, outline, text decoration, scrollbar or selection colours (no box moves, as in Chrome, so a bounds read lays out nothing either), and a write that leaves the scroller where it is does nothing more: no frame, no `onScroll`, and it ends a smooth scroll in flight, as in Chrome. |
 | `scrollWidth`, `scrollHeight` | The content's extent, never less than the client size. A whole number: the extent as layout measured it, rounded half up, as Chrome does. |
 | `clientWidth`, `clientHeight` | The padding box less the scrollbar. Overlay scrollbars take nothing from it; classic ones (see [Scrollbars](#scrollbars)) take 15 px, or 11 with `scrollbarWidth: "thin"`. A whole number: the size as layout measured it, rounded half up, as Chrome does, so a box 33.328125 px wide has a `clientWidth` of 33. A table with `border-collapse: collapse` is the exception, as in Chrome: its borders are the outer halves of its cells' borders, which `clientLeft` and `clientTop` report (rounded half up) but which `clientWidth` and `clientHeight` do not take off, so they are the whole border box. Its cells' client size leaves their own halves. |
 | `scrollTo({ top, left, behavior })`, `scrollTo(x, y)` | An axis you leave out stays where it is. A value that is not a finite number is 0, as in Chrome: `NaN`, `Infinity` and `-Infinity` (and `undefined` or a non-numeric string to a `scrollTop` or `scrollLeft` write) scroll that axis to the start. |
@@ -8775,7 +8775,11 @@ Counters you read off the renderer:
   subtrees built whole as units of an animation (`unitsBuilt`, `unitsOversized`
   for those over 256 elements).
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
-  child lists set, passes, and measure calls, since the window was made, the
+  child lists set, passes, and measure calls, `nodesLaidOut` (nodes whose layout
+  algorithm ran to place them: a change to one leaf costs its ancestors and what
+  their new sizes reach, not the tree) and `nodesSized` (the runs that only size
+  a node, which a parent makes to learn what a child contributes), since the
+  window was made, the
   text system's lines shaped, wrapped layouts built, line layout hits and
   `shapeCacheHits` (lines the window's shape store gave back: text shaped more than
   two frames ago and mounted again is not shaped again), and the

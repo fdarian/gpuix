@@ -25,7 +25,7 @@ use crate::renderer::{
     parse_debug_frame_overlay_mode, to_element_id, DebugFrameOverlayStats, EventCallback,
     GpuixView, PatchCounters, PathPromptOptions, PromptForPathsTask, Repaint, WindowOptions,
 };
-use crate::retained_tree::RetainedTree;
+use crate::retained_tree::{Dirty, RetainedTree};
 
 /// Counts of the work the element build did, see `get_build_counters`.
 #[derive(Debug, Clone)]
@@ -70,6 +70,12 @@ pub struct LayoutCounters {
     pub passes: f64,
     /// Calls to the measure functions of text and other measured leaves.
     pub measures: f64,
+    /// Nodes whose layout algorithm ran to place them: taffy's cache misses. A change to one leaf
+    /// costs its chain of ancestors (and what their new sizes reach), not the size of the tree.
+    pub nodes_laid_out: f64,
+    /// Nodes whose layout algorithm ran only to size them, which a parent does to learn what a
+    /// child contributes before it places it. Not counted in `nodesLaidOut`.
+    pub nodes_sized: f64,
     /// Lines the platform shaped, since the window was made: the line layout cache missed.
     pub shapes: f64,
     /// Wrapped line layouts computed (shaped and wrapped) because neither the frame nor the one
@@ -362,7 +368,12 @@ thread_local! {
     /// only a dirty window, and a read that notified every time would draw once per call. The
     /// first read after a change still notifies, which is what lets an image that finished
     /// loading since the last frame change its layout.
-    static UNFLUSHED_MUTATIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static UNFLUSHED_MUTATIONS: std::cell::Cell<Dirty> = const { std::cell::Cell::new(Dirty::Clean) };
+}
+
+/// What the mutations applied since a bounds read or a flush need of the next one, if anything.
+fn take_unflushed() -> Dirty {
+    UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(Dirty::Clean))
 }
 
 /// `update_view` for a change that returns nothing. When it is called from a
@@ -938,6 +949,8 @@ impl TestGpuixRenderer {
                 children_set: counters.children_set as f64,
                 passes: counters.passes as f64,
                 measures: counters.measures as f64,
+                nodes_laid_out: counters.nodes_laid_out as f64,
+                nodes_sized: counters.nodes_sized as f64,
                 shapes: text.shapes as f64,
                 wrapped_layouts: text.wrapped_layouts as f64,
                 line_layout_hits: text.hits as f64,
@@ -1029,11 +1042,9 @@ impl TestGpuixRenderer {
         drop(tree);
         // Like the live renderer, a change made from a handler marks the window dirty at once, so
         // that a read in the same handler draws it. Outside a handler `flush()` does.
-        if dirty {
-            UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.set(true));
-        }
-        if dirty && crate::events::sync_dispatch::in_sync_call() {
-            crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason)?;
+        UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.set(unflushed.get().max(dirty)));
+        if dirty != Dirty::Clean && crate::events::sync_dispatch::in_sync_call() {
+            crate::events::sync_dispatch::invalidate_root_view(dirty).map_err(Error::from_reason)?;
         }
         if auto_focus {
             window_call(|window, cx| {
@@ -1048,19 +1059,24 @@ impl TestGpuixRenderer {
 
     // ── Test-specific methods ────────────────────────────────────────
 
+    /// [`Self::flush`] for the changes of a bounds read that was waiting on mutations.
+    fn flush_for(&self, dirty: Dirty) -> Result<()> {
+        // From a sync event handler this only marks the view dirty: the frame
+        // is drawn once the input that is being dispatched has returned.
+        deliver_frame()?;
+        update_view_or_defer(move |_view, _window, cx| {
+            let view = cx.entity_id();
+            crate::renderer::invalidate_after_mutation(cx, view, dirty);
+        })
+    }
+
     /// Notify the view entity and run GPUI until parked.
     /// This triggers GpuixView::render() → build_element() → GPUI layout.
     /// Must be called after mutations and before simulating events (GPUI's
     /// hit testing requires elements to be laid out).
     #[napi]
     pub fn flush(&self) -> Result<()> {
-        // From a sync event handler this only marks the view dirty: the frame
-        // is drawn once the input that is being dispatched has returned.
-        deliver_frame()?;
-        update_view_or_defer(|_view, _window, cx| {
-            let view = cx.entity_id();
-            crate::renderer::invalidate_after_commit(cx, view);
-        })
+        self.flush_for(Dirty::Layout)
     }
 
     /// Whether the test window is drawn whenever an update or a simulated input flushes, which
@@ -1090,8 +1106,9 @@ impl TestGpuixRenderer {
     /// layout in between) and not two more.
     #[napi]
     pub fn flush_if_dirty(&self) -> Result<()> {
-        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
-            return self.flush();
+        let unflushed = take_unflushed();
+        if unflushed != Dirty::Clean {
+            return self.flush_for(unflushed);
         }
         window_call(|window, cx| window.paint_if_dirty(cx)).map(|_| ())
     }
@@ -1727,18 +1744,20 @@ impl TestGpuixRenderer {
         let offset = crate::scroll::gpui_offset(left, top);
         // A browser's setter lays out what is dirty first, so the offset is clamped to the
         // tree as it is. A scroll write is not a layout invalidation for a metrics read.
-        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
-            self.flush()?;
+        let unflushed = take_unflushed();
+        if unflushed != Dirty::Clean {
+            self.flush_for(unflushed)?;
         }
         window_call(|window, cx| window.draw_if_scroll_metrics_dirty(cx))?;
         update_view_or_defer(move |view, _window, cx| {
-            if !view.set_virtual_list_offset(id, offset) {
-                if let Some(handle) = view.scrollable_handle(id) {
-                    crate::scroll::scroll_to(id, handle, offset, behavior);
-                }
+            let moved = view.set_virtual_list_offset(id, offset).unwrap_or_else(|| {
+                view.scrollable_handle(id)
+                    .is_some_and(|handle| crate::scroll::scroll_to(id, handle, offset, behavior))
+            });
+            if moved {
+                let entity = cx.entity_id();
+                crate::renderer::invalidate_after_scroll(cx, entity);
             }
-            let entity = cx.entity_id();
-            crate::renderer::invalidate_after_scroll(cx, entity);
         })
     }
 
@@ -2062,8 +2081,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_scroll_metrics(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
-        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
-            self.flush()?;
+        let unflushed = take_unflushed();
+        if unflushed != Dirty::Clean {
+            self.flush_for(unflushed)?;
         }
         window_call(|window, cx| {
             crate::renderer::read_after_layout(&self.tree, id, window, cx, gpui::Window::draw_if_scroll_metrics_dirty, |window| {
@@ -2221,8 +2241,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_element_bounds(&self, id: f64) -> Result<Option<crate::renderer::ElementBounds>> {
         let id = to_element_id(id)?;
-        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
-            self.flush()?;
+        let unflushed = take_unflushed();
+        if unflushed != Dirty::Clean {
+            self.flush_for(unflushed)?;
         }
         window_call(|window, cx| {
             crate::renderer::read_after_layout(&self.tree, id, window, cx, gpui::Window::draw_if_dirty, |window| {
@@ -2237,8 +2258,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_built_element_bounds(&self, id: f64) -> Result<Option<crate::renderer::ElementBounds>> {
         let id = to_element_id(id)?;
-        if UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.replace(false)) {
-            self.flush()?;
+        let unflushed = take_unflushed();
+        if unflushed != Dirty::Clean {
+            self.flush_for(unflushed)?;
         }
         window_call(|window, cx| {
             window.draw_if_dirty(cx);

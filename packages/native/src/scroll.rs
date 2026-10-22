@@ -342,7 +342,9 @@ pub(crate) fn dom_position(offset: gpui::Point<gpui::Pixels>) -> [f64; 2] {
 }
 
 /// Moves a scroller to `target` (an offset: zero, then negative), instantly or by a smooth
-/// animation. A new call replaces the animation in flight.
+/// animation. A new call replaces the animation in flight, and a target the scroller is already
+/// at only does that: it moves nothing, so the caller need not draw or report a scroll. Returns
+/// whether the scroller moved or will.
 ///
 /// `target` is held to the range of the last layout, as `scrollTop = n` is in a browser, which
 /// lays out first when the tree changed: a caller that has just changed the content lays out
@@ -353,12 +355,15 @@ pub(crate) fn scroll_to(
     handle: &gpui::ScrollHandle,
     target: gpui::Point<gpui::Pixels>,
     behavior: Behavior,
-) {
+) -> bool {
     let target = clamp_offset(target, handle.max_offset());
     ANIMATIONS.with(|animations| animations.borrow_mut().remove(&id));
+    if target == handle.offset() {
+        return false;
+    }
     if !is_smooth(id, behavior) {
         handle.set_offset(target);
-        return;
+        return true;
     }
     ANIMATIONS.with(|animations| {
         animations.borrow_mut().insert(
@@ -373,6 +378,7 @@ pub(crate) fn scroll_to(
             },
         );
     });
+    true
 }
 
 struct Animation {

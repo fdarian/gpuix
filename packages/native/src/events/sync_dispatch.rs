@@ -244,10 +244,10 @@ pub(crate) fn report_deferred_error(message: String) {
 
 /// Marks the root view dirty without leasing it, which `applyBatch` may
 /// need while the input holds it.
-pub(crate) fn invalidate_root_view() -> Result<(), String> {
+pub(crate) fn invalidate_root_view(dirty: crate::retained_tree::Dirty) -> Result<(), String> {
     with_active_window(|window, cx| {
         let view = root_view(window)?;
-        crate::renderer::invalidate_after_commit(cx, view.entity_id());
+        crate::renderer::invalidate_after_mutation(cx, view.entity_id(), dirty);
         Ok(())
     })
     .unwrap_or_else(|| Err(NESTED.to_string()))

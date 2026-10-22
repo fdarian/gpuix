@@ -1128,6 +1128,33 @@ pub enum GroupName {
 const DEFAULT_GROUP: &str = "__gpuix_group";
 
 impl StyleDesc {
+    /// Whether `other` differs from this style in nothing but keys that change what a box paints,
+    /// so a window whose layout was current stays current after the change (see
+    /// `RetainedTree::take_dirty`). The keys are those of `AnimProp::paints_only`, which is the
+    /// list of what no layout, text measure, scroll overflow or box position reads, and the
+    /// shorthand `borderColor`, which is four colours and nothing else. The `border` and `outline`
+    /// shorthands carry widths, so they are not here.
+    ///
+    /// Every other field, a state style (`hover`, ...) and a custom property included, is compared
+    /// whole: a key that is added to the struct is a layout key until it is listed here.
+    pub(crate) fn differs_only_in_paint(&self, other: &Self) -> bool {
+        let mut painted = self.clone();
+        painted.opacity = other.opacity;
+        painted.box_shadow = other.box_shadow.clone();
+        painted.color = other.color.clone();
+        painted.background_color = other.background_color.clone();
+        painted.border_color = other.border_color.clone();
+        painted.border_top_color = other.border_top_color.clone();
+        painted.border_right_color = other.border_right_color.clone();
+        painted.border_bottom_color = other.border_bottom_color.clone();
+        painted.border_left_color = other.border_left_color.clone();
+        painted.outline_color = other.outline_color.clone();
+        painted.text_decoration_color = other.text_decoration_color.clone();
+        painted.scrollbar_color = other.scrollbar_color.clone();
+        painted.selection_color = other.selection_color.clone();
+        painted == *other
+    }
+
     /// Whether the style depends on the size of a query container: it has `@container` blocks
     /// or names a container unit.
     pub(crate) fn reads_containers(&self) -> bool {

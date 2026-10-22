@@ -39,7 +39,7 @@ use crate::css::length::LengthContext;
 use crate::custom_elements::{CustomElementRegistry, CustomRenderContext};
 use crate::events::app_region::AppRegion;
 use crate::element_tree::EventPayload;
-use crate::retained_tree::{RetainedTree, StyleTable};
+use crate::retained_tree::{Dirty, RetainedTree, StyleTable};
 use crate::style::StyleDesc;
 use crate::text::white_space::StyledWhiteSpace as _;
 use crate::text::{selectable_text, selection_frame_reset, SharedSelection};
@@ -238,25 +238,27 @@ fn scroll_element_position(id: u64) -> Option<[f64; 2]> {
 }
 
 /// Scrolls the virtual list or scroll container `id` to the DOM scroll position `left`, `top`,
-/// clamped to the range of the layout, which the caller made current first. The caller
-/// invalidates the window with [`invalidate_after_scroll`].
-fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Behavior) {
+/// clamped to the range of the layout, which the caller made current first. Returns whether it
+/// moved or will (a smooth scroll); the caller invalidates the window with
+/// [`invalidate_after_scroll`] then and does nothing for a write that leaves the scroller where it
+/// is, as a browser's setter does.
+fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Behavior) -> bool {
     let offset = crate::scroll::gpui_offset(left, top);
-    if VIRTUAL_LIST_STATES.with(|cell| {
+    let list = VIRTUAL_LIST_STATES.with(|cell| {
         let states = cell.borrow();
-        let Some(state) = states.get(&id) else {
-            return false;
-        };
+        let state = states.get(&id)?;
+        let before = state.scroll_px_offset_for_scrollbar();
         state.set_offset_from_scrollbar(offset);
-        true
-    }) {
-        return;
+        Some(state.scroll_px_offset_for_scrollbar() != before)
+    });
+    if let Some(moved) = list {
+        return moved;
     }
     SCROLL_HANDLES.with(|cell| {
-        if let Some(handle) = cell.borrow().get(&id) {
-            crate::scroll::scroll_to(id, handle, offset, behavior);
-        }
-    });
+        cell.borrow()
+            .get(&id)
+            .is_some_and(|handle| crate::scroll::scroll_to(id, handle, offset, behavior))
+    })
 }
 
 /// `Element.scrollTop` and friends, from the last layout. See `scroll::metrics`.
@@ -459,6 +461,17 @@ pub(crate) fn invalidate_after_commit(cx: &mut gpui::App, view: gpui::EntityId) 
     cx.notify(view);
 }
 
+/// [`invalidate_after_commit`] for the changes `RetainedTree::take_dirty` reported. A paint-only
+/// batch still draws the next frame, which rebuilds the elements it changed, but a read of bounds
+/// or a scroll write before it needs no layout pass: no box moved.
+pub(crate) fn invalidate_after_mutation(cx: &mut gpui::App, view: gpui::EntityId, dirty: Dirty) {
+    match dirty {
+        Dirty::Clean => {}
+        Dirty::Paint => cx.notify_paint_only(view),
+        Dirty::Layout => invalidate_after_commit(cx, view),
+    }
+}
+
 /// Lays out the window as `lay_out` does and reads what it published with `read`, laying out the
 /// content of the skipped ancestors of `id` first when it has any: Chrome's forced layout of a
 /// locked subtree (`DisplayLockUtilities::ScopedForcedUpdate`) for a read of geometry. The
@@ -539,13 +552,13 @@ pub(crate) fn invalidate_after_scroll(cx: &mut gpui::App, view: gpui::EntityId) 
 }
 
 #[cfg(target_os = "macos")]
-fn invalidate_window() -> Result<()> {
+fn invalidate_window(dirty: Dirty) -> Result<()> {
     if crate::events::sync_dispatch::in_sync_call() {
-        return crate::events::sync_dispatch::invalidate_root_view().map_err(Error::from_reason);
+        return crate::events::sync_dispatch::invalidate_root_view(dirty).map_err(Error::from_reason);
     }
-    update_window(|_view, _window, cx| {
+    update_window(move |_view, _window, cx| {
         let view = cx.entity_id();
-        invalidate_after_commit(cx, view);
+        invalidate_after_mutation(cx, view, dirty);
     })
 }
 
@@ -862,9 +875,10 @@ async fn run_ui_commands(
                 behavior,
             } => window.update(cx, move |_view, window, cx| {
                 window.draw_if_scroll_metrics_dirty(cx);
-                scroll_element_to(id, left, top, behavior);
-                let view = cx.entity_id();
-                invalidate_after_scroll(cx, view);
+                if scroll_element_to(id, left, top, behavior) {
+                    let view = cx.entity_id();
+                    invalidate_after_scroll(cx, view);
+                }
             }),
             UiCommand::ScrollToItem { id, index, offset } => {
                 if !VIRTUAL_LIST_STATES.with(|cell| {
@@ -1677,8 +1691,13 @@ impl GpuixRenderer {
     }
 
     fn request_invalidate(&self) -> Result<()> {
+        self.request_invalidate_for(Dirty::Layout)
+    }
+
+    /// Asks for a frame for what `dirty` says changed. The other renderers have one kind of frame.
+    fn request_invalidate_for(&self, dirty: Dirty) -> Result<()> {
         #[cfg(target_os = "macos")]
-        return invalidate_window();
+        return invalidate_window(dirty);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::Invalidate);
@@ -2048,8 +2067,8 @@ impl GpuixRenderer {
         // A re-render that changed nothing sends a batch of identical resends.
         // Waking the window for it makes it rebuild and diff the whole element
         // tree to draw the frame it already has.
-        if dirty {
-            self.request_invalidate()?;
+        if dirty != Dirty::Clean {
+            self.request_invalidate_for(dirty)?;
         }
         if auto_focus {
             self.commit_auto_focus()?;
@@ -3248,9 +3267,10 @@ impl GpuixRenderer {
             // Like a browser's setter: lay out what is dirty so the range is the tree's, then
             // clamp and write. The write itself invalidates the draw and nothing a read lays out for.
             window.draw_if_scroll_metrics_dirty(cx);
-            scroll_element_to(id, left, top, behavior);
-            let view = crate::events::sync_dispatch::root_view(window).map_err(Error::from_reason)?;
-            invalidate_after_scroll(cx, view.entity_id());
+            if scroll_element_to(id, left, top, behavior) {
+                let view = crate::events::sync_dispatch::root_view(window).map_err(Error::from_reason)?;
+                invalidate_after_scroll(cx, view.entity_id());
+            }
             Ok(())
         })?;
 
@@ -3304,7 +3324,7 @@ impl GpuixRenderer {
             });
         }
         #[cfg(target_os = "macos")]
-        return invalidate_window();
+        return invalidate_window(Dirty::Layout);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.send_ui_command(UiCommand::ScrollToItem { id, index, offset });
@@ -4617,7 +4637,7 @@ impl WebGpuixRenderer {
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error))?;
         let dirty = tree.take_dirty();
         drop(tree);
-        if dirty {
+        if dirty != Dirty::Clean {
             notify_web();
         }
         Ok(web_number_array(destroyed))
@@ -4842,8 +4862,9 @@ impl WebGpuixRenderer {
         let id = web_element_id(element_id)?;
         let behavior = crate::scroll::Behavior::parse(behavior.as_deref())
             .map_err(|message| wasm_bindgen::JsValue::from_str(&message))?;
-        scroll_element_to(id, x, y, behavior);
-        notify_web();
+        if scroll_element_to(id, x, y, behavior) {
+            notify_web();
+        }
         Ok(())
     }
 
@@ -6588,16 +6609,16 @@ impl GpuixView {
         crate::scroll::has_scrolling_box(&self.tree.lock().unwrap(), id).then_some(handle)
     }
 
+    /// Scrolls the list `id` to `offset`: whether it moved, or `None` if `id` is not a list.
     pub(crate) fn set_virtual_list_offset(
         &self,
         id: u64,
         offset: gpui::Point<gpui::Pixels>,
-    ) -> bool {
-        let Some(entry) = self.virtual_lists.get(&id) else {
-            return false;
-        };
+    ) -> Option<bool> {
+        let entry = self.virtual_lists.get(&id)?;
+        let before = entry.state.scroll_px_offset_for_scrollbar();
         entry.state.set_offset_from_scrollbar(offset);
-        true
+        Some(entry.state.scroll_px_offset_for_scrollbar() != before)
     }
 
     pub(crate) fn virtual_list_offset(&self, id: u64) -> Option<gpui::Point<gpui::Pixels>> {
@@ -12910,7 +12931,7 @@ mod batch_tests {
     /// Whether the batch left something a frame would draw differently. The
     /// window is only woken for these, so a wrong `false` is a stale screen and
     /// a wrong `true` is a wasted frame.
-    fn dirty_after(tree: &mut RetainedTree, json: &str) -> bool {
+    fn dirty_after(tree: &mut RetainedTree, json: &str) -> Dirty {
         apply(tree, json).expect("valid batch");
         tree.take_dirty()
     }
@@ -12946,7 +12967,7 @@ mod batch_tests {
     #[test]
     fn mounting_marks_the_tree_dirty() {
         let mut tree = RetainedTree::new();
-        assert!(dirty_after(&mut tree, MOUNT));
+        assert_eq!(dirty_after(&mut tree, MOUNT), Dirty::Layout);
     }
 
     #[test]
@@ -12969,7 +12990,7 @@ mod batch_tests {
             ["setKeyboardFocusDim",true],
             ["setCustomProp",3,"missing",null]
         ]"##;
-        assert!(!dirty_after(&mut tree, resend));
+        assert_eq!(dirty_after(&mut tree, resend), Dirty::Clean);
     }
 
     #[test]
@@ -12993,8 +13014,116 @@ mod batch_tests {
             let mut tree = RetainedTree::new();
             apply(&mut tree, MOUNT).expect("valid batch");
             tree.take_dirty();
-            assert!(dirty_after(&mut tree, change), "{change} must repaint");
+            assert_eq!(dirty_after(&mut tree, change), Dirty::Layout, "{change} must lay out");
         }
+    }
+
+    const PAINT_ONLY: [(&str, &str, &str); 12] = [
+        ("opacity", "0.5", "0.6"),
+        ("boxShadow", r##""0 0 4px #000000""##, r##""0 0 8px #000000""##),
+        ("color", r##""#111111""##, r##""#222222""##),
+        ("backgroundColor", r##""#111111""##, r##""#222222""##),
+        ("borderColor", r##""#111111""##, r##""#111111 #222222""##),
+        ("borderTopColor", r##""#111111""##, r##""#222222""##),
+        ("borderLeftColor", r##""#111111""##, r##""#222222""##),
+        ("outlineColor", r##""#111111""##, r##""#222222""##),
+        ("textDecorationColor", r##""#111111""##, r##""#222222""##),
+        ("scrollbarColor", r##""#111111 #333333""##, r##""#222222 #333333""##),
+        ("selectionColor", r##""#111111""##, r##""#222222""##),
+        ("borderBottomColor", r##""#111111""##, r##""#222222""##),
+    ];
+
+    #[test]
+    fn a_change_of_keys_that_only_paint_is_dirty_for_paint_alone() {
+        for (key, before, after) in PAINT_ONLY {
+            let mut tree = RetainedTree::new();
+            apply(&mut tree, MOUNT).expect("valid batch");
+            apply(&mut tree, &format!(r#"[["setStyle",3,{{"height":10,"{key}":{before}}}]]"#)).expect("valid batch");
+            tree.take_dirty();
+            assert_eq!(
+                dirty_after(&mut tree, &format!(r#"[["setStyle",3,{{"height":10,"{key}":{after}}}]]"#)),
+                Dirty::Paint,
+                "{key} changed"
+            );
+            assert_eq!(
+                dirty_after(&mut tree, r#"[["setStyle",3,{"height":10}]]"#),
+                Dirty::Paint,
+                "{key} removed"
+            );
+            assert_eq!(
+                dirty_after(&mut tree, &format!(r#"[["setStyle",3,{{"height":10,"{key}":{after}}}]]"#)),
+                Dirty::Paint,
+                "{key} added"
+            );
+        }
+    }
+
+    #[test]
+    fn a_style_change_that_is_not_only_paint_is_dirty_for_layout() {
+        let changes = [
+            r#"{"height":11}"#,
+            r#"{"height":10,"width":5}"#,
+            r#"{"height":10,"padding":2}"#,
+            r#"{"height":10,"display":"none"}"#,
+            r#"{"height":10,"fontSize":20}"#,
+            r#"{"height":10,"borderWidth":2}"#,
+            r#"{"height":10,"border":"1px solid red"}"#,
+            r#"{"height":10,"outline":"2px solid red"}"#,
+            r#"{"height":10,"outlineWidth":2}"#,
+            r#"{"height":10,"transition":"opacity 1s"}"#,
+            r#"{"height":10,"borderRadius":4}"#,
+            r#"{"height":10,"position":"absolute"}"#,
+            r##"{"height":10,"hover":{"backgroundColor":"#222222"}}"##,
+            r##"{"height":10,"--tone":"#222222"}"##,
+            r##"{"height":10,"backgroundColor":"#222222","width":5}"##,
+        ];
+        for change in changes {
+            let mut tree = RetainedTree::new();
+            apply(&mut tree, MOUNT).expect("valid batch");
+            tree.take_dirty();
+            assert_eq!(
+                dirty_after(&mut tree, &format!(r#"[["setStyle",3,{change}]]"#)),
+                Dirty::Layout,
+                "{change}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_paint_only_style_change_beside_any_other_change_is_dirty_for_layout() {
+        let beside = [
+            r#"["setText",2,"changed"]"#,
+            r#"["setCustomProp",3,"aria-label","other"]"#,
+            r#"["setEventListener",3,"click",false]"#,
+            r#"["createElement",4,"div"]"#,
+            r##"["setStyle",1,{"width":101,"backgroundColor":"#112233"}]"##,
+        ];
+        for other in beside {
+            for order in 0..2 {
+                let mut tree = RetainedTree::new();
+                apply(&mut tree, MOUNT).expect("valid batch");
+                tree.take_dirty();
+                let paint = r##"["setStyle",3,{"height":10,"backgroundColor":"#445566"}]"##;
+                let batch = if order == 0 { format!("[{paint},{other}]") } else { format!("[{other},{paint}]") };
+                assert_eq!(dirty_after(&mut tree, &batch), Dirty::Layout, "{batch}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_universal_layer_of_colours_is_dirty_for_paint_alone() {
+        let mut tree = RetainedTree::new();
+        apply(&mut tree, MOUNT).expect("valid batch");
+        apply(&mut tree, r##"[["setUniversalStyle",{"color":"#111111"}]]"##).expect("valid batch");
+        tree.take_dirty();
+        assert_eq!(
+            dirty_after(&mut tree, r##"[["setUniversalStyle",{"color":"#222222"}]]"##),
+            Dirty::Paint
+        );
+        assert_eq!(
+            dirty_after(&mut tree, r##"[["setUniversalStyle",{"color":"#222222","fontSize":20}]]"##),
+            Dirty::Layout
+        );
     }
 
     #[test]
@@ -13006,7 +13135,7 @@ mod batch_tests {
         apply(&mut tree, r#"[["setText",2,"changed"],["setStyle",2,123]]"#)
             .expect_err("malformed style");
 
-        assert!(!tree.take_dirty());
+        assert_eq!(tree.take_dirty(), Dirty::Clean);
     }
 
     /// The regression test for batch atomicity. `intern_style_payload` used to

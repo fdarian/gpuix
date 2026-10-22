@@ -372,7 +372,7 @@ impl Source {
     fn set_offset(&self, offset: gpui::Point<gpui::Pixels>) {
         match self {
             Source::Container { id, handle } => {
-                crate::scroll::scroll_to(*id, handle, offset, crate::scroll::Behavior::Instant)
+                crate::scroll::scroll_to(*id, handle, offset, crate::scroll::Behavior::Instant);
             }
             Source::List(state) => state.set_offset_from_scrollbar(offset),
         }

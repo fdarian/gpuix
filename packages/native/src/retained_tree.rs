@@ -453,10 +453,27 @@ fn reads_motion_values(props: &HashMap<String, serde_json::Value>) -> bool {
             .is_some_and(|layout| layout.get("dragOffset").is_some_and(|drag| !drag.is_null()))
 }
 
+/// What a window has to do for the changes made to a tree since `RetainedTree::take_dirty`.
+/// Ordered by how much: a change of a kind absorbs the ones before it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Dirty {
+    /// Nothing a frame would draw changed.
+    #[default]
+    Clean,
+    /// Only style changes whose keys paint and move nothing: the next frame draws, but the boxes
+    /// the last layout gave are still the boxes of the tree.
+    Paint,
+    /// Anything else: a node was added, removed or changed, a prop was set, or a style key that
+    /// layout reads.
+    Layout,
+}
+
 /// What assigning a style changed, for the caller to mark the tree with.
 #[derive(Clone, Copy, Default)]
 struct StyleChange {
     changed: bool,
+    /// The style differs in a key that is not only painted (see `StyleDesc::differs_only_in_paint`).
+    layout: bool,
     regrouped: bool,
     text_reprocessed: bool,
     focusability_changed: bool,
@@ -465,6 +482,7 @@ struct StyleChange {
 impl StyleChange {
     fn absorb(&mut self, other: Self) {
         self.changed |= other.changed;
+        self.layout |= other.layout;
         self.regrouped |= other.regrouped;
         self.text_reprocessed |= other.text_reprocessed;
         self.focusability_changed |= other.focusability_changed;
@@ -584,11 +602,11 @@ pub struct RetainedTree {
     /// Dim other focusables while a control has keyboard focus. Set per root.
     keyboard_focus_dim: bool,
     next_revision: u64,
-    /// Something a frame would draw changed since the last `take_dirty`. A batch
+    /// What a frame would draw differently since the last `take_dirty`. A batch
     /// of resends, which is what a re-render with unchanged props produces,
-    /// leaves it false, so the window is not asked to rebuild its element tree
+    /// leaves it clean, so the window is not asked to rebuild its element tree
     /// for a frame that would come out identical.
-    dirty: bool,
+    dirty: Dirty,
     /// An element was given `autoFocus` since the last `take_auto_focus_request`.
     auto_focus_requested: bool,
     /// How many elements this tree has ever destroyed, for caches keyed by element id to know when
@@ -623,7 +641,7 @@ impl RetainedTree {
             root_id: None,
             keyboard_focus_dim: true,
             next_revision: 1,
-            dirty: false,
+            dirty: Dirty::Clean,
             auto_focus_requested: false,
             removals: 0,
             reparents: 0,
@@ -643,15 +661,20 @@ impl RetainedTree {
         self.reparents
     }
 
-    /// Whether a frame drawn now would differ from the last one, clearing the
-    /// answer. Call once per applied batch.
     /// Whether any element has `@container` blocks.
     pub fn has_container_rules(&self) -> bool {
         self.container_rule_count > 0
     }
 
-    pub fn take_dirty(&mut self) -> bool {
+    /// How a frame drawn now would differ from the last one, clearing the answer: not at all,
+    /// by paint alone (every change since the last call was a style change whose keys only paint),
+    /// or by anything else. Call once per applied batch.
+    pub fn take_dirty(&mut self) -> Dirty {
         std::mem::take(&mut self.dirty)
+    }
+
+    fn mark_dirty(&mut self, dirty: Dirty) {
+        self.dirty = self.dirty.max(dirty);
     }
 
     /// Whether an element was given `autoFocus` since the last call. Call once
@@ -667,14 +690,14 @@ impl RetainedTree {
     pub fn set_keyboard_focus_dim(&mut self, enabled: bool) {
         if self.keyboard_focus_dim != enabled {
             self.keyboard_focus_dim = enabled;
-            self.dirty = true;
+            self.mark_dirty(Dirty::Layout);
         }
     }
 
     pub fn set_root(&mut self, id: u64) {
         if self.root_id != Some(id) {
             self.root_id = Some(id);
-            self.dirty = true;
+            self.mark_dirty(Dirty::Layout);
         }
     }
 
@@ -686,7 +709,6 @@ impl RetainedTree {
         if is_control_type(&element_type) {
             self.control_ids.insert(id);
         }
-        self.dirty = true;
         let revision = self.take_revision();
         self.elements
             .insert(id, RetainedElement::new(id, element_type, revision));
@@ -799,9 +821,13 @@ impl RetainedTree {
     }
 
     fn take_revision(&mut self) -> u64 {
+        self.take_revision_for(Dirty::Layout)
+    }
+
+    fn take_revision_for(&mut self, dirty: Dirty) -> u64 {
         // Every content change takes a revision to invalidate caches, so this is
         // the one place that covers style, text, structure and custom props.
-        self.dirty = true;
+        self.mark_dirty(dirty);
         let revision = self.next_revision;
         self.next_revision = self.next_revision.wrapping_add(1).max(1);
         revision
@@ -809,14 +835,20 @@ impl RetainedTree {
 
     /// Invalidate `id` and its ancestors, including their searchable text.
     fn mark_changed(&mut self, id: u64) {
-        self.mark_changed_detail(id, true);
+        self.mark_changed_detail(id, true, Dirty::Layout);
     }
 
     /// Invalidate for rendering only. Use for changes that cannot move a glyph
     /// into or out of the searchable text: style, and a native element's own
     /// props, whose text is matched at paint and never enters a `GroupList`.
     fn mark_render_changed(&mut self, id: u64) {
-        self.mark_changed_detail(id, false);
+        self.mark_changed_detail(id, false, Dirty::Layout);
+    }
+
+    /// [`Self::mark_render_changed`] for a style change that only paints: the window is not asked to
+    /// lay out again.
+    fn mark_paint_changed(&mut self, id: u64) {
+        self.mark_changed_detail(id, false, Dirty::Paint);
     }
 
     /// Invalidate `id`, its ancestors and everything below it, including their
@@ -835,8 +867,8 @@ impl RetainedTree {
         }
     }
 
-    fn mark_changed_detail(&mut self, id: u64, search: bool) {
-        let revision = self.take_revision();
+    fn mark_changed_detail(&mut self, id: u64, search: bool, dirty: Dirty) {
+        let revision = self.take_revision_for(dirty);
         let mut current = Some(id);
         while let Some(current_id) = current {
             let Some(element) = self.elements.get_mut(&current_id) else {
@@ -865,7 +897,7 @@ impl RetainedTree {
         let mut destroyed = Vec::new();
         self.destroy_element_recursive(id, &mut destroyed);
         if !destroyed.is_empty() {
-            self.dirty = true;
+            self.mark_dirty(Dirty::Layout);
         }
         if self.root_id == Some(id) {
             self.root_id = None;
@@ -1011,7 +1043,7 @@ impl RetainedTree {
             }
         }
         if total.changed {
-            let revision = self.take_revision();
+            let revision = self.take_revision_for(if total.layout { Dirty::Layout } else { Dirty::Paint });
             let search = total.regrouped || total.text_reprocessed;
             for element in self.elements.values_mut() {
                 element.subtree_revision = revision;
@@ -1052,6 +1084,10 @@ impl RetainedTree {
             element.style = style;
             return StyleChange::default();
         }
+        let paints_only = match (element.style.as_deref(), style.as_deref()) {
+            (Some(old), Some(new)) => old.differs_only_in_paint(new),
+            _ => false,
+        };
         let was_declared = element.declared_hidden();
         let was_contents = crate::layout::contents::is_display_contents(element);
         let regrouped =
@@ -1088,6 +1124,7 @@ impl RetainedTree {
         }
         StyleChange {
             changed: true,
+            layout: !paints_only,
             regrouped,
             text_reprocessed,
             focusability_changed: visibility_changed
@@ -1107,8 +1144,10 @@ impl RetainedTree {
             // `display` decides which text nodes form one paragraph, and a
             // paragraph is what search matches.
             self.mark_changed(id);
-        } else if change.changed {
+        } else if change.layout {
             self.mark_render_changed(id);
+        } else if change.changed {
+            self.mark_paint_changed(id);
         }
     }
 
@@ -1197,14 +1236,18 @@ impl RetainedTree {
             // the custom-prop map that only custom elements read.
             if key == "autoFocus" {
                 let auto_focus = value.as_bool().unwrap_or(false);
-                self.dirty |= element.auto_focus != auto_focus;
+                if element.auto_focus != auto_focus {
+                    self.dirty = Dirty::Layout;
+                }
                 self.auto_focus_requested |= auto_focus && !element.auto_focus;
                 element.auto_focus = auto_focus;
                 return;
             }
             if key == "testId" {
                 let test_id = value.as_str().map(str::to_string);
-                self.dirty |= element.test_id != test_id;
+                if element.test_id != test_id {
+                    self.dirty = Dirty::Layout;
+                }
                 element.test_id = test_id;
                 return;
             }
@@ -2930,7 +2973,7 @@ mod tests {
         tree.take_dirty();
         let revision = tree.next_revision;
         apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
-        assert!(tree.take_dirty());
+        assert_eq!(tree.take_dirty(), Dirty::Layout, "elements that had no style take one");
         assert_eq!(tree.next_revision, revision + 1, "one revision for the whole tree");
         assert!(tree.elements.values().all(|element| element.subtree_revision == revision));
         assert_eq!(style_of(&tree, 2).unwrap().opacity, Some(0.5));
@@ -2939,7 +2982,7 @@ mod tests {
         apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.5}]]"##);
         apply(&mut tree, r##"[["setUniversalStyle",{ "opacity" : 0.50 }]]"##);
         assert_eq!(tree.next_revision, revision + 1);
-        assert!(!tree.take_dirty());
+        assert_eq!(tree.take_dirty(), Dirty::Clean);
     }
 
     #[test]
@@ -2951,7 +2994,7 @@ mod tests {
         tree.take_dirty();
         apply(&mut tree, r##"[["setUniversalStyle",{"opacity":0.9}]]"##);
         assert_eq!(tree.elements[&1].subtree_revision, revision, "its own opacity wins either way");
-        assert!(!tree.take_dirty());
+        assert_eq!(tree.take_dirty(), Dirty::Clean);
     }
 
     #[test]

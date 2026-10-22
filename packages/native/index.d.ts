@@ -1719,6 +1719,16 @@ export interface LayoutCounters {
   passes: number
   /** Calls to the measure functions of text and other measured leaves. */
   measures: number
+  /**
+   * Nodes whose layout algorithm ran to place them: taffy's cache misses. A change to one leaf
+   * costs its chain of ancestors (and what their new sizes reach), not the size of the tree.
+   */
+  nodesLaidOut: number
+  /**
+   * Nodes whose layout algorithm ran only to size them, which a parent does to learn what a
+   * child contributes before it places it. Not counted in `nodesLaidOut`.
+   */
+  nodesSized: number
   /** Lines the platform shaped, since the window was made: the line layout cache missed. */
   shapes: number
   /**
