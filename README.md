@@ -3149,7 +3149,13 @@ and the extent changes as they are built.
   The first answer comes in the frame that builds the element, which draws again to
   build what is near; a later change takes effect in the next frame, with no hysteresis.
 - `focus()` on an element inside a skipped one builds what holds it in the same frame.
-  Skipped content is not in the accessibility tree and search does not find it.
+  Search does not find skipped content.
+- Skipped `auto` content is in the accessibility tree, as in Chrome (a screen reader can
+  find its headings and buttons, and `aria-labelledby` into it names a control): the
+  skipped element holds a node for each element below it that has a role or is
+  referenced, with no bounds and no actions. A skipped element with no role of its own
+  is a `Group` to hold them. `hidden` content is not in the tree, and neither is what
+  is `aria-hidden`, `display: none` or `visibility: hidden` below an `auto` one.
 - `onContentVisibilityAutoStateChange` (and `…Capture`) fires on an `auto` element
   after the frame that skipped it or showed it, once for the first answer and then when
   it changes. `skipped` is in the payload. It bubbles and is cancelable, and

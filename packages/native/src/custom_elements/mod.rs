@@ -18,7 +18,7 @@ pub mod code;
 pub mod diff;
 pub mod img;
 pub mod input;
-mod input_rules;
+pub(crate) mod input_rules;
 pub mod markdown;
 pub(crate) mod text_selection;
 mod svg_names;

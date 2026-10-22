@@ -21,6 +21,11 @@ pub(super) fn has_node_props(props: &Props) -> bool {
         || props.keys().any(|key| key.starts_with("aria-"))
 }
 
+/// Whether `aria-hidden` or `inert` takes the element and everything below it out of the tree.
+pub(super) fn hides_subtree(props: &Props) -> bool {
+    is_true(props, "aria-hidden") || is_true(props, "inert")
+}
+
 /// The attribute text of a prop: strings as they are, booleans and numbers as
 /// React DOM would stringify them.
 fn text(props: &Props, key: &str) -> Option<String> {
@@ -136,7 +141,7 @@ impl AriaNode {
             toggled: toggled(props, "aria-pressed").or_else(|| toggled(props, "aria-checked")),
             disabled: is_true(props, "disabled") || is_true(props, "aria-disabled"),
             // An inert subtree is out of the accessibility tree, like aria-hidden.
-            hidden: is_true(props, "aria-hidden") || is_true(props, "inert"),
+            hidden: hides_subtree(props),
             required: is_true(props, "aria-required"),
             read_only: is_true(props, "aria-readonly"),
             multiselectable: is_true(props, "aria-multiselectable"),

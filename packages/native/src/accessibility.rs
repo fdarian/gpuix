@@ -9,6 +9,7 @@ mod aria;
 pub(crate) mod label;
 pub(crate) mod links;
 pub(crate) mod relations;
+pub(crate) mod skipped;
 
 use std::collections::HashMap;
 
@@ -23,10 +24,37 @@ use crate::events::synthetic_click::click_payload;
 /// `host_id` is the element's renderer id, which finds the `<label>`s that
 /// name it.
 pub(crate) fn apply_accessibility<E>(
+    el: E,
+    host_id: u64,
+    props: &HashMap<String, serde_json::Value>,
+    default_role: Option<Role>,
+) -> E
+where
+    E: StatefulInteractiveElement,
+{
+    apply(el, host_id, props, default_role, false)
+}
+
+/// [`apply_accessibility`] for an element that holds the nodes of content it skips
+/// (`skipped`): it gets a node even with no role, so they have one to hang off.
+pub(crate) fn apply_hosting<E>(
+    el: E,
+    host_id: u64,
+    props: &HashMap<String, serde_json::Value>,
+    default_role: Option<Role>,
+) -> E
+where
+    E: StatefulInteractiveElement,
+{
+    apply(el, host_id, props, default_role, true)
+}
+
+fn apply<E>(
     mut el: E,
     host_id: u64,
     props: &HashMap<String, serde_json::Value>,
     default_role: Option<Role>,
+    hosts: bool,
 ) -> E
 where
     E: StatefulInteractiveElement,
@@ -47,7 +75,7 @@ where
     let referenced_text = links.referenced_text(host_id);
     // `aria-hidden` removes the whole subtree, and only a node can carry that.
     // An element an `aria-*` reference names needs a node to be the target.
-    let fallback_role = (hidden || referenced_text.is_some()).then_some(Role::Group);
+    let fallback_role = (hidden || hosts || referenced_text.is_some()).then_some(Role::Group);
     let named_by_content = role.is_none() && fallback_role.is_some();
     let Some(role) = role.or(fallback_role) else {
         return el;
@@ -87,6 +115,49 @@ where
     }
     for (relation, ids) in relations {
         el = el.a11y_relation(relation, ids);
+    }
+    el
+}
+
+/// The role an element has when its props give none.
+pub(crate) fn default_role(element: &crate::retained_tree::RetainedElement) -> Option<Role> {
+    match element.element_type.as_str() {
+        "form" => Some(Role::Form),
+        // A text instance (`createTextInstance`) is also type `text` and holds `content`; the
+        // host `<text>` is the one that is read. The text instances stay out of the tree so
+        // that VoiceOver does not hear the same string twice.
+        "text" if element.content.is_none() => Some(Role::Label),
+        "label" => Some(Role::Label),
+        "img" => Some(Role::Image),
+        "input" | "textarea" => {
+            let input_type = element
+                .custom_props()
+                .get("type")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            Some(crate::custom_elements::input::default_role(
+                crate::custom_elements::input_rules::InputType::parse(input_type),
+                element.element_type == "textarea",
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// The text a host `<text>` reads out, from the paragraphs `plan` made of its children.
+pub(crate) fn describe_text<E>(
+    el: E,
+    element: &crate::retained_tree::RetainedElement,
+    plan: &[(crate::text::inline::Child, u32)],
+) -> E
+where
+    E: StatefulInteractiveElement,
+{
+    let is_text_host = element.element_type == "text" && element.content.is_none();
+    if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
+        if let Some(content) = crate::text::inline::accessible_text(plan.iter().map(|(child, _)| child)) {
+            return el.aria_value(content);
+        }
     }
     el
 }

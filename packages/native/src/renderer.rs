@@ -10220,18 +10220,24 @@ pub(crate) fn build_host_container(
         );
     }
 
-    // React text instances (`createTextInstance`) are also type `text` and
-    // hold `content`. Only the host `<text>` (no content of its own) gets
-    // Label. The inner nodes stay out of the AX tree so VoiceOver does not
-    // hear the same string twice.
-    let is_text_host = element.element_type == "text" && element.content.is_none();
     let is_label = element.element_type == "label";
-    let default_role = if element.element_type == "form" {
-        Some(gpui::Role::Form)
+    // Skipped content is in the accessibility tree, as Chrome has it: the element hosts a node for
+    // each element below it that has one.
+    let a11y_active = window.is_a11y_active();
+    let exposed = if skipped && a11y_active {
+        crate::accessibility::skipped::exposed(ctx.tree, element)
     } else {
-        (is_text_host || is_label).then_some(gpui::Role::Label)
+        Vec::new()
     };
-    el = apply_accessibility(el, element.id, element.custom_props(), default_role);
+    let default_role = crate::accessibility::default_role(element);
+    el = if exposed.is_empty() {
+        apply_accessibility(el, element.id, element.custom_props(), default_role)
+    } else {
+        crate::accessibility::skipped::host(
+            crate::accessibility::apply_hosting(el, element.id, element.custom_props(), default_role),
+            exposed,
+        )
+    };
     // Planned once: the label below and the children further down read the same
     // paragraphs. A node with no children paints its own `content` instead.
     if !skipped {
@@ -10242,16 +10248,14 @@ pub(crate) fn build_host_container(
             window,
         );
     }
-    let plan = if element.children.is_empty() || skipped {
+    // A skipped `<text>` is still read out, though its paragraphs are not built.
+    let reads_text = !skipped || (a11y_active && element.element_type == "text");
+    let plan = if element.children.is_empty() || !reads_text {
         Vec::new()
     } else {
         crate::text::inline::plan_children_at(ctx.tree, element)
     };
-    if is_text_host && element.custom_props().get("aria-valuetext").is_none() {
-        if let Some(content) = crate::text::inline::accessible_text(plan.iter().map(|(child, _)| child)) {
-            el = el.aria_value(content);
-        }
-    }
+    el = crate::accessibility::describe_text(el, element, &plan);
     if is_label && !inert {
         el = crate::accessibility::label::describe(el, element.id);
     }

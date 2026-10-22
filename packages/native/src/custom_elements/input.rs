@@ -392,6 +392,19 @@ impl TextEditorElement {
     }
 }
 
+/// The role of an `<input>` of this type, or of a `<textarea>`.
+pub(crate) fn default_role(input_type: InputType, multiline: bool) -> gpui::Role {
+    if multiline {
+        return gpui::Role::MultilineTextInput;
+    }
+    match input_type {
+        InputType::Search => gpui::Role::SearchInput,
+        InputType::Password => gpui::Role::PasswordInput,
+        InputType::Number => gpui::Role::SpinButton,
+        _ => gpui::Role::TextInput,
+    }
+}
+
 impl CustomElement for TextEditorElement {
     fn render(
         &mut self,
@@ -563,16 +576,7 @@ impl CustomElement for TextEditorElement {
             // not rise above its later siblings.
             editor = editor.relative().unlifted();
         }
-        let default_role = if self.multiline {
-            gpui::Role::MultilineTextInput
-        } else {
-            match input_type {
-                InputType::Search => gpui::Role::SearchInput,
-                InputType::Password => gpui::Role::PasswordInput,
-                InputType::Number => gpui::Role::SpinButton,
-                _ => gpui::Role::TextInput,
-            }
-        };
+        let default_role = default_role(input_type, self.multiline);
         // Before `apply_accessibility`, so an explicit `aria-valuenow`, `-valuemin`
         // or `-valuemax` from the app wins.
         if let Some(rules) = number_rules {

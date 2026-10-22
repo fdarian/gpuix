@@ -1,0 +1,57 @@
+<!doctype html>
+<!--
+  Oracle for content-visibility-a11y.test.tsx: where Tab and Shift+Tab go over entries that `content-visibility` skips, and how far
+  the scroller is scrolled after each, and which of their nodes headless Chrome keeps in the accessibility tree.
+  `content-visibility-a11y-oracle.ts` drives the page over the DevTools protocol (900x780, no device scale) and writes
+  `content-visibility-a11y-oracle.json`. The page is the one the test builds: 40 entries of 100px, `auto` with an intrinsic size of
+  100px, each a heading, a button that Tab visits and a line of text; `?hidden=20,21` makes those entries `hidden`.
+-->
+<html><head><meta charset="utf-8"><style>
+html, body { margin: 0 }
+* { box-sizing: border-box }
+.page { width: 900px; height: 780px; display: flex; flex-direction: column; overflow: hidden }
+.scroller { overflow-y: scroll; flex-grow: 1; display: flex; flex-direction: column; overflow-anchor: none }
+.entry { height: 100px; flex-shrink: 0; content-visibility: auto; contain-intrinsic-size: auto 100px }
+.entry.hidden { content-visibility: hidden }
+.entry > * { height: 24px }
+.entry > .line { height: 20px }
+</style></head><body>
+<script>
+const hidden = (new URLSearchParams(location.search).get('hidden') ?? '').split(',').filter(Boolean).map(Number)
+const page = document.createElement('div')
+page.className = 'page'
+const scroller = document.createElement('div')
+scroller.className = 'scroller'
+for (let index = 0; index < 40; index++) {
+  const entry = document.createElement('div')
+  entry.className = hidden.includes(index) ? 'entry hidden' : 'entry'
+  entry.innerHTML =
+    `<div role="heading" aria-level="2" aria-label="Title ${index}"></div>` +
+    `<div role="button" id="btn-${index}" aria-label="Go ${index}" tabindex="0"></div>` +
+    `<div class="line">Paragraph ${index}</div>`
+  scroller.append(entry)
+}
+page.append(scroller)
+document.body.append(page)
+
+const frames = async (count = 4) => {
+  for (let index = 0; index < count; index++) await new Promise((resolve) => requestAnimationFrame(resolve))
+  await new Promise((resolve) => setTimeout(resolve, 60))
+}
+
+window.__ready = frames().then(() => true)
+window.__focus = async (id) => {
+  document.getElementById(id).focus({ preventScroll: true })
+  await frames()
+}
+window.__state = async () => {
+  await frames()
+  const active = document.activeElement
+  const entry = active?.closest?.('.entry')
+  return {
+    focused: active?.id ?? null,
+    top: scroller.scrollTop,
+    skipped: entry ? !entry.firstChild.checkVisibility({ contentVisibilityAuto: true }) : false,
+  }
+}
+</script></body></html>
