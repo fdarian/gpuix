@@ -882,6 +882,50 @@ describeNative("a loop on an element that is itself absolute", { timeout: TIMEOU
   })
 })
 
+/**
+ * The track of a scrollbar: an absolute box that fades in (opacity below 1 is a stacking context, which a
+ * positioned thumb in it is painted in) and holds a positioned child. On the tick the fade reaches 1 the box is no
+ * stacking context, and the thumb is the page's to paint: a patch builds a box that hands the page's context a
+ * child nothing paints, which gpui declines (`Lifts`) and does not skip the child of.
+ */
+describeNative("a fade that ends on a box that holds a positioned child", { timeout: TIMEOUT }, () => {
+  const track = (
+    <div style={{ position: "relative", height: 24 }}>
+      <motion.div
+        testId="animated"
+        style={{ position: "absolute", top: 0, left: 0, width: 120, height: 24, backgroundColor: "#99ccff" }}
+        initial={{ opacity: 0.2 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, ease: "linear" }}
+      >
+        <div style={{ position: "absolute", zIndex: 2, top: 4, left: 4, width: 60, height: 12, backgroundColor: "#cc3333" }} />
+      </motion.div>
+    </div>
+  )
+
+  counted("is patched while it fades and drawn whole once it does not, and the frame is the one built whole", async () => {
+    const page = await mount(track, 500)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < 2; warm++) tick(renderer)
+      const before = renderer.getPatchCounters()
+      let patched = 0
+      for (let frame = 0; frame < 60; frame++) patched += tick(renderer).patchedFrames
+      const after = renderer.getPatchCounters()
+      expect(patched, "the ticks of the fade").toBeGreaterThan(10)
+      expect(after.declines).not.toBe(before.declines)
+      expect(gained(after.declines, before.declines)).toEqual({ Lifts: 1 })
+      const settled = shot(renderer, "fade-end-patched")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      expect(settled.equals(shot(renderer, "fade-end-whole")), "the picture of a frame built whole").toBe(true)
+      renderer.setPatchEnabled(true)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
 describeNative("a tick drawn whole says why", { timeout: TIMEOUT }, () => {
   const pulse = "afw-pulse 1.5s linear infinite"
   const children = (count: number) => Array.from({ length: count }, (_, index) => <div key={index} style={{ width: 2, height: 2 }} />)
