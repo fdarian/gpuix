@@ -17,8 +17,8 @@
  * `will-change: opacity` of an animation's side effects): a loop through exactly 1 and exactly 0 is
  * patched at every tick, those included. A loop under a positioned, translucent or lifted ancestor, however
  * many deep, is a unit as one under none is: gpui paints its operations inside the ancestor's. An element
- * that is itself `position: absolute` is placed against a containing block that gpui cannot tell is its
- * parent, so it is drawn whole.
+ * that is itself `position: absolute` is a unit too: the box that places it is outside it, so a frame builds
+ * it whole every time and a tick paints it again where that frame laid it out (`position: fixed` is not one).
  *
  * What cannot be patched is drawn whole, as before: an animation that moves a box, a large `<svg>`,
  * a tick in which the pointer moved or the tree was committed. Every tick drawn whole while something runs
@@ -308,6 +308,40 @@ const selfAbsoluteHead = (
   </text>
 )
 
+const selfAbsoluteSpinnerHead = (
+  <svg testId="spinner" viewBox="0 0 24 24" width={24} height={24} style={{ position: "absolute", left: 0, top: 0 }}>
+    <circle
+      cx={12}
+      cy={12}
+      r={10}
+      pathLength={100}
+      fill="none"
+      stroke="#333333"
+      strokeWidth={3}
+      style={{ animation: "afw-spin 1.4s linear infinite" }}
+    />
+  </svg>
+)
+
+/** An absolute element against a containing block that moves: the card is moved by a click. */
+function MovingBlockHead() {
+  const [moved, setMoved] = useState(false)
+  return (
+    <div
+      testId="toggle"
+      onClick={() => setMoved(true)}
+      style={{ position: "relative", flexShrink: 0, height: 40, width: 300, marginLeft: moved ? 120 : 0, backgroundColor: "#eeeeee" }}
+    >
+      <text
+        testId="animated"
+        style={{ fontSize: 16, color: "#000000", position: "absolute", left: 6, top: 4, animation: "afw-pulse 1.5s linear infinite" }}
+      >
+        animated
+      </text>
+    </div>
+  )
+}
+
 /** The `top-abs` loop of r13: the animation moves an absolute box. */
 const topAbsoluteHead = (
   <div style={{ position: "relative", width: 200, height: 40 }}>
@@ -407,6 +441,9 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "an svg stroke dash loop under a box with opacity below 1": underOpacity(spinnerHead),
     "a native motion colour loop under a relative box": underRelative(motionHead),
     "a native motion opacity loop under a relative box": underRelative(opacityHead),
+    "a keyframes colour on an element that is itself absolute": selfAbsoluteHead,
+    "an svg stroke dash loop on an svg that is itself absolute": selfAbsoluteSpinnerHead,
+    "a keyframes opacity loop on an absolute badge in a relative card": badgeHead,
   }
   for (const [name, head] of Object.entries(heads)) {
     counted(`does the work of one text on any page: ${name}`, async () => {
@@ -450,6 +487,9 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "an svg stroke dash loop under a relative box": underRelative(spinnerHead),
     "an svg stroke dash loop under an absolute box": underAbsolute(spinnerHead),
     "an svg stroke dash loop under a box with opacity below 1": underOpacity(spinnerHead),
+    "a keyframes colour on an element that is itself absolute": selfAbsoluteHead,
+    "an svg stroke dash loop on an svg that is itself absolute": selfAbsoluteSpinnerHead,
+    "a keyframes opacity loop on an absolute badge in a relative card": badgeHead,
   }
   for (const [name, head] of Object.entries(pictures)) {
     it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
@@ -607,16 +647,6 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     for (let index = 0; index < small.length; index++) {
       expect(small[index].patchedFrames, `tick ${index} is patched`).toBe(1)
       expect(large[index], `tick ${index}`).toEqual(small[index])
-    }
-  })
-
-  // gpuix puts `position: absolute` on gpui as absolute in an ancestor, whose layout gpui rewrites against a box the
-  // unit does not hold: an element that is itself absolute is no unit.
-  counted("draws the opacity loop of an absolute badge in a relative card whole, as before", async () => {
-    const done = await ticksOf(badgeHead, 500)
-    for (let index = 0; index < TICKS; index++) {
-      expect(done[index].patchedFrames, `tick ${index}`).toBe(0)
-      expect(done[index].elementsBuilt, `tick ${index}`).toBeGreaterThan(0)
     }
   })
 
@@ -788,14 +818,79 @@ describeNative("a loop under a lifted ancestor", { timeout: TIMEOUT }, () => {
   }
 })
 
+describeNative("a loop on an element that is itself absolute", { timeout: TIMEOUT }, () => {
+  const heads = {
+    "a text": selfAbsoluteHead,
+    "an svg": selfAbsoluteSpinnerHead,
+    "a badge in a relative card": badgeHead,
+    "a text in a relative box": underRelative(selfAbsoluteHead),
+  }
+  for (const [name, head] of Object.entries(heads)) {
+    for (const nodes of [500, 5000]) {
+      counted(`patches every tick, with no decline of either kind: ${name}, ${nodes} nodes`, async () => {
+        expect(await patchesOf(head, nodes)).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+      })
+    }
+  }
+
+  counted("is placed by its containing block when that moves, and patched there", async () => {
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(<Page nodes={500} head={<MovingBlockHead />} />)
+      await settle(renderer)
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      const label = renderer.findByTestId("animated").id
+      const x = renderer.getElementBounds(label).x
+      // Reading bounds lays the page out, and the tick after it is drawn whole.
+      for (let warm = 0; warm < 3; warm++) tick(renderer)
+      expect(tick(renderer).patchedFrames).toBe(1)
+
+      const rect = renderer.getElementBounds(renderer.findByTestId("toggle").id)
+      renderer.nativeSimulateClick(rect.x + 150, rect.y + 30)
+      renderer.dispatchNativeEvents()
+      await settle(renderer, 6)
+      renderer.setInlineDraws(false)
+      for (let warm = 0; warm < 4; warm++) tick(renderer)
+      expect(renderer.getElementBounds(label).x, "the text follows its block").toBeCloseTo(x + 120, 3)
+      const before = renderer.getPatchCounters()
+      for (let frame = 0; frame < TICKS; frame++) expect(tick(renderer).patchedFrames, `tick ${frame}`).toBe(1)
+      const after = renderer.getPatchCounters()
+      expect(after.declines).toBe(before.declines)
+      expect(after.unpatchable).toBe(before.unpatchable)
+      expect(renderer.getElementBounds(label).x).toBeCloseTo(x + 120, 3)
+      const patched = shot(renderer, "moved-block-patched")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      expect(patched.equals(shot(renderer, "moved-block-whole")), "the picture of a frame built whole").toBe(true)
+      renderer.setPatchEnabled(true)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
 describeNative("a tick drawn whole says why", { timeout: TIMEOUT }, () => {
   const pulse = "afw-pulse 1.5s linear infinite"
   const children = (count: number) => Array.from({ length: count }, (_, index) => <div key={index} style={{ width: 2, height: 2 }} />)
   const reasons: Record<string, [React.ReactNode, string]> = {
     "an animation that moves a box": [widthHead, "LayoutAnimation"],
     "an animation that moves an absolute box": [topAbsoluteHead, "LayoutAnimation"],
-    "an element that is itself absolute": [selfAbsoluteHead, "Escapes"],
-    "an absolute badge in a relative card": [badgeHead, "Escapes"],
+    "an element that is fixed to the viewport": [
+      <text testId="animated" style={{ fontSize: 14, color: "#000000", position: "fixed", left: 0, top: 0, animation: pulse }}>
+        animated
+      </text>,
+      "Excluded:fixed",
+    ],
+    "a loop on an element that holds an absolute box against a block outside it": [
+      <div testId="animated" style={{ height: 24, color: "#000000", animation: pulse }}>
+        <div style={{ position: "absolute", left: 0, top: 0, width: 20, height: 12, backgroundColor: "#cc3333" }} />
+      </div>,
+      "Escapes",
+    ],
     "a scroller that runs a loop": [
       <div testId="animated" style={{ overflow: "scroll", width: 100, height: 24, color: "#000000", animation: pulse }}>
         <text style={{ fontSize: 12 }}>scroller</text>

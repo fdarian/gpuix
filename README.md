@@ -8855,8 +8855,8 @@ Counters you read off the renderer:
   patch, such as `Sourced` for a pointer move and `Edited` for a commit). While
   something runs, every tick drawn whole is counted in one of the two, on a page with
   no patched unit too. A running element that is no unit is counted under the reason
-  it is none: `LayoutAnimation` (what runs moves a box), `Escapes` (it is
-  `position: absolute` against a containing block outside it, or holds such a box),
+  it is none: `LayoutAnimation` (what runs moves a box), `Escapes` (it holds a
+  `position: absolute` box whose containing block is outside it),
   `Lifts` (it lifts a box out of itself), `TooLarge` (more than 256 elements),
   `Scrolls`, `Excluded:<kind>` (it is a scroller, a `<code>` block and so on) and
   `ExcludedBelow:<kind>` (something it holds is). A loop that is patched has

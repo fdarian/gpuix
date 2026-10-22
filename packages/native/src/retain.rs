@@ -438,8 +438,9 @@ pub(crate) enum Refusal {
     Excluded(Exclusion),
     /// Something in it is.
     ExcludedBelow(Exclusion),
-    /// It is absolutely positioned against a containing block outside it, or holds something that is:
-    /// gpui keeps no root whose layout is rewritten against a box it does not hold.
+    /// It holds something absolutely positioned against a containing block outside it: gpui keeps no
+    /// root whose layout is rewritten against a box it does not hold. (An absolute element is a unit
+    /// itself, its own containing block being outside.)
     Escapes,
     /// Something in it is lifted out of it into a stacking context it does not form.
     Lifts,
@@ -1650,7 +1651,8 @@ impl Retain {
     /// and what it holds are exactly the nodes since, and a unit holds none that is excluded, that
     /// scrolls (a scroll bypasses the tape that a patch compares), lifts something out of it, or
     /// is positioned against something outside it. The element itself may be lifted, into the
-    /// stacking context around it, as an element with an opacity is: the `z` it is lifted at is
+    /// stacking context around it, as an element with an opacity is, and may be `position: absolute`
+    /// (the block that places it is outside, and gpui builds it whole in every frame): the `z` it is lifted at is
     /// returned with the subtree, for the unit to be handed over as gpui wants it, and what it holds
     /// must be consumed by the context it forms, or there is none (a positioned element
     /// without a `z-index`), and nothing in it is lifted.
@@ -1683,7 +1685,10 @@ impl Retain {
             let lifts_out = node.lift_z.is_some() || lifts_below;
             let escaped = node.absolute || (!node.positioned && escapes[index]);
             if index == 0 {
-                if lifts_below || escaped {
+                // An absolute root is placed by a box outside it, which gpui keeps no recording of: the
+                // frame builds it whole every time, and a patch paints it where that frame left its node.
+                let escaped_below = !node.positioned && escapes[index];
+                if lifts_below || escaped_below {
                     return None;
                 }
                 break;
@@ -2476,6 +2481,9 @@ impl Retain {
             let own = self.below[at];
             let escaped = node.absolute || (!node.positioned && own.escapes);
             let eligible = node.exclusion.is_none() && own.excluded.is_none() && !escaped;
+            // An absolute element is no root to skip, and it is the root of a unit.
+            let escaped_below = !node.positioned && own.escapes;
+            let unit_clear = node.exclusion.is_none() && own.excluded.is_none() && !escaped_below;
             let lifts = node.lift_z.is_some() || (!node.forms_context && own.lifts);
             let clean = own.changed.is_none() && !own.changed_below;
             let parent = (node.parent != NO_PARENT).then_some(node.parent as usize);
@@ -2551,11 +2559,11 @@ impl Retain {
                 self.dynamic.remove(&node.id);
             }
             let (epoch, token, holes) = (own.epoch, own.token, own.holes);
-            let (unit_eligible, motion) = self.unit_facts(at, eligible, escaped);
+            let (unit_eligible, motion) = self.unit_facts(at, unit_clear, escaped_below);
             let refusal = if node.exclusion == Some(Exclusion::CollapsedTable) {
                 self.table_refusal(at)
             } else if motion.dynamic & Dynamic::OWN != 0 {
-                self.refusal(at, own, escaped, unit_eligible, motion)
+                self.refusal(at, own, escaped_below, unit_eligible, motion)
             } else {
                 None
             };
@@ -4546,23 +4554,56 @@ mod tests {
     }
 
     #[test]
-    fn an_element_that_is_excluded_or_absolute_itself_is_no_unit_and_a_tick_says_why() {
-        let own: [(&str, fn(&mut Retain), Refusal); 2] = [
-            ("an excluded kind", |retain| retain.exclude(Exclusion::AtomicInline), Refusal::Excluded(Exclusion::AtomicInline)),
-            ("absolute against a containing block outside", |retain| retain.containing_block(false, true), Refusal::Escapes),
-        ];
-        for (what, note, refusal) in own {
-            let mut page = Units::new();
-            for _ in 0..2 {
-                page.frame(&[], false, |page| {
-                    page.element(1, None, |page| {
-                        page.element(2, Some(true), |page| note(&mut page.retain));
+    fn an_excluded_element_is_no_unit_and_a_tick_says_why() {
+        let mut page = Units::new();
+        for _ in 0..2 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |page| page.retain.exclude(Exclusion::AtomicInline));
+                });
+            });
+        }
+        assert_eq!(page.ids(), Vec::<u64>::new());
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::Excluded(Exclusion::AtomicInline))));
+    }
+
+    #[test]
+    fn an_absolute_element_is_a_unit_and_so_is_one_that_holds_the_box_it_is_a_containing_block_of() {
+        // Absolute against a block outside it, with an absolute box of its own inside.
+        let mut page = Units::new();
+        for _ in 0..2 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |page| {
+                        page.retain.containing_block(true, true);
+                        page.element(3, None, |page| page.retain.containing_block(false, true));
                     });
                 });
-            }
-            assert_eq!(page.ids(), Vec::<u64>::new(), "{what}");
-            assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(refusal)), "{what}");
+            });
         }
+        assert_eq!(page.ids(), vec![2]);
+        assert!(page.preview(&[], false).is_ok());
+        // The page does not skip it: gpui builds an absolute box whole in every frame, as it
+        // keeps no recording of what a box outside places.
+        assert!(!page.retain.records.get(&2).unwrap().eligible);
+        assert!(page.retain.records.get(&2).unwrap().unit_eligible);
+    }
+
+    #[test]
+    fn an_element_that_is_not_positioned_is_no_unit_when_an_absolute_box_in_it_is_against_a_block_outside() {
+        let mut page = Units::new();
+        for _ in 0..2 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |page| {
+                        page.retain.containing_block(false, false);
+                        page.element(3, None, |page| page.retain.containing_block(false, true));
+                    });
+                });
+            });
+        }
+        assert_eq!(page.ids(), Vec::<u64>::new());
+        assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::Escapes)));
     }
 
     #[test]
