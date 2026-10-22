@@ -29,9 +29,9 @@
  */
 
 import fs from "fs"
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { describe, expect, it } from "vitest"
-import { defineKeyframes, motion } from "../index"
+import { animate, defineKeyframes, motion, useMotionValue, useSpring, useTransform } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
 import { SHOTS_DIR } from "./test-utils.js"
@@ -1401,6 +1401,522 @@ describeNative("the caret of a focused input", { timeout: TIMEOUT }, () => {
         previous = retained
       }
       if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
+/** A motion value that `start` runs from an effect, and the element `render` binds it to. */
+function BoundHead({ initial, start, render }) {
+  const value = useMotionValue(initial)
+  useEffect(() => {
+    const controls = start(value)
+    return () => controls.stop()
+  }, [value])
+  return render(value)
+}
+
+const loop = { duration: 1.5, ease: "linear", repeat: Infinity }
+// Under-damped, so it is still moving after the 20 ticks a test draws.
+const spring = { type: "spring", stiffness: 12, damping: 0.4, mass: 1 }
+const swing = ["#000000", "#ff0000", "#000000"]
+
+const boundTo = (name: string, initial, start, render) => ({ [name]: <BoundHead initial={initial} start={start} render={render} /> })
+
+/** What binds a motion value to a property that only paints, and the animation that drives it. */
+const boundHeads = {
+  ...boundTo("a colour keyframes loop bound to color", "#000000", (value) => animate(value, swing, loop), (value) => (
+    <text testId="animated" style={{ fontSize: 20, color: value }}>
+      animated
+    </text>
+  )),
+  ...boundTo("a colour keyframes loop bound to backgroundColor", "#000000", (value) => animate(value, swing, loop), (value) => (
+    <div testId="animated" style={{ height: 24, backgroundColor: value }}>
+      <text style={{ fontSize: 20, color: "#ffffff" }}>animated</text>
+    </div>
+  )),
+  ...boundTo("a number keyframes loop bound to opacity", 0.8, (value) => animate(value, [0.8, 0.3, 0.8], loop), (value) => (
+    <div testId="animated" style={{ height: 24, backgroundColor: "#99ccff", opacity: value }}>
+      <text style={{ fontSize: 20, color: "#222222" }}>animated</text>
+    </div>
+  )),
+  ...boundTo("a spring bound to opacity", 0.9, (value) => animate(value, 0.5, spring), (value) => (
+    <div testId="animated" style={{ height: 24, backgroundColor: "#99ccff", opacity: value }}>
+      <text style={{ fontSize: 20, color: "#222222" }}>animated</text>
+    </div>
+  )),
+  ...boundTo("a spring bound to color", "#000000", (value) => animate(value, "#606060", spring), (value) => (
+    <text testId="animated" style={{ fontSize: 20, color: value }}>
+      animated
+    </text>
+  )),
+}
+
+function RangeHead() {
+  const x = useMotionValue(0)
+  const color = useTransform(x, [0, 1], ["#000000", "#ff0000"])
+  useEffect(() => {
+    const controls = animate(x, [0, 1, 0], loop)
+    return () => controls.stop()
+  }, [x])
+  return (
+    <text testId="animated" style={{ fontSize: 20, color }}>
+      animated
+    </text>
+  )
+}
+
+/**
+ * The route to an svg stroke: a motion value binds to a style property, not to an attribute of a shape, so it
+ * drives the `color` of the `<svg>` that a shape strokes with `currentColor`.
+ */
+const strokeHead = boundTo("a colour loop bound to the color of an svg stroked with currentColor", "#000000", (value) => animate(value, swing, loop), (value) => (
+  <svg testId="spinner" viewBox="0 0 24 24" width={24} height={24} style={{ color: value }}>
+    <circle cx={12} cy={12} r={10} fill="none" stroke="currentColor" strokeWidth={3} />
+  </svg>
+))
+
+const paintHeads = {
+  ...boundHeads,
+  "a colour range transform of a number loop bound to color": <RangeHead />,
+  ...strokeHead,
+}
+
+describeNative("a tick of a motion value that only paints", { timeout: TIMEOUT }, () => {
+  for (const [name, head] of Object.entries(paintHeads)) {
+    counted(`patches every tick, with no decline of either kind, at any size of the page: ${name}`, async () => {
+      for (const nodes of [500, 5000]) expect(await patchesOf(head, nodes), `${nodes} nodes`).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+    })
+
+    counted(`does the work of one text on any page: ${name}`, async () => {
+      const small = await ticksOf(head, 500)
+      const large = await ticksOf(head, 5000)
+      for (let index = 0; index < TICKS; index++) {
+        expect(large[index], `tick ${index}`).toEqual(small[index])
+        expect(small[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+        expect(small[index].elementsBuilt, `tick ${index}`).toBeLessThanOrEqual(3)
+        expect(small[index].prepainted, `tick ${index}`).toBeLessThanOrEqual(10)
+        expect(small[index].hits + small[index].replays + small[index].builds, `tick ${index}`).toBe(0)
+        expect(small[index].nodesCreated + small[index].measures + small[index].shapes, `tick ${index}`).toBe(0)
+      }
+    })
+
+    it.skipIf(!patching)(`shows the picture of a frame built whole: ${name}`, async () => {
+      const page = await mount(head, 500)
+      try {
+        const renderer = page.renderer
+        const file = name.replace(/\W+/g, "-")
+        for (let warm = 0; warm < WARM; warm++) tick(renderer)
+        const before = renderer.getPatchCounters().patchedFrames
+        for (let index = 0; index < 21; index++) tick(renderer)
+        expect(renderer.getPatchCounters().patchedFrames - before).toBe(21)
+        const patched = shot(renderer, `${file}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        const whole = shot(renderer, `${file}-whole`)
+        expect(patched.equals(whole)).toBe(true)
+        for (let index = 0; index < 10; index++) tick(renderer)
+        expect(shot(renderer, `${file}-later`).equals(whole), "the picture moved").toBe(false)
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        page.root.unmount()
+      }
+    })
+  }
+})
+
+describeNative("a tick of a motion value that moves a box", { timeout: TIMEOUT }, () => {
+  const sized = {
+    width: boundTo("width", 40, (value) => animate(value, [40, 80, 40], loop), (value) => (
+      <div testId="animated" style={{ height: 20, width: value, backgroundColor: "#336699" }} />
+    )),
+    left: boundTo("left", 0, (value) => animate(value, [0, 20, 0], loop), (value) => (
+      <div style={{ position: "relative", width: 200, height: 40 }}>
+        <div testId="animated" style={{ position: "absolute", top: 0, width: 20, height: 12, left: value, backgroundColor: "#336699" }} />
+      </div>
+    )),
+    top: boundTo("top", 0, (value) => animate(value, [0, 20, 0], loop), (value) => (
+      <div style={{ position: "relative", width: 200, height: 40 }}>
+        <div testId="animated" style={{ position: "absolute", left: 0, width: 20, height: 12, top: value, backgroundColor: "#336699" }} />
+      </div>
+    )),
+  }
+  for (const [name, heads] of Object.entries(sized)) {
+    counted(`is a layout animation, drawn whole and counted under LayoutAnimation: ${name}`, async () => {
+      const done = await patchesOf(heads[name])
+      expect(done.patched).toBe(0)
+      expect(done.declines).toEqual({})
+      expect(done.unpatchable).toEqual({ LayoutAnimation: TICKS })
+    })
+  }
+})
+
+/** A box bound to a value that never moves: it paints what it is bound to and asks for nothing. */
+function Resting({ prop, value }: { prop: string; value: string | number }) {
+  const bound = useMotionValue(value)
+  return <div style={{ height: 4, backgroundColor: "#999999", [prop]: bound }} />
+}
+
+const resting = (count: number, prop = "backgroundColor", value: string | number = "#999999") =>
+  Array.from({ length: count }, (_, index) => <Resting key={index} prop={prop} value={value} />)
+
+/**
+ * What decides which bound elements a tick builds is whether their value can have changed, not that they are bound:
+ * a page of boxes bound to values that rest costs a tick of a loop beside them what the loop costs alone.
+ */
+describeNative("a tick beside motion values that rest", { timeout: TIMEOUT }, () => {
+  const loopHead = boundHeads["a colour keyframes loop bound to color"]
+  const beside = (rest: React.ReactNode) => (
+    <>
+      {rest}
+      {loopHead}
+    </>
+  )
+
+  counted("builds the element that moves and none of the 50 that are bound and rest", async () => {
+    const alone = await ticksOf(loopHead, 500)
+    const crowded = await ticksOf(beside(resting(50)), 500)
+    for (let index = 0; index < TICKS; index++) {
+      expect(crowded[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+      expect(crowded[index], `tick ${index}`).toEqual(alone[index])
+    }
+  })
+
+  counted("builds the same when the resting values are opacities", async () => {
+    const alone = await ticksOf(loopHead, 500)
+    const crowded = await ticksOf(beside(resting(50, "opacity", 0.5)), 500)
+    for (let index = 0; index < TICKS; index++) expect(crowded[index], `tick ${index}`).toEqual(alone[index])
+  })
+
+  counted("patches the ticks of a loop beside a width bound to a value that rests", async () => {
+    for (const nodes of [500, 5000]) {
+      expect(await patchesOf(beside(resting(1, "width", 40)), nodes), `${nodes} nodes`).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+    }
+  })
+
+  counted("patches the ticks of a loop beside a left and a top bound to values that rest", async () => {
+    const head = beside(
+      <div style={{ position: "relative", width: 100, height: 20 }}>
+        <Resting prop="left" value={4} />
+        <Resting prop="top" value={4} />
+      </div>,
+    )
+    expect(await patchesOf(head, 500)).toEqual({ patched: TICKS, declines: {}, unpatchable: {} })
+  })
+})
+
+const CULLED_TICKS = 24
+
+/** A scroller 60 px high whose content is 400 px of nothing and then `inner`, which is out of its view. */
+const culledHead = (inner: React.ReactNode) => (
+  <div testId="scroller" style={{ width: 300, height: 60, flexShrink: 0, overflow: "auto" }}>
+    <div style={{ width: 10, height: 400, flexShrink: 0 }} />
+    {inner}
+    <div style={{ width: 10, height: 400, flexShrink: 0 }} />
+  </div>
+)
+
+const colourLoop = (value) => animate(value, swing, loop)
+
+/**
+ * A value bound to an element nobody sees is dormant like a CSS loop on one: Chrome runs the animation and paints no
+ * frame for it. Its value and its events go on (Motion's `change` follows the animation's frame, not the element's
+ * visibility), and the element is built with the value of the frame that shows it.
+ */
+describeNative("a motion value bound to an element that is culled", { timeout: TIMEOUT }, () => {
+  /** A text bound to a colour loop, that reports each change of the value. */
+  const colourWithEvents = (events: string[]) => (
+    <BoundHead
+      initial="#000000"
+      start={(value) => {
+        const off = value.on("change", (latest) => events.push(latest))
+        const controls = colourLoop(value)
+        return {
+          stop: () => {
+            off()
+            controls.stop()
+          },
+        }
+      }}
+      render={(value) => (
+        <text testId="animated" style={{ fontSize: 20, color: value }}>
+          animated
+        </text>
+      )}
+    />
+  )
+  const culledColour = (events: string[]) => culledHead(colourWithEvents(events))
+
+  counted("asks for no frame while it is out of view, as a CSS loop does", async () => {
+    const page = await mount(culledColour([]), 500)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      for (let index = 0; index < CULLED_TICKS; index++) expect(frames(tick(renderer)), `tick ${index}`).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  counted("asks for none for a value bound to opacity, a spring and a transform either", async () => {
+    const heads = {
+      opacity: boundHeads["a number keyframes loop bound to opacity"],
+      spring: boundHeads["a spring bound to opacity"],
+      range: <RangeHead />,
+    }
+    for (const [name, head] of Object.entries(heads)) {
+      const page = await mount(culledHead(head), 500)
+      try {
+        for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+        for (let index = 0; index < CULLED_TICKS; index++) expect(frames(tick(page.renderer)), `${name}, tick ${index}`).toBe(0)
+      } finally {
+        page.root.unmount()
+      }
+    }
+  })
+
+  counted("keeps the value and sends one change for each tick, as it does in view", async () => {
+    const run = async (head: (events: string[]) => React.ReactNode) => {
+      const events: string[] = []
+      const page = await mount(head(events), 500)
+      try {
+        const renderer = page.renderer
+        for (let warm = 0; warm < WARM; warm++) tick(renderer)
+        renderer.dispatchNativeEvents()
+        events.length = 0
+        for (let index = 0; index < CULLED_TICKS; index++) {
+          tick(renderer)
+          renderer.dispatchNativeEvents()
+        }
+        return events
+      } finally {
+        page.root.unmount()
+      }
+    }
+    const inView = await run(colourWithEvents)
+    const culled = await run(culledColour)
+    expect(inView.length, "the loop changes its value at every tick").toBe(CULLED_TICKS)
+    expect(culled).toEqual(inView)
+  })
+
+  counted("resolves the promise of an animation that ends out of view", async () => {
+    let finished = false
+    const head = culledHead(
+      <BoundHead
+        initial="#000000"
+        start={(value) => {
+          const controls = animate(value, "#ff0000", { duration: 0.3, ease: "linear" })
+          controls.then(() => (finished = true))
+          return controls
+        }}
+        render={(value) => <text style={{ fontSize: 20, color: value }}>animated</text>}
+      />,
+    )
+    const page = await mount(head, 500)
+    try {
+      for (let index = 0; index < 40; index++) {
+        tick(page.renderer)
+        page.renderer.dispatchNativeEvents()
+      }
+      await sleep(0)
+      expect(finished).toBe(true)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  counted("is drawn with the value of the frame that shows it, and ticks in patches again", async () => {
+    const page = await mount(culledColour([]), 500)
+    try {
+      const renderer = page.renderer
+      const scroller = renderer.findByTestId("scroller").id
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      for (let index = 0; index < CULLED_TICKS; index++) tick(renderer)
+      renderer.scrollTo(scroller, 0, 400)
+      // The scrollbar that a scroll shows fades out by itself, in frames of its own.
+      tick(renderer)
+      tick(renderer, 2000)
+      for (let index = 0; index < 4; index++) tick(renderer)
+      const before = renderer.getPatchCounters()
+      for (let index = 0; index < TICKS; index++) expect(tick(renderer).patchedFrames, `tick ${index}`).toBe(1)
+      const after = renderer.getPatchCounters()
+      expect(gained(after.declines, before.declines)).toEqual({})
+      expect(gained(after.unpatchable, before.unpatchable)).toEqual({})
+      const patched = shot(renderer, "culled-woken-patched")
+      renderer.setPatchEnabled(false)
+      tick(renderer, 0)
+      expect(patched.equals(shot(renderer, "culled-woken-whole")), "the picture of a frame built whole").toBe(true)
+      renderer.setPatchEnabled(true)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  counted("asks for none while it is below the window, either", async () => {
+    const page = await mount(<div style={{ width: 10, height: 10 }} />, 5000, false, boundHeads["a colour keyframes loop bound to color"])
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      for (let index = 0; index < CULLED_TICKS; index++) expect(frames(tick(page.renderer)), `tick ${index}`).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
+/**
+ * A script that writes a value that only paints, every frame (a `requestAnimationFrame` loop, or the `change` of
+ * another value), changes what the element paints and nothing it lays out: the element is a source for a patch, as it
+ * is for a tick of a loop, and not a reason to draw the page again.
+ */
+describeNative("a motion value written by a script", { timeout: TIMEOUT }, () => {
+  const COLOURS = ["#ff0000", "#0000ff", "#00aa00", "#aa00aa"]
+  const writing = (props: Record<string, any>) => {
+    const handle: { value?: any; other?: any } = {}
+    const head = (
+      <BoundHead
+        initial="#000000"
+        start={(value) => {
+          handle.value = value
+          return { stop() {} }
+        }}
+        render={(value) => (
+          <text testId="animated" style={{ fontSize: 20, color: value }}>
+            animated
+          </text>
+        )}
+        {...props}
+      />
+    )
+    return { head, handle }
+  }
+
+  /** A tick of the page of a script: the script writes, then the frame is drawn. */
+  const step = (renderer, handle, index: number) => work(renderer, () => handle.value.set(COLOURS[index % COLOURS.length]))
+
+  const run = async (nodes: number) => {
+    const { head, handle } = writing({})
+    const page = await mount(head, nodes)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < WARM; warm++) step(renderer, handle, warm)
+      const before = renderer.getPatchCounters()
+      const done: Work[] = []
+      for (let index = 0; index < TICKS; index++) done.push(step(renderer, handle, WARM + index))
+      const after = renderer.getPatchCounters()
+      return { done, declines: gained(after.declines, before.declines), unpatchable: gained(after.unpatchable, before.unpatchable) }
+    } finally {
+      page.root.unmount()
+    }
+  }
+
+  counted("is patched at every write, at any size of the page", async () => {
+    const small = await run(500)
+    const large = await run(5000)
+    expect(small.declines).toEqual({})
+    expect(small.unpatchable).toEqual({})
+    for (let index = 0; index < TICKS; index++) {
+      expect(small.done[index].patchedFrames, `write ${index} is patched`).toBe(1)
+      expect(small.done[index].paintedFrames, `write ${index} is no frame built whole`).toBe(0)
+      expect(small.done[index].elementsBuilt, `write ${index}`).toBeLessThanOrEqual(3)
+      expect(large.done[index], `write ${index}`).toEqual(small.done[index])
+    }
+  })
+
+  it.skipIf(!patching)("shows the picture of a frame built whole", async () => {
+    const { head, handle } = writing({})
+    const page = await mount(head, 500)
+    try {
+      const renderer = page.renderer
+      for (let index = 0; index < 8; index++) {
+        step(renderer, handle, index)
+        const patched = shot(renderer, `written-${index}-patched`)
+        renderer.setPatchEnabled(false)
+        tick(renderer, 0)
+        expect(patched.equals(shot(renderer, `written-${index}-whole`)), `write ${index}`).toBe(true)
+        renderer.setPatchEnabled(true)
+      }
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  // The case of FF: a loop on a value nothing is bound to, and a script that copies it into the one the element paints.
+  counted("is patched when the change of a value that nothing paints writes the one that does", async () => {
+    const source: { value?: any; target?: any } = {}
+    const head = (
+      <BoundHead
+        initial="#000000"
+        start={(target) => {
+          source.target = target
+          return { stop() {} }
+        }}
+        render={(target) => (
+          <>
+            <BoundHead
+              initial={0}
+              start={(value) => {
+                source.value = value
+                const off = value.on("change", (latest) => target.set(latest > 0.5 ? "#ff0000" : "#0000ff"))
+                const controls = animate(value, [0, 1, 0], loop)
+                return { stop: () => (off(), controls.stop()) }
+              }}
+              render={() => <div style={{ width: 1, height: 1 }} />}
+            />
+            <text testId="animated" style={{ fontSize: 20, color: target }}>
+              animated
+            </text>
+          </>
+        )}
+      />
+    )
+    const page = await mount(head, 500)
+    try {
+      const renderer = page.renderer
+      const both = () => {
+        const done = work(renderer, () => renderer.clockAdvance(16))
+        renderer.dispatchNativeEvents()
+        const written = work(renderer, () => {})
+        return { done, written }
+      }
+      for (let warm = 0; warm < WARM; warm++) both()
+      const before = renderer.getPatchCounters()
+      const wholeBefore = renderer.getPaintedFrameCount()
+      for (let index = 0; index < 20; index++) both()
+      const after = renderer.getPatchCounters()
+      expect(renderer.getPaintedFrameCount() - wholeBefore, "no frame is built whole").toBe(0)
+      expect(after.patchedFrames - before.patchedFrames, "the writes are patched").toBeGreaterThanOrEqual(20)
+      expect(gained(after.declines, before.declines)).toEqual({})
+      expect(gained(after.unpatchable, before.unpatchable)).toEqual({})
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  counted("draws a write to a width whole, as before", async () => {
+    const handle: { value?: any } = {}
+    const head = (
+      <BoundHead
+        initial={40}
+        start={(value) => {
+          handle.value = value
+          return { stop() {} }
+        }}
+        render={(value) => <div testId="animated" style={{ height: 20, width: value, backgroundColor: "#336699" }} />}
+      />
+    )
+    const page = await mount(head, 500)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < WARM; warm++) work(renderer, () => handle.value.set(40 + warm))
+      for (let index = 0; index < TICKS; index++) {
+        const done = work(renderer, () => handle.value.set(60 + index))
+        expect(done.patchedFrames, `write ${index}`).toBe(0)
+        expect(done.paintedFrames, `write ${index}`).toBe(1)
+      }
+      expect(renderer.getElementBounds(renderer.findByTestId("animated").id).width).toBe(60 + TICKS - 1)
     } finally {
       page.root.unmount()
     }
