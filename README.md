@@ -8830,14 +8830,18 @@ animation on content that is not shown (below the window, clipped by an `overflo
 not built or drawn at all, and its events and `getAnimations()` still advance; so is a
 [motion value](#motion-values) that only such content binds, and its `change` events
 keep coming at the display rate. A tick
-that moves a box (a `width` or inset loop, a `layout` element, a big `<svg>`), or that
-follows any other change (the pointer, focus, a scroll, a commit), is a full frame.
+that moves a box (a `width` or inset loop, a `layout` element), or that
+follows any other change (the pointer, focus, a scroll, a commit), is a full frame. What a
+patched tick costs is what the elements it builds cost: the motions, the motion values and
+the scene primitives of the rest of the page are neither stepped, sampled nor ordered again.
 Counters you read off the renderer:
 
 - `getBuildCounters()` (`resetBuildCounters()` to start over): elements built
-  and skipped, the style and inherited-state copies the build made, and the
+  and skipped, the style and inherited-state copies the build made, the
   subtrees built whole as units of an animation (`unitsBuilt`, `unitsOversized`
-  for those over 256 elements).
+  for those over 256 elements), and the motions a sync read (`motionsSynced`) and the
+  motion values sampled for the elements that bind them (`motionValuesSampled`): all of
+  them in a frame built whole, only those that move or were written in a patched tick.
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
   child lists set, passes, and measure calls, `nodesLaidOut` (nodes whose layout
   algorithm ran to place them: a change to one leaf costs its ancestors and what
@@ -8853,8 +8857,9 @@ Counters you read off the renderer:
   again (`extentWalks`, `overflowWalks`, `unsnappedOverflowWalks`).
 - `getFrameWorkCounters()`: elements prepainted and painted by themselves (those in
   a culled subtree apart), and the scene primitives that painting inserted against
-  the ones a replay put in again. A replayed subtree counts none of the elements
-  under it. Subtract two reads to see what one hover frame did to the content that
+  the ones a replay put in again, and `boundsInserts`, the draw orders worked out with the
+  scene's bounds tree (a patched tick works out those of what it paints again).
+  A replayed subtree counts none of the elements under it. Subtract two reads to see what one hover frame did to the content that
   did not change.
 - `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,
   how many a scroller moved without building them (`relocations`), and why a
