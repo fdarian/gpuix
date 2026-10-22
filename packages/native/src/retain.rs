@@ -5206,16 +5206,18 @@ mod tests {
     }
 
     #[gpui::test]
-    fn an_svg_too_big_to_raster_in_paint_whose_shape_runs_is_no_unit(cx: &mut gpui::TestAppContext) {
+    fn an_svg_too_big_to_raster_at_rest_is_rasterised_in_paint_while_its_shape_runs_and_is_a_unit(cx: &mut gpui::TestAppContext) {
         let scene = spinning(cx, r#"{"width": 300, "height": 200}"#);
-        assert_eq!(units_of(&scene, cx), Vec::<u64>::new());
+        assert_eq!(units_of(&scene, cx), vec![40]);
         let before = scene.patches(cx);
         for _ in 0..4 {
             scene.window.update(cx, |view, _, _| view.clock.fast_forward_ms(16.0)).unwrap();
             scene.tick(cx);
             cx.run_until_parked();
         }
-        assert_eq!(scene.patches(cx).patched_frames, before.patched_frames);
+        let after = scene.patches(cx);
+        assert_eq!(after.patched_frames - before.patched_frames, 4);
+        assert_eq!(after.total_declines(), before.total_declines());
     }
 
     #[gpui::test]

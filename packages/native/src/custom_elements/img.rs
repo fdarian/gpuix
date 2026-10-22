@@ -788,6 +788,8 @@ pub struct SvgElement {
     paint: std::rc::Rc<std::cell::RefCell<super::svg_paint::SvgPaint>>,
     /// The document the last render had to paint, and its `currentColor`.
     drawing: Option<(std::sync::Arc<[u8]>, gpui::Rgba)>,
+    /// An animation runs on the shapes of the document the last render painted.
+    shapes_run: bool,
 }
 
 impl SvgElement {
@@ -898,14 +900,25 @@ impl CustomElement for SvgElement {
         };
         let color = ctx.colors.current;
         self.drawing = bytes.clone().map(|bytes| (bytes, color));
+        self.shapes_run = ctx.shapes_run;
+        if let Some(outset) = ctx.cull_outset {
+            surface = surface.cullable(outset);
+        }
         if let Some(bytes) = bytes {
             let paint = self.paint.clone();
             let renderer = cx.svg_renderer();
+            let in_paint = ctx.shapes_run;
             surface = surface.child(
                 gpui::canvas(
-                    |_, _, _| (),
-                    move |bounds, _, window, cx| {
-                        paint_svg(&paint, &renderer, &bytes, bounds, color, window, cx);
+                    // Only prepaint knows that the subtree is culled.
+                    |_, window, _| window.is_culling(),
+                    move |bounds, culled, window, cx| {
+                        if culled {
+                            // Nobody sees the image, so none is made: a job for it would be wasted.
+                            paint.borrow_mut().note_culled();
+                            return;
+                        }
+                        paint_svg(&paint, &renderer, &bytes, bounds, color, in_paint, window, cx);
                     },
                 )
                 .keeps_no_position()
@@ -955,13 +968,19 @@ impl CustomElement for SvgElement {
     fn draws_changes_at_once(&self) -> bool {
         self.drawing
             .as_ref()
-            .is_none_or(|(bytes, _)| self.paint.borrow().rasterises_in_paint(bytes))
+            .is_none_or(|(bytes, _)| self.paint.borrow().rasterises_in_paint(bytes, self.shapes_run))
     }
 
     fn retain_state(&self) -> Option<u64> {
+        let paint = self.paint.borrow();
+        // A paint nobody saw made no image and has none to wait for: the subtree is built again
+        // when it is seen, and it is not the same build as one that drew.
+        if paint.was_culled() {
+            return Some(1);
+        }
         let settled = match &self.drawing {
             None => true,
-            Some((bytes, color)) => self.paint.borrow().paints_in_place(bytes, *color),
+            Some((bytes, color)) => paint.paints_in_place(bytes, *color, self.shapes_run),
         };
         settled.then_some(0)
     }
@@ -973,6 +992,7 @@ fn paint_svg(
     bytes: &std::sync::Arc<[u8]>,
     bounds: gpui::Bounds<gpui::Pixels>,
     color: gpui::Rgba,
+    in_paint: bool,
     window: &mut gpui::Window,
     cx: &mut gpui::App,
 ) {
@@ -982,7 +1002,7 @@ fn paint_svg(
     }
     let Some(image) = paint
         .borrow_mut()
-        .image(window, cx, renderer, bytes, bounds.size, scale, color)
+        .image(window, cx, renderer, bytes, bounds.size, scale, color, in_paint)
     else {
         return;
     };

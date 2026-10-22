@@ -7,8 +7,9 @@
  * animation and keeps the rest. What is patched is the same picture a frame built whole gives.
  *
  * An `<svg>` whose shapes animate (the button spinner of the FF demo) is such a unit too: the `<svg>` is
- * built alone and its raster made again in the patched frame, when the document is small enough to be
- * rasterised in paint. A large one is rasterised by a job and is drawn whole, as before.
+ * built alone and its raster made again in the patched frame. While its shapes run its document is
+ * rasterised in the paint that needs it whatever its size, since a job would show every tick the image of the
+ * tick before; a large one at rest is still rasterised by a job.
  *
  * An element that is lifted into the stacking context around it is a unit too: one with an opacity
  * below 1 (a skeleton pulse, a motion fade), a positioned one, one with a `z-index`, as long as nothing
@@ -20,7 +21,7 @@
  * that is itself `position: absolute` is a unit too: the box that places it is outside it, so a frame builds
  * it whole every time and a tick paints it again where that frame laid it out (`position: fixed` is not one).
  *
- * What cannot be patched is drawn whole, as before: an animation that moves a box, a large `<svg>`,
+ * What cannot be patched is drawn whole, as before: an animation that moves a box,
  * a tick in which the pointer moved or the tree was committed. Every tick drawn whole while something runs
  * is counted under the reason (`getPatchCounters().unpatchable`), also on a page with no unit.
  *
@@ -164,9 +165,27 @@ const spinnerHead = (
   </svg>
 )
 
-/** 200 x 200 is past what is rasterised in paint, so a job makes each image and the tick is a frame built whole. */
+/** 200 x 200 is past what a document at rest has rasterised in paint, but a running one is. */
 const largeSpinnerHead = (
   <svg testId="spinner" viewBox="0 0 24 24" width={200} height={200}>
+    <circle
+      cx={12}
+      cy={12}
+      r={10}
+      pathLength={100}
+      fill="none"
+      stroke="#333333"
+      strokeWidth={3}
+      style={{ animation: "afw-spin 1.4s linear infinite" }}
+    />
+  </svg>
+)
+
+/** A document of more than 4096 bytes in a box of 24 x 24: big by its bytes and not by its box. */
+const HEAVY_PATH = Array.from({ length: 400 }, (_, dot) => `M${(dot % 20) + 2} ${Math.floor(dot / 20) + 2}h0.5v0.5h-0.5z`).join(" ")
+const heavySpinnerHead = (
+  <svg testId="spinner" viewBox="0 0 24 24" width={24} height={24}>
+    <path d={HEAVY_PATH} fill="#aabbcc" />
     <circle
       cx={12}
       cy={12}
@@ -427,6 +446,8 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "a keyframes colour": colourHead(),
     "a native motion colour loop": motionHead,
     "an svg stroke dash loop": spinnerHead,
+    "an svg stroke dash loop on a large svg": largeSpinnerHead,
+    "an svg stroke dash loop on a document of more than 4 KB": heavySpinnerHead,
     "a native motion opacity loop": opacityHead,
     "a native motion opacity loop holding a positioned child": opacityHoldingHead,
     "a keyframes opacity loop": breatheHead,
@@ -475,6 +496,8 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     "a keyframes colour": colourHead(),
     "a native motion colour loop": motionHead,
     "an svg stroke dash loop": spinnerHead,
+    "an svg stroke dash loop on a large svg": largeSpinnerHead,
+    "an svg stroke dash loop on a document of more than 4 KB": heavySpinnerHead,
     "a native motion opacity loop": opacityHead,
     "a native motion opacity loop holding a positioned child": opacityHoldingHead,
     "a keyframes opacity loop": breatheHead,
@@ -658,36 +681,14 @@ describeNative("a tick of a paint-only animation", { timeout: TIMEOUT }, () => {
     }
   })
 
-  counted("draws a large svg whole, which is rasterised by a job and shows the image of the tick before", async () => {
-    const small = await ticksOf(largeSpinnerHead, 500)
-    for (let index = 0; index < TICKS; index++) {
-      expect(small[index].patchedFrames, `tick ${index}`).toBe(0)
-      expect(small[index].elementsBuilt, `tick ${index}`).toBeGreaterThan(0)
-    }
-  })
-
-  it.skipIf(!patching)("shows a large svg as a frame built whole does, once its rasters have landed", async () => {
+  it.skipIf(!patching)("patches every tick of a large svg whose shapes run, which is rasterised in paint", async () => {
     const page = await mount(largeSpinnerHead, 500)
     try {
       const renderer = page.renderer
-      for (let step = 0; step < 24; step++) {
-        tick(renderer)
-        await settle(renderer, 2)
-        renderer.setInlineDraws(false)
-      }
-      expect(renderer.getPatchCounters().patchedFrames).toBe(0)
-      await settle(renderer, 6)
-      renderer.setInlineDraws(false)
-      tick(renderer, 0)
-      await settle(renderer, 6)
-      renderer.setInlineDraws(false)
-      const drawn = shot(renderer, "large-svg-drawn")
-      renderer.setPatchEnabled(false)
-      tick(renderer, 0)
-      await settle(renderer, 6)
-      renderer.setInlineDraws(false)
-      expect(drawn.equals(shot(renderer, "large-svg-whole"))).toBe(true)
-      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      const before = renderer.getPatchCounters().patchedFrames
+      for (let index = 0; index < 20; index++) tick(renderer)
+      expect(renderer.getPatchCounters().patchedFrames - before).toBe(20)
     } finally {
       page.root.unmount()
     }

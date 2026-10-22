@@ -8118,7 +8118,7 @@ impl GpuixView {
             commanded,
             relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
-            motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
+            motion: running_motion(&tree, &self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
             verdicts: self.dormancy_verdicts(&tree, window),
@@ -8166,8 +8166,11 @@ fn motion_value_due(store: &crate::motion::MotionValueStore, tree: &crate::retai
         .is_some_and(|binding| store.binding_due(binding))
 }
 
-/// The elements with a motion that runs at `now`, see `retain::Sources::motion`.
+/// The elements with a motion that runs at `now`, see `retain::Sources::motion`. The motion of a
+/// shape is its `<svg>`'s: the shape is never built, and the `<svg>` is what is culled, left dormant
+/// or built again for it.
 fn running_motion(
+    tree: &crate::retained_tree::RetainedTree,
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     animations: &crate::motion::CssAnimations,
     keyframes: &crate::motion::KeyframesRegistry,
@@ -8178,7 +8181,19 @@ fn running_motion(
         .filter(|(_, state)| state.is_animating(now))
         .map(|(id, _)| *id)
         .chain(animations.svg_shapes(keyframes))
+        .map(|id| crate::custom_elements::svg_tree::host_of(tree, id))
         .collect()
+}
+
+/// `id` and, for an `<svg>`, the shapes it draws: their animations are the `<svg>`'s to keep on time
+/// while it is dormant.
+fn with_shapes(tree: &crate::retained_tree::RetainedTree, id: u64) -> Vec<u64> {
+    let shapes = tree
+        .elements
+        .get(&id)
+        .into_iter()
+        .flat_map(|element| crate::custom_elements::svg_tree::shapes(tree, element).map(|shape| shape.id));
+    std::iter::once(id).chain(shapes).collect()
 }
 
 /// A unit built to be painted again, see `GpuixView::build_unit`.
@@ -8319,8 +8334,7 @@ fn paints_only_running(
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     keyframes: &crate::motion::KeyframesRegistry,
 ) -> bool {
-    // What runs on the shapes of an `<svg>` changes its picture, never its box. An `<svg>` blocks
-    // culling around it (`Subtree::block`), so it is a unit but never dormant.
+    // What runs on the shapes of an `<svg>` changes its picture, never its box.
     !fixed.excluded
         && animations.paints_only(id, keyframes)
         && transitions.paints_only(id)
@@ -8409,7 +8423,7 @@ impl GpuixView {
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
         let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        if animating.iter().any(|id| !self.retain.is_dormant(*id)) {
+        if animating.iter().any(|id| !self.retain.is_dormant(crate::custom_elements::svg_tree::host_of(&tree, *id))) {
             // A motion that no frame has seen run: a frame of its own sets it going.
             cx.notify();
         } else if dormant_active || motion_values.active || !animating.is_empty() {
@@ -8598,7 +8612,7 @@ impl gpui::Render for GpuixView {
             commanded,
             relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
-            motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
+            motion: running_motion(&tree, &self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
             verdicts: self.dormancy_verdicts(&tree, window),
@@ -8613,12 +8627,16 @@ impl gpui::Render for GpuixView {
         // move here, and what they ask of the window goes to a tick that draws nothing.
         let moves = self.retain.take_dormant_moves();
         for &id in &moves.left {
-            self.css_animations.leave_dormant(id);
-            self.css_transitions.leave_dormant(id);
+            for id in with_shapes(&tree, id) {
+                self.css_animations.leave_dormant(id);
+                self.css_transitions.leave_dormant(id);
+            }
         }
         for &id in &moves.entered {
-            self.css_animations.enter_dormant(id);
-            self.css_transitions.enter_dormant(id);
+            for id in with_shapes(&tree, id) {
+                self.css_animations.enter_dormant(id);
+                self.css_transitions.enter_dormant(id);
+            }
         }
         if !window.is_retention_reference() {
             self.css_animations.advance_dormant(now);
@@ -8671,8 +8689,9 @@ impl gpui::Render for GpuixView {
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
         let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        let motion_active = motion_animating.iter().any(|id| !self.retain.is_dormant(*id));
-        let dormant_motion = motion_animating.iter().any(|id| self.retain.is_dormant(*id));
+        let dormant_ids = |id: &u64| self.retain.is_dormant(crate::custom_elements::svg_tree::host_of(&tree, *id));
+        let motion_active = motion_animating.iter().any(|id| !dormant_ids(id));
+        let dormant_motion = motion_animating.iter().any(dormant_ids);
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
@@ -9855,6 +9874,16 @@ fn build_element_unpumped(
                     .collect()
             };
             let svg_drawn = svg_markup.clone();
+            // The image of an `<svg>` is fitted to its box, so what draws outside it is what its own
+            // style adds, as for a box. The shapes are not built, nothing below it needs a walk.
+            let svg_subtree = is_svg.then(|| {
+                crate::layout::cull::Subtree::of_element(
+                    crate::layout::cull::Subtree::empty(),
+                    style,
+                    &ctx.inherited.colors,
+                    &ctx.inherited.lengths,
+                )
+            });
             let click_path = click_path(ctx.tree, element);
             if !ctx.inherited.inert {
                 ctx.retain.shape(click_path.len() as u64);
@@ -9880,6 +9909,8 @@ fn build_element_unpumped(
                 font_variations: inherited.font_variations.clone(),
                 children: custom_children,
                 svg_markup,
+                shapes_run: running_shapes,
+                cull_outset: svg_subtree.and_then(|subtree| subtree.outset()),
                 selection: ctx.selection.clone(),
                 selectable: inherited.selectable,
                 inert: inherited.inert,
@@ -9918,8 +9949,12 @@ fn build_element_unpumped(
                 ctx.retain.shape(ctx.svg_trees.generation(id));
                 ctx.retain.digest(|| format!("{svg_drawn:?}"));
             }
-            // It draws and is hit as it likes, and paints and prepaints for itself.
-            ctx.subtree.block();
+            // It draws and is hit as it likes, and paints and prepaints for itself, except an `<svg>`
+            // that can be culled.
+            match svg_subtree {
+                Some(subtree) => ctx.subtree = subtree,
+                None => ctx.subtree.block(),
+            }
             built
         }
     };

@@ -6,7 +6,9 @@
  * out of an `overflow: hidden` scroller: a paint-only animation of an element that is culled is
  * dormant, so the roots above it are replayed, and its clock is carried on without a build. Chrome
  * paints no frame for such content, and a card that shows again is built with the clock of that frame.
- * An animation that moves a box (`width`) is not dormant and is built as it always was.
+ * An animation that moves a box (`width`) is not dormant and is built as it always was. An `<svg>` is a
+ * box like another for it: it clips to its viewport, so a stroke loop on its shapes is dormant when the
+ * `<svg>` is culled, whatever its size.
  *
  * The counters are `getBuildCounters`, `getLayoutCounters`, `getFrameWorkCounters` and
  * `getPaintedFrameCount`. The recordings that a frame replays are reported, not asserted: they scale
@@ -33,6 +35,14 @@ const PULSE = {
 }
 defineKeyframes("offscreen-pulse", PULSE)
 defineKeyframes("offscreen-grow", { from: { width: 40 }, to: { width: 80 } })
+defineKeyframes("offscreen-dash", {
+  "0%": { strokeDasharray: "1 100", strokeDashoffset: 0 },
+  "50%": { strokeDasharray: "60 100", strokeDashoffset: -20 },
+  "100%": { strokeDasharray: "60 100", strokeDashoffset: -100 },
+})
+
+/** A path of about 8 KB of markup, so that its document is past what is rasterised in paint at rest. */
+const FILLER = Array.from({ length: 400 }, (_, dot) => `M${(dot % 20) + 2} ${Math.floor(dot / 20) + 2}h0.5v0.5h-0.5z`).join(" ")
 
 type Work = Record<string, number>
 
@@ -99,13 +109,40 @@ const SCROLLER = 400
 const BEFORE = SCROLLER + 40
 const CARD = 128
 
-type Kind = "colour" | "motion" | "width"
+type Kind = "colour" | "motion" | "width" | "svg" | "bigsvg"
 type Place = "below" | "hidden" | "auto"
 
 /** `onIteration` is given to the animated label, which the page reports by card. */
 function Card({ index, kind, onIteration }: { index: number; kind: Kind; onIteration?: (index: number) => void }) {
   const shared = { fontSize: 14, color: "#ff0000" }
   const animation = kind === "width" ? "offscreen-grow 1s linear infinite" : "offscreen-pulse 1s linear infinite"
+  if (kind === "svg" || kind === "bigsvg") {
+    // More than 4096 bytes of document is past what a document at rest has rasterised in paint.
+    const filler = kind === "svg" ? "" : FILLER
+    return (
+      <div
+        testId={`card-${index}`}
+        style={{ height: 120, flexShrink: 0, padding: 8, marginBottom: 8, backgroundColor: "#f4f4f4", borderRadius: 8, flexDirection: "column", gap: 4 }}
+      >
+        <text style={{ fontSize: 14, color: "#222222" }}>{`Card title ${index}`}</text>
+        <svg testId={`svg-${index}`} viewBox="0 0 24 24" width={24} height={24} style={{ flexShrink: 0 }}>
+          {filler ? <path d={filler} fill="#aabbcc" /> : null}
+          <circle
+            testId={`circle-${index}`}
+            cx={12}
+            cy={12}
+            r={10}
+            pathLength={100}
+            fill="none"
+            stroke="#333333"
+            strokeWidth={3}
+            onAnimationIteration={() => onIteration?.(index)}
+            style={{ animation: "offscreen-dash 1s linear infinite" }}
+          />
+        </svg>
+      </div>
+    )
+  }
   return (
     <div
       testId={`card-${index}`}
@@ -205,7 +242,7 @@ const mean = (done: Work[], key: string) => done.reduce((sum, frame) => sum + fr
 
 describeNative("a frame on a page with animations nobody sees", { timeout: TIMEOUT }, () => {
   const cases = []
-  for (const kind of ["colour", "motion"] as const) for (const place of ["below", "hidden"] as const) cases.push({ kind, place })
+  for (const kind of ["colour", "motion", "svg", "bigsvg"] as const) for (const place of ["below", "hidden"] as const) cases.push({ kind, place })
 
   for (const { kind, place } of cases) {
     const name = `${kind} loops, ${place === "below" ? "below the window" : "clipped out of an overflow hidden scroller"}`
@@ -322,6 +359,40 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
   }
 
   it("reports the iterations and ends of loops that are not due for a while at the ticks that pass their boundaries, as when they are shown", async () => {
+    await compareTimedEvents(TimedPage)
+  })
+
+  /** The same loops on the shapes of an `<svg>`, which is a box that clips like another. */
+  function TimedSvgPage({ shown, onEvent }: { shown: boolean; onEvent: (event: string) => void }) {
+    return (
+      <div style={{ width: SIZE.width, height: SIZE.height, flexDirection: "column" }}>
+        {shown ? null : <div style={{ height: SIZE.height + BEFORE, flexShrink: 0 }} />}
+        <svg testId="timed-svg" viewBox="0 0 24 24" width={24} height={24} style={{ flexShrink: 0 }}>
+          {LOOPS.map((loop, index) => (
+            <circle
+              key={index}
+              testId={`timed-${index}`}
+              cx={12}
+              cy={12}
+              r={2 + index * 2}
+              fill="none"
+              stroke="#ff0000"
+              pathLength={100}
+              onAnimationIteration={(event) => onEvent(`iteration:${index}:${event.elapsedTime}`)}
+              onAnimationEnd={(event) => onEvent(`end:${index}:${event.elapsedTime}`)}
+              style={{ animation: `offscreen-dash ${loop}` }}
+            />
+          ))}
+        </svg>
+      </div>
+    )
+  }
+
+  it("reports the iterations and ends of loops on the shapes of a culled svg at the ticks that pass their boundaries, as when it is shown", async () => {
+    await compareTimedEvents(TimedSvgPage)
+  })
+
+  async function compareTimedEvents(Page: typeof TimedPage) {
     const run = async (shown: boolean) => {
       const reported: Array<[number, string]> = []
       let step = 0
@@ -329,7 +400,7 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
       const renderer = root.renderer
       try {
         renderer.clockPause()
-        root.render(<TimedPage shown={shown} onEvent={(event) => reported.push([step, event])} />)
+        root.render(<Page shown={shown} onEvent={(event) => reported.push([step, event])} />)
         await settle(renderer)
         renderer.setInlineDraws(false)
         renderer.setA11yActive(false)
@@ -354,7 +425,7 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
     expect(shown.reported.filter(([, event]) => event.startsWith("end")).length).toBe(2)
     expect(shown.reported.length).toBeGreaterThan(12)
     expect(culled.reported).toEqual(shown.reported)
-  })
+  }
 
   it.skipIf(!retained || verifying)("builds the loops again when their keyframes are redefined to move a box, and leaves them be when they paint again", async () => {
     const page = await mount({ cards: 40, kind: "colour", place: "hidden" })
@@ -376,13 +447,14 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
     }
   })
 
-  it.skipIf(!retained || verifying)("is carried on by a tick that builds and draws nothing", async () => {
+  for (const kind of ["colour", "svg", "bigsvg"] as const)
+  it.skipIf(!retained || verifying)(`is carried on by a tick that builds and draws nothing: ${kind}`, async () => {
     const seen: number[] = []
-    const page = await mount({ cards: 40, kind: "colour", place: "hidden", onIteration: (index) => index === 7 && seen.push(index) })
+    const page = await mount({ cards: 40, kind, place: "hidden", onIteration: (index) => index === 7 && seen.push(index) })
     try {
       const renderer = page.renderer
       renderer.clockResume()
-      const label = renderer.findByTestId("label-7").id
+      const label = renderer.findByTestId(kind === "colour" ? "label-7" : "circle-7").id
       for (let warm = 0; warm < 6; warm++) {
         renderer.flush()
         await sleep(8)
@@ -407,6 +479,41 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
       expect(after.prepainted - before.prepainted).toBe(0)
       expect(renderer.getAnimations(label)[0].currentTime - time, "the clock of the animation moves").toBeGreaterThan(2000)
       expect(seen.length, "an iteration at every second").toBeGreaterThanOrEqual(2)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  it.skipIf(!retained)("shows the stroke of the current instant when a card with an svg is scrolled into view", async () => {
+    const page = await mount({ cards: 40, kind: "svg", place: "auto" })
+    const shot = (name: string) => {
+      const file = `${SHOTS_DIR}/offscreen-animation-${process.pid}-${name}.png`
+      fs.rmSync(file, { force: true })
+      page.renderer.captureScreenshot(file)
+      return readLogicalPixels(file, page.renderer)
+    }
+    try {
+      const renderer = page.renderer
+      for (let step = 0; step < 44; step++) tick(renderer)
+      const scroller = renderer.findByTestId("scroller").id
+      renderer.scrollTo(scroller, 0, BEFORE + 20 * CARD, "instant")
+      renderer.flush()
+      renderer.drawFrame()
+      const box = renderer.getElementBounds(renderer.findByTestId("svg-20").id)
+      expect(box.y).toBeLessThan(SIZE.height)
+      const grid = (pixels) => {
+        const out = []
+        for (let y = 0; y < 24; y += 2) for (let x = 0; x < 24; x += 2) out.push(pixels.at(Math.round(box.x) + x, Math.round(box.y) + y))
+        return out
+      }
+      const shown = grid(shot("svg-shown"))
+      // The ring is drawn: some of the grid is not the card's grey.
+      expect(shown.filter(([r]) => r < 120).length).toBeGreaterThan(3)
+      if (!verifying) {
+        renderer.setRetainEnabled(false)
+        renderer.flush()
+        expect(grid(shot("svg-built"))).toEqual(shown)
+      }
     } finally {
       page.root.unmount()
     }

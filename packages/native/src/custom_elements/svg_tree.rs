@@ -64,6 +64,22 @@ pub(crate) fn is_svg_element(tree: &RetainedTree, element: &crate::retained_tree
             .is_some_and(|parent| parent.element_type == "svg" || is_svg_element(tree, parent))
 }
 
+/// The `<svg>` that draws the shape `id`, which is not built itself: what its animation changes
+/// shows in the `<svg>`. `id` when it is not a shape.
+pub(crate) fn host_of(tree: &RetainedTree, id: u64) -> u64 {
+    let Some(element) = tree.elements.get(&id).filter(|element| is_svg_element(tree, element)) else {
+        return id;
+    };
+    let mut at = element.parent;
+    while let Some(parent) = at.and_then(|parent| tree.elements.get(&parent)) {
+        if parent.element_type == "svg" {
+            return parent.id;
+        }
+        at = parent.parent;
+    }
+    id
+}
+
 /// The shapes below the `<svg>` `host`, which it draws.
 pub(crate) fn shapes<'t>(
     tree: &'t RetainedTree,

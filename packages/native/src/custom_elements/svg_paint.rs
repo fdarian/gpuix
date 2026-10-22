@@ -12,7 +12,9 @@
 //! the atlas at one image.
 //!
 //! A small document at a small size ([`Key::is_inline`]) rasterises in paint: it
-//! costs less than the frame it would otherwise miss. Anything bigger is
+//! costs less than the frame it would otherwise miss, and so does a document of any size
+//! whose shapes run an animation, since a job would show each tick the image of the one before.
+//! Anything else bigger is
 //! rasterised on the background executor, one job at a time per `<svg>`, and the
 //! previous image keeps being drawn (the caller stretches it to the box) until
 //! the job lands and repaints the view. The first paint of a big SVG draws
@@ -43,6 +45,8 @@ pub struct SvgPaint {
     inbox: Rc<RefCell<Option<Raster>>>,
     /// Bumped when something newer than the running job is installed, so its result is dropped.
     epoch: u64,
+    /// The last paint was in a culled subtree and made no image.
+    culled: bool,
 }
 
 struct Shown {
@@ -85,6 +89,8 @@ struct Key {
     width: i32,
     height: i32,
     color: [u32; 4],
+    /// Rasterised in the paint that needs it whatever its size, see [`SvgPaint::image`].
+    in_paint: bool,
 }
 
 impl Key {
@@ -96,8 +102,9 @@ impl Key {
     }
 
     fn is_inline(&self) -> bool {
-        self.bytes.len() <= INLINE_BYTES
-            && i64::from(self.width) * i64::from(self.height) <= INLINE_PIXELS
+        self.in_paint
+            || (self.bytes.len() <= INLINE_BYTES
+                && i64::from(self.width) * i64::from(self.height) <= INLINE_PIXELS)
     }
 }
 
@@ -120,6 +127,9 @@ impl SvgPaint {
     ///
     /// `None` also means the SVG could not be rasterised; that is logged once and
     /// retried only when the bytes, size, scale or colour change.
+    ///
+    /// `in_paint` rasterises in this paint whatever the size: the document is one that changes
+    /// at every frame, so the image of a job would always be one frame behind.
     #[allow(clippy::too_many_arguments)]
     pub fn image(
         &mut self,
@@ -130,13 +140,16 @@ impl SvgPaint {
         size: Size<Pixels>,
         scale_factor: f32,
         current_color: Rgba,
+        in_paint: bool,
     ) -> Option<Arc<RenderImage>> {
+        self.culled = false;
         let device = |value: Pixels| (f32::from(value) * scale_factor).round().max(1.0) as i32;
         let key = Key {
             bytes: bytes.clone(),
             width: device(size.width),
             height: device(size.height),
             color: color_bits(current_color),
+            in_paint,
         };
         let outcome = self.resolve(key, |key| {
             rasterize(renderer, bytes, key.width, key.height, current_color)
@@ -216,22 +229,38 @@ impl SvgPaint {
     /// the image already shown or a new one at once. While a job runs, before the first paint, or
     /// when a document that changed is too big to be rasterised in paint (the image shown stays
     /// until its job lands), it does not.
-    pub fn paints_in_place(&self, bytes: &Arc<[u8]>, current_color: Rgba) -> bool {
+    pub fn paints_in_place(&self, bytes: &Arc<[u8]>, current_color: Rgba, in_paint: bool) -> bool {
         let Some(shown) = &self.shown else {
             return false;
         };
         if self.running.is_some() || self.inbox.borrow().is_some() {
             return false;
         }
-        let asked = Key { bytes: bytes.clone(), width: shown.key.width, height: shown.key.height, color: color_bits(current_color) };
+        let asked = Key {
+            bytes: bytes.clone(),
+            width: shown.key.width,
+            height: shown.key.height,
+            color: color_bits(current_color),
+            in_paint,
+        };
         shown.key.same_as(&asked) || asked.is_inline()
     }
 
     /// Whether a document of the size of the last paint is rasterised in the paint that needs it
     /// and not by a job, so that what it draws follows the document at once. Before the first paint
     /// there is no image that could lag behind.
-    pub fn rasterises_in_paint(&self, bytes: &Arc<[u8]>) -> bool {
-        self.shown.as_ref().is_none_or(|shown| Key { bytes: bytes.clone(), ..shown.key.clone() }.is_inline())
+    pub fn rasterises_in_paint(&self, bytes: &Arc<[u8]>, in_paint: bool) -> bool {
+        self.shown.as_ref().is_none_or(|shown| Key { bytes: bytes.clone(), in_paint, ..shown.key.clone() }.is_inline())
+    }
+
+    /// The paint was in a culled subtree and drew nothing, which is all a frame needs of it until the
+    /// subtree is seen.
+    pub fn note_culled(&mut self) {
+        self.culled = true;
+    }
+
+    pub fn was_culled(&self) -> bool {
+        self.culled
     }
 
     /// Drops the image held, for an `<svg>` that has nothing left to paint.
@@ -635,26 +664,50 @@ mod tests {
     fn a_changed_document_paints_in_place_only_when_it_is_rasterised_in_paint() {
         let (bytes, other) = (doc(), Arc::<[u8]>::from(&b"y"[..]));
         let mut paint = SvgPaint::default();
-        assert!(!paint.paints_in_place(&bytes, RED), "before the first paint");
+        assert!(!paint.paints_in_place(&bytes, RED, false), "before the first paint");
         paint.resolve(small(&bytes, 24), fake_raster);
-        assert!(paint.paints_in_place(&bytes, RED));
-        assert!(paint.paints_in_place(&other, RED), "a small document is rasterised in paint");
+        assert!(paint.paints_in_place(&bytes, RED, false));
+        assert!(paint.paints_in_place(&other, RED, false), "a small document is rasterised in paint");
         let green = Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
-        assert!(paint.paints_in_place(&bytes, green));
-        assert!(paint.rasterises_in_paint(&other));
-        assert!(SvgPaint::default().rasterises_in_paint(&other), "nothing shown yet lags behind nothing");
+        assert!(paint.paints_in_place(&bytes, green, false));
+        assert!(paint.rasterises_in_paint(&other, false));
+        assert!(SvgPaint::default().rasterises_in_paint(&other, false), "nothing shown yet lags behind nothing");
 
         let mut paint = SvgPaint::default();
         let job = paint.resolve(big(&bytes, 1200), never_in_paint).job.unwrap();
-        assert!(!paint.paints_in_place(&bytes, RED), "a job is running");
+        assert!(!paint.paints_in_place(&bytes, RED, false), "a job is running");
         let landed = fake_raster(&job.key);
         job.finish(landed);
-        assert!(!paint.paints_in_place(&bytes, RED), "its result has not been shown");
+        assert!(!paint.paints_in_place(&bytes, RED, false), "its result has not been shown");
         paint.resolve(big(&bytes, 1200), never_in_paint);
-        assert!(paint.paints_in_place(&bytes, RED), "the image shown is the document");
-        assert!(!paint.paints_in_place(&other, RED), "another document would be a job, and the image stays");
-        assert!(!paint.paints_in_place(&bytes, green), "and so would another colour");
-        assert!(!paint.rasterises_in_paint(&bytes), "a box this big is rasterised by a job");
+        assert!(paint.paints_in_place(&bytes, RED, false), "the image shown is the document");
+        assert!(!paint.paints_in_place(&other, RED, false), "another document would be a job, and the image stays");
+        assert!(!paint.paints_in_place(&bytes, green, false), "and so would another colour");
+        assert!(!paint.rasterises_in_paint(&bytes, false), "a box this big is rasterised by a job");
+    }
+
+    #[test]
+    fn a_document_whose_shapes_run_is_rasterised_in_paint_whatever_its_size() {
+        let (bytes, other) = (doc(), Arc::<[u8]>::from(&b"y"[..]));
+        let mut paint = SvgPaint::default();
+        let in_paint = |key: Key| Key { in_paint: true, ..key };
+        let outcome = paint.resolve(in_paint(big(&bytes, 1200)), fake_raster);
+        assert!(outcome.job.is_none(), "no job for a document that changes at every frame");
+        assert_eq!(width_of(&outcome), Some(1200), "the image of this paint, not of the one before");
+        let outcome = paint.resolve(in_paint(Key { color: [0; 4], ..big(&other, 1200) }), fake_raster);
+        assert!(outcome.job.is_none());
+        assert!(paint.paints_in_place(&other, RED, true));
+        assert!(paint.rasterises_in_paint(&other, true));
+        assert!(!paint.rasterises_in_paint(&other, false), "the same box with its shapes at rest is a job");
+        assert!(!paint.paints_in_place(&other, RED, false));
+    }
+
+    #[test]
+    fn a_paint_that_was_culled_is_noted_until_the_next_one_that_is_not() {
+        let mut paint = SvgPaint::default();
+        assert!(!paint.was_culled());
+        paint.note_culled();
+        assert!(paint.was_culled());
     }
 
     #[test]
@@ -680,6 +733,7 @@ mod tests {
             width,
             height: 4,
             color: [color.r.to_bits(), color.g.to_bits(), color.b.to_bits(), color.a.to_bits()],
+            in_paint: false,
         }
     }
 
@@ -777,6 +831,7 @@ mod tests {
                         gpui::size(side, side),
                         1.0,
                         RED,
+                        false,
                     );
                     drawn.borrow_mut().push(image.map(|image| image.size(0).width.0));
                 },

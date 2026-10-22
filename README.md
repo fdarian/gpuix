@@ -1939,8 +1939,11 @@ or an animation), and the attributes that are not CSS properties above.
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
 image every frame. The `<svg>` keeps the image it last painted and drops it from
 the texture atlas when it makes the next one, so an animation holds one atlas
-entry per `<svg>`, not one per frame. The cost is one rasterisation per frame, in the
-frame for a small `<svg>` and on a background thread for a large one.
+entry per `<svg>`, not one per frame. The cost is one rasterisation per frame, made in
+the paint that needs it whatever the size of the `<svg>` (a job would show every tick the
+image of the tick before), so a loop on the shapes of a large `<svg>` is patched like one on a
+small one. An `<svg>` clips to its box and is culled when nobody sees it, and a stroke loop on its
+shapes is then carried on without a frame, as a CSS loop on a `div` is.
 
 ### Gestures and variants
 
@@ -5937,7 +5940,8 @@ device resolution, so fills, strokes, gradients and opacity all paint. Raw
 
 The raster is made once per size, colour and document. A small SVG (up to about 4 KB of
 markup, drawn at up to about 128 x 128 device pixels) is rasterised while the frame paints,
-so an icon is there on its first paint. A bigger one is rasterised on a background thread,
+so an icon is there on its first paint, and so is any SVG while an animation runs on its
+shapes. A bigger one at rest is rasterised on a background thread,
 one job at a time per `<svg>`, and never holds up a frame. Until the job lands the `<svg>`
 keeps drawing its previous raster, stretched to fit the box, and draws nothing on its first
 paint. The view repaints when the new raster is ready, and a size, colour or document that

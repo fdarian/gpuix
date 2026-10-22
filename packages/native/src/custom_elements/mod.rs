@@ -65,6 +65,12 @@ pub struct CustomRenderContext<'a> {
     /// For `<svg>`: the XML of its shape children, which win over `src` and
     /// `source`. `None` when it has none.
     pub svg_markup: Option<std::sync::Arc<str>>,
+    /// For `<svg>`: an animation runs on its shapes, so its document changes from one frame to the
+    /// next and is rasterised in the paint that needs it.
+    pub shapes_run: bool,
+    /// For `<svg>`: how far it draws past its box, if it can be culled. Its picture is one image
+    /// fitted to the box (`overflow` or not), so this is only what its own style adds.
+    pub cull_outset: Option<gpui::Edges<gpui::Pixels>>,
     /// Live text selection. Elements that paint text MUST route it through
     /// `crate::text::selectable_text` with this handle, otherwise their glyphs
     /// are invisible to a drag that starts outside them.
