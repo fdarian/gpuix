@@ -1706,10 +1706,11 @@ describeNative("a motion value bound to an element that is culled", { timeout: T
     }
   })
 
-  counted("asks for none for a value bound to opacity, a spring and a transform either", async () => {
+  // An element below 1 in opacity is not culled, with a CSS loop either, so it is not dormant.
+  counted("asks for none for a value bound to backgroundColor, a spring and a transform either", async () => {
     const heads = {
-      opacity: boundHeads["a number keyframes loop bound to opacity"],
-      spring: boundHeads["a spring bound to opacity"],
+      backgroundColor: boundHeads["a colour keyframes loop bound to backgroundColor"],
+      spring: boundHeads["a spring bound to color"],
       range: <RangeHead />,
     }
     for (const [name, head] of Object.entries(heads)) {
@@ -1745,6 +1746,40 @@ describeNative("a motion value bound to an element that is culled", { timeout: T
     const culled = await run(culledColour)
     expect(inView.length, "the loop changes its value at every tick").toBe(CULLED_TICKS)
     expect(culled).toEqual(inView)
+  })
+
+  counted("draws no frame for a value that only a listener reads, and sends its changes", async () => {
+    const events: string[] = []
+    const head = (
+      <BoundHead
+        initial="#000000"
+        start={(value) => {
+          const off = value.on("change", (latest) => events.push(latest))
+          const controls = colourLoop(value)
+          return {
+            stop: () => {
+              off()
+              controls.stop()
+            },
+          }
+        }}
+        render={() => <div style={{ width: 1, height: 1 }} />}
+      />
+    )
+    const page = await mount(head, 500)
+    try {
+      const renderer = page.renderer
+      for (let warm = 0; warm < WARM; warm++) tick(renderer)
+      renderer.dispatchNativeEvents()
+      events.length = 0
+      for (let index = 0; index < CULLED_TICKS; index++) {
+        expect(frames(tick(renderer)), `tick ${index}`).toBe(0)
+        renderer.dispatchNativeEvents()
+      }
+      expect(events.length).toBe(CULLED_TICKS)
+    } finally {
+      page.root.unmount()
+    }
   })
 
   counted("resolves the promise of an animation that ends out of view", async () => {

@@ -8820,7 +8820,9 @@ element paints (a colour, an opacity, a shadow, an `<svg>` stroke), the tick bui
 the elements that animate alone and paints them again in the frame already shown, so
 one loop on a page of 30000 nodes costs about what it does on a page of 500. An
 animation on content that is not shown (below the window, clipped by an `overflow`) is
-not built or drawn at all, and its events and `getAnimations()` still advance. A tick
+not built or drawn at all, and its events and `getAnimations()` still advance; so is a
+[motion value](#motion-values) that only such content binds, and its `change` events
+keep coming at the display rate. A tick
 that moves a box (a `width` or inset loop, a `layout` element, a big `<svg>`), or that
 follows any other change (the pointer, focus, a scroll, a commit), is a full frame.
 Counters you read off the renderer:

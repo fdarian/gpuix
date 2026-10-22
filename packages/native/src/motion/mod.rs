@@ -39,7 +39,7 @@ pub(crate) use css_transition::{
     declares_transitions, validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
     TransitionStyle,
 };
-pub(crate) use bindings::{MotionValueEvent, MotionValueFrame, MotionValueStore};
+pub(crate) use bindings::{Demand, MotionValueEvent, MotionValueFrame, MotionValueStore};
 pub(crate) use values::PlaybackInfo;
 use css_transition::transitions_width;
 use curve::Transition;

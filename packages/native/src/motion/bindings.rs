@@ -54,6 +54,18 @@ pub(crate) struct MotionValueEvent {
     pub(crate) value: Option<String>,
 }
 
+/// What the values that move ask of the frames to come.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Demand {
+    /// Nothing moves by itself.
+    Idle,
+    /// Only values that nothing seen shows move (bound to dormant elements, or only listened to):
+    /// their clock and events go on, and no frame is drawn for them.
+    Dormant,
+    /// A value that an element in view is bound to, or that a drag reads, moves.
+    Frame,
+}
+
 #[derive(Default)]
 pub(crate) struct MotionValueFrame {
     /// Something sampled is still moving by itself, so another frame is due. A held
@@ -85,6 +97,10 @@ pub(crate) struct MotionValueStore {
     frame_values: HashMap<ValueId, AnimValue>,
     /// The values of `frame_values` that were changing by themselves (an animation or a spring) when sampled.
     frame_moving: HashSet<ValueId>,
+    /// The values with a listener that were changing by themselves when last observed.
+    watched_moving: HashSet<ValueId>,
+    /// A value the renderer reads for its own use (a drag's offset) was changing by itself.
+    read_moving: bool,
     /// The values the last frame found bound to something that is not paint-only, or read for
     /// the renderer's own use (a drag's offset), which is not known to be.
     layout_driven: HashSet<ValueId>,
@@ -231,6 +247,59 @@ impl MotionValueStore {
         })
     }
 
+    /// What the values that were moving by themselves at the last sample ask of the frames to come.
+    /// `bound` is each element with a binding and whether it is dormant (not seen, and what runs on
+    /// it only paints): a value that only dormant elements bind, or that is only listened to, is
+    /// carried on by a tick that draws nothing, and the frame is for the ones in view.
+    pub(crate) fn demand<'a>(&self, bound: impl IntoIterator<Item = (bool, &'a Value)>) -> Demand {
+        if self.read_moving {
+            return Demand::Frame;
+        }
+        if self.frame_moving.is_empty() && self.watched_moving.is_empty() {
+            return Demand::Idle;
+        }
+        let seen = bound.into_iter().any(|(dormant, binding)| {
+            !dormant
+                && parse_binding(binding)
+                    .is_ok_and(|pairs| pairs.iter().any(|bound| self.frame_moving.contains(&bound.id())))
+        });
+        if seen {
+            Demand::Frame
+        } else {
+            Demand::Dormant
+        }
+    }
+
+    /// What a frame does for values nothing draws: samples the ones `bindings` name (those of the
+    /// dormant elements) and the listened ones at `now`, and finds their events. Nothing a build
+    /// reads is touched: not the frame's values, which of them moved, nor what was written, so the
+    /// frame that draws an element again finds it as it was left.
+    pub(crate) fn advance_dormant<'a>(
+        &mut self,
+        bindings: impl IntoIterator<Item = &'a Value>,
+        now: Instant,
+    ) -> MotionValueFrame {
+        let mut active = false;
+        let mut ids = HashSet::new();
+        for binding in bindings {
+            match parse_binding(binding) {
+                Ok(pairs) => ids.extend(pairs.iter().map(Bound::id)),
+                Err(error) => self.warn(error),
+            }
+        }
+        for id in ids {
+            match self.graph.sample(id, now) {
+                Ok(sample) => active |= sample.moving,
+                Err(error) => self.warn(error),
+            }
+        }
+        active |= self.observe(now);
+        MotionValueFrame {
+            active,
+            events: std::mem::take(&mut self.pending),
+        }
+    }
+
     /// Whether a `motionValues` binding drives only properties that change what an element paints.
     /// A binding that does not parse is not known to.
     pub(crate) fn binding_paints_only(binding: &Value) -> bool {
@@ -368,6 +437,7 @@ impl MotionValueStore {
     ) -> MotionValueFrame {
         self.frame_values.clear();
         self.frame_moving.clear();
+        self.read_moving = false;
         self.layout_driven.clear();
         self.written.clear();
         let mut active = self.sample_unsampled(bindings, read, now);
@@ -447,6 +517,7 @@ impl MotionValueStore {
             }
             if let Ok(sample) = self.graph.sample(id, now) {
                 active |= sample.moving;
+                self.read_moving |= sample.moving;
                 self.frame_values.insert(id, sample.value);
             }
         }
@@ -547,6 +618,7 @@ impl MotionValueStore {
     /// whether one is in effect.
     fn observe(&mut self, now: Instant) -> bool {
         let mut active = false;
+        self.watched_moving.clear();
         let mut failed = Vec::new();
         let mut ids: Vec<ValueId> = self.watches.keys().copied().collect();
         ids.sort_unstable_by_key(|id| id.0);
@@ -559,6 +631,9 @@ impl MotionValueStore {
                 }
             };
             active |= sample.moving;
+            if sample.moving {
+                self.watched_moving.insert(id);
+            }
             let Some(watch) = self.watches.get_mut(&id) else {
                 continue;
             };
@@ -1966,5 +2041,38 @@ mod tests {
         store.pause(0.0, clock.at(1300)).unwrap();
         assert_eq!(due(&store), [true, false, true], "a control on an animation");
         assert!(MotionValueStore::default().binding_due(&json!({ "nope": 1 })), "a binding that does not parse is not known not to");
+    }
+
+    #[test]
+    fn moving_values_ask_for_a_frame_only_for_an_element_in_view_and_for_a_tick_otherwise() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(0)).unwrap();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.listen(1.0, true, false, clock.at(0)).unwrap();
+        let bound = json!({ "opacity": 0 });
+        let shown = |dormant: bool| [(dormant, &bound)];
+
+        store.frame([&bound], &[], clock.at(0));
+        assert_eq!(store.demand(shown(false)), Demand::Idle);
+
+        store.animate(1.0, &json!(1), Some(&linear(1.0)), clock.at(0)).unwrap();
+        store.frame([&bound], &[], clock.at(100));
+        assert_eq!(store.demand(shown(false)), Demand::Dormant, "a value that is only listened to draws nothing");
+
+        store.animate(0.0, &json!(1), Some(&linear(1.0)), clock.at(100)).unwrap();
+        store.frame([&bound], &[], clock.at(200));
+        assert_eq!(store.demand(shown(false)), Demand::Frame, "an element in view is bound to a value that moves");
+        assert_eq!(store.demand(shown(true)), Demand::Dormant, "and one that is dormant is not");
+        assert_eq!(store.demand([]), Demand::Dormant);
+
+        let dormant = store.advance_dormant([&bound], clock.at(300));
+        assert!(dormant.active);
+        assert_eq!(store.demand(shown(false)), Demand::Frame, "it does not change what the last frame found");
+        let done = store.advance_dormant([&bound], clock.at(1300));
+        assert!(!done.active);
+        assert!(done.events.iter().any(|event| event.id == 1 && event.kind == MotionValueEventKind::Change), "the events of a listened value come");
+        store.frame([&bound], &[], clock.at(1400));
+        assert_eq!(store.demand(shown(false)), Demand::Idle);
     }
 }

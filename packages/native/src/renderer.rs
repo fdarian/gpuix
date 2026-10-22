@@ -5559,6 +5559,35 @@ pub(crate) fn sync_motion_values(
     )
 }
 
+/// What the motion values that move ask of the frames to come, given which elements are dormant.
+pub(crate) fn motion_value_demand(
+    tree: &crate::retained_tree::RetainedTree,
+    store: &crate::motion::MotionValueStore,
+    retain: &crate::retain::Retain,
+) -> crate::motion::Demand {
+    store.demand(tree.motion_value_ids.iter().filter_map(|id| {
+        let element = tree.elements.get(id)?;
+        Some((retain.is_dormant(*id), element.custom_props().get("motionValues")?))
+    }))
+}
+
+/// What a tick that draws nothing does for the values bound to dormant elements and the ones JS
+/// listens to: finds their events, and says whether they still move.
+fn advance_dormant_motion_values(
+    tree: &crate::retained_tree::RetainedTree,
+    store: &mut crate::motion::MotionValueStore,
+    retain: &crate::retain::Retain,
+    now: web_time::Instant,
+) -> crate::motion::MotionValueFrame {
+    store.advance_dormant(
+        tree.motion_value_ids
+            .iter()
+            .filter(|id| retain.is_dormant(**id))
+            .filter_map(|id| tree.elements.get(id)?.custom_props().get("motionValues")),
+        now,
+    )
+}
+
 /// Samples the values the subtree of a virtual row binds that the root's
 /// sample did not reach: a row mounted after it has none sampled, and would
 /// render unbound for a frame. Says whether one of them is still moving.
@@ -8360,6 +8389,12 @@ impl GpuixView {
             )
         };
         emit_motion_settled(&callback, &tree, &settled);
+        // Motion's `change` follows the animation and not the element being seen, so the events of a
+        // value that only dormant elements show are sent here, in the frame they would have been in.
+        self.motion_values
+            .set_appearance(color_scheme_of(window.appearance()));
+        let motion_values = advance_dormant_motion_values(&tree, &mut self.motion_values, &self.retain, now);
+        emit_motion_value_events(&callback, &motion_values.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
@@ -8368,7 +8403,7 @@ impl GpuixView {
         if animating.iter().any(|id| !self.retain.is_dormant(*id)) {
             // A motion that no frame has seen run: a frame of its own sets it going.
             cx.notify();
-        } else if dormant_active || !animating.is_empty() {
+        } else if dormant_active || motion_values.active || !animating.is_empty() {
             self.arm_dormant_tick(window, cx);
         }
     }
@@ -8720,9 +8755,14 @@ impl gpui::Render for GpuixView {
         // no longer match what JS meant.
         PENDING_VIRTUAL_LIST_SCROLLS.with(|cell| cell.borrow_mut().clear());
 
-        if motion_active || transitions_active || motion_value_frame.active || scroll_animating {
+        let motion_value_demand = motion_value_demand(&tree, &self.motion_values, &self.retain);
+        if motion_active
+            || transitions_active
+            || motion_value_demand == crate::motion::Demand::Frame
+            || scroll_animating
+        {
             self.request_next_frame(window, scroll_animating);
-        } else if dormant_active || dormant_motion {
+        } else if dormant_active || dormant_motion || motion_value_demand == crate::motion::Demand::Dormant {
             self.arm_dormant_tick(window, cx);
         }
 

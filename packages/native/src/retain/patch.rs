@@ -74,7 +74,7 @@ pub(crate) struct Built {
 struct Stepped {
     motion: bool,
     dormant_motion: bool,
-    motion_values: bool,
+    motion_values: crate::motion::Demand,
 }
 
 impl GpuixView {
@@ -188,7 +188,7 @@ impl GpuixView {
         Stepped {
             motion: animating.iter().any(|id| !self.retain.is_dormant(*id)),
             dormant_motion: animating.iter().any(|id| self.retain.is_dormant(*id)),
-            motion_values: motion_values.active,
+            motion_values: crate::renderer::motion_value_demand(&tree, &self.motion_values, &self.retain),
         }
     }
 
@@ -196,9 +196,9 @@ impl GpuixView {
     fn continue_after_patch(&mut self, window: &mut gpui::Window, stepped: &Stepped, cx: &mut gpui::Context<Self>) {
         let running = self.css_transitions.take_active() | self.css_animations.take_active();
         let dormant_running = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        if running || stepped.motion || stepped.motion_values {
+        if running || stepped.motion || stepped.motion_values == crate::motion::Demand::Frame {
             self.request_next_frame(window, false);
-        } else if dormant_running || stepped.dormant_motion {
+        } else if dormant_running || stepped.dormant_motion || stepped.motion_values == crate::motion::Demand::Dormant {
             self.arm_dormant_tick(window, cx);
         }
     }
