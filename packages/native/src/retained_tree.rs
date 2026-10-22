@@ -23,9 +23,11 @@ struct HitWalk<'a> {
     /// and its hits from the bottom up.
     layers: Vec<(u64, usize, Vec<u64>)>,
     /// For each positioned element above (and each `<virtual-list>`, whose rows are layout
-    /// roots), whether its clip excludes the point from what is inside it. An absolute
-    /// descendant takes the innermost one in place of the clip of the static boxes in between.
-    frames: Vec<bool>,
+    /// roots), whether its clip excludes the point from what is inside it, and whether it is
+    /// the containing block of `fixed` descendants. An absolute descendant takes the innermost
+    /// one in place of the clip of the static boxes in between, a fixed one the innermost that
+    /// contains it.
+    frames: Vec<(bool, bool)>,
     /// Only tell whether an `opacity`, `filter`, `mask` or `clip-path` value makes an effect
     /// group, which does not depend on the element's own `color` or font size.
     colors: crate::color::ColorContext,
@@ -1393,8 +1395,10 @@ impl RetainedTree {
 
         let mut clipped = match containing_block::escape(self, element) {
             None => clipped,
-            Some(gpui::Escape::Viewport) => false,
-            Some(gpui::Escape::ContainingBlock) => walk.frames.last().copied().unwrap_or(false),
+            Some(gpui::Escape::Viewport) => {
+                walk.frames.iter().rev().find(|(_, contains_fixed)| *contains_fixed).is_some_and(|(clipped, _)| *clipped)
+            }
+            Some(gpui::Escape::ContainingBlock) => walk.frames.last().is_some_and(|(clipped, _)| *clipped),
         };
         if let Some(bounds) = &own_box {
             let (clip_x, clip_y) = (resolved.overflow.x.clips(), resolved.overflow.y.clips());
@@ -1434,7 +1438,7 @@ impl RetainedTree {
                 let met = walk.layers.len();
                 walk.layers.push((priority, met, Vec::new()));
                 let mut layer = Context::default();
-                walk.frames.push(false);
+                walk.frames.push((false, false));
                 let in_flow = self.paint_children(element, none, inert, false, hidden, walk, Some(&mut layer));
                 walk.frames.pop();
                 // The layer's own box is a hit too, below what it holds: no ancestor clips it.
@@ -1458,7 +1462,7 @@ impl RetainedTree {
 
         let opens_frame = containing_block::is_positioned(self, element) || element.element_type == "virtual-list";
         if opens_frame {
-            walk.frames.push(clipped);
+            walk.frames.push((clipped, containing_block::contains_fixed(self, element)));
         }
         let in_flow = self.paint_children(element, none, inert, clipped, hidden, walk, children_context);
         if opens_frame {

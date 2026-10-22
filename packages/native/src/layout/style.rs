@@ -149,6 +149,9 @@ pub(crate) fn apply<E: Styled>(
     el = apply_padding(el, style, lengths);
     el = apply_gap(el, style, lengths);
     el = apply_position(el, style, lengths);
+    if style.content_visibility.is_some_and(super::content_visibility::ContentVisibility::contains) {
+        el.style().contain_layout = Some(true);
+    }
     el = super::stacking::apply_z_index(el, style, colors, lengths);
     el = apply_flex_basis(el, style, lengths);
     if let Some(value) = style.effective_justify_items().and_then(align_items) {

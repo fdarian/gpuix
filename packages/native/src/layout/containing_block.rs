@@ -1,9 +1,10 @@
 //! Which ancestors reach an element: the ones whose `overflow` clips it and whose scroll offset
 //! moves it. In CSS that is the chain of containing blocks, not of parents. An `absolute` box is
 //! reached only by its containing block (the nearest positioned ancestor) and what reaches that
-//! one, so a static `overflow: hidden` or scroller in between does nothing to it; a `fixed` box
-//! is reached by nothing. zed paints, hit tests and places the box the same way
-//! (`Element::escapes_to`).
+//! one, so a static `overflow: hidden` or scroller in between does nothing to it. A `fixed` box is
+//! reached by nothing, unless an ancestor has layout containment (`content-visibility` other than
+//! `visible`): that one is its containing block, and what reaches that one reaches it. zed paints,
+//! hit tests and places the box the same way (`Element::escapes_to`).
 
 use crate::retained_tree::{RetainedElement, RetainedTree};
 use crate::style::StyleDesc;
@@ -80,6 +81,29 @@ pub(crate) fn is_positioned(tree: &RetainedTree, element: &RetainedElement) -> b
     element.element_type == "anchored" || tree.position_of(element) != Position::Static
 }
 
+/// Whether `element` has layout containment and makes a box, which makes it the containing block
+/// of the `position: fixed` boxes below it. A non-atomic inline has none, and a
+/// `display: contents` element makes no box.
+pub(crate) fn contains_fixed(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    tree.content_visibility_of(element).contains()
+        && !tree.display_of(element).0
+        && !crate::text::inline::is_part_of_paragraph(tree, element)
+}
+
+/// The nearest ancestor of `element` that is the containing block of the `position: fixed` boxes.
+/// `None` is the window.
+fn fixed_containing_block(tree: &RetainedTree, element: &RetainedElement) -> Option<u64> {
+    let mut current = element.parent;
+    while let Some(id) = current {
+        let ancestor = tree.elements.get(&id)?;
+        if contains_fixed(tree, ancestor) {
+            return Some(id);
+        }
+        current = ancestor.parent;
+    }
+    None
+}
+
 /// The nearest positioned ancestor of `element`, or the row of a `<virtual-list>` it sits in: a
 /// row is laid out as a root of its own, which is the containing block when nothing inside it is
 /// positioned. `None` is the window.
@@ -107,7 +131,7 @@ pub(crate) fn reaching_ancestors(tree: &RetainedTree, id: u64) -> Vec<u64> {
         let next = match escape(tree, element) {
             None => element.parent,
             Some(gpui::Escape::ContainingBlock) => containing_block(tree, element),
-            Some(gpui::Escape::Viewport) => None,
+            Some(gpui::Escape::Viewport) => fixed_containing_block(tree, element),
         };
         let Some(next) = next else {
             break;
@@ -176,6 +200,38 @@ mod tests {
         assert!(reaching_ancestors(&tree, 2).is_empty());
         let tree = self::tree(&[(1, "div", None), (2, "div", Some("absolute"))]);
         assert!(reaching_ancestors(&tree, 2).is_empty());
+    }
+
+    fn with_content_visibility(tree: &mut RetainedTree, id: u64, display: Option<&str>) {
+        let style = crate::style::StyleDesc {
+            content_visibility: Some(crate::layout::content_visibility::ContentVisibility::Auto),
+            display: display.map(str::to_string),
+            ..Default::default()
+        };
+        tree.set_style(id, Arc::new(style));
+    }
+
+    #[test]
+    fn a_fixed_element_is_reached_through_the_nearest_ancestor_with_layout_containment() {
+        // 3 is positioned and 2 is contained: the fixed 4 belongs to 2, whatever is between them.
+        let mut tree = tree(&[
+            (1, "div", Some("relative")),
+            (2, "div", None),
+            (3, "div", Some("relative")),
+            (4, "div", Some("fixed")),
+        ]);
+        with_content_visibility(&mut tree, 2, None);
+        assert_eq!(reaching_ancestors(&tree, 4), [2, 1]);
+        // Another contained box above it does not matter.
+        with_content_visibility(&mut tree, 1, None);
+        assert_eq!(reaching_ancestors(&tree, 4), [2, 1]);
+    }
+
+    #[test]
+    fn a_contained_element_that_makes_no_box_contains_no_fixed_element() {
+        let mut tree = tree(&[(1, "div", Some("relative")), (2, "div", None), (3, "div", Some("fixed"))]);
+        with_content_visibility(&mut tree, 2, Some("contents"));
+        assert!(reaching_ancestors(&tree, 3).is_empty());
     }
 
     #[test]

@@ -25,9 +25,13 @@
 //! below them and publishes its boxes, and [`Relevance::unforce`] makes the next frame skip them
 //! again. Nothing the forced pass builds is remembered, answered for or told.
 //!
-//! Not modelled: the element is not an independent formatting context (a margin of its first or
-//! last child still collapses through it), and a `position: fixed` descendant is placed against
-//! the viewport, where a contained element would be its containing block.
+//! Layout containment is the `contain_layout` flag zed's style has (set by `layout::style::apply`
+//! on every box with a value other than `visible`): the box is an independent formatting context,
+//! so no margin of a child collapses through its top or bottom edge, and it is the containing block
+//! of its `position: fixed` descendants as well as of the absolute ones ([`containing_block`]). A
+//! non-atomic inline has neither.
+//!
+//! [`containing_block`]: crate::layout::containing_block
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -629,6 +633,27 @@ mod tests {
         assert!(positioned.top.is_some() && positioned.z_index == Some(4.0));
         let item = StyleDesc { flex_or_grid_item: true, ..style(r#"{"contentVisibility":"auto","zIndex":2}"#) };
         assert_eq!(contained(&item).unwrap().z_index, Some(2.0));
+    }
+
+    #[test]
+    fn a_box_has_layout_containment_for_any_value_but_visible() {
+        use crate::color::{ColorContext, Scheme};
+        use gpui::Styled;
+
+        let (colors, lengths) = (ColorContext::root(Scheme::Light), LengthContext::for_tests());
+        let flag = |json: &str| {
+            let mut element = crate::layout::style::apply(gpui::div(), &contained_of_or_plain(json), &colors, &lengths);
+            element.style().contain_layout
+        };
+        assert_eq!(flag(r#"{"contentVisibility":"auto"}"#), Some(true));
+        assert_eq!(flag(r#"{"contentVisibility":"hidden"}"#), Some(true));
+        assert_eq!(flag(r#"{"contentVisibility":"visible"}"#), None);
+        assert_eq!(flag("{}"), None);
+    }
+
+    fn contained_of_or_plain(json: &str) -> StyleDesc {
+        let declared = style(json);
+        contained(&declared).unwrap_or(declared)
     }
 
     #[test]

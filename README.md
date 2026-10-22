@@ -3127,9 +3127,11 @@ and the extent changes as they are built.
 <summary>What `auto` and `hidden` do to the element, and what is near</summary>
 
 - An element with `auto` or `hidden` is contained, skipped or not: `overflow: clip` on
-  each axis you left `visible`, a stacking context, and the containing block of its
-  `position: absolute` descendants. Margins of its first and last child still collapse
-  through it, and a `position: fixed` descendant goes to the window; Chrome does neither.
+  each axis you left `visible`, a stacking context, an independent formatting context (no
+  margin of its first or last child collapses through it), and the containing block of its
+  `position: absolute` and `position: fixed` descendants. A percentage `height` of a
+  child of a skipped block with an `auto` height is `auto`, whatever
+  `containIntrinsicSize` makes the box.
 - Near is the border box outset by 150% of the window (its width at the sides, its
   height above and below), cut by every ancestor that clips it. The very edge is not near.
   The first answer comes in the frame that builds the element, which draws again to
