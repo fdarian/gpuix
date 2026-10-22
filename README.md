@@ -2942,7 +2942,11 @@ function Results({ rows }: { rows: Result[] }) {
 
 `scrollTo`, `scrollToItem`, and `getScrollOffset` all support virtual lists. A list's
 `scrollTop` is its pixel offset into the content, from estimated row heights while
-rows are unmeasured; `getListScrollTop` below is exact.
+rows are unmeasured; `getListScrollTop` below is exact. A write to it is scroll-only, as on a
+`div`: the list clamps it from its last layout and the next frame builds the rows at the new offset. Its largest
+offset is the rule of a `div`'s, and `scrollHeight` and `clientHeight` are the rows with their padding and the
+list as laid out. Rows are measured on the device pixel, so a row with a fractional height differs from
+Chrome's, and a `<virtual-list>` records no bounds of its own: its `getBoundingClientRect()` is zeros.
 
 On a virtual list, `scrollToItem` takes an optional **pixel offset** and the
 list reports its logical anchor:
@@ -3866,7 +3870,8 @@ paragraph it is in lays it out, and everything else about it is the element's ow
   spacing), or the bottom of that row when none of its cells is on the baseline. Absolutely positioned
   content has no baseline, and a box inside another atomic inline is its own.
 - **It is an element.** `getBoundingClientRect()`, `onLayout`, `ResizeObserver` and
-  `IntersectionObserver` report its border box, pointer events, `hover` and `active`
+  `IntersectionObserver` report its border box (with the fraction of its place in the line, as Chrome keeps
+  it; it is painted at the device pixel that place rounds half up to), pointer events, `hover` and `active`
   styles and hit testing see it where it is painted (the span around it is its parent for events and
   `:hover`), it takes `tabIndex`, focus and `focusVisible`, `scrollIntoView` scrolls
   to it, its text is selected, copied and found by `highlight`, `transition`, `animate` and
@@ -3903,8 +3908,13 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   never snapped to none, so `33.3px`, `33.3px` and `33.4px` side by side paint 33, 34 and 33 pixels with no gap, and a
   border width is snapped as a border width (floored to whole device pixels, a width under one is one pixel). Painted
   positions are snapped but `getBoundingClientRect` is not, it reports the layout in 1/64 of a device pixel as Chrome
-  does. A percentage is not cut (`25%` of 101.296875 is 25.324219 where Chrome has 25.3125). Chrome rounds the ascent and descent of a font to whole pixels,
-  gpui keeps them fractional, so a line, `middle`, `text-top` and `text-bottom` can differ by up to a pixel.
+  does. A percentage is cut the same way wherever layout resolves it, tables included (`25%` of 101.296875 is
+  25.3125), and a flex item's share of the free space is rounded to that unit the way Chrome rounds it. A few
+  cases are still a 64th off: a table row that takes the rest of the table's height is short, `top: 50%` on a
+  relatively positioned box in a block reads 0, the leftover of `minmax(%, 1fr)` next to a `1fr` track, the
+  `align-content: stretch` of a wrapping flex container at 2x, and a flex item centred in its container (its offset
+  is not truncated, so a centred label can be a 64th off). A line of several runs is ceiled once where Chrome
+  ceils each run, and a min-content word that kerns with the space before it is up to a unit wider.
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
   inlines is its line box, since it has no text to take the content area of its font from (a browser
@@ -5079,9 +5089,10 @@ rounded as Chrome rounds them: `clientWidth`, `clientHeight`, `scrollWidth` and
 `scrollHeight` (see [Scrolling](#scrolling)) are the padding box and the scrollable overflow
 rounded half up, `clientLeft` and `clientTop` of `getElementBounds` are the border
 widths, which are whole device pixels, rounded half up,
-and `scrollTop` and `scrollLeft` are as they were. Deviations: a percentage is not cut to
-1/64 of a device pixel, so it can be a unit or two off Chrome's, and a flex share is distributed
-in its own units; the scroll offset an element is placed
+and `scrollTop` and `scrollLeft` are as they were. Deviations: a few cases of a
+percentage, a flex share or a text are still a unit off Chrome's (listed under the deviations of
+[inline-block, inline-flex, inline-grid and inline-table](#inline-block-inline-flex-inline-grid-and-inline-table));
+the scroll offset an element is placed
 at is the one it is painted at, which is a whole device pixel, so a box inside a scroller
 that is scrolled by a fraction is where it is painted and not where a browser puts it; and
 a box that is not a scroller reports its padding box as `clientWidth` and the same number as
@@ -6943,8 +6954,9 @@ Differences from Chrome:
   makes it unbounded.
 - An absolutely positioned child of a table is placed by its insets: `margin: auto` does
   not centre it.
-- Sums are floats, where Chrome counts in 1/64 of a pixel, so widths shared out can differ in
-  the second decimal; the painted box is snapped to the device pixel.
+- Sums are floats, where Chrome counts in 1/64 of a pixel (a percentage is cut to it, a share is not), so widths
+  shared out can differ in the second decimal, and a row that takes the rest of the table's height is a 64th
+  short; the painted box is snapped to the device pixel.
 - `mask` and `clipPath` reference the whole box, with the captions.
 - An element that paints nothing (`visibility: hidden`) counts as content in a cell for
   `emptyCells`.
