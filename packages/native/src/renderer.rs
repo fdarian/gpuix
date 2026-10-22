@@ -5428,6 +5428,9 @@ pub(crate) struct GpuixView {
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
     /// What the last sync of `motion_states` read, and which of them were moving, see `sync_motions`.
     motion_synced: Option<MotionSynced>,
+    /// The bindings of the tree as the last frame that sampled the motion values found them, and
+    /// the key of what they were parsed under, see `motion_value_key`.
+    motion_value_index: Option<(u64, std::rc::Rc<crate::motion::BindingIndex>)>,
     /// The motion value graph JS creates through `createMotionValue` and friends.
     pub(crate) motion_values: crate::motion::MotionValueStore,
     /// The `@keyframes` analogue: the sets `animation-name` refers to, pushed
@@ -6097,6 +6100,7 @@ impl GpuixView {
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
             motion_synced: None,
+            motion_value_index: None,
             motion_values: Default::default(),
             keyframes: Default::default(),
             css_transitions: Default::default(),
@@ -8132,6 +8136,72 @@ impl GpuixView {
         Some(hasher.finish())
     }
 
+    /// What the bindings of the motion values and what they are sampled under are, as one number:
+    /// the same number is the same bindings.
+    fn motion_value_key(&self, tree: &crate::retained_tree::RetainedTree, window: &gpui::Window) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = rustc_hash::FxHasher::default();
+        tree.id().hash(&mut hasher);
+        tree.revision().hash(&mut hasher);
+        std::mem::discriminant(&window.appearance()).hash(&mut hasher);
+        let viewport = window.viewport_size();
+        f32::from(viewport.width).to_bits().hash(&mut hasher);
+        f32::from(viewport.height).to_bits().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn bindings_of(&self, key: u64) -> Option<&crate::motion::BindingIndex> {
+        self.motion_value_index.as_ref().filter(|(known, _)| *known == key).map(|(_, index)| &**index)
+    }
+
+    /// Samples every motion value the tree binds, as a frame does, and parses the bindings for the
+    /// ticks that follow.
+    pub(crate) fn sync_values(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+        now: web_time::Instant,
+    ) -> crate::motion::MotionValueFrame {
+        let frame = sync_motion_values(tree, &mut self.motion_values, now);
+        let key = self.motion_value_key(tree, window);
+        if self.bindings_of(key).is_none() {
+            let bindings = tree.motion_value_ids.iter().filter_map(|id| {
+                Some((*id, tree.elements.get(id)?.custom_props().get("motionValues")?))
+            });
+            self.motion_value_index = Some((key, std::rc::Rc::new(crate::motion::BindingIndex::new(bindings))));
+        }
+        frame
+    }
+
+    /// What a tick does for the motion values: the ones that move, or that a write reached, are
+    /// sampled again while the bindings are the ones the last frame sampled, and every value is
+    /// when they are not. The cost of a tick does not follow the number of values bound.
+    pub(crate) fn step_values(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+        now: web_time::Instant,
+    ) -> crate::motion::MotionValueFrame {
+        if self.bindings_of(self.motion_value_key(tree, window)).is_some() {
+            self.motion_values.step(now)
+        } else {
+            self.sync_values(tree, window, now)
+        }
+    }
+
+    /// What the motion values that move ask of the frames to come, see `motion_value_demand`.
+    pub(crate) fn value_demand(
+        &self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+    ) -> crate::motion::Demand {
+        match self.bindings_of(self.motion_value_key(tree, window)) {
+            Some(index) => self.motion_values.demand_in(index, |id| self.retain.is_dormant(id)),
+            None => motion_value_demand(tree, &self.motion_values, &self.retain),
+        }
+    }
+
     /// Syncs every motion with the tree, as a frame does, and notes which are moving.
     pub(crate) fn sync_motions(
         &mut self,
@@ -8224,6 +8294,7 @@ impl GpuixView {
             .chain(self.css_animations.peek_commanded())
             .copied()
             .collect();
+        let value_bindings = self.bindings_of(self.motion_value_key(&tree, window));
         let sources = crate::retain::Sources {
             tree: &tree,
             hovered: pointer.chains().0,
@@ -8239,7 +8310,13 @@ impl GpuixView {
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&tree, &self.motion_states, moving, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
-            clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
+            clock_due: &|id| {
+                self.custom_registry.clock_due(id)
+                    || match value_bindings {
+                        Some(index) => self.motion_values.element_due(index, id),
+                        None => motion_value_due(&self.motion_values, &tree, id),
+                    }
+            },
             verdicts: self.dormancy_verdicts(&tree, window),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
@@ -8668,7 +8745,7 @@ impl gpui::Render for GpuixView {
             self.sync_motions(&tree, window, now, &focus_styles, &pointer);
         self.motion_values
             .set_appearance(color_scheme_of(window.appearance()));
-        let motion_value_frame = sync_motion_values(&tree, &mut self.motion_values, now);
+        let motion_value_frame = self.sync_values(&tree, window, now);
         if destroyed {
             self.css_transitions
                 .retain(|id| tree.elements.contains_key(&id));
@@ -8710,6 +8787,9 @@ impl gpui::Render for GpuixView {
             keyframes: &self.keyframes,
             statics: &self.paint_statics,
         };
+        let value_key = self.motion_value_key(&tree, window);
+        let value_index = self.motion_value_index.as_ref().filter(|(known, _)| *known == value_key).map(|(_, index)| index.clone());
+        let value_bindings = value_index.as_deref();
         self.retain.begin_frame(crate::retain::Sources {
             tree: &tree,
             hovered: pointer.chains().0,
@@ -8725,7 +8805,13 @@ impl gpui::Render for GpuixView {
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&tree, &self.motion_states, None, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
-            clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
+            clock_due: &|id| {
+                self.custom_registry.clock_due(id)
+                    || match value_bindings {
+                        Some(index) => self.motion_values.element_due(index, id),
+                        None => motion_value_due(&self.motion_values, &tree, id),
+                    }
+            },
             verdicts: self.dormancy_verdicts(&tree, window),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),

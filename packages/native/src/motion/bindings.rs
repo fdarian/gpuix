@@ -101,6 +101,9 @@ pub(crate) struct MotionValueStore {
     watched_moving: HashSet<ValueId>,
     /// A value the renderer reads for its own use (a drag's offset) was changing by itself.
     read_moving: bool,
+    /// The values the last frame read for the renderer's own use, and which of them were moving.
+    read_ids: HashSet<ValueId>,
+    read_moving_ids: HashSet<ValueId>,
     /// The values the last frame found bound to something that is not paint-only, or read for
     /// the renderer's own use (a drag's offset), which is not known to be.
     layout_driven: HashSet<ValueId>,
@@ -110,6 +113,37 @@ pub(crate) struct MotionValueStore {
     /// Events found while writing, delivered by the next frame.
     pending: Vec<MotionValueEvent>,
     warned: HashSet<String>,
+}
+
+/// The values each element's `motionValues` binds, and the elements each value is bound to, parsed
+/// once for as long as the bindings are as they were, so that a tick does not parse them all
+/// again to ask which of them a moving value drives.
+pub(crate) struct BindingIndex {
+    /// `None` for a binding that does not parse.
+    by_element: HashMap<u64, Option<Vec<ValueId>>>,
+    by_value: HashMap<ValueId, Vec<u64>>,
+}
+
+impl BindingIndex {
+    pub(crate) fn new<'a>(bindings: impl IntoIterator<Item = (u64, &'a Value)>) -> Self {
+        let mut by_element = HashMap::new();
+        let mut by_value: HashMap<ValueId, Vec<u64>> = HashMap::new();
+        for (element, binding) in bindings {
+            match parse_binding(binding) {
+                Ok(pairs) => {
+                    let ids: Vec<ValueId> = pairs.iter().map(Bound::id).collect();
+                    for id in &ids {
+                        by_value.entry(*id).or_default().push(element);
+                    }
+                    by_element.insert(element, Some(ids));
+                }
+                Err(_) => {
+                    by_element.insert(element, None);
+                }
+            }
+        }
+        Self { by_element, by_value }
+    }
 }
 
 #[derive(Deserialize)]
@@ -245,6 +279,37 @@ impl MotionValueStore {
                 self.frame_moving.contains(&id) || self.graph.follows_any(id, &self.written)
             })
         })
+    }
+
+    /// [`Self::binding_due`] for the binding of `element`, as `index` parsed it.
+    pub(crate) fn element_due(&self, index: &BindingIndex, element: u64) -> bool {
+        match index.by_element.get(&element) {
+            None => false,
+            Some(None) => true,
+            Some(Some(ids)) => ids
+                .iter()
+                .any(|id| self.frame_moving.contains(id) || self.graph.follows_any(*id, &self.written)),
+        }
+    }
+
+    /// [`Self::demand`] for the elements `index` holds, which are asked about only if a value
+    /// they are bound to moves. `dormant` says of an element whether it is.
+    pub(crate) fn demand_in(&self, index: &BindingIndex, dormant: impl Fn(u64) -> bool) -> Demand {
+        if self.read_moving {
+            return Demand::Frame;
+        }
+        if self.frame_moving.is_empty() && self.watched_moving.is_empty() {
+            return Demand::Idle;
+        }
+        let seen = self
+            .frame_moving
+            .iter()
+            .any(|id| index.by_value.get(id).is_some_and(|elements| elements.iter().any(|element| !dormant(*element))));
+        if seen {
+            Demand::Frame
+        } else {
+            Demand::Dormant
+        }
     }
 
     /// What the values that were moving by themselves at the last sample ask of the frames to come.
@@ -438,9 +503,53 @@ impl MotionValueStore {
         self.frame_values.clear();
         self.frame_moving.clear();
         self.read_moving = false;
+        self.read_ids.clear();
+        self.read_moving_ids.clear();
         self.layout_driven.clear();
         self.written.clear();
         let mut active = self.sample_unsampled(bindings, read, now);
+        active |= self.observe(now);
+        MotionValueFrame {
+            active,
+            events: std::mem::take(&mut self.pending),
+        }
+    }
+
+    /// What a tick does where a frame samples every value: the values that moved by themselves
+    /// when last sampled, and the ones a write since can have changed, are sampled again, and
+    /// every other value is what the frame left it, since nothing but time and a write moves a
+    /// value. For a tick in which the bindings, and the values read for the renderer's own use,
+    /// are the ones of that frame.
+    pub(crate) fn step(&mut self, now: Instant) -> MotionValueFrame {
+        let mut again: Vec<ValueId> = self.frame_moving.iter().chain(&self.read_moving_ids).copied().collect();
+        if !self.written.is_empty() {
+            again.extend(self.frame_values.keys().copied().filter(|id| self.graph.follows_any(*id, &self.written)));
+        }
+        again.sort_unstable_by_key(|id| id.0);
+        again.dedup();
+        self.read_moving_ids.clear();
+        self.frame_moving.clear();
+        self.read_moving = false;
+        self.written.clear();
+        let mut active = false;
+        for id in again {
+            crate::perf_counters::motion_value_sampled();
+            match self.graph.sample(id, now) {
+                Ok(sample) => {
+                    active |= sample.moving;
+                    if sample.moving {
+                        if self.read_ids.contains(&id) {
+                            self.read_moving = true;
+                            self.read_moving_ids.insert(id);
+                        } else {
+                            self.frame_moving.insert(id);
+                        }
+                    }
+                    self.frame_values.insert(id, sample.value);
+                }
+                Err(error) => self.warn(error),
+            }
+        }
         active |= self.observe(now);
         MotionValueFrame {
             active,
@@ -482,6 +591,7 @@ impl MotionValueStore {
             if self.frame_values.contains_key(&id) {
                 continue;
             }
+            crate::perf_counters::motion_value_sampled();
             match self.graph.sample(id, now) {
                 Ok(sample) => {
                     active |= sample.moving;
@@ -512,12 +622,16 @@ impl MotionValueStore {
                 continue;
             };
             self.layout_driven.insert(id);
+            self.read_ids.insert(id);
             if self.frame_values.contains_key(&id) {
                 continue;
             }
             if let Ok(sample) = self.graph.sample(id, now) {
                 active |= sample.moving;
                 self.read_moving |= sample.moving;
+                if sample.moving {
+                    self.read_moving_ids.insert(id);
+                }
                 self.frame_values.insert(id, sample.value);
             }
         }

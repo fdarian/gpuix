@@ -81,6 +81,7 @@ function read(renderer): Work {
     elementsBuilt: renderer.getBuildCounters().elementsBuilt,
     unitsBuilt: renderer.getBuildCounters().unitsBuilt,
     motionsSynced: renderer.getBuildCounters().motionsSynced,
+    motionValuesSampled: renderer.getBuildCounters().motionValuesSampled,
     patchedFrames: patches.patchedFrames,
     patchedUnits: patches.patchedUnits,
     paintedFrames: renderer.getPaintedFrameCount(),
@@ -104,7 +105,12 @@ function work(renderer, change: () => void): Work {
   change()
   renderer.drawFrame()
   const after = read(renderer)
-  const done: Work = { elementsBuilt: after.elementsBuilt, unitsBuilt: after.unitsBuilt, motionsSynced: after.motionsSynced }
+  const done: Work = {
+    elementsBuilt: after.elementsBuilt,
+    unitsBuilt: after.unitsBuilt,
+    motionsSynced: after.motionsSynced,
+    motionValuesSampled: after.motionValuesSampled,
+  }
   for (const key of Object.keys(after)) if (!(key in done)) done[key] = after[key] - before[key]
   return done
 }
@@ -1583,6 +1589,30 @@ describeNative("a tick beside motion values that rest", { timeout: TIMEOUT }, ()
     for (let index = 0; index < TICKS; index++) {
       expect(crowded[index].patchedFrames, `tick ${index} is patched`).toBe(1)
       expect(crowded[index], `tick ${index}`).toEqual(alone[index])
+    }
+  })
+
+  counted("samples the value that moves and none of the 400 that are bound and rest", async () => {
+    const alone = await ticksOf(loopHead, 500)
+    const crowded = await ticksOf(beside(resting(400)), 500)
+    for (let index = 0; index < TICKS; index++) {
+      expect(alone[index].motionValuesSampled, `tick ${index}`).toBe(1)
+      expect(crowded[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+      expect(crowded[index], `tick ${index}`).toEqual(alone[index])
+    }
+  })
+
+  counted("samples them all in the frame built whole, and the loop alone again after it", async () => {
+    const page = await mount(beside(resting(400)), 500)
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      const whole = work(page.renderer, () => page.renderer.setWindowSize(SIZE.width - 1, SIZE.height))
+      expect(whole.patchedFrames).toBe(0)
+      expect(whole.motionValuesSampled).toBeGreaterThanOrEqual(401)
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      expect(tick(page.renderer).motionValuesSampled).toBe(1)
+    } finally {
+      page.root.unmount()
     }
   })
 

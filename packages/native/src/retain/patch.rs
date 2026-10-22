@@ -177,13 +177,13 @@ impl GpuixView {
         };
         self.motion_values
             .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
-        let motion_values = crate::renderer::sync_motion_values(&tree, &mut self.motion_values, now);
+        let motion_values = self.step_values(&tree, window, now);
         crate::renderer::emit_motion_settled(&callback, &tree, &settled);
         crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
         Stepped {
             motion: animating.iter().any(|id| !self.retain.is_dormant(*id)),
             dormant_motion: animating.iter().any(|id| self.retain.is_dormant(*id)),
-            motion_values: crate::renderer::motion_value_demand(&tree, &self.motion_values, &self.retain),
+            motion_values: self.value_demand(&tree, window),
         }
     }
 
