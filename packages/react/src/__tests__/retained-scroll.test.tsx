@@ -233,6 +233,21 @@ function run(mode: Mode, retention: boolean) {
     renderer.clearSelection()
 
     renderer.dispatchNativeEvents()
+    // A frame that only replays is built a second time under GPUIX_RETAIN_VERIFY and shown as that build, whose
+    // recordings stay where they were made, so every idle frame above leaves rows that the next scroll builds
+    // again. These scrolls are drawn one after the other with the verifier off for the frame that records the
+    // rows to be moved, and on for the frame that moves them, which it compares with a build.
+    renderer.setInlineDraws(false)
+    for (let move = 0; move < 4; move += 1) {
+      renderer.setRetainVerify(false)
+      renderer.scrollTo(scroller.id, 0, 1000 + 14 * move, "instant")
+      renderer.drawFrame()
+      renderer.setRetainVerify(verifying)
+      renderer.scrollTo(scroller.id, 0, 1007 + 14 * move, "instant")
+      renderer.drawFrame()
+    }
+    renderer.setInlineDraws(true)
+    frame("moved by a frame that is compared with a build")
     const counters = renderer.getRetainedCounters()
     return { steps, interactions, reports: [...reports], counters, mismatches: renderer.getRetentionMismatches() }
   } finally {
@@ -249,11 +264,9 @@ describeNative.each(["wheel", "wheel-fractional", "scroll-to", "scroll-to-fracti
         const off = run(mode, false)
         const on = run(mode, true)
         expect(on.counters.mismatches, on.mismatches.join("\n")).toBe(0)
-        // The page has to have been moved, not built: otherwise nothing here is a test. (Under verify a frame
-        // that only replays is built again for the comparison and shown as that build, whose recordings cannot
-        // be moved. The first frame of this page records its rows to be moved, the frames after it only replay,
-        // and the first scroll finds recordings that cannot be moved: it builds the rows where it puts them.)
-        if (!verifying) expect(on.counters.relocations).toBeGreaterThan(0)
+        // The page has to have been moved, not built: otherwise nothing here is a test. (Under verify only the
+        // scrolls at the end of `run` are certain to move rows.)
+        expect(on.counters.relocations).toBeGreaterThan(0)
         expect(off.counters.relocations).toBe(0)
 
         expect(on.steps.length).toBe(off.steps.length)
