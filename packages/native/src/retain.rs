@@ -1991,7 +1991,6 @@ impl Retain {
                 && self.lifted == 0
                 && self.unit.is_none()
                 && !self.deferred
-                && !self.layout_only
                 && !self.inside_relocatable
                 && entry.plain
                 && entry.boxed
@@ -3814,18 +3813,19 @@ mod tests {
         assert_eq!(pass(cx), (0, 1, 1, 0));
         scene.settle(cx);
 
-        // The page and the last card are built; the other cards and the lines of the last are
-        // not, and are where they were.
+        // The page and the last card are built, each in a root of its own that leaves a layout record;
+        // the other cards and the lines of the last are not, and are where they were.
         scene.set_style(30, r#"{"height": 90}"#);
-        assert_eq!(pass(cx), (2, 5, 5, 0));
+        assert_eq!(pass(cx), (2, 5, 5, 2));
         scene.settle(cx);
 
         // The cards after the first move, and are built where they are.
         scene.set_style(10, r#"{"height": 90}"#);
         let (built, skips, replays, builds) = pass(cx);
         assert!(built > 2, "{built}");
-        // The cards moved, and so did the lines in them, which are skipped inside the cards built.
-        assert_eq!((skips, replays, builds), (17, 3, 14));
+        // The cards moved, and so did the lines in them, which are skipped inside the cards built. The
+        // page and the first card, which a pass built whole before, are built in roots of their own now.
+        assert_eq!((skips, replays, builds), (17, 3, 16));
     }
 
     #[gpui::test]
