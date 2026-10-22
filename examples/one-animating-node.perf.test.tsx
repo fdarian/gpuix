@@ -111,9 +111,13 @@ describeNative('one animating node over a large static tree', () => {
           )
           expect(elements).toBeGreaterThan(0)
           // The work counters do not depend on the clock: a frame of a static tree copies one
-          // Inherited per element it builds, and one for each subtree it leaves to gpui, and no
-          // style except the animated element's own.
-          expect(built.inheritedClones).toBeLessThanOrEqual(built.elementsBuilt + built.retainableRoots)
+          // Inherited per element it builds, one for each subtree it leaves to gpui, and one for each
+          // unit it builds whole (the start of its build, which a patch builds it again from), and no
+          // style except the animated element's own. The highlight is a unit once it is an
+          // `absolute` element whose loop paints only (`motion-opacity`), not when it moves a box.
+          expect(built.inheritedClones).toBeLessThanOrEqual(
+            built.elementsBuilt + built.retainableRoots + built.unitsBuilt,
+          )
           expect(built.styleDescClones / (WARMUP + SAMPLES)).toBeLessThanOrEqual(variant === 'idle' ? 0 : 1)
           // Every built element is counted once, as in a retainable subtree or under the reason it is not.
           // `GPUIX_RETAIN_OFF` stops the counting, to time the build without it.
