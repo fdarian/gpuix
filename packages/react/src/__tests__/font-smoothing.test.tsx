@@ -68,7 +68,7 @@ const COLORS = {
 } as const
 
 /** What the page of the oracle is cut into: one panel of one mode, which the window shows from its corner. The whole
- *  page is 1200 x 704 CSS px, more than a test window holds at scale 2. */
+ *  page is 1200 x 704 CSS px. */
 const PANEL = { width: 400, height: 320 }
 const MODE_TOP: Record<Mode, number> = { antialiased: 0, auto: 400 }
 
@@ -101,10 +101,7 @@ function ink(
 }
 
 function openWindow(scale: 1 | 2) {
-  // The test window is offscreen at scale 1: at scale 2 the scene is drawn at twice the size into the same pixels,
-  // which shows the top left of the page, at twice the size.
-  const root = createTestRoot({ width: PANEL.width * scale, height: PANEL.height * scale, fonts: [FONT] })
-  root.renderer.setWindowScaleFactor(scale)
+  const root = createTestRoot({ width: PANEL.width, height: PANEL.height, scaleFactor: scale, fonts: [FONT] })
   expect(root.renderer.getA11yTree().frame?.scale_factor, "the window has the scale asked for").toBe(scale)
   return root
 }
