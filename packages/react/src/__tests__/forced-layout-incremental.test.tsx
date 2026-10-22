@@ -657,3 +657,109 @@ describeNative("a forced read and the labels and id references of the tree", { t
     })
   }
 })
+
+type Mounting = {
+  setEntries: (entries: number) => void
+  setWidth: (width: number) => void
+  setExtra: (extra: boolean) => void
+  scroller: PublicInstance | null
+}
+
+/** `Long` whose entries mount after the window has drawn, with a named box that mounts and unmounts after
+ *  them and a name on the entries the boxes are read from. */
+function Mounting(props: { page: Mounting }) {
+  const [entries, setEntries] = useState(0)
+  const [width, setWidth] = useState(16)
+  const [extra, setExtra] = useState(false)
+  props.page.setEntries = setEntries
+  props.page.setWidth = setWidth
+  props.page.setExtra = setExtra
+  return (
+    <div style={{ width: 900, height: 780, display: "flex", flexDirection: "column" }}>
+      <div
+        testId="list"
+        ref={(instance) => {
+          props.page.scroller = instance
+        }}
+        style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}
+      >
+        {Array.from({ length: entries }, (_, index) => (
+          <div key={index} testId={`entry-${index}`} style={{ flexShrink: 0 }}>
+            <Entry probe={index === 0 ? width : null} />
+          </div>
+        ))}
+        {extra && <div testId="extra" style={{ height: 24, width: 50 + width, flexShrink: 0, backgroundColor: "#00ff00" }} />}
+      </div>
+    </div>
+  )
+}
+
+const ROUNDS = 11
+const WATCHED = ["list", "probe", "entry-0", "entry-1", "entry-250", "entry-498", "entry-499"]
+
+/** A page that mounts its entries and then changes one small subtree of them, with a scroll write after each
+ *  step and no frame drawn since the entries mounted, as a page does while it mounts: what each round
+ *  built, and the boxes it read after it. */
+function mountWithoutAFrame(entries: number, retention: boolean) {
+  const page: Mounting = { setEntries: () => {}, setWidth: () => {}, setExtra: () => {}, scroller: null }
+  const root = createTestRoot({ width: 900, height: 780 })
+  const renderer = root.renderer
+  try {
+    root.render(<Mounting page={page} />)
+    renderer.clockPause()
+    renderer.setInlineDraws(false)
+    renderer.setA11yActive(false)
+    if (!retention) renderer.setRetainEnabled(false)
+    settle(renderer)
+    const painted = renderer.getPaintedFrameCount()
+    const rounds: { built: number; boxes: unknown[]; passes: number }[] = []
+    let ids = new Map<string, number>()
+    for (let round = 0; round < ROUNDS; round++) {
+      const passes = renderer.getLayoutPassCount()
+      renderer.resetBuildCounters()
+      flushSync(() => {
+        if (round === 0) page.setEntries(entries)
+        page.setWidth(20 + round)
+        page.setExtra(round % 3 === 1)
+      })
+      page.scroller!.scrollTop = 0
+      const built = renderer.getBuildCounters().elementsBuilt
+      if (round === 0) ids = new Map(WATCHED.map((testId) => [testId, renderer.findByTestId(testId)!.id]))
+      const boxes = WATCHED.map((testId) => renderer.getElementBounds(ids.get(testId)!))
+      rounds.push({ built, boxes, passes: renderer.getLayoutPassCount() - passes })
+    }
+    expect(renderer.getPaintedFrameCount() - painted, "no frame was drawn").toBe(0)
+    return { rounds, counters: renderer.getRetainedCounters(), mismatches: renderer.getRetentionMismatches() }
+  } finally {
+    renderer.setInlineDraws(true)
+    root.unmount()
+  }
+}
+
+describeNative("a forced read on a page that has not been presented since it changed", { timeout: 120_000 }, () => {
+  const verifying = process.env.GPUIX_RETAIN_VERIFY !== undefined
+
+  it("builds the changed subtree and not the page, after the pass that records it", () => {
+    const entries = 500
+    const kept = mountWithoutAFrame(entries, true)
+    const built = mountWithoutAFrame(entries, false)
+
+    expect(kept.rounds.map((round) => round.passes), "a pass for each write").toEqual(Array(ROUNDS).fill(1))
+    for (const round of built.rounds) expect(round.built, "retention off builds the page every pass").toBeGreaterThanOrEqual(entries * 10)
+    expect(kept.counters.layoutRecords, "the passes that built left layout records").toBeGreaterThan(0)
+    expect(kept.counters.layoutReplays, "and the passes after them skipped with them").toBeGreaterThan(0)
+    if (!verifying) {
+      expect(kept.rounds[0]!.built).toBeGreaterThanOrEqual(entries * 10)
+      for (const round of kept.rounds.slice(2)) {
+        expect(round.built, "the entry that changed and the spine above it, not the page").toBeLessThanOrEqual(60)
+      }
+    }
+
+    expect(kept.mismatches).toEqual([])
+    expect(kept.counters.mismatches).toBe(0)
+    if (verifying) expect(kept.counters.verified, "the passes that skipped were compared with a build").toBeGreaterThan(0)
+    kept.rounds.forEach((round, index) => {
+      expect(round.boxes, `the boxes read after round ${index} are the ones a build gives`).toEqual(built.rounds[index]!.boxes)
+    })
+  })
+})

@@ -1914,6 +1914,11 @@ export interface RetainedCounters {
   /** Subtrees built by a layout-only pass. */
   layoutBuilds: number
   /**
+   * Of those, the subtrees that left a layout record, which the next layout-only pass skips
+   * them with until a frame is drawn.
+   */
+  layoutRecords: number
+  /**
    * Frames that replayed something and were compared with a build of the same frame; always 0
    * unless `setRetainVerify`.
    */

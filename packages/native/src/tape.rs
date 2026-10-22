@@ -31,6 +31,10 @@ pub(crate) enum Phase {
     /// A pass that lays out and does not paint: the writes of both phases that such a pass makes
     /// too, see [`write_in_layout`].
     Layout,
+    /// A pass that lays out and does not paint puts back what a pass that only laid out wrote of
+    /// a subtree it built: the layout tape of the subtree, whose prepaint and publications are all
+    /// writes of such a pass.
+    LayoutRecorded,
     /// [`Phase::Layout`] for a subtree that the stacking context around its parent paints (a
     /// hole): its prepaint was replayed with the parent's, so only the writes that paint makes in
     /// such a pass are left.
@@ -149,7 +153,7 @@ pub(crate) struct Entries {
 /// already holds, so that the replay is left as it was.
 impl Clone for Entries {
     fn clone(&self) -> Self {
-        let serial = next_serial();
+        let serial = next_serial() | (self.serial & LAID_OUT);
         for entry in &self.list {
             if let Entry::Nested(child, by) = entry {
                 PARENTS.with(|parents| parents.borrow_mut().insert(child.serial, (serial, *by)));
@@ -163,6 +167,16 @@ fn next_serial() -> u64 {
     SERIAL.replace(SERIAL.get() + 1)
 }
 
+/// Set in the serial of a list of a layout tape, for a registry that keeps the writes of replays
+/// by list to tell them from the lists of a painted tape: a pass that builds a subtree and leaves
+/// no tape of its own must not forget the box a painted tape holds, nor the reverse.
+const LAID_OUT: u64 = 1 << 63;
+
+/// Whether a list, by its serial, belongs to a layout tape.
+pub(crate) fn is_laid_out(serial: u64) -> bool {
+    serial & LAID_OUT != 0
+}
+
 impl Drop for Entries {
     fn drop(&mut self) {
         // The thread may be on its way out, with nothing left to forget.
@@ -171,9 +185,9 @@ impl Drop for Entries {
 }
 
 impl Entries {
-    fn new() -> Rc<Self> {
+    fn new(laid_out: bool) -> Rc<Self> {
         Rc::new(Self {
-            serial: next_serial(),
+            serial: next_serial() | if laid_out { LAID_OUT } else { 0 },
             list: Vec::new(),
             kinds: Kinds::default(),
             layout_kinds: Kinds::default(),
@@ -343,15 +357,25 @@ pub(crate) struct Tape {
     lifted: Vec<Rc<Entries>>,
     /// The writes made while it records are kept and not made, see [`Tape::capturing`].
     capture_only: bool,
+    /// The tape of a subtree built by a pass that only lays out, see [`Tape::laid_out`].
+    laid_out: bool,
 }
 
 impl Default for Tape {
     fn default() -> Self {
-        Self { prepaint: Entries::new(), paint: Entries::new(), lifted: Vec::new(), capture_only: false }
+        Self { prepaint: Entries::new(false), paint: Entries::new(false), lifted: Vec::new(), capture_only: false, laid_out: false }
     }
 }
 
 impl Tape {
+    /// The tape of a subtree built by a pass that only lays out. Its `prepaint` holds what the
+    /// prepaint wrote, and its `paint` what the publications queued by the prepaint wrote once the
+    /// whole tree was prepainted ([`Taped`]): a pass that lays out makes both, and a replay of it
+    /// puts both back.
+    pub(crate) fn laid_out() -> SharedTape {
+        Rc::new(RefCell::new(Tape { prepaint: Entries::new(true), paint: Entries::new(true), laid_out: true, ..Tape::default() }))
+    }
+
     /// A tape for a subtree that is prepainted and painted only to see what it would write: the
     /// writes are on the tape and not in the registries, which hold what the frame before made of
     /// the subtree. [`Tape::same_writes`] says whether the frame would have made the same.
@@ -373,7 +397,7 @@ impl Tape {
             Phase::Prepaint => Some(&self.prepaint),
             Phase::Paint => Some(&self.paint),
             Phase::Lifted(rel) => self.lifted.get(rel as usize),
-            Phase::Layout | Phase::LayoutPaint => {
+            Phase::Layout | Phase::LayoutPaint | Phase::LayoutRecorded => {
                 unreachable!("nothing records into the layout phases: they replay the others")
             }
         }
@@ -385,7 +409,7 @@ impl Tape {
             Phase::Prepaint => &mut self.prepaint,
             Phase::Paint => &mut self.paint,
             Phase::Lifted(rel) => &mut self.lifted[rel as usize],
-            Phase::Layout | Phase::LayoutPaint => {
+            Phase::Layout | Phase::LayoutPaint | Phase::LayoutRecorded => {
                 unreachable!("nothing records into the layout phases: they replay the others")
             }
         };
@@ -396,16 +420,17 @@ impl Tape {
     /// as it was.
     fn start(&mut self, phase: Phase) {
         match phase {
-            Phase::Prepaint => self.prepaint = Entries::new(),
-            Phase::Paint => self.paint = Entries::new(),
+            Phase::Prepaint => self.prepaint = Entries::new(self.laid_out),
+            Phase::Paint => self.paint = Entries::new(self.laid_out),
             Phase::Lifted(rel) => {
                 let rel = rel as usize;
+                let laid_out = self.laid_out;
                 if self.lifted.len() <= rel {
-                    self.lifted.resize_with(rel + 1, Entries::new);
+                    self.lifted.resize_with(rel + 1, || Entries::new(laid_out));
                 }
-                self.lifted[rel] = Entries::new();
+                self.lifted[rel] = Entries::new(laid_out);
             }
-            Phase::Layout | Phase::LayoutPaint => {
+            Phase::Layout | Phase::LayoutPaint | Phase::LayoutRecorded => {
                 unreachable!("nothing records into the layout phases: they replay the others")
             }
         }
@@ -434,6 +459,27 @@ impl Tape {
                 return;
             }
             Phase::LayoutPaint => return put(&self.paint, true),
+            // The subtree was built by a pass that only laid out, and the pass that skips it is
+            // inside another that is being recorded, if it is inside one: the writes are part of
+            // that one's tape either way.
+            Phase::LayoutRecorded => {
+                debug_assert!(self.laid_out, "a layout record is replayed from a layout tape");
+                put(&self.prepaint, false);
+                put(&self.paint, false);
+                RECORDING.with(|recordings| {
+                    if let Some(recording) = recordings.borrow().last() {
+                        debug_assert!(
+                            recording.phase == Phase::Paint,
+                            "the publications of a pass that only lays out are recorded in the paint list"
+                        );
+                        let mut outer = recording.tape.borrow_mut();
+                        let outer = outer.recording(recording.phase);
+                        outer.push_nested(self.prepaint.clone(), delta);
+                        outer.push_nested(self.paint.clone(), delta);
+                    }
+                });
+                return;
+            }
             Phase::Prepaint | Phase::Paint | Phase::Lifted(_) => {}
         }
         let Some(entries) = self.entries(phase) else {
@@ -476,6 +522,10 @@ pub(crate) type SharedTape = Rc<RefCell<Tape>>;
 #[derive(Default)]
 pub(crate) struct TapeStore {
     tapes: RefCell<rustc_hash::FxHashMap<u64, SharedTape>>,
+    /// The tape of the last build of each retained root by a pass that only lays out. Kept apart
+    /// from `tapes`, which belong to the recordings of presented frames: a pass that lays out must
+    /// leave those for the draw after it.
+    laid_out: RefCell<rustc_hash::FxHashMap<u64, SharedTape>>,
     /// While gpui compares frames that replayed with frames built whole: what the tape of each
     /// root that replayed was, when it was replayed.
     verifying: std::cell::Cell<bool>,
@@ -492,6 +542,22 @@ impl TapeStore {
         self.tapes.borrow_mut().insert(root, tape);
     }
 
+    /// `tape` is what a pass that only lays out wrote when it built `root`.
+    pub(crate) fn set_laid_out(&self, root: u64, tape: SharedTape) {
+        self.laid_out.borrow_mut().insert(root, tape);
+    }
+
+    /// Puts back what the pass that only laid out wrote when it built `root`.
+    fn replay_laid_out(&self, window: WindowId, root: u64) {
+        let tape = self
+            .laid_out
+            .borrow()
+            .get(&root)
+            .expect("a root skipped with its layout record has the tape of the build that made it")
+            .clone();
+        tape.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+    }
+
     /// Whether `captured`, the tape of a subtree prepainted and painted again, holds the writes
     /// that the tape of the build of `root` the frame was recorded from holds.
     pub(crate) fn same_as_recorded(&self, root: u64, captured: &SharedTape) -> bool {
@@ -503,6 +569,9 @@ impl TapeStore {
 
     /// Replays what the last build of `root` wrote in `phase`, `delta` from where it wrote it.
     pub(crate) fn replay(&self, window: WindowId, root: u64, phase: Phase, delta: Point<Pixels>) {
+        if phase == Phase::LayoutRecorded {
+            return self.replay_laid_out(window, root);
+        }
         let tape = self
             .tapes
             .borrow()
@@ -587,6 +656,7 @@ impl TapeStore {
 
     pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
         self.tapes.borrow_mut().retain(|root, _| keep(*root));
+        self.laid_out.borrow_mut().retain(|root, _| keep(*root));
     }
 }
 
@@ -709,6 +779,29 @@ impl Taped {
     pub(crate) fn new(child: AnyElement, tape: SharedTape) -> Self {
         Self { child, tape }
     }
+
+    /// The root of a subtree built by a pass that only lays out, with the tape of [`Tape::laid_out`].
+    pub(crate) fn laid_out(child: AnyElement, tape: SharedTape) -> Self {
+        debug_assert!(tape.borrow().laid_out);
+        Self { child, tape }
+    }
+
+    /// A pass that only lays out has no paint: what the listeners of the subtree write from the
+    /// publications they queued in prepaint is recorded between two publications queued around the
+    /// prepaint, which run in the order they were queued, outside every prepaint.
+    fn prepaint_laid_out(&mut self, window: &mut Window, cx: &mut App) {
+        let publishing: Rc<RefCell<Option<Recorder>>> = Rc::default();
+        window.publish_layout({
+            let (publishing, tape) = (publishing.clone(), self.tape.clone());
+            move |_, _| *publishing.borrow_mut() = Some(Recorder::begin(&tape, Phase::Paint))
+        });
+        {
+            self.tape.borrow_mut().lifted.clear();
+            let _recording = Recorder::begin(&self.tape, Phase::Prepaint);
+            self.child.prepaint(window, cx);
+        }
+        window.publish_layout(move |_, _| drop(publishing.borrow_mut().take()));
+    }
 }
 
 impl gpui::IntoElement for Taped {
@@ -762,6 +855,9 @@ impl Element for Taped {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if self.tape.borrow().laid_out {
+            return self.prepaint_laid_out(window, cx);
+        }
         self.tape.borrow_mut().lifted.clear();
         let _recording = Recorder::begin(&self.tape, Phase::Prepaint);
         self.child.prepaint(window, cx);
@@ -1011,6 +1107,64 @@ mod tests {
         crate::automation::forget_window(window);
         inner.borrow().replay(window, Phase::Paint, by);
         assert_eq!((x_of(window, 1), x_of(window, 2)), (None, Some(23.0)), "and the replay of what is nested only what it holds");
+    }
+
+    fn record_laid_out(tape: &SharedTape, window: WindowId, id: u64, x: f32) {
+        let _recording = Recorder::begin(tape, Phase::Paint);
+        box_at(window, id, x);
+    }
+
+    #[test]
+    fn a_box_of_a_layout_tape_and_one_of_a_painted_tape_are_each_put_back_by_their_own_replay() {
+        let window = WindowId::from(909);
+        let painted = SharedTape::default();
+        {
+            let _recording = Recorder::begin(&painted, Phase::Paint);
+            box_at(window, 1, 10.0);
+        }
+        let laid_out = Tape::laid_out();
+        record_laid_out(&laid_out, window, 1, 20.0);
+        assert!(is_laid_out(laid_out.borrow().paint.serial) && !is_laid_out(painted.borrow().paint.serial));
+
+        // The box the layout tape wrote last is the box of the frame, and each replay puts back its own.
+        crate::automation::forget_window(window);
+        replay(&painted, window);
+        assert_eq!(x_of(window, 1), Some(10.0));
+        crate::automation::forget_window(window);
+        laid_out.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+        assert_eq!(x_of(window, 1), Some(20.0));
+
+        // A build that writes without recording leaves both.
+        crate::automation::forget_window(window);
+        box_at(window, 1, 99.0);
+        crate::automation::forget_window(window);
+        replay(&painted, window);
+        assert_eq!(x_of(window, 1), Some(10.0));
+        crate::automation::forget_window(window);
+        laid_out.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+        assert_eq!(x_of(window, 1), Some(20.0));
+    }
+
+    #[test]
+    fn a_layout_tape_skipped_inside_another_is_part_of_it() {
+        let window = WindowId::from(910);
+        let inner = Tape::laid_out();
+        record_laid_out(&inner, window, 2, 20.0);
+
+        // The pass that builds the outer subtree skips the inner one, which publishes when the
+        // publications of the pass run, inside the outer one's bracket.
+        let outer = Tape::laid_out();
+        crate::automation::forget_window(window);
+        {
+            let _recording = Recorder::begin(&outer, Phase::Paint);
+            box_at(window, 1, 5.0);
+            inner.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+        }
+        assert_eq!((x_of(window, 1), x_of(window, 2)), (Some(5.0), Some(20.0)));
+
+        crate::automation::forget_window(window);
+        outer.borrow().replay(window, Phase::LayoutRecorded, gpui::point(gpui::px(3.0), gpui::px(0.0)));
+        assert_eq!((x_of(window, 1), x_of(window, 2)), (Some(8.0), Some(23.0)), "the replay of the outer moves what is nested");
     }
 
     #[test]

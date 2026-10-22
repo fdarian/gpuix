@@ -7959,14 +7959,7 @@ impl GpuixView {
         if self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active() {
             self.arm_dormant_tick(window, cx);
         }
-        // Only a build that gpui can record has a tape that goes with the recording. A pass that
-        // only lays out records nothing, and must leave the tape of the recording that stands.
-        if !window.retention_records() {
-            return element;
-        }
-        let tape = crate::tape::SharedTape::default();
-        self.tapes.set(id, tape.clone());
-        crate::tape::Taped::new(element, tape).into_any_element()
+        taped(&self.tapes, id, element, window)
     }
 
     /// Builds the unit `id` of the last frame built whole (see `Retain::begin_unit`) as it is at
@@ -8928,6 +8921,25 @@ fn retained_root(
     retained.into_any_element()
 }
 
+/// `element`, the build of the root `id`, with the tape that goes with what gpui records of it: the
+/// tape of the recording of a presented frame, or in a pass that only lays out the tape of its layout
+/// record, which is kept apart so that the recording that stands keeps its own.
+fn taped(tapes: &crate::tape::Tapes, id: u64, element: gpui::AnyElement, window: &gpui::Window) -> gpui::AnyElement {
+    use gpui::IntoElement;
+
+    if window.retention_records() {
+        let tape = crate::tape::SharedTape::default();
+        tapes.set(id, tape.clone());
+        crate::tape::Taped::new(element, tape).into_any_element()
+    } else if window.is_layout_pass() && window.retention_allowed() {
+        let tape = crate::tape::Tape::laid_out();
+        tapes.set_laid_out(id, tape.clone());
+        crate::tape::Taped::laid_out(element, tape).into_any_element()
+    } else {
+        element
+    }
+}
+
 pub(crate) fn retained_id(id: u64) -> gpui::ElementId {
     gpui::ElementId::NamedInteger(gpui::SharedString::new_static("gpuix-retained"), id)
 }
@@ -8950,6 +8962,7 @@ fn replay_hook(
                 crate::tape::Phase::Paint
             }
             gpui::RetainedPhase::Layout => crate::tape::Phase::Layout,
+            gpui::RetainedPhase::LayoutRecorded => crate::tape::Phase::LayoutRecorded,
             gpui::RetainedPhase::LayoutPaint => crate::tape::Phase::LayoutPaint,
             gpui::RetainedPhase::LiftedBegin(rel) => return tapes.begin_lifted(id, rel),
             gpui::RetainedPhase::LiftedEnd => return tapes.end_lifted(id),
@@ -8976,12 +8989,7 @@ fn unit_root(
     let tapes = ctx.tapes.clone();
     let hook = replay_hook(id, tapes.clone(), ctx.measurements.clone());
     let mut retained = gpui::retained(retained_id(id), ctx.retain.unit_key(), move |window, _| {
-        if !window.retention_records() {
-            return element;
-        }
-        let tape = crate::tape::SharedTape::default();
-        tapes.set(id, tape.clone());
-        crate::tape::Taped::new(element, tape).into_any_element()
+        taped(&tapes, id, element, window)
     })
     .on_replay_translated(hook)
     .cull_outset(subtree.outset());

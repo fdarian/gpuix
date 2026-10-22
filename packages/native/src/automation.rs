@@ -179,6 +179,10 @@ struct Stored {
     /// [`crate::tape::owner`]). A pass that builds the element without recording writes it
     /// again as `bounds`, and leaves this, which the next pass that replays the subtree reads.
     recorded: Option<(ElementBounds, u64)>,
+    /// [`Self::recorded`] for a pass that only lays out: the list is one of a layout tape. Kept
+    /// apart, so that a pass that lays out does not forget the box of the recording of a frame, which
+    /// the draw after it may replay, nor the reverse.
+    laid_out: Option<(ElementBounds, u64)>,
 }
 
 impl WindowBounds {
@@ -187,9 +191,10 @@ impl WindowBounds {
         if stored.frame == self.frame {
             return Some(stored.bounds);
         }
-        let (bounds, owner) = stored.recorded.as_ref()?;
-        let delta = crate::tape::delta_of(*owner, &self.live)?;
-        Some(bounds.translated(delta))
+        [&stored.recorded, &stored.laid_out].into_iter().flatten().find_map(|(bounds, owner)| {
+            let delta = crate::tape::delta_of(*owner, &self.live)?;
+            Some(bounds.translated(delta))
+        })
     }
 
     fn reset(&mut self) {
@@ -197,7 +202,10 @@ impl WindowBounds {
             let (frame, live) = (self.frame, &self.live);
             self.boxes.retain(|_, stored| {
                 stored.frame == frame
-                    || stored.recorded.as_ref().is_some_and(|(_, owner)| crate::tape::delta_of(*owner, live).is_some())
+                    || [&stored.recorded, &stored.laid_out]
+                        .into_iter()
+                        .flatten()
+                        .any(|(_, owner)| crate::tape::delta_of(*owner, live).is_some())
             });
             self.purge_at = (self.boxes.len() * 2).max(4096);
         }
@@ -206,12 +214,14 @@ impl WindowBounds {
     }
 
     fn insert(&mut self, id: u64, bounds: ElementBounds, owner: u64) {
-        let recorded = if owner != 0 {
-            Some((bounds, owner))
-        } else {
-            self.boxes.get_mut(&id).and_then(|stored| stored.recorded.take())
-        };
-        self.boxes.insert(id, Stored { bounds, frame: self.frame, recorded });
+        let previous = self.boxes.get_mut(&id);
+        let (mut recorded, mut laid_out) = previous.map_or((None, None), |stored| (stored.recorded.take(), stored.laid_out.take()));
+        match owner {
+            0 => {}
+            owner if crate::tape::is_laid_out(owner) => laid_out = Some((bounds, owner)),
+            owner => recorded = Some((bounds, owner)),
+        }
+        self.boxes.insert(id, Stored { bounds, frame: self.frame, recorded, laid_out });
     }
 }
 

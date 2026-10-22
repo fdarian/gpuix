@@ -141,6 +141,9 @@ pub struct RetainedCounters {
     pub layout_replays: f64,
     /// Subtrees built by a layout-only pass.
     pub layout_builds: f64,
+    /// Of those, the subtrees that left a layout record, which the next layout-only pass skips
+    /// them with until a frame is drawn.
+    pub layout_records: f64,
     /// Frames that replayed something and were compared with a build of the same frame; always 0
     /// unless `setRetainVerify`.
     pub verified: f64,
@@ -839,6 +842,7 @@ impl TestGpuixRenderer {
                 layout_skips: counters.layout_skips as f64,
                 layout_replays: counters.layout_replays as f64,
                 layout_builds: counters.layout_builds as f64,
+                layout_records: counters.layout_records as f64,
                 verified: counters.verified as f64,
                 mismatches: counters.mismatches as f64,
                 non_reusable: serde_json::Value::Object(
