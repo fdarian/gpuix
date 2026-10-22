@@ -546,3 +546,114 @@ describeNative("a scroll write that leaves the scroller where it is", { timeout:
     }
   })
 })
+
+type Relations = {
+  setWidth: (width: number) => void
+  setName: (name: string) => void
+}
+
+/** `Long` with the label of a form control and a hint it references, and a hidden subtree. Nothing in
+ *  the hidden subtree relates to anything. */
+function Related(props: { entries: number; hidden: number; labelled: boolean; page: Relations }) {
+  const [width, setWidth] = useState(16)
+  const [name, setName] = useState("Name")
+  props.page.setWidth = setWidth
+  props.page.setName = setName
+  return (
+    <div style={{ width: 900, height: 780, display: "flex", flexDirection: "column" }}>
+      <div testId="list" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+        {props.labelled && (
+          <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
+            <label htmlFor="who">
+              <text style={{ fontSize: 14, fontFamily: "Menlo" }}>{name}</text>
+            </label>
+            <input id="who" aria-describedby="hint" value="" style={{ width: 200, height: 24 }} />
+            <div id="hint">
+              <text style={{ fontSize: 14, fontFamily: "Menlo" }}>Hint</text>
+            </div>
+          </div>
+        )}
+        {Array.from({ length: props.entries }, (_, index) => (
+          <Entry key={index} probe={index === 0 ? width : null} />
+        ))}
+        <div style={{ display: "none" }}>
+          {Array.from({ length: props.hidden }, (_, index) => (
+            <div key={index}>
+              <text style={{ fontSize: 14, fontFamily: "Menlo" }}>hidden</text>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** What one forced read costs after `change` of a tree of `entries` entries of ten elements and a
+ *  display:none subtree of twice `hidden` elements. */
+function costOfRelations(shape: { entries: number; hidden: number; labelled: boolean }, change: (page: Relations) => void) {
+  const page: Relations = { setWidth: () => {}, setName: () => {} }
+  const root = createTestRoot({ width: 900, height: 780 })
+  const renderer = root.renderer
+  renderer.clockPause()
+  renderer.setInlineDraws(false)
+  try {
+    root.render(<Related entries={shape.entries} hidden={shape.hidden} labelled={shape.labelled} page={page} />)
+    settle(renderer)
+    const id = renderer.findByTestId("list")!.id
+    renderer.resetBuildCounters()
+    const start = renderer.getLayoutCounters()
+    const passes = renderer.getLayoutPassCount()
+
+    flushSync(() => change(page))
+    renderer.getElementBounds(id)
+    const end = renderer.getLayoutCounters()
+    return {
+      passes: renderer.getLayoutPassCount() - passes,
+      nodesCreated: end.nodesCreated - start.nodesCreated,
+      nodesLaidOut: end.nodesLaidOut - start.nodesLaidOut,
+      nodesSized: end.nodesSized - start.nodesSized,
+      relationVisits: end.relationVisits - start.relationVisits,
+      elementsBuilt: renderer.getBuildCounters().elementsBuilt,
+    }
+  } finally {
+    renderer.setInlineDraws(true)
+    root.unmount()
+  }
+}
+
+const WIDER = (page: Relations) => page.setWidth(40)
+const RENAMED = (page: Relations) => {
+  page.setWidth(40)
+  page.setName("Full name")
+}
+
+describeNative("a forced read and the labels and id references of the tree", { timeout: 60_000 }, () => {
+  it("reads no element for the links in a tree without a label or an id reference", () => {
+    const large = costOfRelations({ entries: 800, hidden: 0, labelled: false }, WIDER)
+    expect(large.passes).toBe(1)
+    expect(large.relationVisits).toBe(0)
+  })
+
+  it("reads nothing for a change that no label or reference reads, with a label in the tree", () => {
+    const large = costOfRelations({ entries: 800, hidden: 0, labelled: true }, WIDER)
+    expect(large.passes).toBe(1)
+    expect(large.relationVisits).toBe(0)
+  })
+
+  it("reads the label, what it holds and what is referenced, whatever the size of the tree", () => {
+    const small = costOfRelations({ entries: 10, hidden: 0, labelled: true }, RENAMED)
+    const large = costOfRelations({ entries: 800, hidden: 0, labelled: true }, RENAMED)
+    expect(large.relationVisits, "the label text changed, so the links are worked out again").toBeGreaterThan(0)
+    expect(large.relationVisits, "from the label and the hint, not from the 8000 elements").toBe(small.relationVisits)
+    expect(large.relationVisits).toBeLessThanOrEqual(30)
+  })
+
+  for (const labelled of [false, true]) {
+    it(`does the same work for ${labelled ? "a tree with a label and " : ""}a hidden subtree of 10 and of 10000 elements`, () => {
+      const small = costOfRelations({ entries: 100, hidden: 5, labelled }, RENAMED)
+      const large = costOfRelations({ entries: 100, hidden: 5000, labelled }, RENAMED)
+      expect(small.passes).toBe(1)
+      expect(large).toEqual(small)
+    })
+  }
+})

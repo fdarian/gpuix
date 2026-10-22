@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, LazyLock};
 
+use crate::accessibility::relations::RelationRegistry;
 use crate::layout::containing_block;
 use crate::resolved_style::{PointerEvents, Visibility};
 use crate::style::StyleDesc;
@@ -589,6 +590,8 @@ pub struct RetainedTree {
     /// How many elements have `@container` blocks, so a tree without any skips looking for
     /// the children they keep from being built.
     container_rule_count: usize,
+    /// The elements the accessibility links start from, see [`RelationRegistry`].
+    relations: RelationRegistry,
     pub styles: StyleTable,
     /// What each built element was painted with, for the walks that read the tree.
     pub(crate) resolved: std::cell::RefCell<crate::resolved_style::ResolvedStyles>,
@@ -634,6 +637,7 @@ impl RetainedTree {
             escaping_count: 0,
             style_serials: 0,
             container_rule_count: 0,
+            relations: RelationRegistry::default(),
             styles: StyleTable::default(),
             resolved: Default::default(),
             relevance: Default::default(),
@@ -701,7 +705,12 @@ impl RetainedTree {
         }
     }
 
+    pub(crate) fn relations(&self) -> &RelationRegistry {
+        &self.relations
+    }
+
     pub fn create_element(&mut self, id: u64, element_type: String) {
+        self.relations.created(id, &element_type);
         self.anchored_count += usize::from(element_type == "anchored");
         if element_type == "img" {
             self.image_ids.insert(id);
@@ -922,6 +931,7 @@ impl RetainedTree {
             self.anchored_count -= usize::from(element.element_type == "anchored");
             self.escaping_count -= usize::from(containing_block::may_escape(&element));
             self.container_rule_count -= usize::from(has_container_rules(&element));
+            self.relations.destroyed(&element);
             self.resolved.get_mut().forget(id);
             destroyed.push(id);
             for child_id in element.children {
@@ -956,6 +966,7 @@ impl RetainedTree {
             self.mark_changed(old_parent_id);
         }
         self.mark_changed(parent_id);
+        self.relations.restructured();
     }
 
     pub fn insert_before(&mut self, parent_id: u64, child_id: u64, before_id: u64) {
@@ -989,6 +1000,7 @@ impl RetainedTree {
             self.mark_changed(old_parent_id);
         }
         self.mark_changed(parent_id);
+        self.relations.restructured();
     }
 
     /// Takes an interned style. Pointer identity is the fast path and covers
@@ -1166,6 +1178,7 @@ impl RetainedTree {
                 self.settle_style_change(id, change);
             }
             self.mark_changed(id);
+            self.relations.text_changed(&self.elements, id);
         }
     }
 
@@ -1222,6 +1235,8 @@ impl RetainedTree {
         let is_motion_values = key == "motionValues" || key == "layout";
         let affects_focusability = key == "tabIndex" || key == "disabled";
         let is_inert = key == "inert";
+        let relation_key = RelationRegistry::reads(&key).then(|| key.clone());
+        let mut previous_relation = None;
         let is_form_control = key == FORM_CONTROL_PROP;
         let was_inert = self
             .elements
@@ -1251,6 +1266,9 @@ impl RetainedTree {
                 element.test_id = test_id;
                 return;
             }
+            if relation_key.is_some() {
+                previous_relation = element.custom_props().get(&key).cloned();
+            }
             if value.is_null() {
                 changed = element
                     .extras
@@ -1264,6 +1282,16 @@ impl RetainedTree {
         }
         if !changed {
             return;
+        }
+        if let Some(relation_key) = &relation_key {
+            if let Some(element) = self.elements.get(&id) {
+                self.relations.prop_changed(
+                    element,
+                    relation_key,
+                    previous_relation.as_ref(),
+                    element.custom_props().get(relation_key),
+                );
+            }
         }
         if affects_focusability {
             self.track_focusable(id);

@@ -76,6 +76,9 @@ pub struct LayoutCounters {
     /// Nodes whose layout algorithm ran only to size them, which a parent does to learn what a
     /// child contributes before it places it. Not counted in `nodesLaidOut`.
     pub nodes_sized: f64,
+    /// Elements the accessibility links read to resolve labels and `aria-*` id references, since the
+    /// tree was made. A tree with none of either reads none.
+    pub relation_visits: f64,
     /// Lines the platform shaped, since the window was made: the line layout cache missed.
     pub shapes: f64,
     /// Wrapped line layouts computed (shaped and wrapped) because neither the frame nor the one
@@ -938,7 +941,7 @@ impl TestGpuixRenderer {
     /// set, since the window was made: subtract two reads for a span of frames.
     #[napi]
     pub fn get_layout_counters(&self) -> Result<LayoutCounters> {
-        update_view(|_view, window, _cx| {
+        update_view(|view, window, _cx| {
             let counters = window.layout_counters();
             let text = window.text_system().text_counters();
             LayoutCounters {
@@ -951,6 +954,7 @@ impl TestGpuixRenderer {
                 measures: counters.measures as f64,
                 nodes_laid_out: counters.nodes_laid_out as f64,
                 nodes_sized: counters.nodes_sized as f64,
+                relation_visits: view.tree.lock().unwrap().relations().visits() as f64,
                 shapes: text.shapes as f64,
                 wrapped_layouts: text.wrapped_layouts as f64,
                 line_layout_hits: text.hits as f64,

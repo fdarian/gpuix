@@ -8,6 +8,7 @@
 mod aria;
 pub(crate) mod label;
 pub(crate) mod links;
+pub(crate) mod relations;
 
 use std::collections::HashMap;
 

@@ -4,8 +4,10 @@
 //!
 //! A control's accessible name comes from its labels, so `apply_accessibility`
 //! needs to know which labels point at it while it builds the control, and the
-//! tree has no back-pointer. The pass below walks the tree in document order
-//! and keeps the answer until the tree changes.
+//! tree has no back-pointer. The pass below starts from the tree's
+//! [`RelationRegistry`](super::relations::RelationRegistry) (the labels, the elements that
+//! reference ids and the elements by DOM id), so it reads those and what they relate, never the
+//! rest of the tree, and keeps the answer until something it reads changes.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -122,14 +124,14 @@ pub(crate) fn sync(tree: &RetainedTree) {
     let key = CacheKey {
         tree: tree.id(),
         root: root.id,
-        revision: root.subtree_revision,
+        revision: tree.relations().revision(),
     };
     CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cache.as_ref().is_some_and(|(cached, _)| *cached == key) {
             return;
         }
-        let links = compute(tree, root);
+        let links = compute(tree);
         let before = cache.as_ref().map(|(_, links)| links.keys()).unwrap_or_default();
         let now = links.keys();
         CHANGED.with(|changed| {
@@ -167,57 +169,96 @@ fn has_role(element: &RetainedElement) -> bool {
         .is_some_and(|role| !matches!(role, "" | "none" | "presentation" | "generic"))
 }
 
-fn compute(tree: &RetainedTree, root: &RetainedElement) -> A11yLinks {
+/// The elements from the root down to `id`, or none when it is not under the root. The links
+/// are of the tree below the root: a detached element has none.
+fn path_from_root(tree: &RetainedTree, id: u64) -> Option<Vec<u64>> {
+    let mut path = vec![id];
+    loop {
+        let element = tree.elements.get(path.last()?)?;
+        match element.parent {
+            Some(parent) => path.push(parent),
+            None => break,
+        }
+    }
+    tree.relations().visit(path.len());
+    (tree.root_id == path.last().copied()).then(|| {
+        path.reverse();
+        path
+    })
+}
+
+/// Which of two attached elements comes first in document order, an ancestor before what it holds.
+fn document_order(tree: &RetainedTree, first: &[u64], second: &[u64]) -> std::cmp::Ordering {
+    let shared = first.iter().zip(second).take_while(|(a, b)| a == b).count();
+    let (Some(a), Some(b)) = (first.get(shared), second.get(shared)) else {
+        return first.len().cmp(&second.len());
+    };
+    let Some(parent) = tree.elements.get(&first[shared - 1]) else {
+        return std::cmp::Ordering::Equal;
+    };
+    let position_of = |wanted: &u64| parent.children.iter().position(|child| child == wanted);
+    tree.relations().visit(parent.children.len());
+    position_of(a).cmp(&position_of(b))
+}
+
+/// The first element in document order with this DOM `id`, among those under the root.
+fn first_with_id<'a>(tree: &'a RetainedTree, id: &str) -> Option<&'a RetainedElement> {
+    let mut first: Option<(Vec<u64>, &RetainedElement)> = None;
+    for candidate in tree.relations().with_dom_id(id) {
+        let Some(path) = path_from_root(tree, *candidate) else {
+            continue;
+        };
+        let element = tree.elements.get(candidate)?;
+        let earlier = first
+            .as_ref()
+            .is_none_or(|(held, _)| document_order(tree, &path, held).is_lt());
+        if earlier {
+            first = Some((path, element));
+        }
+    }
+    first.map(|(_, element)| element)
+}
+
+fn compute(tree: &RetainedTree) -> A11yLinks {
+    let registry = tree.relations();
     let mut links = A11yLinks::default();
+    if !registry.has_sources() {
+        return links;
+    }
+
     let mut referenced: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut has_labels = false;
-    for element in tree.elements.values() {
-        has_labels |= element.element_type == "label";
-        let props = element.custom_props();
+    for source in registry.referrers() {
+        registry.visit(1);
+        let Some(element) = tree.elements.get(&source) else {
+            continue;
+        };
         for (key, _) in super::aria::RELATION_PROPS {
-            if let Some(value) = props.get(key).and_then(|value| value.as_str()) {
+            if let Some(value) = element.custom_props().get(key).and_then(|value| value.as_str()) {
                 referenced.extend(value.split_whitespace());
             }
         }
     }
-    if !has_labels && referenced.is_empty() {
-        return links;
-    }
-
-    let mut labels = Vec::new();
-    let mut first_by_dom_id: HashMap<&str, &RetainedElement> = HashMap::new();
-    let mut stack = vec![root];
-    while let Some(element) = stack.pop() {
-        if element.element_type == "label" {
-            labels.push(element);
-        }
-        if let Some(id) = dom_id(element) {
-            first_by_dom_id.entry(id).or_insert(element);
-        }
-        // Reversed so the first child pops first: document order.
-        stack.extend(
-            element
-                .children
-                .iter()
-                .rev()
-                .filter_map(|child| tree.elements.get(child)),
-        );
-    }
-
-    for (id, element) in &first_by_dom_id {
+    for id in referenced {
+        let Some(element) = first_with_id(tree, id) else {
+            continue;
+        };
         let is_text_host = element.element_type == "text" && element.content.is_none();
-        if referenced.contains(id)
-            && !has_role(element)
-            && !is_text_host
-            && element.element_type != "label"
-        {
+        if !has_role(element) && !is_text_host && element.element_type != "label" {
             links
                 .referenced_text
                 .insert(element.id, text_of(tree, element));
         }
     }
 
-    for label in labels {
+    let mut by_control: HashMap<u64, Vec<(Vec<u64>, String)>> = HashMap::new();
+    for label_id in registry.labels() {
+        registry.visit(1);
+        let Some(path) = path_from_root(tree, label_id) else {
+            continue;
+        };
+        let Some(label) = tree.elements.get(&label_id) else {
+            continue;
+        };
         let label_author_id = match dom_id(label) {
             Some(id) => id.to_string(),
             None => {
@@ -231,7 +272,7 @@ fn compute(tree: &RetainedTree, root: &RetainedElement) -> A11yLinks {
         let control = match label.custom_props().get("htmlFor") {
             Some(target) => target
                 .as_str()
-                .and_then(|id| first_by_dom_id.get(id))
+                .and_then(|id| first_with_id(tree, id))
                 .filter(|element| is_labelable(&element.element_type))
                 .map(|element| element.id),
             None => first_labelable_descendant(tree, label),
@@ -240,11 +281,16 @@ fn compute(tree: &RetainedTree, root: &RetainedElement) -> A11yLinks {
             continue;
         };
         links.control_of.insert(label.id, control);
-        links
-            .labels_of
+        by_control
             .entry(control)
             .or_default()
-            .push(label_author_id);
+            .push((path, label_author_id));
+    }
+    for (control, mut labels) in by_control {
+        labels.sort_by(|(first, _), (second, _)| document_order(tree, first, second));
+        links
+            .labels_of
+            .insert(control, labels.into_iter().map(|(_, author_id)| author_id).collect());
     }
     links
 }
@@ -257,6 +303,7 @@ fn first_labelable_descendant(tree: &RetainedTree, label: &RetainedElement) -> O
         .filter_map(|child| tree.elements.get(child))
         .collect();
     while let Some(element) = stack.pop() {
+        tree.relations().visit(1);
         if is_labelable(&element.element_type) {
             return Some(element.id);
         }
@@ -276,6 +323,7 @@ fn text_of(tree: &RetainedTree, label: &RetainedElement) -> String {
     let mut text = String::new();
     let mut stack = vec![label];
     while let Some(element) = stack.pop() {
+        tree.relations().visit(1);
         if is_labelable(&element.element_type) {
             continue;
         }
@@ -393,5 +441,143 @@ mod tests {
                 ["createElement",3,"input"],["appendChild",1,3],["setText",3,"typed"]]"#,
         );
         assert_eq!(links_of(&tree).label_text(1), Some("Full name"));
+    }
+
+    fn apply(tree: &mut RetainedTree, batch: &str) {
+        crate::renderer::apply_batch_to_tree(tree, batch.as_bytes()).expect("valid batch");
+    }
+
+    #[test]
+    fn a_tree_without_labels_or_references_reads_nothing() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"div"],["appendChild",1,2],["setCustomProp",2,"id","a"],
+                ["createElement",3,"text"],["appendChild",2,3],["setText",3,"hello"]]"#,
+        );
+        sync(&tree);
+        apply(&mut tree, r#"[["setText",3,"bye"],["setStyle",2,{"width":10}],["destroyElement",3]]"#);
+        sync(&tree);
+        assert_eq!(tree.relations().visits(), 0);
+    }
+
+    #[test]
+    fn a_change_that_no_link_reads_computes_nothing_again() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],
+                ["createElement",3,"input"],["appendChild",2,3],
+                ["createElement",4,"div"],["appendChild",1,4],
+                ["createElement",5,"text"],["appendChild",4,5],["setText",5,"elsewhere"]]"#,
+        );
+        sync(&tree);
+        let visits = tree.relations().visits();
+        assert!(visits > 0);
+        apply(&mut tree, r#"[["setText",5,"changed"],["setStyle",4,{"width":10}],["setCustomProp",4,"title","t"]]"#);
+        sync(&tree);
+        assert_eq!(tree.relations().visits(), visits);
+    }
+
+    #[test]
+    fn the_text_of_a_label_and_of_a_referenced_element_follow_their_text() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],
+                ["createElement",3,"text"],["appendChild",2,3],["setText",3,"Name"],
+                ["createElement",4,"input"],["appendChild",2,4],["setCustomProp",4,"aria-describedby","hint"],
+                ["createElement",5,"div"],["appendChild",1,5],["setCustomProp",5,"id","hint"],
+                ["createElement",6,"div"],["appendChild",5,6],
+                ["createElement",7,"text"],["appendChild",6,7],["setText",7,"Short"]]"#,
+        );
+        assert_eq!(links_of(&tree).label_text(2), Some("Name"));
+        assert_eq!(links_of(&tree).referenced_text(5), Some("Short"));
+        apply(&mut tree, r#"[["setText",3,"Full name"],["setText",7,"Long"]]"#);
+        assert_eq!(links_of(&tree).label_text(2), Some("Full name"));
+        assert_eq!(links_of(&tree).referenced_text(5), Some("Long"));
+    }
+
+    #[test]
+    fn retargeting_an_id_or_a_reference_moves_the_link() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],["setCustomProp",2,"htmlFor","a"],
+                ["createElement",3,"input"],["appendChild",1,3],["setCustomProp",3,"id","a"],
+                ["createElement",4,"input"],["appendChild",1,4],["setCustomProp",4,"id","b"],
+                ["createElement",5,"div"],["appendChild",1,5],["setCustomProp",5,"id","one"],
+                ["createElement",6,"div"],["appendChild",1,6],["setCustomProp",6,"id","two"],
+                ["setCustomProp",3,"aria-labelledby","one"]]"#,
+        );
+        assert_eq!(links_of(&tree).control_of(2), Some(3));
+        assert_eq!(links_of(&tree).referenced_text(5), Some(""));
+        assert_eq!(links_of(&tree).referenced_text(6), None);
+
+        apply(&mut tree, r#"[["setCustomProp",4,"id","a"],["setCustomProp",3,"id","c"]]"#);
+        assert_eq!(links_of(&tree).control_of(2), Some(4), "the control that has the id now");
+
+        apply(&mut tree, r#"[["setCustomProp",3,"aria-labelledby","two"]]"#);
+        assert_eq!(links_of(&tree).referenced_text(5), None);
+        assert_eq!(links_of(&tree).referenced_text(6), Some(""));
+
+        apply(&mut tree, r#"[["setCustomProp",3,"aria-labelledby",null],["setCustomProp",2,"htmlFor",null]]"#);
+        let links = links_of(&tree);
+        assert_eq!(links.referenced_text(6), None);
+        assert_eq!(links.control_of(2), None, "no control inside the label either");
+    }
+
+    #[test]
+    fn a_role_decides_whether_a_referenced_element_is_listed() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"input"],["appendChild",1,2],["setCustomProp",2,"aria-describedby","hint"],
+                ["createElement",3,"div"],["appendChild",1,3],["setCustomProp",3,"id","hint"]]"#,
+        );
+        assert_eq!(links_of(&tree).referenced_text(3), Some(""));
+        apply(&mut tree, r#"[["setCustomProp",3,"role","note"]]"#);
+        assert_eq!(links_of(&tree).referenced_text(3), None);
+    }
+
+    #[test]
+    fn of_two_elements_with_an_id_the_first_in_document_order_is_the_target() {
+        let tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],["setCustomProp",2,"htmlFor","dup"],
+                ["createElement",9,"input"],["appendChild",1,9],["setCustomProp",9,"id","dup"],
+                ["createElement",5,"div"],["insertBefore",1,5,9],
+                ["createElement",3,"input"],["appendChild",5,3],["setCustomProp",3,"id","dup"]]"#,
+        );
+        assert_eq!(links_of(&tree).control_of(2), Some(3));
+    }
+
+    #[test]
+    fn labels_of_a_control_are_in_document_order_whatever_the_order_they_were_made_in() {
+        let tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",9,"input"],["appendChild",1,9],["setCustomProp",9,"id","c"],
+                ["createElement",4,"label"],["appendChild",1,4],["setCustomProp",4,"htmlFor","c"],
+                ["createElement",8,"label"],["insertBefore",1,8,4],["setCustomProp",8,"htmlFor","c"],
+                ["createElement",2,"div"],["insertBefore",1,2,8],
+                ["createElement",3,"label"],["appendChild",2,3],["setCustomProp",3,"htmlFor","c"]]"#,
+        );
+        assert_eq!(
+            links_of(&tree).labels_of(9),
+            Some(&["gpuix-label-3".to_string(), "gpuix-label-8".to_string(), "gpuix-label-4".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn destroying_the_last_source_clears_the_links_and_a_detached_label_has_none() {
+        let mut tree = tree_with(
+            r#"[["createElement",1,"div"],["setRoot",1],
+                ["createElement",2,"label"],["appendChild",1,2],
+                ["createElement",3,"input"],["appendChild",2,3],
+                ["createElement",4,"label"],
+                ["createElement",5,"input"],["appendChild",4,5]]"#,
+        );
+        let links = links_of(&tree);
+        assert_eq!(links.control_of(2), Some(3));
+        assert_eq!(links.control_of(4), None);
+        apply(&mut tree, r#"[["destroyElement",2]]"#);
+        assert_eq!(links_of(&tree).control_of(2), None);
+        apply(&mut tree, r#"[["appendChild",1,4]]"#);
+        assert_eq!(links_of(&tree).control_of(4), Some(5));
     }
 }

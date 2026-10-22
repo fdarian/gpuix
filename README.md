@@ -8790,7 +8790,9 @@ Counters you read off the renderer:
   child lists set, passes, and measure calls, `nodesLaidOut` (nodes whose layout
   algorithm ran to place them: a change to one leaf costs its ancestors and what
   their new sizes reach, not the tree) and `nodesSized` (the runs that only size
-  a node, which a parent makes to learn what a child contributes), since the
+  a node, which a parent makes to learn what a child contributes), and (test
+  renderer) `relationVisits` (elements the accessibility links read for labels
+  and `aria-*` id references: none in a tree without either), since the
   window was made, the
   text system's lines shaped, wrapped layouts built, line layout hits and
   `shapeCacheHits` (lines the window's shape store gave back: text shaped more than

@@ -1729,6 +1729,11 @@ export interface LayoutCounters {
    * child contributes before it places it. Not counted in `nodesLaidOut`.
    */
   nodesSized: number
+  /**
+   * Elements the accessibility links read to resolve labels and `aria-*` id references, since the
+   * tree was made. A tree with none of either reads none.
+   */
+  relationVisits: number
   /** Lines the platform shaped, since the window was made: the line layout cache missed. */
   shapes: number
   /**
