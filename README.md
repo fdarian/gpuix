@@ -1082,8 +1082,11 @@ the window's content size, and `change` fires when a list's result flips. A
 Under test, the OS settings start as "no preference" regardless of the machine.
 `TestRenderer.setMediaFeatures({ reducedMotion: true })` changes them and
 delivers the `change` events, and `TestRenderer.setWindowSize(width, height)`
-resizes the window the same way. `TestRenderer.setWindowScaleFactor(2)` gives it
-the scale of a retina display, for the frames after it. `prefers-color-scheme` reports the system
+resizes the window the same way. The window is 1x, as headless Chrome's is, whatever display
+the machine has: `createTestRoot({ scaleFactor: 2 })` opens it at the scale of a retina display,
+and `TestRenderer.setWindowScaleFactor(2)` gives it that for the frames after it. The factor
+stays until it is set again (`setWindowSize` does not reset it), and a screenshot is the
+window's size times it. `prefers-color-scheme` reports the system
 appearance and cannot be flipped, for the reason given under Appearance.
 The "Show scroll bars" setting (see [Scrollbars](#scrollbars)) works the same way:
 `TestRenderer.setScrollbarStyle("classic" | "overlay")`.
@@ -8664,6 +8667,7 @@ const text = renderer.getAllText()
 | `focus` | `true` makes the offscreen window key and takes the OS's keyboard focus, which is why it defaults to `false`. Focus events come from `setWindowActive`, not from this. |
 | `fullscreen` | **Ignored.** A fullscreen window would leave its offscreen position. |
 | `x`, `y` | **Ignored.** The test window stays offscreen. |
+| `scaleFactor` | Device pixels per CSS px, `1` when unset; test window only, a live window takes its display's. |
 | `appName`, `appId`, `layerShell` | **Ignored.** The test window has no application menu, and `appId` and `layerShell` are Linux only. |
 
 Simulated input is dispatched the way a window's own input callback does it, so a

@@ -1161,7 +1161,8 @@ export declare class TestGpuixRenderer {
   setWindowSize(width: number, height: number): void
   /**
    * Gives the window the scale factor of a display of another density, `2` for a retina one:
-   * the next frame lays out and paints at it. Resizing the window gives it the display's own back.
+   * the next frame lays out and paints at it, and a screenshot is the window's size times it.
+   * The factor stays until it is set again: resizing the window does not reset it.
    */
   setWindowScaleFactor(scaleFactor: number): void
 }
@@ -2115,6 +2116,12 @@ export interface WindowOptions {
    * normal window. Linux/Wayland only; ignored elsewhere.
    */
   layerShell?: LayerShellOptions
+  /**
+   * Device pixels per CSS px the offscreen test window opens with, `1` when unset (headless
+   * Chrome's own), whatever display the machine has. `TestRenderer` only: a live window takes
+   * its display's scale and ignores this.
+   */
+  scaleFactor?: number
 }
 
 export interface WindowSize {

@@ -428,7 +428,18 @@ fn unset_window_options() -> WindowOptions {
         show: None,
         app_id: None,
         layer_shell: None,
+        scale_factor: None,
     }
+}
+
+/// What a headless Chrome window is, whatever display the machine has.
+const DEFAULT_SCALE_FACTOR: f64 = 1.;
+
+fn window_scale_factor(scale_factor: f64) -> Result<f32> {
+    if !(scale_factor.is_finite() && scale_factor > 0.) {
+        return Err(Error::from_reason(format!("scale factor must be positive, got {scale_factor}")));
+    }
+    Ok(scale_factor as f32)
 }
 
 /// Default offscreen window size. Matches gpui's `open_offscreen_window_default`,
@@ -656,6 +667,7 @@ impl TestGpuixRenderer {
         );
         let appearance =
             crate::renderer::appearance_override(&options).map_err(Error::from_reason)?;
+        let scale_factor = window_scale_factor(options.scale_factor.unwrap_or(DEFAULT_SCALE_FACTOR))?;
         let title = options.title.clone().unwrap_or_else(|| "GPUIX".to_string());
         let frameless = options.frameless();
         let tree = Arc::new(Mutex::new(RetainedTree::new()));
@@ -709,6 +721,9 @@ impl TestGpuixRenderer {
                 // `appearance` starts in it, and one made without clears the previous one's.
                 app.set_window_appearance(appearance);
                 app.open_window(gpui_options, |window, app| {
+                    // Before the first frame, so nothing is laid out or painted at the screenless
+                    // window's fallback scale.
+                    window.set_scale_factor(scale_factor);
                     app.new(|cx| {
                         let mut view = GpuixView::new(
                             tree_clone,
@@ -2700,14 +2715,13 @@ impl TestGpuixRenderer {
     }
 
     /// Gives the window the scale factor of a display of another density, `2` for a retina one:
-    /// the next frame lays out and paints at it. Resizing the window gives it the display's own back.
+    /// the next frame lays out and paints at it, and a screenshot is the window's size times it.
+    /// The factor stays until it is set again: resizing the window does not reset it.
     #[napi]
     pub fn set_window_scale_factor(&self, scale_factor: f64) -> Result<()> {
-        if !(scale_factor.is_finite() && scale_factor > 0.) {
-            return Err(Error::from_reason(format!("scale factor must be positive, got {scale_factor}")));
-        }
+        let scale_factor = window_scale_factor(scale_factor)?;
         with_test_state(|cx, window, _view| {
-            cx.update_window(window, |_, window, _| window.set_scale_factor(scale_factor as f32))
+            cx.update_window(window, |_, window, _| window.set_scale_factor(scale_factor))
                 .map_err(|error| Error::from_reason(error.to_string()))
         })
     }

@@ -244,7 +244,8 @@ interface NativeTestRendererConstructor {
  * the same translation, plus the fonts option and the test hooks below. The size defaults to
  * 1280x800 and `focus` to false, since the window is offscreen and must not take the OS's
  * keyboard. `fullscreen`, `appId`, `appName` and `layerShell` have no effect on it; the README's
- * Testing section lists what each option does there.
+ * Testing section lists what each option does there. `scaleFactor` is for this window only and
+ * defaults to 1, as headless Chrome's does.
  */
 export interface TestRendererOptions extends WindowOptions, WindowFontsOption {
   /** Framework scheduling boundary for events drained from native. */
@@ -1285,8 +1286,9 @@ export class TestRenderer implements NativeRenderer {
   }
 
   /** Give the offscreen window the scale factor of a display of another density (`2` is a
-   *  retina one), as a window dragged to it has: the next frame lays out and paints at it.
-   *  Resizing the window gives it the display's own back. */
+   *  retina one), as a window dragged to it has: the next frame lays out and paints at it, and
+   *  a screenshot is the window's size times it. The factor stays until it is set again:
+   *  resizing the window does not reset it. The window starts at 1 (`scaleFactor` option). */
   setWindowScaleFactor(scaleFactor: number): void {
     this.native.setWindowScaleFactor(scaleFactor)
   }
