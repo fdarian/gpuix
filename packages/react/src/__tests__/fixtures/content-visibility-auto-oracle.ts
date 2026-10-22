@@ -9,7 +9,9 @@ const here = import.meta.dir
 const chrome =
   process.env.CHROME ??
   `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
-const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested"]
+/** The scene of the first frame of a page: the page itself is the scene, and it is read, not driven. */
+const LOAD = "load"
+const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested", LOAD]
 const SIZE = { width: 900, height: 780 }
 
 async function run(scene: string) {
@@ -44,9 +46,12 @@ async function run(scene: string) {
       })
     await send("Page.enable")
     await send("Emulation.setDeviceMetricsOverride", { ...SIZE, deviceScaleFactor: 1, mobile: false })
-    await send("Page.navigate", { url: `file://${path.join(here, "content-visibility-auto-oracle.html")}` })
-    await Bun.sleep(800)
-    const result = await send("Runtime.evaluate", { expression: `window.__run(${JSON.stringify(scene)})`, awaitPromise: true, returnByValue: true })
+    const hash = scene === LOAD ? `#${LOAD}` : ""
+    await send("Page.navigate", { url: `file://${path.join(here, "content-visibility-auto-oracle.html")}${hash}` })
+    // The scene `load` records itself as the page loads, from the markup on; the page is only read when it is over.
+    await Bun.sleep(scene === LOAD ? 1500 : 800)
+    const expression = scene === LOAD ? "window.__loaded" : `window.__run(${JSON.stringify(scene)})`
+    const result = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })
     socket.close()
     if (!result.result?.result || result.result.exceptionDetails) throw new Error(JSON.stringify(result))
     return result.result.result.value

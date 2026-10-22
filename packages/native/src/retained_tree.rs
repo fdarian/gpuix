@@ -1012,6 +1012,14 @@ impl RetainedTree {
     ///
     /// The comparison is on the declared style, before the universal layer is
     /// put under it, so a resend costs no merge.
+    /// Whether the root has anything in it: the container a renderer mounts into is there, and is
+    /// drawn, before the first element is.
+    pub(crate) fn has_content(&self) -> bool {
+        self.root_id
+            .and_then(|root| self.elements.get(&root))
+            .is_some_and(|root| !root.children.is_empty())
+    }
+
     pub fn set_style(&mut self, id: u64, style: Arc<StyleDesc>) {
         let Some(element) = self.elements.get_mut(&id) else {
             return;

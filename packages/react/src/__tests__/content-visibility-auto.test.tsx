@@ -33,9 +33,14 @@ interface OracleStep {
   top: number
   events: [number, boolean][]
 }
-const ORACLE: Record<string, OracleStep[]> = JSON.parse(
+/** The first frame of a page: the events in the order Chrome tells them, with the animation frame callbacks between. */
+interface OracleLoad {
+  log: string[]
+  events: [number, boolean][]
+}
+const { load: LOAD, ...ORACLE } = JSON.parse(
   fs.readFileSync(path.join(FIXTURES, "content-visibility-auto-oracle.json"), "utf8")
-)
+) as Record<string, OracleStep[]> & { load: OracleLoad }
 
 const ENTRIES = 190
 const SIZE = { width: 900, height: 780 }
@@ -200,6 +205,18 @@ function settle(renderer: TestRenderer, read: () => string): number {
   throw new Error("the scene did not settle in 24 frames")
 }
 
+/** Draws the window's first frame, with something else in it, so that what is added after it is not in the first frame. */
+function drawFirstFrame(root: ReturnType<typeof createTestRoot>, renderer: TestRenderer) {
+  root.render(
+    <Page>
+      <div style={{ height: 1 }} />
+    </Page>
+  )
+  renderer.flush()
+  renderer.drawFrame()
+  renderer.dispatchNativeEvents()
+}
+
 /** A scene of the oracle: how to draw it, what it looks like, and what each step after the first does to it. */
 interface Scene {
   render: (events: Events) => ReactNode
@@ -341,6 +358,8 @@ describeNative("content-visibility: auto against Chrome", { timeout: 120_000 }, 
       const renderer = root.renderer
       try {
         renderer.setInlineDraws(false)
+        // The oracle adds the scene to a page that has settled: the first frame of a window is told differently.
+        drawFirstFrame(root, renderer)
         root.render(scene.render(events))
         renderer.flush()
         const ids = idsOf(renderer)
@@ -415,6 +434,7 @@ describeNative("an auto element in the frame that mounts it", { timeout: 120_000
     const renderer = root.renderer
     try {
       renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
       root.render(<List intrinsic="auto 21px" events={events} />)
       renderer.flush()
       const ids = idsOf(renderer)
@@ -917,6 +937,93 @@ describeNative("a read of geometry below a skipped element, for what else it cou
 
 // ── What is told, and to whom ──
 
+/** One entry of 37px, `auto`, that tells its state into `events`. */
+function LoadEntry({ index, events }: { index: number; events: Events }) {
+  return <Entry index={index} intrinsic="auto 40px" events={events} />
+}
+
+/** The page of the scene `load` of the oracle: an entry on screen, a spacer, an entry far below, and two more once it is `later`. */
+function LoadPage({ events, later }: { events: Events; later: boolean }) {
+  return (
+    <Page>
+      <div testId="scroller" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+        <LoadEntry key={0} index={0} events={events} />
+        {later ? <LoadEntry key={2} index={2} events={events} /> : null}
+        <div key="spacer" style={{ height: 3000, flexShrink: 0 }} />
+        <LoadEntry key={1} index={1} events={events} />
+        {later ? <LoadEntry key={3} index={3} events={events} /> : null}
+      </div>
+    </Page>
+  )
+}
+
+describeNative("the first frame of a window", { timeout: 120_000 }, () => {
+  /** What Chrome tells in the order it tells it, as `[index, skipped]` pairs. */
+  const chrome = LOAD.events
+
+  it("tells the elements it has `skipped: true`, and the near ones `false`, as Chrome does for a page at load", () => {
+    const events: Events = []
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      root.render(<LoadPage events={events} later={false} />)
+      renderer.flush()
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
+      // Chrome: the entry on screen and the far one are locked before the first frame, the near one is unlocked by it.
+      // There is no animation frame callback here, so both come after the first frame, in the order Chrome has.
+      expect(events).toEqual(chrome.slice(0, 3))
+      expect(LOAD.log.slice(0, 4), "Chrome: the locks before the first callback, the unlock after it").toEqual([
+        "event 0 true",
+        "event 1 true",
+        "raf 1",
+        "event 0 false",
+      ])
+      settle(renderer, () => "")
+      expect(events, "and nothing more").toEqual(chrome.slice(0, 3))
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("tells an element that comes after the first frame once, with its state", () => {
+    const events: Events = []
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      root.render(<LoadPage events={events} later={false} />)
+      renderer.flush()
+      settle(renderer, () => "")
+      events.length = 0
+      root.render(<LoadPage events={events} later />)
+      renderer.flush()
+      settle(renderer, () => "")
+      expect(events).toEqual(chrome.slice(3))
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("tells an element once when a frame with other content came before it", () => {
+    const events: Events = []
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(<LoadPage events={events} later={false} />)
+      renderer.flush()
+      settle(renderer, () => "")
+      // Chrome tells an element that is added after the first frame once.
+      expect(events).toEqual([[0, false], [1, true]])
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
 describeNative("contentvisibilityautostatechange", { timeout: 120_000 }, () => {
   it("bubbles from the element, has a capture twin, and is cancelled to no effect", () => {
     const seen: string[] = []
@@ -946,8 +1053,16 @@ describeNative("contentvisibilityautostatechange", { timeout: 120_000 }, () => {
       root.render(<Tree far />)
       renderer.flush()
       settle(renderer, () => "")
+      // The elements of the window's first frame are told twice, the near one `true` and then `false`.
       expect(seen.sort()).toEqual(
-        ["bubble below false true", "bubble below true true", "capture below false", "capture below true"].sort()
+        [
+          "bubble below false true",
+          "bubble below true true",
+          "bubble below true true",
+          "capture below false",
+          "capture below true",
+          "capture below true",
+        ].sort()
       )
     } finally {
       root.unmount()

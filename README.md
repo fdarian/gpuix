@@ -3166,7 +3166,12 @@ and the extent changes as they are built.
 - `onContentVisibilityAutoStateChange` (and `…Capture`) fires on an `auto` element
   after the frame that skipped it or showed it, once for the first answer and then when
   it changes. `skipped` is in the payload. It bubbles and is cancelable, and
-  `preventDefault()` does nothing.
+  `preventDefault()` does nothing. The elements that are there in the first frame the
+  window draws with something in it are told as Chrome tells a page at load: every one
+  `skipped: true`, in document order, and then `skipped: false` to the near ones (Chrome
+  sends the first before its first animation frame callback and the second after it;
+  there is no `requestAnimationFrame` here, so both come after the frame). An element
+  that comes after that frame is told once.
 - A geometry read of an element inside a skipped subtree (`getBoundingClientRect`,
   `getElementBounds`, `getScrollMetrics`) lays the subtree out for real and returns true
   boxes; the subtree stays skipped. The read costs a layout pass, and every read lays

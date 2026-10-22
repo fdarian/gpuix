@@ -33,7 +33,7 @@
 //!
 //! [`containing_block`]: crate::layout::containing_block
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use gpui::{Bounds, Pixels};
@@ -283,6 +283,9 @@ struct Shared {
     count: AtomicUsize,
     /// How many elements are forced, for the same reason.
     forced: AtomicUsize,
+    /// Whether a frame with something in it has been drawn before the one being swept: an element
+    /// that is there at the first frame is told differently from one that comes after it.
+    drawn: AtomicBool,
     known: Mutex<Known>,
 }
 
@@ -364,6 +367,9 @@ struct Clips {
 pub(crate) struct Swept {
     /// A frame has to be built, because the content of an element is to be skipped or shown.
     pub rebuild: bool,
+    /// The elements that were there when the first frame was drawn, which Chrome tells `skipped:
+    /// true` before that frame because a style update has locked them by then, in no order.
+    pub locked: Vec<u64>,
     /// The elements whose state is not the one last told, with the state, in no order.
     pub changes: Vec<(u64, bool)>,
 }
@@ -540,6 +546,16 @@ impl Relevance {
         self.0.counted(&known);
     }
 
+    pub(crate) fn has_drawn(&self) -> bool {
+        self.0.drawn.load(Ordering::Relaxed)
+    }
+
+    /// A frame was drawn with something in it and no `auto` element: the ones that come after are
+    /// not the ones of the first frame.
+    pub(crate) fn frame_drawn(&self) {
+        self.0.drawn.store(true, Ordering::Relaxed);
+    }
+
     /// Reads the boxes the last frame painted: remembers the size of the elements that were not
     /// skipped, decides whether each `auto` element is near, and says which have a state that was
     /// not told and which are to be built again.
@@ -552,6 +568,7 @@ impl Relevance {
         let mut known = self.0.lock();
         let known = &mut *known;
         let mut swept = Swept::default();
+        let first_frame = !self.0.drawn.swap(true, Ordering::Relaxed);
         if known.elements.is_empty() {
             return swept;
         }
@@ -578,6 +595,10 @@ impl Relevance {
             let boxes = crate::observers::clip_rects(window, ancestors).into_iter().map(|(_, bounds)| bounds);
             element.near = Some(is_near(crate::observers::border_box(&painted), boxes, viewport));
             let wanted = element.wanted_skipped(&holds, *id);
+            if first_frame && element.notified.is_none() {
+                element.notified = Some(true);
+                swept.locked.push(*id);
+            }
             if wanted != element.skipped_in_build {
                 swept.rebuild |= !std::mem::replace(&mut element.rebuild_requested, true);
             } else {

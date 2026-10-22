@@ -525,7 +525,8 @@ pub(crate) fn frame_sweep(
         |_, _, _| {},
         move |_, _, window, cx| {
             let relevant = !relevance.is_empty();
-            if !active && !relevant {
+            let first = !relevance.has_drawn();
+            if !active && !relevant && !first {
                 return;
             }
             let handle = window.window_handle();
@@ -537,9 +538,12 @@ pub(crate) fn frame_sweep(
             let reports = reports.clone();
             let tree = tree.clone();
             let callback = callback.clone();
+            let relevance = relevance.clone();
             cx.defer(move |cx| {
                 if relevant {
                     sweep_relevance(handle, viewport, &tree, &callback, cx);
+                } else if first && tree.lock().unwrap().has_content() {
+                    relevance.frame_drawn();
                 }
                 if active {
                     sweep(handle.window_id(), viewport, &reports, &tree, &callback);
@@ -565,8 +569,13 @@ fn sweep_relevance(
     let rebuild = {
         let tree = tree.lock().unwrap();
         let mut swept = tree.relevance.sweep(window.window_id(), viewport, &tree);
+        swept.locked.sort_by_cached_key(|id| document_order(&tree, *id));
         swept.changes.sort_by_cached_key(|(id, _)| document_order(&tree, *id));
-        for (id, skipped) in swept.changes {
+        // Chrome tells the elements of its first frame `skipped: true` before that frame and the
+        // near ones `skipped: false` after it. There is no `requestAnimationFrame` here: both come
+        // after the first frame, in that order.
+        let locked = swept.locked.into_iter().map(|id| (id, true));
+        for (id, skipped) in locked.chain(swept.changes) {
             crate::renderer::emit_bubbling_event(callback, &tree, id, CONTENT_VISIBILITY_EVENT, |payload| {
                 payload.skipped = Some(skipped);
             });

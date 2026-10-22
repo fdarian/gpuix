@@ -5,7 +5,8 @@
   drives the page over the DevTools protocol (a 900x780 viewport, no device scale) and writes `content-visibility-auto-oracle.json`:
   {scene: [{step, skipped: [index...], height, events: [[index, skipped]...], ...}]}. A scene is built after the page has
   settled, since the first frame of a page is not a frame like the others: Chrome tells every `auto` element it is skipped
-  there, and then that it is not.
+  there, and then that it is not. The scene `load` (the page with `#load`, see the end of this file) is that first frame: its
+  elements are in the markup, and what it records is the order of the events and of the animation frame callbacks.
 
   Every box is made of fixed sizes, so no font is involved. An entry is 37px: 8px padding, a 16px bar, a 4px gap, a 1px rule
   and 8px padding.
@@ -285,6 +286,47 @@ Object.assign(scenes, {
 window.__run = async (name) => {
   await frames(6)
   return scenes[name]()
+}
+</script>
+<script>
+// The scene `load`: `auto` elements that are in the markup when the page loads (an entry on screen and one far below), and
+// two that are added in the second animation frame callback (one on screen, one far). `log` is the order in which the events
+// and the callbacks of the first frames happened.
+if (location.hash === '#load') {
+  const entryMarkup = (index) =>
+    `<div class="entry" data-index="${index}" style="content-visibility: auto; contain-intrinsic-size: auto 40px"><div class="bar"></div><div class="rule"></div></div>`
+  document.write(
+    `<div class="page"><div class="scroller" id="scroller">${entryMarkup(0)}<div id="spacer" style="height: 3000px; flex-shrink: 0"></div>${entryMarkup(1)}</div></div>`
+  )
+  const log = []
+  const events = []
+  const listen = (element) =>
+    element.addEventListener('contentvisibilityautostatechange', (event) => {
+      const index = Number(element.dataset.index)
+      log.push(`event ${index} ${event.skipped}`)
+      events.push([index, event.skipped])
+    })
+  document.querySelectorAll('.entry').forEach(listen)
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+  window.__loaded = (async () => {
+    for (let count = 1; count <= 5; count++) {
+      await frame()
+      log.push(`raf ${count}`)
+      if (count === 2) {
+        const scroller = document.getElementById('scroller')
+        const near = made('div', '')
+        near.innerHTML = entryMarkup(2)
+        const far = made('div', '')
+        far.innerHTML = entryMarkup(3)
+        listen(near.firstChild)
+        listen(far.firstChild)
+        scroller.insertBefore(near.firstChild, document.getElementById('spacer'))
+        scroller.append(far.firstChild)
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    return { log, events }
+  })()
 }
 </script>
 </body></html>
