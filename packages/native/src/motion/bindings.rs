@@ -88,6 +88,9 @@ pub(crate) struct MotionValueStore {
     /// The values the last frame found bound to something that is not paint-only, or read for
     /// the renderer's own use (a drag's offset), which is not known to be.
     layout_driven: HashSet<ValueId>,
+    /// The values written, animated or controlled since the last frame sampled: an element bound to
+    /// one of them, or to a value computed from it, shows something else at the next frame.
+    written: HashSet<ValueId>,
     /// Events found while writing, delivered by the next frame.
     pending: Vec<MotionValueEvent>,
     warned: HashSet<String>,
@@ -207,6 +210,27 @@ impl MotionValueStore {
         Ok(!self.graph.feeds_any(value_id(id)?, &self.layout_driven))
     }
 
+    /// Notes that a script touched the value `id`, which the elements bound to it show differently
+    /// from the next frame on.
+    fn wrote(&mut self, id: f64) -> Result<ValueId, String> {
+        let id = value_id(id)?;
+        self.written.insert(id);
+        Ok(id)
+    }
+
+    /// Whether an element with this `motionValues` binding can show something else at the next
+    /// frame than the frame that built it did: a value it binds was moving by itself when that frame
+    /// sampled it, or it, or a value it is computed from, was written since. A binding that does not
+    /// parse is not known not to.
+    pub(crate) fn binding_due(&self, binding: &Value) -> bool {
+        parse_binding(binding).map_or(true, |pairs| {
+            pairs.iter().any(|bound| {
+                let id = bound.id();
+                self.frame_moving.contains(&id) || self.graph.follows_any(id, &self.written)
+            })
+        })
+    }
+
     /// Whether a `motionValues` binding drives only properties that change what an element paints.
     /// A binding that does not parse is not known to.
     pub(crate) fn binding_paints_only(binding: &Value) -> bool {
@@ -214,13 +238,15 @@ impl MotionValueStore {
     }
 
     pub(crate) fn set(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
-        self.graph.set(value_id(id)?, parse_value(value, &self.context())?, now)?;
+        let id = self.wrote(id)?;
+        self.graph.set(id, parse_value(value, &self.context())?, now)?;
         self.observe(now);
         Ok(())
     }
 
     pub(crate) fn jump(&mut self, id: f64, value: &Value, now: Instant) -> Result<(), String> {
-        self.graph.jump(value_id(id)?, parse_value(value, &self.context())?, now)?;
+        let id = self.wrote(id)?;
+        self.graph.jump(id, parse_value(value, &self.context())?, now)?;
         self.observe(now);
         Ok(())
     }
@@ -240,7 +266,7 @@ impl MotionValueStore {
             Some(transition) => Transition::parse(transition.clone())?,
             None => Transition::default(),
         };
-        let id = value_id(id)?;
+        let id = self.wrote(id)?;
         let holds = self.graph.get(id, now)?;
         match parse_keyframes(target, &holds, &self.context())? {
             Keyframes::Single(target) => self.graph.animate(id, target, transition, now)?,
@@ -251,7 +277,8 @@ impl MotionValueStore {
     }
 
     pub(crate) fn stop(&mut self, id: f64, now: Instant) -> Result<(), String> {
-        self.graph.stop(value_id(id)?, now)?;
+        let id = self.wrote(id)?;
+        self.graph.stop(id, now)?;
         self.observe(now);
         Ok(())
     }
@@ -284,7 +311,7 @@ impl MotionValueStore {
         now: Instant,
         run: impl FnOnce(&mut MotionValues, ValueId) -> Result<(), String>,
     ) -> Result<(), String> {
-        let id = value_id(id)?;
+        let id = self.wrote(id)?;
         self.observe(now);
         run(&mut self.graph, id)?;
         self.observe(now);
@@ -342,6 +369,7 @@ impl MotionValueStore {
         self.frame_values.clear();
         self.frame_moving.clear();
         self.layout_driven.clear();
+        self.written.clear();
         let mut active = self.sample_unsampled(bindings, read, now);
         active |= self.observe(now);
         MotionValueFrame {
@@ -1905,5 +1933,38 @@ mod tests {
         store.apply(&binding, &mut style, &ParentFont::initial());
         assert_eq!(style.padding_top, Some(LinearLength::px(12.0)));
         assert_eq!(style.padding_left, Some(LinearLength::px(18.0)));
+    }
+
+    #[test]
+    fn a_binding_is_due_while_its_value_moves_or_after_a_write_and_not_while_it_rests() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        for id in 0..4 {
+            store.create_source(f64::from(id), &json!(0)).unwrap();
+        }
+        store.create_transform(4.0, 0.0, vec![0.0, 1.0], &json!([0, 10]), None).unwrap();
+        let moving = json!({ "opacity": 0 });
+        let resting = json!({ "opacity": 1 });
+        let mapped = json!({ "opacity": 4 });
+        let bindings = [&moving, &resting, &mapped];
+        let due = |store: &MotionValueStore| bindings.map(|binding| store.binding_due(binding));
+
+        store.animate(0.0, &json!(1), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(due(&store), [true, false, true], "an animation was started, and a value mapped from it follows");
+        store.frame(bindings, &[], clock.at(100));
+        assert_eq!(due(&store), [true, false, true], "it moves by itself");
+        store.frame(bindings, &[], clock.at(900));
+        assert_eq!(due(&store), [true, false, true], "the frame that sampled it moving built the elements at the old value");
+        store.frame(bindings, &[], clock.at(1100));
+        assert_eq!(due(&store), [false, false, false], "it came to rest and every element has its final value");
+
+        store.set(1.0, &json!(0.5), clock.at(1200)).unwrap();
+        assert_eq!(due(&store), [false, true, false], "a write");
+        store.frame(bindings, &[], clock.at(1216));
+        assert_eq!(due(&store), [false, false, false], "a frame that sampled it has built it");
+
+        store.pause(0.0, clock.at(1300)).unwrap();
+        assert_eq!(due(&store), [true, false, true], "a control on an animation");
+        assert!(MotionValueStore::default().binding_due(&json!({ "nope": 1 })), "a binding that does not parse is not known not to");
     }
 }

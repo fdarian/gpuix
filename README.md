@@ -8812,7 +8812,9 @@ and do not force a full rebuild of it. Focus changes, `scrollIntoView`, the wind
 title, text selection set from JS, a live image, a font and a background image still
 do.
 
-A running animation costs the page what the animation costs. When all that changed
+A running animation costs the page what the animation costs, and a motion value costs it
+for the elements it moves: an element bound to a value that rests (a width too) is left
+as it was painted by the tick of a loop beside it. When all that changed
 since the last frame is the clock, and everything that runs only changes how an
 element paints (a colour, an opacity, a shadow, an `<svg>` stroke), the tick builds
 the elements that animate alone and paints them again in the frame already shown, so

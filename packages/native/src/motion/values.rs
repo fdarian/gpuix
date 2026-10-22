@@ -163,6 +163,23 @@ impl MotionValues {
         })
     }
 
+    /// Whether `id`, or a node it is computed from through transforms and followers, is in
+    /// `targets`: whether a write to one of them can change what `id` reads.
+    pub(super) fn follows_any(&self, id: ValueId, targets: &std::collections::HashSet<ValueId>) -> bool {
+        let mut current = Some(id);
+        // As in `feeds_any`, the bound only keeps a bug from becoming a hang.
+        for _ in 0..=self.nodes.len() {
+            let Some(at) = current else {
+                return false;
+            };
+            if targets.contains(&at) {
+                return true;
+            }
+            current = self.nodes.get(&at).and_then(Node::input);
+        }
+        false
+    }
+
     /// Removes a node. A node that reads it fails to sample from then on.
     pub(super) fn remove(&mut self, id: ValueId) -> bool {
         self.caught_up = None;

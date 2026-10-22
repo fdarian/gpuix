@@ -1606,6 +1606,53 @@ describeNative("a tick beside motion values that rest", { timeout: TIMEOUT }, ()
   })
 })
 
+/** The ticks around the end of an animation are the ones where a value stops being a source: each shows what a frame built whole shows. */
+describeNative("an animation of a motion value that ends beside values that rest", { timeout: TIMEOUT }, () => {
+  const ending = (animation: (value) => any) => (
+    <>
+      {resting(2)}
+      <BoundHead
+        initial="#000000"
+        start={animation}
+        render={(value) => (
+          <text testId="animated" style={{ fontSize: 20, color: value }}>
+            animated
+          </text>
+        )}
+      />
+    </>
+  )
+  const heads = {
+    "a tween": ending((value) => animate(value, "#ff0000", { duration: 0.3, ease: "linear" })),
+    "a spring": ending((value) => animate(value, "#606060", { type: "spring", stiffness: 300, damping: 30, mass: 1 })),
+    "a tween that is paused and played again": ending((value) => {
+      const controls = animate(value, "#ff0000", { duration: 0.3, ease: "linear" })
+      controls.pause()
+      setTimeout(() => controls.play(), 0)
+      return controls
+    }),
+  }
+  for (const [name, head] of Object.entries(heads)) {
+    it.skipIf(!patching)(`shows the picture of a frame built whole at every tick, the last included: ${name}`, async () => {
+      const page = await mount(head, 500)
+      try {
+        const renderer = page.renderer
+        const file = name.replace(/\W+/g, "-")
+        for (let step = 0; step < 60; step++) {
+          tick(renderer)
+          const patched = shot(renderer, `${file}-patched`)
+          renderer.flush()
+          expect(patched.equals(shot(renderer, `${file}-whole`)), `tick ${step}`).toBe(true)
+        }
+        expect(renderer.getPatchCounters().patchedFrames, "the ticks of the animation are patched").toBeGreaterThanOrEqual(10)
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        page.root.unmount()
+      }
+    })
+  }
+})
+
 const CULLED_TICKS = 24
 
 /** A scroller 60 px high whose content is 400 px of nothing and then `inner`, which is out of its view. */

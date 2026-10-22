@@ -8082,7 +8082,7 @@ impl GpuixView {
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
-            clock_due: &|id| self.custom_registry.clock_due(id),
+            clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
             verdicts: self.dormancy_verdicts(&tree, window),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
@@ -8117,6 +8117,15 @@ impl GpuixView {
             routing: self.routing.clone(),
         }
     }
+}
+
+/// Whether the element is bound to a value that can show otherwise than the frame that built the
+/// element had it, see `MotionValueStore::binding_due`.
+fn motion_value_due(store: &crate::motion::MotionValueStore, tree: &crate::retained_tree::RetainedTree, id: u64) -> bool {
+    tree.elements
+        .get(&id)
+        .and_then(|element| element.custom_props().get("motionValues"))
+        .is_some_and(|binding| store.binding_due(binding))
 }
 
 /// The elements with a motion that runs at `now`, see `retain::Sources::motion`.
@@ -8547,7 +8556,7 @@ impl gpui::Render for GpuixView {
             customs: self.custom_registry.retain_states(),
             motion: running_motion(&self.motion_states, &self.css_animations, &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
-            clock_due: &|id| self.custom_registry.clock_due(id),
+            clock_due: &|id| self.custom_registry.clock_due(id) || motion_value_due(&self.motion_values, &tree, id),
             verdicts: self.dormancy_verdicts(&tree, window),
             selection: self.selection.lock().identity(),
             pass: window.draw_pass(),
