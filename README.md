@@ -3142,8 +3142,9 @@ and the extent changes as they are built.
   each axis you left `visible`, a stacking context, an independent formatting context (no
   margin of its first or last child collapses through it), and the containing block of its
   `position: absolute` and `position: fixed` descendants. A percentage `height` of a
-  child of a skipped block with an `auto` height is `auto`, whatever
-  `containIntrinsicSize` makes the box.
+  child of a skipped block or flex container with an `auto` height is `auto`, whatever
+  `containIntrinsicSize` makes the box; in a grid it resolves against the grid area, as
+  in Chrome.
 - Near is the border box outset by 150% of the window (its width at the sides, its
   height above and below), cut by every ancestor that clips it. The very edge is not near.
   The first answer comes in the frame that builds the element, which draws again to
@@ -3155,8 +3156,9 @@ and the extent changes as they are built.
   match paints as the active one, for as long as it is active.
 - Skipped `auto` content is in the accessibility tree, as in Chrome (a screen reader can
   find its headings and buttons, and `aria-labelledby` into it names a control): the
-  skipped element holds a node for each element below it that has a role or is
-  referenced, with no bounds and no actions. A skipped element with no role of its own
+  skipped element holds a node for each element below it that has a role (`role`, or
+  the default one of a `<text>`, `<label>`, `<form>`, `<img>`, `<input>` and
+  `<textarea>`), with no bounds and no actions. A skipped element with no role of its own
   is a `Group` to hold them. `hidden` content is not in the tree, and neither is what
   is `aria-hidden`, `display: none` or `visibility: hidden` below an `auto` one.
 - Tab and Shift+Tab reach a focusable element inside skipped `auto` content, in tab
@@ -3174,12 +3176,12 @@ and the extent changes as they are built.
   that comes after that frame is told once.
 - A geometry read of an element inside a skipped subtree (`getBoundingClientRect`,
   `getElementBounds`, `getScrollMetrics`) lays the subtree out for real and returns true
-  boxes; the subtree stays skipped. The read costs a layout pass, and every read lays
-  out again.
+  boxes; the subtree stays skipped. The read costs a layout pass; reads that follow
+  share it while nothing that can move a box happens to the window (a style write, a
+  scroll write, a resize or a painted frame ends the share; a change of colour or
+  opacity does not). A scroller inside the subtree reports its true `scrollHeight`.
 - An animation below a skipped element is not built or drawn and fires no event; it
   goes on from the clock when the element shows.
-- A percentage height of a child of a skipped element resolves against the intrinsic
-  size, where Chrome gives `auto`.
 
 </details>
 
@@ -6479,7 +6481,7 @@ CSS-like styling via the `style` prop:
 
 **Spacing:** `padding`, `paddingBlock`, `paddingInline`, `paddingTop/Right/Bottom/Left`, `margin`, `marginBlock`, `marginInline`, `marginTop/Right/Bottom/Left` — pixels or any [length](#lengths); `padding` and `margin` take one to four values (`"0 auto"`, see [Shorthands](#shorthands)). A percentage is of the containing block's width, and margins also take `"auto"` (which absorbs free space in flex layouts, so `marginLeft: "auto"` pushes an item to the end)
 
-**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`), and `inset`, `insetBlock` and `insetInline` for them (`inset: 0` fills the containing block). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window. `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
+**Position:** `position` (`"static"` (default) | `"relative"` | `"absolute"` | `"fixed"` | `"sticky"`), `top`, `right`, `bottom`, `left` (pixels, any [length](#lengths) or `"auto"`), and `inset`, `insetBlock` and `insetInline` for them (`inset: 0` fills the containing block). An absolute box resolves its insets, percentage sizes and margins against the padding box of its nearest non-static ancestor (the window if there is none; a sticky ancestor counts) and keeps its static position on an `auto` axis. `"fixed"` resolves against the window, or against the nearest ancestor with `contentVisibility` other than `"visible"` (layout containment). `zIndex` (an integer) orders a positioned element, or a flex or grid item, in its stacking context; it does nothing on another static box, and a sticky element is positioned. See [Paint order and stacking contexts](#layout-like-css) and [Sticky positioning](#sticky-positioning) for `"sticky"`
 
 **Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth` (one to four values), `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderBlock`, `borderInline`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `maskBorder`, `maskBorderSource`, `maskBorderSlice`, `maskBorderWidth`, `maskBorderOutset`, `maskBorderRepeat`, `maskBorderMode`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
 
