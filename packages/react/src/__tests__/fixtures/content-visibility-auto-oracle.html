@@ -313,6 +313,157 @@ Object.assign(scenes, {
   },
 })
 
+// The first read after a change (`firstRead...`): each step changes the page and then reads the boxes of `names[step]`, by
+// `data-id`, the first of which is inside content that is skipped. gpuix lays the page out once for that first read.
+const named = (id, className, style) => {
+  const element = made('div', className, style)
+  element.dataset.id = id
+  return element
+}
+
+const rectsOf = (page, names) =>
+  names.map((name) => {
+    const box = page.querySelector(`[data-id="${name}"]`).getBoundingClientRect()
+    return [box.x, box.y, box.width, box.height]
+  })
+
+/** Runs `changes` (the first mounts the page) and reads `names[step]` after each. */
+const firstRead = (page, scroller, names, changes) => {
+  let step = 0
+  return run(
+    [],
+    changes.map(([label, change], index) => [label, async () => { step = index; change() }]),
+    () => ({ names: names[step], rects: rectsOf(page, names[step]), height: scroller.scrollHeight, top: scroller.scrollTop })
+  )
+}
+
+const pageOf = () => {
+  const page = made('div', 'page')
+  const scroller = made('div', 'scroller')
+  page.append(scroller)
+  return { page, scroller }
+}
+
+const lead = () => made('div', '', { height: '20px', flexShrink: 0 })
+
+Object.assign(scenes, {
+  // A layout write inside a `hidden` element: the child grows, gets a margin, the element gets another intrinsic size and padding.
+  async firstReadInside() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px', padding: '4px' })
+    const child = named('child', '', { height: '70px', width: '40px', margin: '5px', flexShrink: 0 })
+    const twin = named('twin', '', { height: '20px', width: '30px', flexShrink: 0 })
+    held.append(child, twin)
+    scroller.append(lead(), held, named('after', '', { height: '20px', flexShrink: 0 }))
+    const names = ['child', 'twin', 'held', 'after']
+    return firstRead(page, scroller, [names, names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['child grows', () => (child.style.height = '90px')],
+      ['child margin', () => (child.style.margin = '12px')],
+      ['intrinsic size', () => (held.style.containIntrinsicSize = '50px')],
+      ['padding', () => (held.style.padding = '10px')],
+    ])
+  },
+
+  // A write that turns the ancestor of the element `hidden` or `visible` in the same turn as a layout write inside it.
+  async firstReadTurns() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'visible', containIntrinsicSize: '40px', padding: '4px' })
+    const child = named('child', '', { height: '70px', width: '40px', margin: '5px', flexShrink: 0 })
+    held.append(child)
+    scroller.append(lead(), held, named('after', '', { height: '20px', flexShrink: 0 }))
+    const names = ['child', 'held', 'after']
+    return firstRead(page, scroller, [names, names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['hidden', () => (held.style.contentVisibility = 'hidden')],
+      ['visible', () => (held.style.contentVisibility = 'visible')],
+      ['hidden and child grows', () => ((held.style.contentVisibility = 'hidden'), (child.style.height = '120px'))],
+      ['visible and child grows', () => ((held.style.contentVisibility = 'visible'), (child.style.height = '150px'))],
+    ])
+  },
+
+  // Nodes inserted into `hidden` content, and a `hidden` element inserted with the node a read is about inside it.
+  async firstReadInserted() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px', padding: '4px' })
+    const a = named('a', '', { height: '20px', width: '30px', flexShrink: 0 })
+    held.append(a)
+    const after = named('after', '', { height: '20px', flexShrink: 0 })
+    scroller.append(lead(), held, after)
+    const wrapper = named('wrapper', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '40px', padding: '2px' })
+    const target = named('target', '', { height: '25px', width: '20px', flexShrink: 0 })
+    wrapper.append(target)
+    return firstRead(
+      page,
+      scroller,
+      [['a', 'held', 'after'], ['ins', 'a', 'held', 'after'], ['target', 'wrapper', 'held', 'after'], ['deep', 'target', 'wrapper', 'after']],
+      [
+        ['mounted', () => document.body.append(page)],
+        ['node inserted', () => held.prepend(named('ins', '', { height: '35px', width: '30px', margin: '3px', flexShrink: 0 }))],
+        ['hidden element inserted', () => scroller.insertBefore(wrapper, after)],
+        ['node inserted into it', () => wrapper.prepend(named('deep', '', { height: '12px', width: '10px', flexShrink: 0 }))],
+      ]
+    )
+  },
+
+  // Two `hidden` elements, one in the other, where only the inner one changes.
+  async firstReadNested() {
+    const { page, scroller } = pageOf()
+    const outer = named('outer', '', { flexShrink: 0, padding: '4px', contentVisibility: 'hidden', containIntrinsicSize: '120px' })
+    const inner = named('inner', '', { margin: '6px', contentVisibility: 'hidden', containIntrinsicSize: '50px' })
+    const bar = named('bar', 'bar', { margin: '3px' })
+    inner.append(bar)
+    outer.append(made('div', '', { height: '30px' }), inner)
+    scroller.append(lead(), outer, named('after', '', { height: '20px', flexShrink: 0 }))
+    const names = ['bar', 'inner', 'outer', 'after']
+    return firstRead(page, scroller, [names, names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['inner intrinsic size', () => (inner.style.containIntrinsicSize = '80px')],
+      ['inner visible', () => (inner.style.contentVisibility = 'visible')],
+      ['inner hidden and bar grows', () => ((inner.style.contentVisibility = 'hidden'), (bar.style.height = '40px'))],
+      ['inner margin', () => (inner.style.margin = '2px')],
+    ])
+  },
+
+  // `auto` entries far from the viewport, skipped: a change of all of them, in a far one, and in a near one.
+  async firstReadAuto() {
+    const events = []
+    const { page, scroller, entries } = listPage(0, 'auto 40px', events)
+    entries.forEach((entry, index) => {
+      entry.dataset.id = `entry-${index}`
+      entry.firstChild.dataset.id = `bar-${index}`
+    })
+    const names = ['bar-150', 'bar-10', 'entry-189', 'entry-151']
+    return firstRead(page, scroller, [names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['intrinsic size', () => entries.forEach((entry) => (entry.style.containIntrinsicSize = 'auto 60px'))],
+      ['bar of a far entry grows', () => (entries[150].firstChild.style.height = '30px')],
+      ['bar of a near entry grows', () => (entries[10].firstChild.style.height = '40px')],
+    ])
+  },
+
+  // The scroll size of a scroller in a `hidden` element after the content in it changes.
+  async firstReadScroller() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px' })
+    const scrolling = named('scrolling', '', { height: '50px', width: '40px', overflowY: 'scroll', flexShrink: 0 })
+    const content = made('div', '', { height: '200px', width: '40px', flexShrink: 0 })
+    scrolling.append(content)
+    held.append(scrolling)
+    scroller.append(held)
+    return run(
+      [],
+      [
+        ['mounted', async () => document.body.append(page)],
+        ['content grows', async () => (content.style.height = '320px')],
+        ['content shrinks', async () => (content.style.height = '30px')],
+        ['scroller resized', async () => (scrolling.style.height = '80px')],
+      ],
+      () => ({ metrics: [[scrolling.scrollLeft, scrolling.scrollTop, scrolling.scrollWidth, scrolling.scrollHeight, scrolling.clientWidth, scrolling.clientHeight]], height: scroller.scrollHeight, top: scroller.scrollTop })
+    )
+  },
+})
+
 window.__run = async (name) => {
   await frames(6)
   return scenes[name]()

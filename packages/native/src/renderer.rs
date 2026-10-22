@@ -473,13 +473,20 @@ pub(crate) fn invalidate_after_mutation(cx: &mut gpui::App, view: gpui::EntityId
 }
 
 /// Lays out the window as `lay_out` does and reads what it published with `read`, laying out the
-/// content of the skipped ancestors of `id` first when it has any: Chrome's forced layout of a
+/// content of the skipped ancestors of `id` too when it has any: Chrome's forced layout of a
 /// locked subtree (`DisplayLockUtilities::ScopedForcedUpdate`) for a read of geometry. The
 /// ancestors are forced for one layout-only pass, which builds their content and publishes its
 /// boxes and paints nothing, and then skip again: the window is invalidated once more, so the
 /// frame that follows is not the forced one. Nothing about their state changes (see
 /// `content_visibility::Relevance::force`). An element outside any skipped subtree costs the walk
 /// up its ancestors.
+///
+/// That one pass is also the one that lays out what changed since the last. Which ancestors skip
+/// is known from the last build (`skipped_ancestors`), which is stale for an ancestor the change
+/// turned `hidden` or inserted, so every ancestor is registered with the pass
+/// (`Relevance::force_for_read`) and one the build finds skipping is forced as it is built. The
+/// pass is repeated only if an ancestor still skips that the forced set does not hold, which the
+/// registration leaves no case of.
 ///
 /// The forced pass is shared with the reads that follow it: while the window is as it left it
 /// (see `Relevance::forced_by_last_read`), a read whose skipped ancestors that pass forced
@@ -493,37 +500,58 @@ pub(crate) fn read_after_layout<R>(
     lay_out: fn(&mut gpui::Window, &mut gpui::App) -> bool,
     read: impl FnOnce(gpui::WindowId) -> R,
 ) -> Result<R> {
+    use crate::layout::content_visibility::{ancestors_of, skipped_ancestors};
     let window_id = window.window_handle().window_id();
     let relevance = tree.lock().unwrap().relevance.clone();
     let shared = relevance.forced_by_last_read(window.layout_stamp());
+    let mut forcing = shared.clone().unwrap_or_default();
+    let (known, chain) = {
+        let tree = tree.lock().unwrap();
+        (skipped_ancestors(&tree, id), ancestors_of(&tree, id))
+    };
     // A window nothing happened to since the forced pass has nothing to lay out but the content
     // that pass did not force.
-    if shared.is_none() {
-        lay_out(window, cx);
-    }
-    let skipped = crate::layout::content_visibility::skipped_ancestors(&tree.lock().unwrap(), id);
-    let mut forcing = shared.unwrap_or_default();
-    if skipped.iter().all(|ancestor| forcing.contains(ancestor)) {
-        // Nothing is forced and nothing recorded when `skipped` is empty and the window was laid
-        // out above.
+    if shared.is_some() && known.iter().all(|ancestor| forcing.contains(ancestor)) {
         return Ok(read(window_id));
     }
-    for ancestor in skipped {
+    for ancestor in known {
         if !forcing.contains(&ancestor) {
             forcing.push(ancestor);
         }
     }
-    let view = window
-        .root::<GpuixView>()
-        .flatten()
-        .ok_or_else(|| Error::from_reason("the window has no view to lay out"))?
-        .entity_id();
-    relevance.force(forcing.clone());
-    invalidate_after_commit(cx, view);
-    let laid_out = lay_out(window, cx);
+    let view = window.root::<GpuixView>().flatten().map(|view| view.entity_id());
+    let no_view = || Error::from_reason("the window has no view to lay out");
+    if !forcing.is_empty() {
+        // A clean window lays nothing out, and the ancestors are not forced in a pass that is not run.
+        invalidate_after_commit(cx, view.ok_or_else(no_view)?);
+    }
+    relevance.force_for_read(forcing, chain);
+    let mut laid_out = lay_out(window, cx);
+    relevance.end_read_chain();
+    let mut forcing = relevance.forced();
+    let fresh = skipped_ancestors(&tree.lock().unwrap(), id);
+    if !fresh.iter().all(|ancestor| forcing.contains(ancestor)) {
+        for ancestor in fresh {
+            if !forcing.contains(&ancestor) {
+                forcing.push(ancestor);
+            }
+        }
+        relevance.force(forcing.clone());
+        match view {
+            Some(view) => invalidate_after_commit(cx, view),
+            None => {
+                relevance.unforce();
+                return Err(no_view());
+            }
+        }
+        laid_out = lay_out(window, cx);
+    }
     let read = read(window_id);
+    if forcing.is_empty() {
+        return Ok(read);
+    }
     relevance.unforce();
-    invalidate_after_commit(cx, view);
+    invalidate_after_commit(cx, view.ok_or_else(no_view)?);
     if laid_out {
         relevance.remember_forced_read(forcing, window.layout_stamp());
     }
@@ -10482,10 +10510,8 @@ fn container_key(element: &crate::retained_tree::RetainedElement, ctx: &BuildCtx
         .as_deref()
         .filter(|style| style.container_rules.is_some() || crate::layout::container::declared(style).is_some())
         .map(|_| ctx.containers.key(element.id));
-    let auto = element.style.as_deref().is_some_and(|style| {
-        style.content_visibility == Some(crate::layout::content_visibility::ContentVisibility::Auto)
-    });
-    let visibility = ctx.tree.relevance.key(element.id, auto);
+    let declared = element.style.as_deref().and_then(|style| style.content_visibility).unwrap_or_default();
+    let visibility = ctx.tree.relevance.key(element.id, declared);
     match (container, visibility) {
         (Some(container), Some(visibility)) => Some(container ^ visibility.rotate_left(32)),
         (container, visibility) => container.or(visibility),
@@ -10549,6 +10575,11 @@ pub(crate) fn build_host_container(
     // After the container, whose size containment may leave an axis out: a skipped box has both.
     let content_visibility = style.and_then(|style| style.content_visibility).unwrap_or_default();
     let remembers_size = style.is_some_and(crate::layout::content_visibility::remembers_size);
+    ctx.tree.relevance.join_read(
+        element.id,
+        element.style.as_deref().and_then(|style| style.content_visibility).unwrap_or_default(),
+        content_visibility,
+    );
     let skipped = crate::layout::content_visibility::skips(&ctx.tree.relevance, content_visibility, element.id);
     ctx.tree.relevance.built(
         element.id,

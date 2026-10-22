@@ -1,5 +1,6 @@
 // Regenerates content-visibility-auto-oracle.json from content-visibility-auto-oracle.html with headless Chrome:
-//   bun content-visibility-auto-oracle.ts
+//   bun content-visibility-auto-oracle.ts [scene...]
+// Scenes named on the command line are run alone and replace their entries in the file.
 // Each scene runs in a page of its own, since only the first thing a page adds is given a rendering update with the
 // state of the page before it.
 import fs from "fs"
@@ -11,7 +12,7 @@ const chrome =
   `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 /** The scene of the first frame of a page: the page itself is the scene, and it is read, not driven. */
 const LOAD = "load"
-const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested", "forcedScroller", LOAD]
+const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested", "forcedScroller", "firstReadInside", "firstReadTurns", "firstReadInserted", "firstReadNested", "firstReadAuto", "firstReadScroller", LOAD]
 const SIZE = { width: 900, height: 780 }
 
 async function run(scene: string) {
@@ -60,7 +61,10 @@ async function run(scene: string) {
   }
 }
 
-const found: Record<string, unknown> = {}
-for (const scene of SCENES) found[scene] = await run(scene)
-fs.writeFileSync(path.join(here, "content-visibility-auto-oracle.json"), JSON.stringify(found))
-console.log(`wrote ${SCENES.length} scenes`)
+const only = process.argv.slice(2)
+const file = path.join(here, "content-visibility-auto-oracle.json")
+const found: Record<string, unknown> = only.length ? JSON.parse(fs.readFileSync(file, "utf8")) : {}
+const run_ = only.length ? only : SCENES
+for (const scene of run_) found[scene] = await run(scene)
+fs.writeFileSync(file, JSON.stringify(found))
+console.log(`wrote ${run_.length} scenes`)

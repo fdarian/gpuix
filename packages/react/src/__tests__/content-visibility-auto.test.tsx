@@ -25,6 +25,8 @@ interface OracleStep {
   skipped?: number[]
   /** `[x, y, width, height]` of the elements a scene reads the geometry of. */
   rects?: number[][]
+  /** The elements a scene reads, by `testId`, for the scenes whose reads change from step to step. */
+  names?: string[]
   /** For each section, how many of its rows are built. */
   rows?: number[]
   sizes?: number[]
@@ -40,9 +42,13 @@ interface OracleLoad {
   log: string[]
   events: [number, boolean][]
 }
-const { load: LOAD, ...ORACLE } = JSON.parse(
+const { load: LOAD, ...SCENES_OF_ORACLE } = JSON.parse(
   fs.readFileSync(path.join(FIXTURES, "content-visibility-auto-oracle.json"), "utf8")
 ) as Record<string, OracleStep[]> & { load: OracleLoad }
+/** The scenes `firstRead...` are read right after a change, not settled: the test of the first read has them. */
+const isFirstRead = (name: string) => name.startsWith("firstRead")
+const ORACLE = Object.fromEntries(Object.entries(SCENES_OF_ORACLE).filter(([name]) => !isFirstRead(name)))
+const FIRST_READS = Object.fromEntries(Object.entries(SCENES_OF_ORACLE).filter(([name]) => isFirstRead(name)))
 
 const ENTRIES = 190
 const SIZE = { width: 900, height: 780 }
@@ -51,7 +57,19 @@ const UNIT = 1 / 64
 type Events = [number, boolean][]
 
 /** An entry of 37px: padding 8, a bar of 16, a gap of 4, a rule of 1. */
-function Entry({ index, intrinsic, events, focusable }: { index: number; intrinsic: string; events: Events; focusable?: boolean }) {
+function Entry({
+  index,
+  intrinsic,
+  events,
+  focusable,
+  barHeight = 16,
+}: {
+  index: number
+  intrinsic: string
+  events: Events
+  focusable?: boolean
+  barHeight?: number
+}) {
   return (
     <div
       testId={`entry-${index}`}
@@ -68,7 +86,7 @@ function Entry({ index, intrinsic, events, focusable }: { index: number; intrins
         } as CSSProperties
       }
     >
-      <div testId={`bar-${index}`} tabIndex={focusable ? -1 : undefined} style={{ height: 16, flexShrink: 0 }} />
+      <div testId={`bar-${index}`} tabIndex={focusable ? -1 : undefined} style={{ height: barHeight, flexShrink: 0 }} />
       <div style={{ height: 1, flexShrink: 0 }} />
     </div>
   )
@@ -718,6 +736,21 @@ describeNative("a read of geometry below a skipped element", { timeout: 120_000 
   })
 })
 
+/** What reading the boxes of `names` costs: the layout passes (the window's, and the engine's) and the nodes. */
+const reading = (renderer: TestRenderer, ids: Map<string, number>, names: string[]) => {
+  const layout = renderer.getLayoutCounters()
+  const passes = renderer.getLayoutPassCount()
+  const read = names.map((name) => renderer.getElementBounds(ids.get(name)!))
+  const after = renderer.getLayoutCounters()
+  return {
+    read,
+    passes: renderer.getLayoutPassCount() - passes,
+    enginePasses: after.passes - layout.passes,
+    nodes: after.nodesCreated - layout.nodesCreated,
+    laidOut: after.nodesLaidOut - layout.nodesLaidOut,
+  }
+}
+
 describeNative("consecutive reads of geometry below skipped elements", { timeout: 120_000 }, () => {
   type Bounds = ReturnType<TestRenderer["getElementBounds"]>
 
@@ -736,20 +769,6 @@ describeNative("consecutive reads of geometry below skipped elements", { timeout
       renderer.dispatchNativeEvents()
     }
     return { root, renderer, ids, events }
-  }
-
-  const reading = (renderer: TestRenderer, ids: Map<string, number>, names: string[]) => {
-    const layout = renderer.getLayoutCounters()
-    const passes = renderer.getLayoutPassCount()
-    const read = names.map((name) => renderer.getElementBounds(ids.get(name)!))
-    const after = renderer.getLayoutCounters()
-    return {
-      read,
-      passes: renderer.getLayoutPassCount() - passes,
-      enginePasses: after.passes - layout.passes,
-      nodes: after.nodesCreated - layout.nodesCreated,
-      laidOut: after.nodesLaidOut - layout.nodesLaidOut,
-    }
   }
 
   /** A frame, and a read of a built element, which leaves a window that has nothing to lay out. */
@@ -826,10 +845,10 @@ describeNative("consecutive reads of geometry below skipped elements", { timeout
       renderer.flush()
       const changed = reading(renderer, ids, ["bar-150"])
       expect(changed.read[0]!.y, "the 97 skipped entries above are 20px taller").toBe(BAR_150 + 97 * 20)
-      // One pass lays out the change, and one forces the entry: laying out first is what finds which ancestors are skipped.
-      expect(changed.passes).toBe(2)
+      // One pass lays out the change and the entry, as Chrome does: the ancestors are forced before the pass is built.
+      expect(changed.passes).toBe(1)
       const shared = reading(renderer, ids, ["bar-150", "rule-150"])
-      expect(shared.passes, "and the pass that followed the change is shared").toBe(0)
+      expect(shared.passes, "and the reads after it share it").toBe(0)
       expect(shared.read[0]).toEqual(changed.read[0])
 
       // A scroll write moves the boxes: the next read lays out again.
@@ -874,6 +893,193 @@ describeNative("consecutive reads of geometry below skipped elements", { timeout
       root.unmount()
     }
   })
+})
+
+// ── The first read after a change ──
+
+const SCROLLER_STYLE = { overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" } as CSSProperties
+const Lead = () => <div style={{ height: 20, flexShrink: 0 }} />
+const After = () => <div testId="after" style={{ height: 20, flexShrink: 0 }} />
+const Scrolled = ({ children }: { children: ReactNode }) => (
+  <Page>
+    <div testId="scroller" style={SCROLLER_STYLE}>
+      {children}
+    </div>
+  </Page>
+)
+const hidden = (intrinsic: string, padding: number) =>
+  ({ flexShrink: 0, contentVisibility: "hidden", containIntrinsicSize: intrinsic, padding }) as CSSProperties
+
+/** A scene of the oracle that is read right after each change, and what the page looks like at each step. */
+interface FirstRead {
+  render: (step: number) => ReactNode
+  /** Whether the frame that follows the reads skips the content of the first element read. */
+  skipped?: (step: number) => boolean
+}
+
+const FIRST_READ_SCENES: Record<string, FirstRead> = {
+  // A layout write inside a `hidden` element.
+  firstReadInside: {
+    render: (step) => (
+      <Scrolled>
+        <Lead />
+        <div testId="held" style={hidden(step >= 3 ? "50px" : "30px", step >= 4 ? 10 : 4)}>
+          <div testId="child" style={{ height: step >= 1 ? 90 : 70, width: 40, margin: step >= 2 ? 12 : 5, flexShrink: 0 }} />
+          <div testId="twin" style={{ height: 20, width: 30, flexShrink: 0 }} />
+        </div>
+        <After />
+      </Scrolled>
+    ),
+  },
+  // A write that turns the ancestor `hidden` or `visible` in the turn of a write inside it.
+  firstReadTurns: {
+    render: (step) => (
+      <Scrolled>
+        <Lead />
+        <div testId="held" style={{ ...hidden("40px", 4), contentVisibility: step % 2 === 1 ? "hidden" : "visible" } as CSSProperties}>
+          <div testId="child" style={{ height: [70, 70, 70, 120, 150][step], width: 40, margin: 5, flexShrink: 0 }} />
+        </div>
+        <After />
+      </Scrolled>
+    ),
+    skipped: (step) => step % 2 === 1,
+  },
+  // A node inserted into `hidden` content, a `hidden` element inserted with the node read inside it, and a node inserted into that.
+  firstReadInserted: {
+    render: (step) => (
+      <Scrolled>
+        <Lead />
+        <div testId="held" style={hidden("30px", 4)}>
+          {step >= 1 ? <div key="ins" testId="ins" style={{ height: 35, width: 30, margin: 3, flexShrink: 0 }} /> : null}
+          <div key="a" testId="a" style={{ height: 20, width: 30, flexShrink: 0 }} />
+        </div>
+        {step >= 2 ? (
+          <div key="wrapper" testId="wrapper" style={hidden("40px", 2)}>
+            {step >= 3 ? <div key="deep" testId="deep" style={{ height: 12, width: 10, flexShrink: 0 }} /> : null}
+            <div key="target" testId="target" style={{ height: 25, width: 20, flexShrink: 0 }} />
+          </div>
+        ) : null}
+        <After />
+      </Scrolled>
+    ),
+  },
+  // Two `hidden` elements, one in the other, where only the inner one changes.
+  firstReadNested: {
+    render: (step) => (
+      <Scrolled>
+        <Lead />
+        <div testId="outer" style={hidden("120px", 4)}>
+          <div style={{ height: 30 }} />
+          <div
+            testId="inner"
+            style={
+              {
+                margin: step >= 4 ? 2 : 6,
+                contentVisibility: step === 2 ? "visible" : "hidden",
+                containIntrinsicSize: step >= 1 ? "80px" : "50px",
+              } as CSSProperties
+            }
+          >
+            <div testId="bar" style={{ height: step >= 3 ? 40 : 16, margin: 3 }} />
+          </div>
+        </div>
+        <After />
+      </Scrolled>
+    ),
+  },
+  // `auto` entries far from the viewport: a change of all of them, then of a far one and of a near one.
+  firstReadAuto: {
+    render: (step) => (
+      <Page>
+        <div testId="scroller" style={SCROLLER_STYLE}>
+          {Array.from({ length: ENTRIES }, (_, index) => (
+            <Entry
+              key={index}
+              index={index}
+              intrinsic={step >= 1 ? "auto 60px" : "auto 40px"}
+              events={[]}
+              barHeight={index === 150 && step >= 2 ? 30 : index === 10 && step >= 3 ? 40 : 16}
+            />
+          ))}
+        </div>
+      </Page>
+    ),
+  },
+  // The scroll size of a scroller in a `hidden` element.
+  firstReadScroller: {
+    render: (step) => (
+      <Scrolled>
+        <div testId="held" style={{ flexShrink: 0, contentVisibility: "hidden", containIntrinsicSize: "30px" } as CSSProperties}>
+          <div testId="scrolling" style={{ height: step >= 3 ? 80 : 50, width: 40, overflowY: "scroll", flexShrink: 0 }}>
+            <div style={{ height: [200, 320, 30, 30][step], width: 40, flexShrink: 0 }} />
+          </div>
+        </div>
+      </Scrolled>
+    ),
+  },
+}
+
+describeNative("the first read after a change", { timeout: 120_000 }, () => {
+  it("has the scenes of the oracle", () => {
+    expect(Object.keys(FIRST_READS).sort()).toEqual(Object.keys(FIRST_READ_SCENES).sort())
+  })
+
+  for (const [name, scene] of Object.entries(FIRST_READ_SCENES)) {
+    it(`lays out once, as Chrome does, and returns Chrome's boxes: ${name}`, () => {
+      const root = createTestRoot(SIZE)
+      const renderer = root.renderer
+      try {
+        renderer.setInlineDraws(false)
+        drawFirstFrame(root, renderer)
+        root.render(scene.render(0))
+        renderer.flush()
+        for (let index = 0; index < 6; index++) {
+          renderer.drawFrame()
+          renderer.dispatchNativeEvents()
+        }
+        FIRST_READS[name]!.forEach((expected, step) => {
+          const label = `${name}, ${expected.step}`
+          if (step > 0) {
+            root.render(scene.render(step))
+            renderer.flush()
+          }
+          const ids = idsOf(renderer)
+          if (expected.metrics) {
+            const passes = renderer.getLayoutPassCount()
+            const engine = renderer.getLayoutCounters().passes
+            const metrics = renderer.getScrollMetrics(ids.get("scrolling")!)
+            expect(renderer.getLayoutPassCount() - passes, `${label}: the first scroll metrics read costs one pass`).toBe(1)
+            expect(renderer.getLayoutCounters().passes - engine, `${label}: and the engine's passes are those of one`).toBeGreaterThan(0)
+            expect(metrics, `${label}: scroll metrics`).toEqual(expected.metrics[0])
+            const again = renderer.getLayoutPassCount()
+            expect(renderer.getScrollMetrics(ids.get("scrolling")!)).toEqual(metrics)
+            expect(renderer.getElementBounds(ids.get("held")!)).toBeDefined()
+            expect(renderer.getLayoutPassCount() - again, `${label}: the reads after it share the pass`).toBe(0)
+          } else {
+            const names = expected.names!
+            const first = reading(renderer, ids, names.slice(0, 1))
+            expect(first.passes, `${label}: the first read costs one pass`).toBe(1)
+            expect(first.enginePasses, `${label}: and the engine's passes are those of one`).toBeGreaterThan(0)
+            const rest = reading(renderer, ids, names.slice(1))
+            expect(rest, `${label}: the reads after it cost nothing`).toMatchObject({ passes: 0, enginePasses: 0, nodes: 0, laidOut: 0 })
+            const seen = [...first.read, ...rest.read].map((box) => [box!.x, box!.y, box!.width, box!.height])
+            expected.rects!.forEach((rect, index) =>
+              rect.forEach((value, side) =>
+                expect(Math.abs(seen[index]![side]! - value), `${label}: ${names[index]} is [${seen[index]}], Chrome's [${rect}]`).toBeLessThanOrEqual(UNIT)
+              )
+            )
+            renderer.drawFrame()
+            renderer.dispatchNativeEvents()
+            const kept = scene.skipped ? scene.skipped(step) : true
+            expect(Boolean(renderer.getBuiltElementBounds(ids.get(names[0]!)!)), `${label}: the frame after the read ${kept ? "skips" : "builds"} it`).toBe(!kept)
+          }
+        })
+        if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      } finally {
+        root.unmount()
+      }
+    })
+  }
 })
 
 describeNative("consecutive reads inside a hidden element", { timeout: 120_000 }, () => {

@@ -283,6 +283,8 @@ struct Shared {
     count: AtomicUsize,
     /// How many elements are forced, for the same reason.
     forced: AtomicUsize,
+    /// How many ancestors of the element a read is about are registered, for the same reason.
+    chain: AtomicUsize,
     /// Whether a frame with something in it has been drawn before the one being swept: an element
     /// that is there at the first frame is told differently from one that comes after it.
     drawn: AtomicBool,
@@ -304,6 +306,9 @@ struct Known {
     elements: FxHashMap<u64, Element>,
     /// The elements a read of geometry below them lays out the content of, see [`Relevance::force`].
     forced: Vec<u64>,
+    /// The ancestors of the element a layout pass is run for, which join `forced` when the build finds
+    /// they skip, see [`Relevance::force_for_read`].
+    chain: Vec<u64>,
     /// The last forced layout pass of a read, while nothing has happened to the window since.
     forced_read: Option<ForcedRead>,
     /// The focused element and its ancestors, which hold the focus.
@@ -395,12 +400,15 @@ impl Relevance {
     }
 
     /// What the state of an `auto` element adds to the key of the element: whether it is to skip
-    /// when it is built, which builds it again when that changes. `declared` is whether its style
-    /// says `auto`, for an element no build has seen yet.
-    pub(crate) fn key(&self, id: u64, declared: bool) -> Option<u64> {
-        if self.is_forced(id) {
+    /// when it is built, which builds it again when that changes. `declared` is what its style
+    /// says, for an element no build has seen yet. An element the build is going to force (see
+    /// [`Relevance::join_read`]) has the key of a forced one before it is built, or the record of
+    /// the pass would be taken for the record of a frame's.
+    pub(crate) fn key(&self, id: u64, declared: ContentVisibility) -> Option<u64> {
+        if self.is_forced(id) || self.joins_read(declared, id) {
             return Some(8);
         }
+        let declared = declared == ContentVisibility::Auto;
         if !declared && self.is_empty() {
             return None;
         }
@@ -520,6 +528,53 @@ impl Relevance {
         self.force(Vec::new());
     }
 
+    /// [`Relevance::force`] for the layout pass of a read of the element whose strict ancestors are
+    /// `chain`. `forced` are the ancestors known to skip, from the last build. The pass is also the
+    /// first to lay out what the read's change did, so an ancestor on the chain whose value the build
+    /// resolves to a skipping one (it changed, or it is new) is forced when it is built, as if it had
+    /// been before the pass: Chrome lays out once for such a read. End it with
+    /// [`Relevance::end_read_chain`].
+    pub(crate) fn force_for_read(&self, forced: Vec<u64>, chain: Vec<u64>) {
+        let mut known = self.0.lock();
+        self.0.chain.store(chain.len(), Ordering::Relaxed);
+        known.chain = chain;
+        known.forced = forced;
+        self.0.forced.store(known.forced.len(), Ordering::Relaxed);
+    }
+
+    /// The forced elements, those that joined the pass included.
+    pub(crate) fn forced(&self) -> Vec<u64> {
+        self.0.lock().forced.clone()
+    }
+
+    pub(crate) fn end_read_chain(&self) {
+        let mut known = self.0.lock();
+        known.chain.clear();
+        self.0.chain.store(0, Ordering::Relaxed);
+    }
+
+    /// Whether `id` is on the chain of the read in progress and, going by its `declared` value, skips
+    /// or would skip.
+    fn joins_read(&self, declared: ContentVisibility, id: u64) -> bool {
+        if self.0.chain.load(Ordering::Relaxed) == 0 || declared == ContentVisibility::Visible {
+            return false;
+        }
+        let on_chain = self.0.lock().chain.contains(&id);
+        on_chain && contains_size(self, declared, id)
+    }
+
+    /// The build of `id`, whose style says `declared` and which resolved to `resolved`, is about to
+    /// decide whether it skips: an element of the chain of the read in progress that does is forced
+    /// from here on, and so are the elements below it.
+    pub(crate) fn join_read(&self, id: u64, declared: ContentVisibility, resolved: ContentVisibility) {
+        if self.is_forced(id) || !self.joins_read(declared, id) || !contains_size(self, resolved, id) {
+            return;
+        }
+        let mut known = self.0.lock();
+        known.forced.push(id);
+        self.0.forced.store(known.forced.len(), Ordering::Relaxed);
+    }
+
     /// The elements the last forced pass of a read laid out the content of, if the window is as
     /// that read left it: nothing invalidated it and no frame or pass was built since, so the boxes
     /// it published are still the window's (Chrome's locked subtree stays clean while nothing
@@ -636,6 +691,18 @@ pub(crate) fn skipped_ancestors(tree: &RetainedTree, id: u64) -> Vec<u64> {
     }
     skipped.reverse();
     skipped
+}
+
+/// The strict ancestors of `id`, outermost first.
+pub(crate) fn ancestors_of(tree: &RetainedTree, id: u64) -> Vec<u64> {
+    let mut chain = Vec::new();
+    let mut current = tree.elements.get(&id).and_then(|element| element.parent);
+    while let Some(parent) = current {
+        chain.push(parent);
+        current = tree.elements.get(&parent).and_then(|element| element.parent);
+    }
+    chain.reverse();
+    chain
 }
 
 /// Whether a strict ancestor of `element` is forced, so that `element` is laid out for a read of
@@ -904,7 +971,7 @@ mod tests {
             assert!(contains_size(&relevance, value, id), "in the box it has skipped");
         }
         assert!(relevance.pending().contains(&1) && relevance.pending().contains(&2), "a source of the frame, hidden or not");
-        assert!(relevance.key(2, false).is_some(), "and part of the key of a hidden element");
+        assert!(relevance.key(2, ContentVisibility::Hidden).is_some(), "and part of the key of a hidden element");
         // What the forced build tells is not what the frames built.
         relevance.built(1, true, true, false);
         relevance.remember(1, 30.0, 40.0);
@@ -913,7 +980,56 @@ mod tests {
         assert_eq!(relevance.remembered(1), None);
         assert!(skips(&relevance, ContentVisibility::Auto, 1) && skips(&relevance, ContentVisibility::Hidden, 2));
         assert!(relevance.pending().is_empty());
-        assert_eq!(relevance.key(2, false), None);
+        assert_eq!(relevance.key(2, ContentVisibility::Hidden), None);
+    }
+
+    #[test]
+    fn an_ancestor_of_the_read_that_skips_in_the_build_is_forced_as_if_it_had_been_before() {
+        let relevance = Relevance::default();
+        relevance.built(3, true, true, false);
+        relevance.answer(3, true);
+        relevance.force_for_read(vec![1], vec![1, 2, 3, 4]);
+        let hidden = ContentVisibility::Hidden;
+        // Not forced yet, and the key already says it will be.
+        assert!(!relevance.is_forced(2));
+        assert_eq!(relevance.key(2, hidden), Some(8));
+        assert_eq!(relevance.key(1, hidden), Some(8), "an element that was forced before the pass is");
+        relevance.join_read(2, hidden, hidden);
+        assert!(relevance.is_forced(2) && relevance.any_forced());
+        assert!(!skips(&relevance, hidden, 2) && contains_size(&relevance, hidden, 2), "its content is built in the box it keeps");
+        relevance.built(2, false, false, false);
+        assert!(relevance.is_empty() || relevance.was_skipped(2), "and nothing is remembered of the build");
+        assert_eq!(relevance.forced(), vec![1, 2]);
+        // A near `auto` element does not skip: its key and its build are the ones of a frame's.
+        assert_eq!(relevance.key(3, ContentVisibility::Auto), Some(4));
+        relevance.join_read(3, ContentVisibility::Auto, ContentVisibility::Auto);
+        assert!(!relevance.is_forced(3));
+        // A visible element, or one the declared value of which does not skip, is left alone.
+        relevance.join_read(4, ContentVisibility::Visible, ContentVisibility::Hidden);
+        assert!(!relevance.is_forced(4));
+        assert_eq!(relevance.key(4, ContentVisibility::Visible), None);
+        // An element off the chain is no concern of the read.
+        relevance.join_read(5, hidden, hidden);
+        assert!(!relevance.is_forced(5));
+        relevance.end_read_chain();
+        relevance.join_read(4, hidden, hidden);
+        assert!(!relevance.is_forced(4), "the chain ends with the pass");
+        relevance.unforce();
+        assert_eq!(relevance.key(2, hidden), None);
+    }
+
+    #[test]
+    fn the_ancestors_of_an_element_are_listed_outermost_first() {
+        let mut tree = RetainedTree::new();
+        for id in 1..=4 {
+            tree.create_element(id, "div".to_owned());
+        }
+        tree.set_root(1);
+        for (parent, child) in [(1, 2), (2, 3), (1, 4)] {
+            tree.append_child(parent, child);
+        }
+        assert_eq!(ancestors_of(&tree, 3), vec![1, 2]);
+        assert!(ancestors_of(&tree, 1).is_empty());
     }
 
     #[test]
