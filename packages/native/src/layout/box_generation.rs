@@ -38,9 +38,7 @@ pub(crate) fn is_display_none(element: &RetainedElement) -> bool {
     declares_display_none(element) && !DISPLAY_HELD.with(|held| held.borrow().contains(&element.id))
 }
 
-/// Whether `element` or an ancestor is `display: none`, or an ancestor skips its content
-/// (`content-visibility`), so no box is built for it.
-pub(crate) fn is_hidden(tree: &RetainedTree, element: &RetainedElement) -> bool {
+fn has_display_none_in_chain(tree: &RetainedTree, element: &RetainedElement) -> bool {
     let mut current = Some(element);
     while let Some(element) = current {
         if is_display_none(element) {
@@ -48,7 +46,19 @@ pub(crate) fn is_hidden(tree: &RetainedTree, element: &RetainedElement) -> bool 
         }
         current = element.parent.and_then(|parent| tree.elements.get(&parent));
     }
-    crate::layout::content_visibility::is_skipped_by_ancestor(tree, element)
+    false
+}
+
+/// Whether `element` or an ancestor is `display: none`, or an ancestor skips its content
+/// (`content-visibility`), so no box is built for it.
+pub(crate) fn is_hidden(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    has_display_none_in_chain(tree, element) || crate::layout::content_visibility::is_skipped_by_ancestor(tree, element)
+}
+
+/// [`is_hidden`] for the pass being built: the content of an ancestor that a read of geometry
+/// forces is laid out in it.
+pub(crate) fn is_hidden_in_pass(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    has_display_none_in_chain(tree, element) || crate::layout::content_visibility::is_skipped_by_unforced_ancestor(tree, element)
 }
 
 #[cfg(test)]

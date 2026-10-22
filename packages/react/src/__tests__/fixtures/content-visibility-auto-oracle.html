@@ -164,6 +164,36 @@ Object.assign(scenes, {
     }))
   },
 
+  // A scroller inside skipped content: reading its scroll size lays the skipped element out, as reading a box does. One in a
+  // `hidden` element and one in an `auto` element far below, read before and after the page is scrolled.
+  async forcedScroller() {
+    const events = []
+    const page = made('div', 'page')
+    const scroller = made('div', 'scroller')
+    const scrolling = () => {
+      const element = made('div', '', { height: '50px', width: '40px', overflowY: 'scroll', flexShrink: 0 })
+      element.append(made('div', '', { height: '200px', width: '40px', flexShrink: 0 }))
+      return element
+    }
+    const held = made('div', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px' })
+    const heldScroller = scrolling()
+    held.append(heldScroller)
+    const far = made('div', '', { flexShrink: 0, contentVisibility: 'auto', containIntrinsicSize: 'auto 30px' })
+    const farScroller = scrolling()
+    far.append(farScroller)
+    scroller.append(held, made('div', '', { height: '6000px', flexShrink: 0 }), far)
+    page.append(scroller)
+    return run(
+      events,
+      [['mounted', async () => document.body.append(page)], ['scrolled', async () => (scroller.scrollTop = 2000)]],
+      () => ({
+        metrics: [heldScroller, farScroller].map((element) => [element.scrollLeft, element.scrollTop, element.scrollWidth, element.scrollHeight, element.clientWidth, element.clientHeight]),
+        height: scroller.scrollHeight,
+        top: scroller.scrollTop,
+      })
+    )
+  },
+
   // A row of items scrolled along the x axis: the margin is a viewport width and a half there.
   async horizontal() {
     const events = []

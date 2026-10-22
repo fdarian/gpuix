@@ -11,7 +11,7 @@ const chrome =
   `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 /** The scene of the first frame of a page: the page itself is the scene, and it is read, not driven. */
 const LOAD = "load"
-const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested", LOAD]
+const SCENES = ["list", "exact", "clipped", "horizontal", "nested", "focus", "bare", "remember", "forced", "forcedNested", "forcedScroller", LOAD]
 const SIZE = { width: 900, height: 780 }
 
 async function run(scene: string) {

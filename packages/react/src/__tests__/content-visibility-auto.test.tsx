@@ -29,6 +29,8 @@ interface OracleStep {
   rows?: number[]
   sizes?: number[]
   focused?: number
+  /** `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]` of the scrollers a scene reads. */
+  metrics?: number[][]
   height: number
   top: number
   events: [number, boolean][]
@@ -188,6 +190,7 @@ interface Seen {
   rows?: number[]
   sizes?: number[]
   focused?: number
+  metrics?: number[][]
   height: number
   top: number
 }
@@ -272,6 +275,24 @@ function Nested() {
   )
 }
 
+/** A scroller in a `hidden` element and one in an `auto` element far below. */
+function ScrollersInSkipped() {
+  const scrolling = (testId: string) => (
+    <div testId={testId} style={{ height: 50, width: 40, overflowY: "scroll", flexShrink: 0 }}>
+      <div style={{ height: 200, width: 40, flexShrink: 0 }} />
+    </div>
+  )
+  return (
+    <Page>
+      <div testId="scroller" style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ flexShrink: 0, contentVisibility: "hidden", containIntrinsicSize: "30px" } as CSSProperties}>{scrolling("held-scroller")}</div>
+        <div style={{ height: 6000, flexShrink: 0 }} />
+        <div style={{ flexShrink: 0, contentVisibility: "auto", containIntrinsicSize: "auto 30px" } as CSSProperties}>{scrolling("far-scroller")}</div>
+      </div>
+    </Page>
+  )
+}
+
 const SCENES: Record<string, Scene> = {
   // The intrinsic size is not the size the entries have, so what is near moves as they are laid out.
   list: listScene("auto 40px", [1000, 4000, 7000, 0]),
@@ -292,6 +313,16 @@ const SCENES: Record<string, Scene> = {
     render: () => <Nested />,
     look: (renderer, ids) => ({ rects: ["bar", "inner", "outer"].map((name) => rectOf(renderer, ids.get(name)!)), ...scrolled(renderer, ids, "y") }),
     steps: [],
+    events: "none",
+  },
+  // The scroll size of a scroller in skipped content is its extent, read before the content is built.
+  forcedScroller: {
+    render: () => <ScrollersInSkipped />,
+    look: (renderer, ids) => ({
+      metrics: ["held-scroller", "far-scroller"].map((name) => renderer.getScrollMetrics(ids.get(name)!)!),
+      ...scrolled(renderer, ids, "y"),
+    }),
+    steps: [scrollTo("y", 2000)],
     events: "none",
   },
   horizontal: {
@@ -378,6 +409,7 @@ describeNative("content-visibility: auto against Chrome", { timeout: 120_000 }, 
               expect(Math.abs(seen.rects![index]![side]! - value), `${label}: rect ${index} is [${seen.rects![index]}], Chrome's [${rect}]`).toBeLessThanOrEqual(UNIT)
             )
           )
+          if (expected.metrics) expect(seen.metrics, `${label}: scroll metrics of the scrollers in skipped content`).toEqual(expected.metrics)
           if (expected.rows) expect(seen.rows, `${label}: rows built in each section`).toEqual(expected.rows)
           if (expected.focused !== undefined) expect(seen.focused, `${label}: the focused entry`).toBe(expected.focused)
           if (expected.sizes) {
@@ -866,6 +898,7 @@ describeNative("consecutive reads inside a hidden element", { timeout: 120_000 }
       const metrics = renderer.getScrollMetrics(ids.get("inner")!)!
       expect(passes() - start, "a scroll metrics read forces the held element").toBe(1)
       expect([metrics[4], metrics[5]], "the client size of the scroller").toEqual([40, 50])
+      expect([metrics[2], metrics[3]], "and its extent, which Chrome's scrollHeight is").toEqual([40, 200])
       expect(renderer.getElementBounds(ids.get("inner-child")!)).toMatchObject({ width: 40, height: 200 })
       expect(renderer.getScrollMetrics(ids.get("inner")!)).toEqual(metrics)
       expect(renderer.getElementBounds(ids.get("inner")!)).toMatchObject({ width: 40, height: 50 })

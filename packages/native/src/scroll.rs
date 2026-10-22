@@ -299,12 +299,14 @@ pub(crate) fn begin_frame(exists: impl Fn(u64) -> bool) {
     SMOOTH_BY_DEFAULT.with(|smooth| smooth.borrow_mut().retain(|id| exists(*id)));
 }
 
-/// Whether `id` is an element that has a box to scroll in the layout. One under `display: none`
-/// has none, and the DOM ignores a scroll position set on it.
+/// Whether `id` is an element that has a box to scroll in the layout being built. One under
+/// `display: none` has none, and the DOM ignores a scroll position set on it; one below a
+/// skipped element has one only in a pass that forces that element for a read of geometry, which
+/// is also what lets `scrollHeight` of a scroller in skipped content be its extent.
 pub(crate) fn has_scrolling_box(tree: &crate::retained_tree::RetainedTree, id: u64) -> bool {
     tree.elements
         .get(&id)
-        .is_some_and(|element| !crate::layout::box_generation::is_hidden(tree, element))
+        .is_some_and(|element| !crate::layout::box_generation::is_hidden_in_pass(tree, element))
 }
 
 fn set_smooth_by_default(id: u64, smooth: bool) {

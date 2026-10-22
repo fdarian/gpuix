@@ -688,9 +688,18 @@ pub(crate) fn skips_content(tree: &RetainedTree, element: &RetainedElement) -> b
 
 /// Whether a strict ancestor of `element` skips its content, so nothing is built for it.
 pub(crate) fn is_skipped_by_ancestor(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    skipping_ancestor(tree, element, |_| true)
+}
+
+/// [`is_skipped_by_ancestor`] for the pass being built: an ancestor that is forced builds its content.
+pub(crate) fn is_skipped_by_unforced_ancestor(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    skipping_ancestor(tree, element, |ancestor| !tree.relevance.is_forced(ancestor.id))
+}
+
+fn skipping_ancestor(tree: &RetainedTree, element: &RetainedElement, counts: impl Fn(&RetainedElement) -> bool) -> bool {
     let mut current = element.parent.and_then(|parent| tree.elements.get(&parent));
     while let Some(ancestor) = current {
-        if skips_content(tree, ancestor) {
+        if skips_content(tree, ancestor) && counts(ancestor) {
             return true;
         }
         current = ancestor.parent.and_then(|parent| tree.elements.get(&parent));
