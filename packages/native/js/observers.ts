@@ -218,12 +218,14 @@ export function settleObservations(renderer: object): void {
       probe.subscriber.receive(probe.entry.last)
       continue
     }
-    if (!probe.binding.renderer.getElementBounds) {
-      throw new Error("This renderer cannot observe elements: it has no getElementBounds")
+    if (!probe.binding.renderer.probeElementBounds) {
+      throw new Error("This renderer cannot observe elements: it has no probeElementBounds")
     }
     // Read even for a subscriber that does not care: the read is what draws
-    // the frame whose report it is waiting for.
-    const painted = probe.binding.renderer.getElementBounds(probe.id) !== null
+    // the frame whose report it is waiting for. It leaves the content of a
+    // skipped element unbuilt: an observer never gathers it, and the read of
+    // a target in it is told there is no box, as Chrome's first report is.
+    const painted = probe.binding.renderer.probeElementBounds(probe.id) !== null
     probe.subscriber.settled?.(probe.binding, painted)
   }
 }

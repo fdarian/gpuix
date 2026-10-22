@@ -472,8 +472,36 @@ pub(crate) fn invalidate_after_mutation(cx: &mut gpui::App, view: gpui::EntityId
     }
 }
 
+/// What a read of geometry does about the content of the skipped ancestors of its element.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SkippedContent {
+    /// Lays it out for the read, as a read of geometry does in a browser.
+    Force,
+    /// Leaves it unbuilt: the read is of what the frames built, which is not the content of a
+    /// skipped element (see [`read_bounds`]).
+    Leave,
+}
+
+/// The box `id` published: for a read that leaves skipped content unbuilt, none for an element in
+/// it, since the boxes a forced read published may still be the window's.
+pub(crate) fn read_bounds(
+    tree: &Mutex<RetainedTree>,
+    skipped: SkippedContent,
+    window: gpui::WindowId,
+    id: u64,
+) -> Option<crate::automation::ElementBounds> {
+    if skipped == SkippedContent::Leave {
+        let tree = tree.lock().unwrap();
+        let element = tree.elements.get(&id)?;
+        if crate::layout::content_visibility::is_skipped_by_ancestor(&tree, element) {
+            return None;
+        }
+    }
+    crate::automation::get_bounds(window, id)
+}
+
 /// Lays out the window as `lay_out` does and reads what it published with `read`, laying out the
-/// content of the skipped ancestors of `id` too when it has any: Chrome's forced layout of a
+/// content of the skipped ancestors of `id` too when it has any (`skipped` is `Force`): Chrome's forced layout of a
 /// locked subtree (`DisplayLockUtilities::ScopedForcedUpdate`) for a read of geometry. The
 /// ancestors are forced for one layout-only pass, which builds their content and publishes its
 /// boxes and paints nothing, and then skip again: the window is invalidated once more, so the
@@ -497,11 +525,16 @@ pub(crate) fn read_after_layout<R>(
     id: u64,
     window: &mut gpui::Window,
     cx: &mut gpui::App,
+    skipped: SkippedContent,
     lay_out: fn(&mut gpui::Window, &mut gpui::App) -> bool,
     read: impl FnOnce(gpui::WindowId) -> R,
 ) -> Result<R> {
     use crate::layout::content_visibility::{ancestors_of, skipped_ancestors};
     let window_id = window.window_handle().window_id();
+    if skipped == SkippedContent::Leave {
+        lay_out(window, cx);
+        return Ok(read(window_id));
+    }
     let relevance = tree.lock().unwrap().relevance.clone();
     let shared = relevance.forced_by_last_read(window.layout_stamp());
     let mut forcing = shared.clone().unwrap_or_default();
@@ -1626,7 +1659,7 @@ impl GpuixRenderer {
         }
     }
 
-    fn element_bounds(&self, id: u64) -> Result<Option<crate::automation::ElementBounds>> {
+    fn element_bounds(&self, id: u64, skipped: SkippedContent) -> Result<Option<crate::automation::ElementBounds>> {
         #[cfg(target_os = "macos")]
         {
             if !*self.initialized.lock().unwrap() {
@@ -1638,14 +1671,16 @@ impl GpuixRenderer {
                     id,
                     window,
                     cx,
+                    skipped,
                     gpui::Window::draw_if_dirty,
-                    |window| crate::automation::get_bounds(window, id),
+                    |window| read_bounds(&self.tree, skipped, window, id),
                 )
             })?;
         }
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         {
+            let _ = skipped;
             let (response, receiver) = sync_channel(1);
             self.send_ui_command(UiCommand::GetElementBounds { id, response })?;
             return recv_ui_response(receiver, "the element bounds query");
@@ -1658,7 +1693,7 @@ impl GpuixRenderer {
             target_os = "freebsd"
         )))]
         {
-            let _ = id;
+            let _ = (id, skipped);
             Err(Error::from_reason("Unsupported operating system"))
         }
     }
@@ -3553,6 +3588,7 @@ impl GpuixRenderer {
                     id,
                     window,
                     cx,
+                    SkippedContent::Force,
                     gpui::Window::draw_if_scroll_metrics_dirty,
                     |window| scroll_metrics(window, id).map(|metrics| metrics.to_vec()),
                 )
@@ -3930,7 +3966,16 @@ impl GpuixRenderer {
     #[napi]
     pub fn get_element_bounds(&self, id: f64) -> Result<Option<ElementBounds>> {
         let id = to_element_id(id)?;
-        Ok(self.element_bounds(id)?.map(ElementBounds::from_painted))
+        Ok(self.element_bounds(id, SkippedContent::Force)?.map(ElementBounds::from_painted))
+    }
+
+    /// The box of an element for the first report of an observer: laid out as `getElementBounds`
+    /// does, but the content of a skipped ancestor is not, and an element inside it has no box
+    /// (null), as Chrome's observers see it.
+    #[napi]
+    pub fn probe_element_bounds(&self, id: f64) -> Result<Option<ElementBounds>> {
+        let id = to_element_id(id)?;
+        Ok(self.element_bounds(id, SkippedContent::Leave)?.map(ElementBounds::from_painted))
     }
 
     /// The elements whose last painted box holds the window point `(x, y)`,
@@ -5231,6 +5276,21 @@ impl WebGpuixRenderer {
     ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
         let id = web_element_id(element_id)?;
         let Some(bounds) = web_window_id().and_then(|window| crate::automation::get_bounds(window, id))
+        else {
+            return Ok(wasm_bindgen::JsValue::NULL);
+        };
+        element_bounds_js(bounds)
+    }
+
+    /// [`Self::get_element_bounds`] for the first report of an observer: null for an element inside
+    /// skipped content.
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = probeElementBounds)]
+    pub fn probe_element_bounds(
+        &self,
+        element_id: f64,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
+        let id = web_element_id(element_id)?;
+        let Some(bounds) = web_window_id().and_then(|window| read_bounds(&self.tree, SkippedContent::Leave, window, id))
         else {
             return Ok(wasm_bindgen::JsValue::NULL);
         };

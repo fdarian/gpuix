@@ -2106,7 +2106,7 @@ impl TestGpuixRenderer {
             self.flush_for(unflushed)?;
         }
         window_call(|window, cx| {
-            crate::renderer::read_after_layout(&self.tree, id, window, cx, gpui::Window::draw_if_scroll_metrics_dirty, |window| {
+            crate::renderer::read_after_layout(&self.tree, id, window, cx, crate::renderer::SkippedContent::Force, gpui::Window::draw_if_scroll_metrics_dirty, |window| {
                 crate::renderer::scroll_metrics(window, id).map(|metrics| metrics.to_vec())
             })
         })?
@@ -2266,8 +2266,25 @@ impl TestGpuixRenderer {
             self.flush_for(unflushed)?;
         }
         window_call(|window, cx| {
-            crate::renderer::read_after_layout(&self.tree, id, window, cx, gpui::Window::draw_if_dirty, |window| {
+            crate::renderer::read_after_layout(&self.tree, id, window, cx, crate::renderer::SkippedContent::Force, gpui::Window::draw_if_dirty, |window| {
                 crate::automation::get_bounds(window, id).map(crate::renderer::ElementBounds::from_painted)
+            })
+        })?
+    }
+
+    /// The box of an element for the first report of an observer: laid out as `getElementBounds`
+    /// does, but the content of a skipped ancestor is not, and an element inside it has no box
+    /// (null), as Chrome's observers see it.
+    #[napi]
+    pub fn probe_element_bounds(&self, id: f64) -> Result<Option<crate::renderer::ElementBounds>> {
+        let id = to_element_id(id)?;
+        let unflushed = take_unflushed();
+        if unflushed != Dirty::Clean {
+            self.flush_for(unflushed)?;
+        }
+        window_call(|window, cx| {
+            crate::renderer::read_after_layout(&self.tree, id, window, cx, crate::renderer::SkippedContent::Leave, gpui::Window::draw_if_dirty, |window| {
+                crate::renderer::read_bounds(&self.tree, crate::renderer::SkippedContent::Leave, window, id).map(crate::renderer::ElementBounds::from_painted)
             })
         })?
     }

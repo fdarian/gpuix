@@ -1,0 +1,99 @@
+<!doctype html>
+<!--
+  Oracle for content-visibility-observers.test.tsx: what `ResizeObserver` and `IntersectionObserver` deliver for a target
+  inside `content-visibility` skipped content, and for the element that skips it, in headless Chrome. The page is a scene
+  named by its hash; it is driven one `requestAnimationFrame` at a time (`steps[frame]` runs in the callback of that frame,
+  before the frame's rendering steps) and leaves its log in `document.body.dataset.log`.
+  `content-visibility-observers-oracle.ts` runs every scene in a page of its own (a 1280x800 viewport, no device scale)
+  and writes `content-visibility-observers-oracle.json`: {scene: [{frame, ...}]} where an entry is
+  {frame, did: "what the step did"}, {frame, ro: target, border: [w, h], content: [w, h]} or
+  {frame, io: target, isIntersecting, ratio, rect: [x, y, w, h], intersection: [w, h]}.
+
+  `#host` is the element that skips (at `top` on a page 8000px tall, 400px wide, `contain-intrinsic-size: 400px 200px`),
+  `#t` the target inside it (100x50 with a 10px margin, so the host is 70px tall when it shows its content).
+-->
+<html><head><meta charset="utf-8">
+<style>
+body { margin: 0; height: 8000px; position: relative }
+#host { position: absolute; left: 0; width: 400px; contain-intrinsic-size: 400px 200px; background: #eee }
+#t { width: 100px; height: 50px; background: #c00; margin: 10px }
+</style></head>
+<body><div id="host"><div id="t"></div></div>
+<script>
+const name = location.hash.slice(1)
+const host = document.getElementById('host'), t = document.getElementById('t')
+const log = []
+let frame = 0
+const round = (n) => Math.round(n * 100) / 100
+const pair = (width, height) => [round(width), round(height)]
+const first = (sizes) => pair(sizes[0].inlineSize, sizes[0].blockSize)
+const resize = new ResizeObserver((entries) => {
+  for (const e of entries) log.push({ frame, ro: e.target.id, border: first(e.borderBoxSize), content: first(e.contentBoxSize) })
+})
+const intersect = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const r = e.boundingClientRect
+    log.push({
+      frame, io: e.target.id, isIntersecting: e.isIntersecting, ratio: round(e.intersectionRatio),
+      rect: [round(r.x), round(r.y), round(r.width), round(r.height)],
+      intersection: pair(e.intersectionRect.width, e.intersectionRect.height),
+    })
+  }
+})
+const did = (what) => log.push({ frame, did: what })
+const A = {
+  cv: (v) => { host.style.contentVisibility = v; did('cv=' + v) },
+  top: (px) => { host.style.top = px + 'px'; did('top=' + px) },
+  w: (px) => { t.style.width = px + 'px'; did('t.width=' + px) },
+  hw: (px) => { host.style.width = px + 'px'; did('host.width=' + px) },
+  read: () => { const r = t.getBoundingClientRect(); did('read t ' + r.width + 'x' + r.height) },
+  ro: (el) => { resize.observe(el); did('ro.observe ' + el.id) },
+  io: (el) => { intersect.observe(el); did('io.observe ' + el.id) },
+  scroll: (y) => { scrollTo(0, y); did('scrollY=' + y) },
+}
+const FAR = 3000
+const scenes = {
+  // 1: a target never rendered, in `hidden` content
+  ro1_hidden_never: { cv: 'hidden', top: 100, steps: { 2: () => A.ro(t), 6: () => A.cv('visible'), 10: null } },
+  ro1b_hidden_never_read: { cv: 'hidden', top: 100, steps: { 2: () => { A.ro(t); A.read() }, 6: () => A.cv('visible'), 10: null } },
+  // 2: reported while shown, then hidden, resized while hidden, then shown
+  ro2_resize_while_hidden: { cv: 'visible', top: 100, steps: { 1: () => A.ro(t), 4: () => A.cv('hidden'), 7: () => A.w(150), 10: () => A.cv('visible'), 14: null } },
+  ro2b_same_size: { cv: 'visible', top: 100, steps: { 1: () => A.ro(t), 4: () => A.cv('hidden'), 10: () => A.cv('visible'), 14: null } },
+  ro2c_resize_back: { cv: 'visible', top: 100, steps: { 1: () => A.ro(t), 4: () => A.cv('hidden'), 7: () => A.w(150), 8: () => A.w(100), 10: () => A.cv('visible'), 14: null } },
+  ro2d_stays_hidden: { cv: 'visible', top: 100, steps: { 1: () => A.ro(t), 4: () => A.cv('hidden'), 7: () => A.w(150), 14: null } },
+  // 3: geometry reads of the target while it is hidden deliver nothing and report nothing
+  ro3_read_at_resize: { cv: 'visible', top: 100, steps: { 1: () => A.ro(t), 4: () => A.cv('hidden'), 7: () => { A.w(150); A.read() }, 10: () => A.cv('visible'), 14: null } },
+  ro3b_read_every_frame: { cv: 'visible', top: 100, steps: { 1: () => A.ro(t), 4: () => A.cv('hidden'), 5: () => A.read(), 6: () => A.read(), 7: () => { A.w(150); A.read() }, 8: () => A.read(), 10: () => A.cv('visible'), 14: null } },
+  // 4: the element that skips is a normal box
+  ro4_host_hidden: { cv: 'hidden', top: 100, steps: { 2: () => A.ro(host), 6: () => A.hw(300), 9: () => A.cv('visible'), 12: null } },
+  ro4b_host_shown_then_hidden: { cv: 'visible', top: 100, steps: { 1: () => A.ro(host), 4: () => A.cv('hidden'), 7: () => A.cv('visible'), 10: null } },
+  // 5: `auto` content that is far from the viewport
+  ro5b_auto_rendered_then_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.ro(t), 4: () => A.top(FAR), 7: () => A.w(150), 10: () => A.top(100), 14: null } },
+  ro5c_auto_same_size: { cv: 'auto', top: 100, steps: { 1: () => A.ro(t), 4: () => A.top(FAR), 10: () => A.top(100), 14: null } },
+  // 6: IntersectionObserver, `hidden`
+  io6a_hidden_onscreen_never: { cv: 'hidden', top: 100, steps: { 2: () => A.io(t), 6: () => A.cv('visible'), 10: null } },
+  io6b_hidden_offscreen_never: { cv: 'hidden', top: FAR, steps: { 2: () => A.io(t), 6: () => A.cv('visible'), 9: () => A.scroll(FAR - 100), 12: null } },
+  io6c_hidden_read: { cv: 'hidden', top: 100, steps: { 2: () => { A.io(t); A.read() }, 6: () => A.cv('visible'), 10: null } },
+  io6d_shown_then_hidden: { cv: 'visible', top: 100, steps: { 1: () => A.io(t), 4: () => A.cv('hidden'), 8: () => A.cv('visible'), 12: null } },
+  io6e_shown_then_hidden_read: { cv: 'visible', top: 100, steps: { 1: () => A.io(t), 4: () => { A.cv('hidden'); A.read() }, 5: () => A.read(), 8: () => A.cv('visible'), 12: null } },
+  io6f_host_hidden: { cv: 'hidden', top: 100, steps: { 2: () => A.io(host), 6: () => A.cv('visible'), 10: null } },
+  // 7: IntersectionObserver, `auto`
+  io7a_auto_far_never: { cv: 'auto', top: FAR, steps: { 2: () => A.io(t), 6: () => A.scroll(FAR - 100), 10: () => A.scroll(0), 14: null } },
+  io7b_auto_shown_then_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.io(t), 4: () => A.top(FAR), 8: () => A.top(100), 12: null } },
+}
+const scene = scenes[name]
+host.style.contentVisibility = scene.cv
+host.style.top = scene.top + 'px'
+const last = Math.max(...Object.keys(scene.steps).map(Number))
+function tick() {
+  frame++
+  const step = scene.steps[frame]
+  if (step) step()
+  if (frame >= last) {
+    setTimeout(() => { document.body.dataset.log = JSON.stringify(log) }, 100)
+    return
+  }
+  requestAnimationFrame(tick)
+}
+requestAnimationFrame(tick)
+</script></body></html>

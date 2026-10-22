@@ -637,7 +637,13 @@ fn sweep(
     let mut gone_resize = Vec::new();
     let mut gone_intersection = Vec::new();
     for (id, last) in observers.resize.iter_mut() {
-        if crate::automation::get_bounds(window, *id).is_none() && *last != ResizeSample::default() {
+        // The content of a skipped element has no box and is not gathered: its target keeps what it
+        // last reported and is compared with it once the content is shown. `display: none` is a
+        // size of 0 by 0 to a ResizeObserver, and an IntersectionObserver is told either way.
+        if crate::automation::get_bounds(window, *id).is_none()
+            && *last != ResizeSample::default()
+            && !inside_skipped_content(&tree, *id)
+        {
             *last = ResizeSample::default();
             gone_resize.push(*id);
         }
@@ -672,6 +678,12 @@ fn sweep(
     {
         emit(callback, report);
     }
+}
+
+fn inside_skipped_content(tree: &RetainedTree, id: u64) -> bool {
+    tree.elements
+        .get(&id)
+        .is_some_and(|element| crate::layout::content_visibility::is_skipped_by_ancestor(tree, element))
 }
 
 /// Where `id` is in the document: the index of each ancestor and of the element among its

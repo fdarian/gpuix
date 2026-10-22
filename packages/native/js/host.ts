@@ -2590,6 +2590,7 @@ export type NativeRenderer = MutationHost &
       | "setWindowMediaChange"
       | "getMediaFeatures"
       | "getElementBounds"
+      | "probeElementBounds"
       | "getElementsAt"
       | "scrollTo"
       | "scrollToItem"

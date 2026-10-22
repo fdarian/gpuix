@@ -139,7 +139,7 @@ pub(super) fn enter(window: &mut Window, cx: &mut App, id: u64) -> Result<(), St
     })?;
     let view = sync_dispatch::root_view(window)?;
     let tree = view.read(cx).tree.clone();
-    let target = crate::renderer::read_after_layout(&tree, id, window, cx, Window::draw_if_dirty, |window_id| {
+    let target = crate::renderer::read_after_layout(&tree, id, window, cx, crate::renderer::SkippedContent::Force, Window::draw_if_dirty, |window_id| {
         crate::renderer::painted_rect(window_id, id)
     })
     .map_err(|error| error.to_string())?;

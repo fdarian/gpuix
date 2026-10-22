@@ -161,6 +161,7 @@ interface NativeTestRendererApi
   drawFrame(): void
   getElementBounds(elementId: number): ElementBounds | null
   getBuiltElementBounds(elementId: number): ElementBounds | null
+  probeElementBounds(elementId: number): ElementBounds | null
   getElementsAt(x: number, y: number): number[]
   clockPause(): number
   clockSet(nowMs: number): number
@@ -1051,6 +1052,13 @@ export class TestRenderer implements NativeRenderer {
   getElementBounds(elementId: number): ElementBounds | null {
     flushPendingMutations(this)
     return this.native.getElementBounds(elementId)
+  }
+
+  /** `getElementBounds` for the first report of an observer: it lays out as that does, but not the content
+   *  of a skipped `content-visibility` ancestor, and an element inside it has no box (null). */
+  probeElementBounds(elementId: number): ElementBounds | null {
+    flushPendingMutations(this)
+    return this.native.probeElementBounds(elementId)
   }
 
   /** The box the last layout gave an element, or null if it was not built. Unlike `getElementBounds`

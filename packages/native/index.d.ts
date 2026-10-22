@@ -442,6 +442,12 @@ export declare class GpuixRenderer {
   getAutomationTree(): string
   getElementBounds(id: number): ElementBounds | null
   /**
+   * The box of an element for the first report of an observer: laid out as `getElementBounds`
+   * does, but the content of a skipped ancestor is not, and an element inside it has no box
+   * (null), as Chrome's observers see it.
+   */
+  probeElementBounds(id: number): ElementBounds | null
+  /**
    * The elements whose last painted box holds the window point `(x, y)`,
    * topmost first, like the DOM's `elementsFromPoint`. An element that did
    * not paint is never listed, `overflow: hidden | scroll` clips what lies
@@ -1010,6 +1016,12 @@ export declare class TestGpuixRenderer {
   getAutomationTree(): string
   /** Last painted bounds for an element, or null if it was not painted. */
   getElementBounds(id: number): ElementBounds | null
+  /**
+   * The box of an element for the first report of an observer: laid out as `getElementBounds`
+   * does, but the content of a skipped ancestor is not, and an element inside it has no box
+   * (null), as Chrome's observers see it.
+   */
+  probeElementBounds(id: number): ElementBounds | null
   /**
    * The box the last layout gave an element, or null if it was not built. Unlike
    * `getElementBounds`, it does not lay out the content of the skipped ancestors of the element
