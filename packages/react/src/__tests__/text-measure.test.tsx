@@ -1,5 +1,5 @@
 /// How wide and how tall a text is laid out, in Chrome's unit at the scale of the window: the inline size of a text is its
-/// advance ceiled to 1/64 of a device pixel (`ShapeResult::SnappedWidth`), so 1/128 of a pixel at scale 2, per style run
+/// advance ceiled to 1/64 of a device pixel (`ShapeResult::SnappedWidth`), so 1/128 of a pixel at scale 2, per text node
 /// (an item), and a piece of an item (a word for `min-content`) is the difference of the ceils of its edges. A font with a
 /// legacy kern table (Helvetica, Times) kerns a pair as HarfBuzz splits it between the two glyphs, so a word after a kerned
 /// space starts half a kern later than CoreText puts it, as far as the measure goes. A line
@@ -120,11 +120,34 @@ function casesOf(kind: string): Case[] {
           element: (ref) => (
             <div style={{ ...column, ...font(family, size), lineHeight: "20px" }}>
               <div ref={ref(id)}>
-                Fractional <span style={{ fontWeight: 700 }}>widths</span> of{" "}
+                Fractional <span style={{ fontWeight: 700 }}>widths</span>
+                {" of "}
                 <span style={{ fontStyle: "italic" }}>the</span> quick
               </div>
             </div>
           ),
+        })
+        break
+      }
+      case "nodes": {
+        const [, family, size, mode, nodes] = parts as [string, string, string, string, string]
+        // React makes a text node of each string child.
+        const children = nodes.split("/")
+        cases.push({
+          id,
+          box: id,
+          element: (ref) =>
+            mode.startsWith("wrap:") ? (
+              <div ref={ref(id)} style={{ ...font(family, size), lineHeight: 1.3, width: NUMBER(mode.slice(5)) }}>
+                {children}
+              </div>
+            ) : (
+              <div style={{ ...column, ...font(family, size), lineHeight: "20px" }}>
+                <div ref={ref(id)} style={mode === "mc" ? { width: "min-content" } : undefined}>
+                  {children}
+                </div>
+              </div>
+            ),
         })
         break
       }
@@ -231,6 +254,16 @@ describeNative.each(SCALES)("text measured at scale %i", (scale) => {
   // Chrome ceils the width of each run of a line (a text item has its own `SnappedWidth`) and adds them up.
   it("is as wide as the runs of a text, each ceiled on its own", () => {
     const found = differences(scale, "mix", (id, rect, chrome) => off(`${id}: width`, rect[2], chrome[2]))
+    expect(found).toEqual([])
+  })
+
+  // Each text node is an item of its own (`Hello {name}` is two), though the text of one font is shaped together: the edge
+  // between two nodes is ceiled twice, and a kern pair across it is split between them as one inside a node is.
+  it("measures each text node as an item of its own: a width, a min-content width and where it wraps", () => {
+    const found = differences(scale, "nodes", (id, rect, chrome) => [
+      ...off(`${id}: width`, rect[2], chrome[2]),
+      ...off(`${id}: height`, rect[3], chrome[3]),
+    ])
     expect(found).toEqual([])
   })
 

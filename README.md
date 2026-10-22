@@ -3328,8 +3328,8 @@ length is laid out in sixty-fourths of a device pixel, so `lineHeight: 1.2` at 1
 14 or 15 on a 1x display and 14.3984375px on a 2x one. A number is cut to that unit and a length or a
 percentage is rounded to it, as in Chrome (`lineHeight: 1.15` at 13px is 14.9375px at 1x, `14.95px` and `115%`
 are 14.953125px). A text is as wide as its advance ceiled to the same unit, which is 1/64 px at 1x and
-1/128 px at 2x, each style run on its own and a min-content word as the difference of the ceils of its edges counted
-from the start of its run, as Chrome measures them. What a line has over the font's ascent and descent is shared around them, the half above
+1/128 px at 2x, each text node on its own (`Hello {name}` is two) and a min-content word as the difference of the ceils of its edges counted
+from the start of its node, as Chrome measures them. What a line has over the font's ascent and descent is shared around them, the half above
 rounded down to a whole device pixel: a 24px line around a 19px content area of Menlo 16px has a
 baseline at 17px on a 1x display and at 17.5px on a 2x one, as in Chrome. A window that moves to a
 display of another scale shapes its text again. Boxes are snapped to the pixel grid when they are painted, so a stack of such lines is as
@@ -3963,8 +3963,7 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   cases are still a 64th off: a table row that takes the rest of the table's height is short, `top: 50%` on a
   relatively positioned box in a block reads 0, the leftover of `minmax(%, 1fr)` next to a `1fr` track, the
   `align-content: stretch` of a wrapping flex container at 2x, and a flex item centred in its container (its offset
-  is not truncated, so a centred label can be a 64th off). Two text nodes of one
-  style are one run here and two items in Chrome, so a line of them is up to a unit narrower per extra node.
+  is not truncated, so a centred label can be a 64th off).
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
   inlines is its line box, since it has no text to take the content area of its font from (a browser

@@ -15693,6 +15693,11 @@ mod dimension_length_tests {
         (characters as f64 * CHAR * 64.0).ceil() / 64.0
     }
 
+    /// `wonderful`, the widest word of [`LONG`]: Chrome measures a word as the difference of the ceils of its edges.
+    fn widest_word_of_long() -> f64 {
+        text_width(15) - text_width(6)
+    }
+
     /// Element 1 is `parent`, 2 a child with `style` holding the text `content`.
     fn text_box(cx: &mut gpui::TestAppContext, parent: &str, style: &str, content: &str) -> Page {
         let page = Page::new(cx, &[(1, None, parent), (2, Some(1), style)]);
@@ -15721,7 +15726,7 @@ mod dimension_length_tests {
     #[gpui::test]
     fn min_content_is_the_widest_word(cx: &mut gpui::TestAppContext) {
         let page = text_box(cx, COLUMN, r#"{"width": "min-content"}"#, LONG);
-        near(page.size(2), (text_width(9), 3.0 * LINE));
+        near(page.size(2), (widest_word_of_long(), 3.0 * LINE));
     }
 
     #[gpui::test]
@@ -15731,7 +15736,7 @@ mod dimension_length_tests {
         let long = text_box(cx, r#"{"width": 150}"#, r#"{"width": "fit-content"}"#, LONG);
         near(long.size(2), (150.0, 2.0 * LINE));
         let narrow = text_box(cx, r#"{"width": 40}"#, r#"{"width": "fit-content"}"#, LONG);
-        near(narrow.size(2), (text_width(9), 3.0 * LINE));
+        near(narrow.size(2), (widest_word_of_long(), 3.0 * LINE));
     }
 
     #[gpui::test]
@@ -15739,7 +15744,7 @@ mod dimension_length_tests {
         let page = text_box(cx, COLUMN, r#"{"width": "fit-content(100px)"}"#, LONG);
         near(page.size(2), (100.0, 3.0 * LINE));
         page.set_style(cx, 2, r#"{"width": "fit-content(10px)"}"#);
-        near(page.size(2), (text_width(9), 3.0 * LINE));
+        near(page.size(2), (widest_word_of_long(), 3.0 * LINE));
         page.set_style(cx, 2, r#"{"width": "fit-content(500px)"}"#);
         near(page.size(2), (text_width(21), LINE));
         page.set_style(cx, 2, r#"{"width": "fit-content(calc(50px + 50px))"}"#);
@@ -15770,7 +15775,7 @@ mod dimension_length_tests {
     #[gpui::test]
     fn min_width_min_content_keeps_a_narrow_box_from_squeezing_its_text(cx: &mut gpui::TestAppContext) {
         let page = text_box(cx, COLUMN, r#"{"width": 50, "minWidth": "min-content"}"#, LONG);
-        near(page.size(2), (text_width(9), 3.0 * LINE));
+        near(page.size(2), (widest_word_of_long(), 3.0 * LINE));
     }
 
     #[gpui::test]
@@ -15891,7 +15896,7 @@ mod dimension_length_tests {
         page.add_text(cx, 3, 2, LONG);
         page.add_text(cx, 5, 4, LONG);
         near(page.size(2), (text_width(21), LINE));
-        near(page.size(4), (text_width(9), 3.0 * LINE));
+        near(page.size(4), (widest_word_of_long(), 3.0 * LINE));
         near(page.offset(4, 1), (300.0, 0.0));
     }
 
@@ -15939,15 +15944,15 @@ mod dimension_length_tests {
     #[gpui::test]
     fn a_min_content_flex_basis_wraps_the_text_to_its_widest_word(cx: &mut gpui::TestAppContext) {
         let page = basis_row(cx, ROW, r#"{"flexBasis": "min-content", "flexShrink": 0}"#, LONG);
-        near(page.size(2), (text_width(9), 3.0 * LINE));
-        near(page.offset(4, 1), (text_width(9), 0.0));
+        near(page.size(2), (widest_word_of_long(), 3.0 * LINE));
+        near(page.offset(4, 1), (widest_word_of_long(), 0.0));
     }
 
     #[gpui::test]
     fn a_flex_basis_keyword_works_in_a_reversed_row_and_beats_a_width_keyword(cx: &mut gpui::TestAppContext) {
         let reversed = r#"{"width": 600, "display": "flex", "flexDirection": "row-reverse"}"#;
         let page = basis_row(cx, reversed, r#"{"flexBasis": "min-content", "flexShrink": 0}"#, LONG);
-        near(page.size(2), (text_width(9), 3.0 * LINE));
+        near(page.size(2), (widest_word_of_long(), 3.0 * LINE));
         let both = basis_row(
             cx,
             ROW,
@@ -15969,7 +15974,7 @@ mod dimension_length_tests {
         let narrower = r#"{"width": 20, "display": "flex"}"#;
         near(
             basis_row(cx, narrower, r#"{"flexBasis": "fit-content", "flexShrink": 0}"#, LONG).size(2),
-            (text_width(9), 3.0 * LINE),
+            (widest_word_of_long(), 3.0 * LINE),
         );
 
         // The container's content box less the item's margins.
@@ -15992,7 +15997,7 @@ mod dimension_length_tests {
 
         // A basis of its own wins, and the item is held up by its content only.
         let basis = basis_row(cx, narrow, r#"{"width": "fit-content", "flexBasis": 20, "flexShrink": 0}"#, LONG);
-        near(basis.size(2), (text_width(9), 3.0 * LINE));
+        near(basis.size(2), (widest_word_of_long(), 3.0 * LINE));
     }
 
     #[gpui::test]
@@ -16000,7 +16005,7 @@ mod dimension_length_tests {
         let limited = basis_row(cx, ROW, r#"{"flexBasis": "fit-content(100px)", "flexShrink": 0}"#, LONG);
         near(limited.size(2), (100.0, 3.0 * LINE));
         limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(10px)", "flexShrink": 0}"#);
-        near(limited.size(2), (text_width(9), 3.0 * LINE));
+        near(limited.size(2), (widest_word_of_long(), 3.0 * LINE));
         limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(500px)", "flexShrink": 0}"#);
         near(limited.size(2), (text_width(21), LINE));
         limited.set_style(cx, 2, r#"{"flexBasis": "fit-content(25%)", "flexShrink": 0}"#);
@@ -16072,7 +16077,7 @@ mod dimension_length_tests {
     #[gpui::test]
     fn set_style_swaps_a_flex_basis_keyword_for_a_length_and_back(cx: &mut gpui::TestAppContext) {
         let page = basis_row(cx, ROW, r#"{"flexBasis": "min-content", "flexShrink": 0}"#, LONG);
-        near(page.size(2), (text_width(9), 3.0 * LINE));
+        near(page.size(2), (widest_word_of_long(), 3.0 * LINE));
         page.set_style(cx, 2, r#"{"flexBasis": 120, "flexShrink": 0}"#);
         near(page.size(2), (120.0, 3.0 * LINE));
         page.set_style(cx, 2, r#"{"flexBasis": "max-content", "flexShrink": 0}"#);

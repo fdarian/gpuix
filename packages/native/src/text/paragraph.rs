@@ -69,27 +69,14 @@ pub struct RunStyle {
     /// The [`OpacityGroup`] the run is painted in: the id of the innermost box around it whose
     /// `opacity` is below one, or `0`.
     pub group: u64,
-    /// The text nodes the run is made of, as the index of the piece and its length. Not part
-    /// of the style: it lets a run split again where a pattern of the paragraph's own
-    /// decoration starts over, see [`InlineText::runs`].
-    pub pieces: Vec<(usize, usize)>,
+    /// The text node the run is, as the index of its piece. A text node is a run of its own even
+    /// when its neighbour is styled the same, because Chrome measures every one as an item and
+    /// ceils its width on its own. Not part of the style: a pattern of the paragraph's own
+    /// decoration starts over in each, see [`InlineText::runs`].
+    pub piece: Option<usize>,
 }
 
 impl RunStyle {
-    fn same_style(&self, other: &Self) -> bool {
-        if self.atomic || other.atomic {
-            return false;
-        }
-        Self {
-            len: 0,
-            pieces: Vec::new(),
-            ..self.clone()
-        } == Self {
-            len: 0,
-            pieces: Vec::new(),
-            ..other.clone()
-        }
-    }
 
     /// `decorator` is the box that declared the decoration, and `fragment` the text node the
     /// run is, which a patterned line starts its pattern over with.
@@ -145,7 +132,12 @@ impl RunStyle {
     }
 
     fn inherits_everything(&self) -> bool {
-        self.same_style(&Self::default())
+        !self.atomic
+            && Self {
+                len: 0,
+                piece: None,
+                ..self.clone()
+            } == Self::default()
     }
 }
 
@@ -174,8 +166,8 @@ pub struct BoxStyle {
     pub strikes: bool,
 }
 
-/// The runs of `paragraph`, covering its text exactly. Empty when no box
-/// restyles anything, so the caller can paint it as plain text.
+/// The runs of `paragraph`, covering its text exactly, one per text node. Empty when no box
+/// restyles anything and the text is one node, so the caller can paint it as plain text.
 ///
 /// `colors`, `lengths`, `font_state` and `underline_offset` are the container's, as its
 /// children inherit them. `states` says which states apply to a box, so that its `hover`, `active`,
@@ -246,7 +238,7 @@ pub fn styles(
     for (piece_ix, piece) in paragraph.pieces.iter().enumerate() {
         let mut style = RunStyle {
             len: piece.range.len(),
-            pieces: vec![(piece_ix, piece.range.len())],
+            piece: Some(piece_ix),
             ..RunStyle::default()
         };
         let mut colors = *colors;
@@ -344,21 +336,16 @@ pub fn styles(
             style = RunStyle {
                 len: piece.range.len(),
                 atomic: true,
-                pieces: vec![(piece_ix, piece.range.len())],
+                piece: Some(piece_ix),
                 ..RunStyle::default()
             };
         }
-        match runs.last_mut() {
-            Some(last) if last.same_style(&style) => {
-                last.len += style.len;
-                last.pieces.extend(style.pieces);
-            }
-            _ => runs.push(style),
-        }
+        runs.push(style);
     }
     // A box that only changes its alignment still needs the runs: the line layout
-    // splits them where the box starts and ends.
-    if runs.iter().all(RunStyle::inherits_everything)
+    // splits them where the box starts and ends. So do two text nodes, which are two items.
+    if paragraph.pieces.len() <= 1
+        && runs.iter().all(RunStyle::inherits_everything)
         && boxes
             .iter()
             .all(|style| style.align == ResolvedVerticalAlign::Baseline && !style.declares_wrap)
@@ -658,39 +645,32 @@ impl InlineText {
         run
     }
 
-    /// The runs of the text over `base`. Where a line the paragraph's own block declares has a
-    /// pattern (dotted, dashed or wavy), a run is cut into the text nodes it holds, and each
-    /// has its own fragment of the line, which Chrome draws with the pattern started over.
+    /// The runs of the text over `base`, one per text node. Where a line the paragraph's own
+    /// block declares has a pattern (dotted, dashed or wavy), each has its own fragment of the
+    /// line, which Chrome draws with the pattern started over.
     fn runs(&self, base: &gpui::TextStyle, rem_size: Pixels, heights: &RunHeights) -> Vec<TextRun> {
         let patterned = base.underline.is_some_and(|line| is_patterned(line.style))
             || base.strikethrough.is_some_and(|line| is_patterned(line.style))
             || base.overline.is_some_and(|line| is_patterned(line.style));
         self.styles
             .iter()
-            .flat_map(|style| {
-                if !patterned || style.atomic || style.pieces.is_empty() {
-                    return vec![Self::run(style, base, rem_size, heights)];
+            .map(|style| {
+                let piece = match style.piece {
+                    Some(piece) if patterned && !style.atomic => piece,
+                    _ => return Self::run(style, base, rem_size, heights),
+                };
+                let mut base = base.clone();
+                let fragment = piece as u32 + 1;
+                for line in base.underline.iter_mut().filter(|line| is_patterned(line.style)) {
+                    line.fragment = fragment;
                 }
-                style
-                    .pieces
-                    .iter()
-                    .map(|(piece, len)| {
-                        let mut piece_style = style.clone();
-                        piece_style.len = *len;
-                        let mut base = base.clone();
-                        let fragment = *piece as u32 + 1;
-                        for line in base.underline.iter_mut().filter(|line| is_patterned(line.style)) {
-                            line.fragment = fragment;
-                        }
-                        for line in base.strikethrough.iter_mut().filter(|line| is_patterned(line.style)) {
-                            line.fragment = fragment;
-                        }
-                        for line in base.overline.iter_mut().filter(|line| is_patterned(line.style)) {
-                            line.fragment = fragment;
-                        }
-                        Self::run(&piece_style, &base, rem_size, heights)
-                    })
-                    .collect()
+                for line in base.strikethrough.iter_mut().filter(|line| is_patterned(line.style)) {
+                    line.fragment = fragment;
+                }
+                for line in base.overline.iter_mut().filter(|line| is_patterned(line.style)) {
+                    line.fragment = fragment;
+                }
+                Self::run(style, &base, rem_size, heights)
             })
             .collect()
     }
@@ -1007,7 +987,7 @@ mod tests {
     #[test]
     fn a_span_font_size_is_its_runs_size_and_a_nested_span_inherits_it() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
-        assert_eq!(sizes(&tree), vec![None, Some(20.0), None]);
+        assert_eq!(sizes(&tree), vec![None, Some(20.0), Some(20.0), None]);
     }
 
     #[test]
@@ -1022,13 +1002,13 @@ mod tests {
     #[test]
     fn a_font_size_in_rem_is_the_roots() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": "3rem"}))]);
-        assert_eq!(sizes(&tree), vec![None, Some(30.0), None]);
+        assert_eq!(sizes(&tree), vec![None, Some(30.0), Some(30.0), None]);
     }
 
     #[test]
     fn unsized_text_has_no_font_size() {
         let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
-        assert_eq!(sizes(&tree), vec![None; 3]);
+        assert_eq!(sizes(&tree), vec![None; 4]);
     }
 
     #[test]
@@ -1049,7 +1029,7 @@ mod tests {
     fn a_line_height_number_is_a_multiple_of_the_runs_own_size() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
         let runs = text_runs(&tree, gpui::relative(1.5).into());
-        assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(30.0), Some(30.0), None]);
         assert_eq!(runs[1].font_size, Some(px(20.0)));
         assert_eq!(runs[0].font_size, None);
     }
@@ -1058,18 +1038,18 @@ mod tests {
     fn a_line_height_length_of_the_container_is_inherited_as_px() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
         let runs = text_runs(&tree, px(24.0).into());
-        assert_eq!(line_heights(&runs), vec![None, Some(24.0), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(24.0), Some(24.0), None]);
     }
 
     #[test]
     fn a_spans_own_line_height_is_resolved_where_it_is_declared() {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "lineHeight": 2}))]);
         let runs = text_runs(&tree, gpui::relative(1.5).into());
-        assert_eq!(line_heights(&runs), vec![None, Some(40.0), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(40.0), Some(40.0), None]);
 
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20, "lineHeight": "1.5em"}))]);
         let runs = text_runs(&tree, gpui::relative(1.0).into());
-        assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(30.0), Some(30.0), None]);
 
         let tree = tree_with(&[
             (3, serde_json::json!({"lineHeight": "1.5em"})),
@@ -1097,7 +1077,7 @@ mod tests {
     fn a_span_with_only_a_line_height_has_one_and_keeps_the_size() {
         let tree = tree_with(&[(3, serde_json::json!({"lineHeight": 3}))]);
         let runs = text_runs(&tree, gpui::relative(1.5).into());
-        assert_eq!(line_heights(&runs), vec![None, Some(30.0), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(30.0), Some(30.0), None]);
         assert_eq!(runs[1].font_size, None);
     }
 
@@ -1105,7 +1085,7 @@ mod tests {
     fn a_span_that_sets_nothing_about_size_takes_the_lines() {
         let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
         let runs = text_runs(&tree, gpui::relative(1.5).into());
-        assert_eq!(line_heights(&runs), vec![None; 3]);
+        assert_eq!(line_heights(&runs), vec![None; 4]);
         assert!(runs.iter().all(|run| run.font_size.is_none()));
     }
 
@@ -1114,29 +1094,29 @@ mod tests {
         // The fake `normal` of `exact_heights` is a quarter more than the size: 12.5px at 10px.
         let tree = tree_with(&[(3, serde_json::json!({"fontWeight": 700}))]);
         let runs = text_runs(&tree, gpui::LineHeight::Normal);
-        assert_eq!(line_heights(&runs), vec![None, Some(12.5), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(12.5), Some(12.5), None]);
 
         let tree = tree_with(&[(3, serde_json::json!({"fontFamily": "Menlo"}))]);
         let runs = text_runs(&tree, gpui::LineHeight::Normal);
-        assert_eq!(line_heights(&runs), vec![None, Some(12.5), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(12.5), Some(12.5), None]);
 
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": 20}))]);
         let runs = text_runs(&tree, gpui::LineHeight::Normal);
-        assert_eq!(line_heights(&runs), vec![None, Some(25.0), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(25.0), Some(25.0), None]);
     }
 
     #[test]
     fn under_a_normal_line_height_a_span_in_the_font_of_the_container_takes_the_lines() {
         let tree = tree_with(&[(3, serde_json::json!({"color": "#ff0000"}))]);
         let runs = text_runs(&tree, gpui::LineHeight::Normal);
-        assert_eq!(line_heights(&runs), vec![None; 3]);
+        assert_eq!(line_heights(&runs), vec![None; 4]);
     }
 
     #[test]
     fn a_span_that_declares_normal_has_the_height_of_its_font_under_a_length() {
         let tree = tree_with(&[(3, serde_json::json!({"lineHeight": "normal"}))]);
         let runs = text_runs(&tree, gpui::relative(2.0).into());
-        assert_eq!(line_heights(&runs), vec![None, Some(12.5), None]);
+        assert_eq!(line_heights(&runs), vec![None, Some(12.5), Some(12.5), None]);
     }
 
     #[test]
@@ -1144,7 +1124,7 @@ mod tests {
         let tree = tree_with(&[(3, serde_json::json!({"fontSize": "1em", "fontWeight": 700}))]);
         let runs = text_runs(&tree, gpui::relative(1.5).into());
         assert!(runs.iter().all(|run| run.font_size.is_none()));
-        assert_eq!(line_heights(&runs), vec![None; 3]);
+        assert_eq!(line_heights(&runs), vec![None; 4]);
     }
 
     #[test]
@@ -1190,8 +1170,10 @@ mod tests {
     }
 
     #[test]
-    fn unstyled_boxes_leave_the_paragraph_plain() {
-        assert!(runs_of(&tree_with(&[])).is_empty());
+    fn unstyled_boxes_leave_every_text_node_a_run_that_inherits_everything() {
+        let runs = runs_of(&tree_with(&[]));
+        assert!(runs.iter().all(RunStyle::inherits_everything));
+        assert_eq!(runs.iter().map(|run| run.len).collect::<Vec<_>>(), vec![2, 4, 3, 4]);
     }
 
     #[test]
@@ -1210,7 +1192,7 @@ mod tests {
             runs[0],
             RunStyle {
                 len: 2,
-                pieces: runs[0].pieces.clone(),
+                piece: runs[0].piece,
                 ..RunStyle::default()
             }
         );
@@ -1223,7 +1205,7 @@ mod tests {
             runs[3],
             RunStyle {
                 len: 4,
-                pieces: runs[3].pieces.clone(),
+                piece: runs[3].piece,
                 ..RunStyle::default()
             }
         );
@@ -1245,15 +1227,21 @@ mod tests {
             5,
             serde_json::json!({"backgroundColor": "#ffff00", "borderTopWidth": 2, "borderTopStyle": "solid", "paddingLeft": 4}),
         )]);
-        assert!(runs_of(&tree).is_empty(), "the box paints it around its fragments");
+        assert!(
+            runs_of(&tree).iter().all(RunStyle::inherits_everything),
+            "the box paints it around its fragments"
+        );
     }
 
     #[test]
-    fn adjacent_pieces_with_one_style_share_a_run() {
+    fn adjacent_pieces_with_one_style_are_runs_of_their_own() {
         let tree = tree_with(&[(3, serde_json::json!({"color": "#ff0000"}))]);
         let runs = runs_of(&tree);
         let lens: Vec<_> = runs.iter().map(|run| run.len).collect();
-        assert_eq!(lens, vec![2, 7, 4], "bold and red are one red run");
+        assert_eq!(lens, vec![2, 4, 3, 4], "Chrome ceils the width of every text node on its own");
+        assert_eq!(runs[1].color, runs[2].color, "bold and red are styled the same");
+        let pieces: Vec<_> = runs.iter().map(|run| run.piece).collect();
+        assert_eq!(pieces, vec![Some(0), Some(1), Some(2), Some(3)]);
     }
 
     #[test]
@@ -1264,9 +1252,10 @@ mod tests {
         ]);
         let runs = runs_of(&tree);
         let lens: Vec<_> = runs.iter().map(|run| run.len).collect();
-        assert_eq!(lens, vec![2, 7, 4], "the nested none keeps the parent's underline");
+        assert_eq!(lens, vec![2, 4, 3, 4]);
         assert!(runs[1].underline.is_some());
-        assert!(runs[2].underline.is_none());
+        assert!(runs[2].underline.is_some());
+        assert!(runs[3].underline.is_none());
     }
 
     #[test]
@@ -1488,9 +1477,9 @@ mod tests {
             ),
         ]);
         let runs = runs_of(&tree);
-        assert_eq!(runs[1].weight, Some(FontWeight(700.0)));
-        assert!(runs[1].color.is_some());
-        assert_eq!(runs[1].underline, None);
+        assert_eq!(runs[2].weight, Some(FontWeight(700.0)));
+        assert!(runs[2].color.is_some());
+        assert_eq!(runs[2].underline, None);
     }
 
     #[test]
@@ -1625,7 +1614,17 @@ mod tests {
     #[test]
     fn a_paragraph_with_an_atomic_always_has_runs() {
         assert!(!styles_of(&tree_with_atomic(&[])).runs.is_empty());
-        assert!(styles_of(&tree_with(&[])).runs.is_empty());
+        assert!(!styles_of(&tree_with(&[])).runs.is_empty(), "two text nodes are two runs");
+    }
+
+    #[test]
+    fn a_paragraph_of_one_text_node_that_nothing_restyles_is_plain() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        tree.create_element(2, "text".to_string());
+        tree.append_child(1, 2);
+        tree.set_text(2, "alone".to_string());
+        assert!(runs_of(&tree).is_empty());
     }
 
     #[test]
