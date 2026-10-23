@@ -92,20 +92,11 @@ pub struct BorderSpacing {
     pub vertical: LinearLength,
 }
 
-/// `border-spacing` in px.
+/// `border-spacing` in CSS px, with its fraction: layout cuts it to whole device pixels, as Chrome does.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ResolvedSpacing {
     pub horizontal: f64,
     pub vertical: f64,
-}
-
-impl ResolvedSpacing {
-    /// What layout is given. Chrome keeps the spacing in whole pixels (a `short`), so a fraction is cut
-    /// off, in the middle of a transition too. A value a hair under a whole number is that number.
-    pub(crate) fn used(self) -> Self {
-        let whole = |px: f64| (px + 0.01).floor();
-        Self { horizontal: whole(self.horizontal), vertical: whole(self.vertical) }
-    }
 }
 
 const RULE: &str = "one or two non-negative CSS lengths";
@@ -224,7 +215,7 @@ impl TableInherited {
     /// context, in which a declared spacing resolves.
     pub(crate) fn descend(mut self, style: &crate::style::StyleDesc, lengths: &LengthContext) -> Self {
         if let Some(spacing) = &style.border_spacing {
-            self.spacing = spacing.resolve(lengths).used();
+            self.spacing = spacing.resolve(lengths);
         }
         if let Some(collapse) = style.border_collapse {
             self.collapse = collapse == BorderCollapse::Collapse;
@@ -261,6 +252,13 @@ mod tests {
         assert_eq!(resolved("\"  1em   0.5rem \""), (20.0, 5.0));
         assert_eq!(resolved("\"calc(1em + 2px) 1in\""), (22.0, 96.0));
         assert_eq!(resolved("\"0 3px\""), (0.0, 3.0));
+    }
+
+    #[test]
+    fn a_fraction_is_kept_for_layout_to_cut_in_device_pixels() {
+        assert_eq!(resolved("2.5"), (2.5, 2.5));
+        assert_eq!(resolved("\"1.6px 0.4px\""), (1.6, 0.4));
+        assert_eq!(resolved("\"0.99px\""), (0.99, 0.99));
     }
 
     #[test]

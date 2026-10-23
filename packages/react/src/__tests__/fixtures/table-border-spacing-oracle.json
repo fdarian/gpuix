@@ -1,0 +1,4910 @@
+{
+ "border-spacing 2.5px": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    22,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    22,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    35,
+    35
+   ],
+   "r1": [
+    6.5,
+    6.5,
+    22,
+    10
+   ],
+   "a": [
+    6.5,
+    6.5,
+    10,
+    10
+   ],
+   "ad": [
+    6.5,
+    6.5,
+    10,
+    10
+   ],
+   "b": [
+    18.5,
+    6.5,
+    10,
+    10
+   ],
+   "bd": [
+    18.5,
+    6.5,
+    10,
+    10
+   ],
+   "r2": [
+    6.5,
+    18.5,
+    22,
+    10
+   ],
+   "c": [
+    6.5,
+    18.5,
+    10,
+    10
+   ],
+   "cd": [
+    6.5,
+    18.5,
+    10,
+    10
+   ],
+   "d": [
+    18.5,
+    18.5,
+    10,
+    10
+   ],
+   "dd": [
+    18.5,
+    18.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    96,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    47,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    51,
+    2,
+    47,
+    10
+   ],
+   "bd": [
+    51,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    96,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    47,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    51,
+    14,
+    47,
+    10
+   ],
+   "dd": [
+    51,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    196,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    97,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    101,
+    2,
+    97,
+    10
+   ],
+   "bd": [
+    101,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    196,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    97,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    101,
+    14,
+    97,
+    10
+   ],
+   "dd": [
+    101,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.3px": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.3px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    22,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    22,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.3px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.3px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    35,
+    35
+   ],
+   "r1": [
+    6.5,
+    6.5,
+    22,
+    10
+   ],
+   "a": [
+    6.5,
+    6.5,
+    10,
+    10
+   ],
+   "ad": [
+    6.5,
+    6.5,
+    10,
+    10
+   ],
+   "b": [
+    18.5,
+    6.5,
+    10,
+    10
+   ],
+   "bd": [
+    18.5,
+    6.5,
+    10,
+    10
+   ],
+   "r2": [
+    6.5,
+    18.5,
+    22,
+    10
+   ],
+   "c": [
+    6.5,
+    18.5,
+    10,
+    10
+   ],
+   "cd": [
+    6.5,
+    18.5,
+    10,
+    10
+   ],
+   "d": [
+    18.5,
+    18.5,
+    10,
+    10
+   ],
+   "dd": [
+    18.5,
+    18.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.3px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.3px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    96,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    47,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    51,
+    2,
+    47,
+    10
+   ],
+   "bd": [
+    51,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    96,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    47,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    51,
+    14,
+    47,
+    10
+   ],
+   "dd": [
+    51,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.3px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.3px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    196,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    97,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    101,
+    2,
+    97,
+    10
+   ],
+   "bd": [
+    101,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    196,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    97,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    101,
+    14,
+    97,
+    10
+   ],
+   "dd": [
+    101,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.75px": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.75px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    22,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    22,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.75px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.75px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    35,
+    35
+   ],
+   "r1": [
+    6.5,
+    6.5,
+    22,
+    10
+   ],
+   "a": [
+    6.5,
+    6.5,
+    10,
+    10
+   ],
+   "ad": [
+    6.5,
+    6.5,
+    10,
+    10
+   ],
+   "b": [
+    18.5,
+    6.5,
+    10,
+    10
+   ],
+   "bd": [
+    18.5,
+    6.5,
+    10,
+    10
+   ],
+   "r2": [
+    6.5,
+    18.5,
+    22,
+    10
+   ],
+   "c": [
+    6.5,
+    18.5,
+    10,
+    10
+   ],
+   "cd": [
+    6.5,
+    18.5,
+    10,
+    10
+   ],
+   "d": [
+    18.5,
+    18.5,
+    10,
+    10
+   ],
+   "dd": [
+    18.5,
+    18.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.75px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.75px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    96,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    47,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    51,
+    2,
+    47,
+    10
+   ],
+   "bd": [
+    51,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    96,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    47,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    51,
+    14,
+    47,
+    10
+   ],
+   "dd": [
+    51,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.75px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.75px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    196,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    97,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    101,
+    2,
+    97,
+    10
+   ],
+   "bd": [
+    101,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    196,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    97,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    101,
+    14,
+    97,
+    10
+   ],
+   "dd": [
+    101,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.5px": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.5px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.5px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    29,
+    29
+   ],
+   "r1": [
+    4.5,
+    4.5,
+    20,
+    10
+   ],
+   "a": [
+    4.5,
+    4.5,
+    10,
+    10
+   ],
+   "ad": [
+    4.5,
+    4.5,
+    10,
+    10
+   ],
+   "b": [
+    14.5,
+    4.5,
+    10,
+    10
+   ],
+   "bd": [
+    14.5,
+    4.5,
+    10,
+    10
+   ],
+   "r2": [
+    4.5,
+    14.5,
+    20,
+    10
+   ],
+   "c": [
+    4.5,
+    14.5,
+    10,
+    10
+   ],
+   "cd": [
+    4.5,
+    14.5,
+    10,
+    10
+   ],
+   "d": [
+    14.5,
+    14.5,
+    10,
+    10
+   ],
+   "dd": [
+    14.5,
+    14.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.5px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.5px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "bd": [
+    50,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    100,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    50,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    50,
+    10,
+    50,
+    10
+   ],
+   "dd": [
+    50,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.5px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.5px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "bd": [
+    100,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    200,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    100,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    100,
+    10,
+    100,
+    10
+   ],
+   "dd": [
+    100,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.6px": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.6px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    23,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    21,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    12,
+    1,
+    10,
+    10
+   ],
+   "bd": [
+    12,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    21,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    12,
+    12,
+    10,
+    10
+   ],
+   "dd": [
+    12,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.6px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.6px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    32,
+    32
+   ],
+   "r1": [
+    5.5,
+    5.5,
+    21,
+    10
+   ],
+   "a": [
+    5.5,
+    5.5,
+    10,
+    10
+   ],
+   "ad": [
+    5.5,
+    5.5,
+    10,
+    10
+   ],
+   "b": [
+    16.5,
+    5.5,
+    10,
+    10
+   ],
+   "bd": [
+    16.5,
+    5.5,
+    10,
+    10
+   ],
+   "r2": [
+    5.5,
+    16.5,
+    21,
+    10
+   ],
+   "c": [
+    5.5,
+    16.5,
+    10,
+    10
+   ],
+   "cd": [
+    5.5,
+    16.5,
+    10,
+    10
+   ],
+   "d": [
+    16.5,
+    16.5,
+    10,
+    10
+   ],
+   "dd": [
+    16.5,
+    16.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.6px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.6px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    98,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    48.5,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    50.5,
+    1,
+    48.5,
+    10
+   ],
+   "bd": [
+    50.5,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    98,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    48.5,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    50.5,
+    12,
+    48.5,
+    10
+   ],
+   "dd": [
+    50.5,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.6px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.6px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    198,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    98.5,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    100.5,
+    1,
+    98.5,
+    10
+   ],
+   "bd": [
+    100.5,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    198,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    98.5,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    100.5,
+    12,
+    98.5,
+    10
+   ],
+   "dd": [
+    100.5,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.4px": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.4px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.4px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.4px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    29,
+    29
+   ],
+   "r1": [
+    4.5,
+    4.5,
+    20,
+    10
+   ],
+   "a": [
+    4.5,
+    4.5,
+    10,
+    10
+   ],
+   "ad": [
+    4.5,
+    4.5,
+    10,
+    10
+   ],
+   "b": [
+    14.5,
+    4.5,
+    10,
+    10
+   ],
+   "bd": [
+    14.5,
+    4.5,
+    10,
+    10
+   ],
+   "r2": [
+    4.5,
+    14.5,
+    20,
+    10
+   ],
+   "c": [
+    4.5,
+    14.5,
+    10,
+    10
+   ],
+   "cd": [
+    4.5,
+    14.5,
+    10,
+    10
+   ],
+   "d": [
+    14.5,
+    14.5,
+    10,
+    10
+   ],
+   "dd": [
+    14.5,
+    14.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.4px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.4px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "bd": [
+    50,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    100,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    50,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    50,
+    10,
+    50,
+    10
+   ],
+   "dd": [
+    50,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.4px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.4px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "bd": [
+    100,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    200,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    100,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    100,
+    10,
+    100,
+    10
+   ],
+   "dd": [
+    100,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.99px": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.99px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    23,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    21,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    12,
+    1,
+    10,
+    10
+   ],
+   "bd": [
+    12,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    21,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    12,
+    12,
+    10,
+    10
+   ],
+   "dd": [
+    12,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.99px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.99px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    32,
+    32
+   ],
+   "r1": [
+    5.5,
+    5.5,
+    21,
+    10
+   ],
+   "a": [
+    5.5,
+    5.5,
+    10,
+    10
+   ],
+   "ad": [
+    5.5,
+    5.5,
+    10,
+    10
+   ],
+   "b": [
+    16.5,
+    5.5,
+    10,
+    10
+   ],
+   "bd": [
+    16.5,
+    5.5,
+    10,
+    10
+   ],
+   "r2": [
+    5.5,
+    16.5,
+    21,
+    10
+   ],
+   "c": [
+    5.5,
+    16.5,
+    10,
+    10
+   ],
+   "cd": [
+    5.5,
+    16.5,
+    10,
+    10
+   ],
+   "d": [
+    16.5,
+    16.5,
+    10,
+    10
+   ],
+   "dd": [
+    16.5,
+    16.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.99px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.99px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    98,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    48.5,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    50.5,
+    1,
+    48.5,
+    10
+   ],
+   "bd": [
+    50.5,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    98,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    48.5,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    50.5,
+    12,
+    48.5,
+    10
+   ],
+   "dd": [
+    50.5,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.99px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.99px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    198,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    98.5,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    100.5,
+    1,
+    98.5,
+    10
+   ],
+   "bd": [
+    100.5,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    198,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    98.5,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    100.5,
+    12,
+    98.5,
+    10
+   ],
+   "dd": [
+    100.5,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.01px": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.01px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    23,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    21,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    12,
+    1,
+    10,
+    10
+   ],
+   "bd": [
+    12,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    21,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    12,
+    12,
+    10,
+    10
+   ],
+   "dd": [
+    12,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.01px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.01px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    32,
+    32
+   ],
+   "r1": [
+    5.5,
+    5.5,
+    21,
+    10
+   ],
+   "a": [
+    5.5,
+    5.5,
+    10,
+    10
+   ],
+   "ad": [
+    5.5,
+    5.5,
+    10,
+    10
+   ],
+   "b": [
+    16.5,
+    5.5,
+    10,
+    10
+   ],
+   "bd": [
+    16.5,
+    5.5,
+    10,
+    10
+   ],
+   "r2": [
+    5.5,
+    16.5,
+    21,
+    10
+   ],
+   "c": [
+    5.5,
+    16.5,
+    10,
+    10
+   ],
+   "cd": [
+    5.5,
+    16.5,
+    10,
+    10
+   ],
+   "d": [
+    16.5,
+    16.5,
+    10,
+    10
+   ],
+   "dd": [
+    16.5,
+    16.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.01px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.01px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    98,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    48.5,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    50.5,
+    1,
+    48.5,
+    10
+   ],
+   "bd": [
+    50.5,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    98,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    48.5,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    50.5,
+    12,
+    48.5,
+    10
+   ],
+   "dd": [
+    50.5,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.01px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.01px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    23
+   ],
+   "r1": [
+    1,
+    1,
+    198,
+    10
+   ],
+   "a": [
+    1,
+    1,
+    98.5,
+    10
+   ],
+   "ad": [
+    1,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    100.5,
+    1,
+    98.5,
+    10
+   ],
+   "bd": [
+    100.5,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    12,
+    198,
+    10
+   ],
+   "c": [
+    1,
+    12,
+    98.5,
+    10
+   ],
+   "cd": [
+    1,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    100.5,
+    12,
+    98.5,
+    10
+   ],
+   "dd": [
+    100.5,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 3.999px": {
+  "html": "<table id=\"t\" style=\"border-spacing:3.999px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    32,
+    32
+   ],
+   "r1": [
+    4,
+    4,
+    24,
+    10
+   ],
+   "a": [
+    4,
+    4,
+    10,
+    10
+   ],
+   "ad": [
+    4,
+    4,
+    10,
+    10
+   ],
+   "b": [
+    18,
+    4,
+    10,
+    10
+   ],
+   "bd": [
+    18,
+    4,
+    10,
+    10
+   ],
+   "r2": [
+    4,
+    18,
+    24,
+    10
+   ],
+   "c": [
+    4,
+    18,
+    10,
+    10
+   ],
+   "cd": [
+    4,
+    18,
+    10,
+    10
+   ],
+   "d": [
+    18,
+    18,
+    10,
+    10
+   ],
+   "dd": [
+    18,
+    18,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 3.999px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:3.999px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    41,
+    41
+   ],
+   "r1": [
+    8.5,
+    8.5,
+    24,
+    10
+   ],
+   "a": [
+    8.5,
+    8.5,
+    10,
+    10
+   ],
+   "ad": [
+    8.5,
+    8.5,
+    10,
+    10
+   ],
+   "b": [
+    22.5,
+    8.5,
+    10,
+    10
+   ],
+   "bd": [
+    22.5,
+    8.5,
+    10,
+    10
+   ],
+   "r2": [
+    8.5,
+    22.5,
+    24,
+    10
+   ],
+   "c": [
+    8.5,
+    22.5,
+    10,
+    10
+   ],
+   "cd": [
+    8.5,
+    22.5,
+    10,
+    10
+   ],
+   "d": [
+    22.5,
+    22.5,
+    10,
+    10
+   ],
+   "dd": [
+    22.5,
+    22.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 3.999px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:3.999px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    32
+   ],
+   "r1": [
+    4,
+    4,
+    92,
+    10
+   ],
+   "a": [
+    4,
+    4,
+    44,
+    10
+   ],
+   "ad": [
+    4,
+    4,
+    10,
+    10
+   ],
+   "b": [
+    52,
+    4,
+    44,
+    10
+   ],
+   "bd": [
+    52,
+    4,
+    10,
+    10
+   ],
+   "r2": [
+    4,
+    18,
+    92,
+    10
+   ],
+   "c": [
+    4,
+    18,
+    44,
+    10
+   ],
+   "cd": [
+    4,
+    18,
+    10,
+    10
+   ],
+   "d": [
+    52,
+    18,
+    44,
+    10
+   ],
+   "dd": [
+    52,
+    18,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 3.999px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:3.999px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    32
+   ],
+   "r1": [
+    4,
+    4,
+    192,
+    10
+   ],
+   "a": [
+    4,
+    4,
+    94,
+    10
+   ],
+   "ad": [
+    4,
+    4,
+    10,
+    10
+   ],
+   "b": [
+    102,
+    4,
+    94,
+    10
+   ],
+   "bd": [
+    102,
+    4,
+    10,
+    10
+   ],
+   "r2": [
+    4,
+    18,
+    192,
+    10
+   ],
+   "c": [
+    4,
+    18,
+    94,
+    10
+   ],
+   "cd": [
+    4,
+    18,
+    10,
+    10
+   ],
+   "d": [
+    102,
+    18,
+    94,
+    10
+   ],
+   "dd": [
+    102,
+    18,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.25px": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.25px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.25px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.25px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    29,
+    29
+   ],
+   "r1": [
+    4.5,
+    4.5,
+    20,
+    10
+   ],
+   "a": [
+    4.5,
+    4.5,
+    10,
+    10
+   ],
+   "ad": [
+    4.5,
+    4.5,
+    10,
+    10
+   ],
+   "b": [
+    14.5,
+    4.5,
+    10,
+    10
+   ],
+   "bd": [
+    14.5,
+    4.5,
+    10,
+    10
+   ],
+   "r2": [
+    4.5,
+    14.5,
+    20,
+    10
+   ],
+   "c": [
+    4.5,
+    14.5,
+    10,
+    10
+   ],
+   "cd": [
+    4.5,
+    14.5,
+    10,
+    10
+   ],
+   "d": [
+    14.5,
+    14.5,
+    10,
+    10
+   ],
+   "dd": [
+    14.5,
+    14.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.25px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.25px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "bd": [
+    50,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    100,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    50,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    50,
+    10,
+    50,
+    10
+   ],
+   "dd": [
+    50,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.25px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.25px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "bd": [
+    100,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    200,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    100,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    100,
+    10,
+    100,
+    10
+   ],
+   "dd": [
+    100,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 7.5px": {
+  "html": "<table id=\"t\" style=\"border-spacing:7.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    41,
+    41
+   ],
+   "r1": [
+    7,
+    7,
+    27,
+    10
+   ],
+   "a": [
+    7,
+    7,
+    10,
+    10
+   ],
+   "ad": [
+    7,
+    7,
+    10,
+    10
+   ],
+   "b": [
+    24,
+    7,
+    10,
+    10
+   ],
+   "bd": [
+    24,
+    7,
+    10,
+    10
+   ],
+   "r2": [
+    7,
+    24,
+    27,
+    10
+   ],
+   "c": [
+    7,
+    24,
+    10,
+    10
+   ],
+   "cd": [
+    7,
+    24,
+    10,
+    10
+   ],
+   "d": [
+    24,
+    24,
+    10,
+    10
+   ],
+   "dd": [
+    24,
+    24,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 7.5px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:7.5px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    50
+   ],
+   "r1": [
+    11.5,
+    11.5,
+    27,
+    10
+   ],
+   "a": [
+    11.5,
+    11.5,
+    10,
+    10
+   ],
+   "ad": [
+    11.5,
+    11.5,
+    10,
+    10
+   ],
+   "b": [
+    28.5,
+    11.5,
+    10,
+    10
+   ],
+   "bd": [
+    28.5,
+    11.5,
+    10,
+    10
+   ],
+   "r2": [
+    11.5,
+    28.5,
+    27,
+    10
+   ],
+   "c": [
+    11.5,
+    28.5,
+    10,
+    10
+   ],
+   "cd": [
+    11.5,
+    28.5,
+    10,
+    10
+   ],
+   "d": [
+    28.5,
+    28.5,
+    10,
+    10
+   ],
+   "dd": [
+    28.5,
+    28.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 7.5px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:7.5px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    41
+   ],
+   "r1": [
+    7,
+    7,
+    86,
+    10
+   ],
+   "a": [
+    7,
+    7,
+    39.5,
+    10
+   ],
+   "ad": [
+    7,
+    7,
+    10,
+    10
+   ],
+   "b": [
+    53.5,
+    7,
+    39.5,
+    10
+   ],
+   "bd": [
+    53.5,
+    7,
+    10,
+    10
+   ],
+   "r2": [
+    7,
+    24,
+    86,
+    10
+   ],
+   "c": [
+    7,
+    24,
+    39.5,
+    10
+   ],
+   "cd": [
+    7,
+    24,
+    10,
+    10
+   ],
+   "d": [
+    53.5,
+    24,
+    39.5,
+    10
+   ],
+   "dd": [
+    53.5,
+    24,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 7.5px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:7.5px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    41
+   ],
+   "r1": [
+    7,
+    7,
+    186,
+    10
+   ],
+   "a": [
+    7,
+    7,
+    89.5,
+    10
+   ],
+   "ad": [
+    7,
+    7,
+    10,
+    10
+   ],
+   "b": [
+    103.5,
+    7,
+    89.5,
+    10
+   ],
+   "bd": [
+    103.5,
+    7,
+    10,
+    10
+   ],
+   "r2": [
+    7,
+    24,
+    186,
+    10
+   ],
+   "c": [
+    7,
+    24,
+    89.5,
+    10
+   ],
+   "cd": [
+    7,
+    24,
+    10,
+    10
+   ],
+   "d": [
+    103.5,
+    24,
+    89.5,
+    10
+   ],
+   "dd": [
+    103.5,
+    24,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 10.2px": {
+  "html": "<table id=\"t\" style=\"border-spacing:10.2px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    50
+   ],
+   "r1": [
+    10,
+    10,
+    30,
+    10
+   ],
+   "a": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "ad": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "b": [
+    30,
+    10,
+    10,
+    10
+   ],
+   "bd": [
+    30,
+    10,
+    10,
+    10
+   ],
+   "r2": [
+    10,
+    30,
+    30,
+    10
+   ],
+   "c": [
+    10,
+    30,
+    10,
+    10
+   ],
+   "cd": [
+    10,
+    30,
+    10,
+    10
+   ],
+   "d": [
+    30,
+    30,
+    10,
+    10
+   ],
+   "dd": [
+    30,
+    30,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 10.2px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:10.2px;border:3px solid #000;padding:1.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    59,
+    59
+   ],
+   "r1": [
+    14.5,
+    14.5,
+    30,
+    10
+   ],
+   "a": [
+    14.5,
+    14.5,
+    10,
+    10
+   ],
+   "ad": [
+    14.5,
+    14.5,
+    10,
+    10
+   ],
+   "b": [
+    34.5,
+    14.5,
+    10,
+    10
+   ],
+   "bd": [
+    34.5,
+    14.5,
+    10,
+    10
+   ],
+   "r2": [
+    14.5,
+    34.5,
+    30,
+    10
+   ],
+   "c": [
+    14.5,
+    34.5,
+    10,
+    10
+   ],
+   "cd": [
+    14.5,
+    34.5,
+    10,
+    10
+   ],
+   "d": [
+    34.5,
+    34.5,
+    10,
+    10
+   ],
+   "dd": [
+    34.5,
+    34.5,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 10.2px fixed width": {
+  "html": "<table id=\"t\" style=\"border-spacing:10.2px;table-layout:fixed;width:100px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    100,
+    50
+   ],
+   "r1": [
+    10,
+    10,
+    80,
+    10
+   ],
+   "a": [
+    10,
+    10,
+    35,
+    10
+   ],
+   "ad": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "b": [
+    55,
+    10,
+    35,
+    10
+   ],
+   "bd": [
+    55,
+    10,
+    10,
+    10
+   ],
+   "r2": [
+    10,
+    30,
+    80,
+    10
+   ],
+   "c": [
+    10,
+    30,
+    35,
+    10
+   ],
+   "cd": [
+    10,
+    30,
+    10,
+    10
+   ],
+   "d": [
+    55,
+    30,
+    35,
+    10
+   ],
+   "dd": [
+    55,
+    30,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 10.2px wide table": {
+  "html": "<table id=\"t\" style=\"border-spacing:10.2px;width:200px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    200,
+    50
+   ],
+   "r1": [
+    10,
+    10,
+    180,
+    10
+   ],
+   "a": [
+    10,
+    10,
+    85,
+    10
+   ],
+   "ad": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "b": [
+    105,
+    10,
+    85,
+    10
+   ],
+   "bd": [
+    105,
+    10,
+    10,
+    10
+   ],
+   "r2": [
+    10,
+    30,
+    180,
+    10
+   ],
+   "c": [
+    10,
+    30,
+    85,
+    10
+   ],
+   "cd": [
+    10,
+    30,
+    10,
+    10
+   ],
+   "d": [
+    105,
+    30,
+    85,
+    10
+   ],
+   "dd": [
+    105,
+    30,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px 1.6px": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px 1.6px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    23
+   ],
+   "r1": [
+    2,
+    1,
+    22,
+    10
+   ],
+   "a": [
+    2,
+    1,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    1,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    1,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    1,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    12,
+    22,
+    10
+   ],
+   "c": [
+    2,
+    12,
+    10,
+    10
+   ],
+   "cd": [
+    2,
+    12,
+    10,
+    10
+   ],
+   "d": [
+    14,
+    12,
+    10,
+    10
+   ],
+   "dd": [
+    14,
+    12,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px 1.6px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px 1.6px;border:3px solid #000\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    32,
+    29
+   ],
+   "r1": [
+    5,
+    4,
+    22,
+    10
+   ],
+   "a": [
+    5,
+    4,
+    10,
+    10
+   ],
+   "ad": [
+    5,
+    4,
+    10,
+    10
+   ],
+   "b": [
+    17,
+    4,
+    10,
+    10
+   ],
+   "bd": [
+    17,
+    4,
+    10,
+    10
+   ],
+   "r2": [
+    5,
+    15,
+    22,
+    10
+   ],
+   "c": [
+    5,
+    15,
+    10,
+    10
+   ],
+   "cd": [
+    5,
+    15,
+    10,
+    10
+   ],
+   "d": [
+    17,
+    15,
+    10,
+    10
+   ],
+   "dd": [
+    17,
+    15,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.4px 2.75px": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.4px 2.75px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    26
+   ],
+   "r1": [
+    0,
+    2,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    14,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    14,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    14,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.4px 2.75px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.4px 2.75px;border:3px solid #000\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    32
+   ],
+   "r1": [
+    3,
+    5,
+    20,
+    10
+   ],
+   "a": [
+    3,
+    5,
+    10,
+    10
+   ],
+   "ad": [
+    3,
+    5,
+    10,
+    10
+   ],
+   "b": [
+    13,
+    5,
+    10,
+    10
+   ],
+   "bd": [
+    13,
+    5,
+    10,
+    10
+   ],
+   "r2": [
+    3,
+    17,
+    20,
+    10
+   ],
+   "c": [
+    3,
+    17,
+    10,
+    10
+   ],
+   "cd": [
+    3,
+    17,
+    10,
+    10
+   ],
+   "d": [
+    13,
+    17,
+    10,
+    10
+   ],
+   "dd": [
+    13,
+    17,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.6px 0.4px": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.6px 0.4px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    23,
+    20
+   ],
+   "r1": [
+    1,
+    0,
+    21,
+    10
+   ],
+   "a": [
+    1,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    1,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    12,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    12,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    10,
+    21,
+    10
+   ],
+   "c": [
+    1,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    1,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    12,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    12,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 1.6px 0.4px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:1.6px 0.4px;border:3px solid #000\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    29,
+    26
+   ],
+   "r1": [
+    4,
+    3,
+    21,
+    10
+   ],
+   "a": [
+    4,
+    3,
+    10,
+    10
+   ],
+   "ad": [
+    4,
+    3,
+    10,
+    10
+   ],
+   "b": [
+    15,
+    3,
+    10,
+    10
+   ],
+   "bd": [
+    15,
+    3,
+    10,
+    10
+   ],
+   "r2": [
+    4,
+    13,
+    21,
+    10
+   ],
+   "c": [
+    4,
+    13,
+    10,
+    10
+   ],
+   "cd": [
+    4,
+    13,
+    10,
+    10
+   ],
+   "d": [
+    15,
+    13,
+    10,
+    10
+   ],
+   "dd": [
+    15,
+    13,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.5px 0.5px": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.5px 0.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.5px 0.5px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.5px 0.5px;border:3px solid #000\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    3,
+    3,
+    20,
+    10
+   ],
+   "a": [
+    3,
+    3,
+    10,
+    10
+   ],
+   "ad": [
+    3,
+    3,
+    10,
+    10
+   ],
+   "b": [
+    13,
+    3,
+    10,
+    10
+   ],
+   "bd": [
+    13,
+    3,
+    10,
+    10
+   ],
+   "r2": [
+    3,
+    13,
+    20,
+    10
+   ],
+   "c": [
+    3,
+    13,
+    10,
+    10
+   ],
+   "cd": [
+    3,
+    13,
+    10,
+    10
+   ],
+   "d": [
+    13,
+    13,
+    10,
+    10
+   ],
+   "dd": [
+    13,
+    13,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.3px 2.75px": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.3px 2.75px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    2,
+    2,
+    22,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    2,
+    14,
+    22,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.3px 2.75px with a table border": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.3px 2.75px;border:3px solid #000\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    32,
+    32
+   ],
+   "r1": [
+    5,
+    5,
+    22,
+    10
+   ],
+   "a": [
+    5,
+    5,
+    10,
+    10
+   ],
+   "ad": [
+    5,
+    5,
+    10,
+    10
+   ],
+   "b": [
+    17,
+    5,
+    10,
+    10
+   ],
+   "bd": [
+    17,
+    5,
+    10,
+    10
+   ],
+   "r2": [
+    5,
+    17,
+    22,
+    10
+   ],
+   "c": [
+    5,
+    17,
+    10,
+    10
+   ],
+   "cd": [
+    5,
+    17,
+    10,
+    10
+   ],
+   "d": [
+    17,
+    17,
+    10,
+    10
+   ],
+   "dd": [
+    17,
+    17,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.75em": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.75em;font-size:10px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    41,
+    41
+   ],
+   "r1": [
+    7,
+    7,
+    27,
+    10
+   ],
+   "a": [
+    7,
+    7,
+    10,
+    10
+   ],
+   "ad": [
+    7,
+    7,
+    10,
+    10
+   ],
+   "b": [
+    24,
+    7,
+    10,
+    10
+   ],
+   "bd": [
+    24,
+    7,
+    10,
+    10
+   ],
+   "r2": [
+    7,
+    24,
+    27,
+    10
+   ],
+   "c": [
+    7,
+    24,
+    10,
+    10
+   ],
+   "cd": [
+    7,
+    24,
+    10,
+    10
+   ],
+   "d": [
+    24,
+    24,
+    10,
+    10
+   ],
+   "dd": [
+    24,
+    24,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 0.15in": {
+  "html": "<table id=\"t\" style=\"border-spacing:0.15in\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    62,
+    62
+   ],
+   "r1": [
+    14,
+    14,
+    34,
+    10
+   ],
+   "a": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "ad": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "b": [
+    38,
+    14,
+    10,
+    10
+   ],
+   "bd": [
+    38,
+    14,
+    10,
+    10
+   ],
+   "r2": [
+    14,
+    38,
+    34,
+    10
+   ],
+   "c": [
+    14,
+    38,
+    10,
+    10
+   ],
+   "cd": [
+    14,
+    38,
+    10,
+    10
+   ],
+   "d": [
+    38,
+    38,
+    10,
+    10
+   ],
+   "dd": [
+    38,
+    38,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px with a caption": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px\"><caption id=\"cap\" style=\"height:12px\"></caption><tr><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "cap": [
+    0,
+    0,
+    26,
+    12
+   ],
+   "a": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px with a colspan": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px\"><tr><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr><td id=\"c\" colspan=\"2\" style=\"height:10px\"></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "a": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    22,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "border-spacing 2.5px with a row group": {
+  "html": "<table id=\"t\" style=\"border-spacing:2.5px\"><tbody id=\"g1\"><tr><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr></tbody><tbody id=\"g2\"><tr><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></tbody></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "g1": [
+    2,
+    2,
+    22,
+    10
+   ],
+   "a": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "g2": [
+    2,
+    14,
+    22,
+    10
+   ],
+   "c": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    14,
+    14,
+    10,
+    10
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "collapse with border-spacing 2.5px": {
+  "html": "<table id=\"t\" style=\"border-collapse:collapse;border-spacing:2.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "collapse with border-spacing 2.5px and borders": {
+  "html": "<table id=\"t\" style=\"border-collapse:collapse;border-spacing:2.5px\"><tr id=\"r1\"><td id=\"a\" style=\"border:2px solid #000\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"border:2px solid #000\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"border:2px solid #000\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"border:2px solid #000\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    1,
+    1,
+    24,
+    12
+   ],
+   "a": [
+    1,
+    1,
+    12,
+    12
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    13,
+    1,
+    12,
+    12
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    13,
+    24,
+    12
+   ],
+   "c": [
+    1,
+    13,
+    12,
+    12
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    13,
+    13,
+    12,
+    12
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "collapse with border-spacing 0.5px": {
+  "html": "<table id=\"t\" style=\"border-collapse:collapse;border-spacing:0.5px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "collapse with border-spacing 0.5px and borders": {
+  "html": "<table id=\"t\" style=\"border-collapse:collapse;border-spacing:0.5px\"><tr id=\"r1\"><td id=\"a\" style=\"border:2px solid #000\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"border:2px solid #000\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"border:2px solid #000\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"border:2px solid #000\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    1,
+    1,
+    24,
+    12
+   ],
+   "a": [
+    1,
+    1,
+    12,
+    12
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    13,
+    1,
+    12,
+    12
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    13,
+    24,
+    12
+   ],
+   "c": [
+    1,
+    13,
+    12,
+    12
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    13,
+    13,
+    12,
+    12
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "collapse with border-spacing 1.6px": {
+  "html": "<table id=\"t\" style=\"border-collapse:collapse;border-spacing:1.6px\"><tr id=\"r1\"><td id=\"a\" style=\"\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "r1": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ad": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "b": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "bd": [
+    10,
+    0,
+    10,
+    10
+   ],
+   "r2": [
+    0,
+    10,
+    20,
+    10
+   ],
+   "c": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "cd": [
+    0,
+    10,
+    10,
+    10
+   ],
+   "d": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "dd": [
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "collapse with border-spacing 1.6px and borders": {
+  "html": "<table id=\"t\" style=\"border-collapse:collapse;border-spacing:1.6px\"><tr id=\"r1\"><td id=\"a\" style=\"border:2px solid #000\"><div id=\"ad\" style=\"width:10px;height:10px\"></div></td><td id=\"b\" style=\"border:2px solid #000\"><div id=\"bd\" style=\"width:10px;height:10px\"></div></td></tr><tr id=\"r2\"><td id=\"c\" style=\"border:2px solid #000\"><div id=\"cd\" style=\"width:10px;height:10px\"></div></td><td id=\"d\" style=\"border:2px solid #000\"><div id=\"dd\" style=\"width:10px;height:10px\"></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    26,
+    26
+   ],
+   "r1": [
+    1,
+    1,
+    24,
+    12
+   ],
+   "a": [
+    1,
+    1,
+    12,
+    12
+   ],
+   "ad": [
+    2,
+    2,
+    10,
+    10
+   ],
+   "b": [
+    13,
+    1,
+    12,
+    12
+   ],
+   "bd": [
+    14,
+    2,
+    10,
+    10
+   ],
+   "r2": [
+    1,
+    13,
+    24,
+    12
+   ],
+   "c": [
+    1,
+    13,
+    12,
+    12
+   ],
+   "cd": [
+    2,
+    14,
+    10,
+    10
+   ],
+   "d": [
+    13,
+    13,
+    12,
+    12
+   ],
+   "dd": [
+    14,
+    14,
+    10,
+    10
+   ]
+  },
+  "scale": 1
+ }
+}

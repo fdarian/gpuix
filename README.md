@@ -3936,7 +3936,8 @@ paragraph it is in lays it out, and everything else about it is the element's ow
   baseline of its container: the first item's (in `order`), the first line of its text
   or, for an item with no text, the bottom of its border box; with no items, the bottom margin edge. An `inline-table`
   sits on the first baseline of its table: that of its first row (below the captions above it, the border, the padding and the
-  spacing), or the bottom of that row when none of its cells is on the baseline. Absolutely positioned
+  spacing), or, when none of its cells is on the baseline, as far above the bottom of that row as the least padding and
+  border below the content of its cells (the top of a row without cells). Absolutely positioned
   content has no baseline, and a box inside another atomic inline is its own.
 - **It is an element.** `getBoundingClientRect()`, `onLayout`, `ResizeObserver` and
   `IntersectionObserver` report its border box (with the fraction of its place in the line, as Chrome keeps
@@ -6974,7 +6975,8 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   the end of its row group and the most is 65534. Anything else is `1`.
 - **Styles.** `borderSpacing` is one length for both axes or two, horizontal then
   vertical (`"4px 8px"`, `2`, `"1em"`; any [length](#lengths) but a `%`, and
-  nothing negative). `tableLayout` is `"auto"` or `"fixed"`: a fixed table takes its
+  nothing negative; the fraction of a length is cut off in device pixels, as Chrome does: `2.5` is 2px on a display of
+  scale 1 and 2.5px on one of scale 2). `tableLayout` is `"auto"` or `"fixed"`: a fixed table takes its
   columns from its `table-column`s and the cells of its first row, and needs a
   `width`, else it is auto. `captionSide` is `"top"` or `"bottom"`. `emptyCells`
   `"hide"` leaves a cell with nothing in it, or only white space and `display:
@@ -6982,7 +6984,9 @@ CSS Tables 3 as Chrome draws it, on any `div`, `text` or `span`:
   `borderCollapse` and `emptyCells` inherit as in CSS (a table inside a cell has
   the spacing of the table around it), `tableLayout` does not. `verticalAlign` on
   a `table-cell` is `"top"`, `"middle"`, `"bottom"` or `"baseline"` (the default);
-  any other value is `"baseline"` there. An invalid value throws.
+  any other value is `"baseline"` there. An invalid value throws. A cell on the baseline lines up by the first line
+  of its text, or by the bottom of its content when it has children but no text (a box, an image, an empty block);
+  a cell with nothing in it (white space only counts as nothing) is not on the baseline.
 - **Layout.** The table is shrink-to-fit, or `max(width, least width of the
   columns)` with a `width`. Column widths come from the cells' content, their
   `width` (px or `%`) and the `table-column`s'; columns no cell starts in take no
@@ -7052,9 +7056,6 @@ Differences from Chrome:
 - A column no cell starts in joins the one before it in the layout, and the collapsed borders
   predict that: a table with `tableLayout: "fixed"` and a `width` keeps them, so one whose
   `width` is a percentage of a parent with no width draws no collapsed borders.
-- A cell aligned to the baseline whose content has no baseline (a box with no text in it) is aligned by the bottom
-  of its content, where Chrome gives it none: a cell with a `rowSpan` and such content makes its first row as tall
-  as the cell, where Chrome shares the height between the rows it spans. `verticalAlign: 'top'` is Chrome's here.
 - A table that is a flex item narrower than its least width reports that least width but is
   positioned for the width it asked for; the maximum width of a table with columns that add up
   to 100% next to columns without a percentage is what the columns ask for, where Chrome

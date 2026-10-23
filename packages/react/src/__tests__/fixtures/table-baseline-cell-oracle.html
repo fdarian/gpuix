@@ -1,0 +1,125 @@
+<!doctype html>
+<!--
+  Oracle for table-baseline-cell.test.tsx: the boxes (`[x, y, width, height]` relative to the 300px case box) of every
+  element with an `id` that headless Chrome lays out for rows of `vertical-align: baseline` cells whose content has
+  no text, at device scale 1 and 2: which cell takes part in aligning its row, where a cell without a baseline
+  of its own puts its content, and the baseline the row (and with it an `inline-table` or a table in a flex row)
+  has when no cell is on it. The text is GpuixTestSquare (20px, whole em ascent, no descent, see
+  text-baseline-oracle.html). Regenerate (`table-baseline-cell-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh table-baseline-cell
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+#case{position:absolute;left:0;top:0;width:300px;font:20px/20px GpuixTestSquare;color:#000}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const BASE = 'vertical-align:baseline;';
+const PAD = 'padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;';
+const BIG = 'font-size:40px;line-height:40px;';
+const td = (id, style, inner = '', attrs = '') => `<td id="${id}" ${attrs} style="${BASE}${style}">${inner}</td>`;
+const tr = (id, inner) => `<tr id="${id}">${inner}</tr>`;
+const tbl = (inner, style = '') => `<table id="t" style="border-spacing:0;border-collapse:separate;${style}">${inner}</table>`;
+const text = (id) => `<span id="${id}">A</span>`;
+const PIXEL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCI+PHJlY3Qgd2lkdGg9IjMwIiBoZWlnaHQ9IjMwIiBmaWxsPSIjMDBmIi8+PC9zdmc+';
+
+// What goes in the cell `v`.
+const VARIANTS = {
+  'text': text('x'),
+  'empty': '',
+  'whitespace': ' ',
+  'a line break of whitespace': '\n   ',
+  'empty span': '<span></span>',
+  'empty block': '<div id="x"></div>',
+  'block with a height': '<div id="x" style="height:30px"></div>',
+  'block with a size': '<div id="x" style="width:30px;height:30px"></div>',
+  'nested blocks without text': '<div id="x"><div id="y" style="height:30px"></div></div>',
+  'image': `<img id="x" width="30" height="30" src="${PIXEL}">`,
+  'inline-block without text': '<span id="x" style="display:inline-block;width:30px;height:30px"></span>',
+  'inline-block with text': `<span id="x" style="display:inline-block">${text('y')}</span>`,
+  'flex container without text': '<div id="x" style="display:flex;height:30px"></div>',
+  'flex container with a box': '<div id="x" style="display:flex"><div id="y" style="width:30px;height:30px"></div></div>',
+  'grid container without text': '<div id="x" style="display:grid;height:30px"></div>',
+  'grid container with a box': '<div id="x" style="display:grid;grid-template-columns:30px"><div id="y" style="height:30px"></div></div>',
+  'overflow hidden block': '<div id="x" style="overflow:hidden;height:30px"></div>',
+  'overflow hidden block with text': `<div id="x" style="overflow:hidden;height:10px">A</div>`,
+  'overflow hidden block over text': `<div id="x" style="overflow:hidden;height:30px"><div id="y" style="height:50px">A</div></div>`,
+  'floated box': '<div id="x" style="float:left;width:10px;height:30px"></div>',
+  'positioned box': '<div id="x" style="position:absolute;width:10px;height:30px"></div>',
+  'nested table with text': `<table id="x" style="border-spacing:0"><tr><td id="y" style="${BASE}">A</td></tr></table>`,
+};
+
+const cases = {};
+const add = (name, build) => { if (cases[name]) throw new Error('duplicate ' + name); cases[name] = build; };
+
+const inLine = (kind, table) => kind === 'inline-table'
+  ? `<div id="line"><span id="p">AA</span>${table.replace('id="t" style="', 'id="t" style="display:inline-table;')}<span id="q">AA</span></div>`
+  : `<div id="line" style="display:flex;align-items:baseline"><div id="p">A</div>${table}</div>`;
+
+for (const [name, content] of Object.entries(VARIANTS)) {
+  for (const [padName, pad] of [['', ''], [' with padding and border', PAD]]) {
+    const v = td('v', pad, content);
+    const a = td('a', '', text('as'));
+    const big = td('a', BIG, text('as'));
+    add(`${name}${padName}: alone`, () => tbl(tr('r', v)));
+    add(`${name}${padName}: next to text`, () => tbl(tr('r', a + v)));
+    add(`${name}${padName}: inline-table`, () => inLine('inline-table', tbl(tr('r', v))));
+    add(`${name}${padName}: flex row`, () => inLine('flex', tbl(tr('r', v))));
+    if (!pad) {
+      add(`${name}: next to big text`, () => tbl(tr('r', big + v)));
+      add(`${name}: after text`, () => tbl(tr('r', v + a)));
+      add(`${name}: next to text, inline-table`, () => inLine('inline-table', tbl(tr('r', a + v))));
+      add(`${name}: next to a cell with a height`, () => tbl(tr('r', td('a', 'height:60px', text('as')) + v)));
+      add(`${name}: spanning two rows`, () => tbl(tr('r', td('v', '', content, 'rowspan="2"') + a) + tr('r2', td('b', '', text('bs')))));
+    }
+  }
+}
+
+// Rows where no cell has a baseline to line up by: the baseline of the row is above the least bottom padding and border.
+const NONE = {
+  'empty cells with bottom padding': tr('r', td('a', 'padding-bottom:5px') + td('b', 'padding-bottom:3px;border-bottom-width:2px;border-bottom-style:solid')),
+  'empty cell with a height and padding': tr('r', td('a', 'height:50px;padding-bottom:5px')),
+  'empty cells with different padding': tr('r', td('a', 'height:50px;padding-bottom:8px') + td('b', 'height:20px;padding-bottom:2px')),
+  'empty cells with a border': tr('r', td('a', 'height:40px;border-bottom-width:6px;border-bottom-style:solid')),
+  'cells aligned to the top': tr('r', td('a', 'vertical-align:top;padding-bottom:6px', text('as')) + td('b', 'vertical-align:top;height:50px;padding-bottom:2px', text('bs'))),
+  'cells aligned to the middle': tr('r', td('a', 'vertical-align:middle;padding-bottom:6px', text('as')) + td('b', 'vertical-align:middle;height:50px;padding-bottom:9px')),
+  'cells aligned to the bottom': tr('r', td('a', 'vertical-align:bottom;padding-bottom:6px', text('as')) + td('b', 'vertical-align:bottom;height:50px;padding-bottom:9px', text('bs'))),
+  'an empty cell and a cell aligned to the top': tr('r', td('a', 'height:30px;padding-bottom:4px') + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'a cell aligned to the top, then an empty cell': tr('r', td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs')) + td('a', 'height:30px;padding-bottom:4px')),
+  'a cell with text and a cell aligned to the top': tr('r', td('a', 'padding-bottom:4px', text('as')) + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'no cell in the row': tr('r', '') + tr('r2', td('a', '', text('as'))),
+  'a first row without a baseline, then one with': tr('r', td('a', 'height:30px;padding-bottom:4px')) + tr('r2', td('b', '', text('bs'))),
+  'a first row with a baseline, then one without': tr('r', td('a', '', text('as'))) + tr('r2', td('b', 'height:30px;padding-bottom:4px')),
+  'a cell spanning two rows is the only one with text': tr('r', td('a', '', text('as'), 'rowspan="2"') + td('b', 'height:10px')) + tr('r2', td('c', 'height:10px')),
+  'a cell of whitespace and a cell aligned to the top': tr('r', td('a', 'height:30px;padding-bottom:5px', ' ') + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'a cell with an empty span and a cell aligned to the top': tr('r', td('a', 'height:30px;padding-bottom:5px', '<span></span>') + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'a cell with an empty block and a cell aligned to the top': tr('r', td('a', 'height:30px;padding-bottom:5px', '<div id="x"></div>') + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'a cell with a box and a cell aligned to the top': tr('r', td('a', 'height:30px;padding-bottom:5px', '<div id="x" style="height:12px"></div>') + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'a cell with a positioned box and a cell aligned to the top': tr('r', td('a', 'height:30px;padding-bottom:5px', '<div id="x" style="position:absolute;width:5px;height:12px"></div>') + td('b', 'vertical-align:top;height:50px;padding-bottom:9px', text('bs'))),
+  'a cell with an empty block and a cell without children': tr('r', td('a', 'height:30px;padding-bottom:5px', '<div id="x"></div>') + td('b', 'height:50px;padding-bottom:9px')),
+  'a cell with a box and padding above': tr('r', td('a', 'padding-top:6px;padding-bottom:5px', '<div id="x" style="height:12px"></div>') + td('b', 'vertical-align:bottom;height:50px')),
+  'a row with a height': tr('r', td('a', 'padding-bottom:5px')).replace('<tr id="r">', '<tr id="r" style="height:50px">'),
+};
+for (const [name, rows] of Object.entries(NONE)) {
+  add(`no baseline, ${name}: alone`, () => tbl(rows));
+  add(`no baseline, ${name}: inline-table`, () => inLine('inline-table', tbl(rows)));
+  add(`no baseline, ${name}: flex row`, () => inLine('flex', tbl(rows)));
+}
+add('no baseline, a table with only an empty row: inline-table', () => inLine('inline-table', tbl(tr('r', ''))));
+add('no baseline, a table with a caption: inline-table', () => inLine('inline-table', tbl(`<caption id="cap" style="height:12px"></caption>` + tr('r', td('a', 'height:30px;padding-bottom:4px')))));
+
+document.fonts.load('20px GpuixTestSquare').then(() => {
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, build] of Object.entries(cases)) {
+  const html = build();
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+});
+</script></body></html>

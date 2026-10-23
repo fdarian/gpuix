@@ -1,0 +1,49 @@
+<!doctype html>
+<!--
+  Oracle for table-border-spacing.test.tsx: the boxes (`[x, y, width, height]` relative to the 300px case box) of every
+  element with an `id` that headless Chrome lays out for tables with a fractional `border-spacing`, at device scale 1
+  and 2. There is no text. Every cell holds a box of 10x10 CSS px. Regenerate (`table-border-spacing-oracle.json`
+  and `-x2.json`) with
+
+    sh dsf-oracle.sh table-border-spacing
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+table{border-collapse:separate}
+#case{position:absolute;left:0;top:0;width:300px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const cell = (id, style = '') => `<td id="${id}" style="${style}"><div id="${id}d" style="width:10px;height:10px"></div></td>`;
+const grid = (tableStyle, cellStyle) => `<table id="t" style="${tableStyle}"><tr id="r1">${cell('a', cellStyle)}${cell('b', cellStyle)}</tr><tr id="r2">${cell('c', cellStyle)}${cell('d', cellStyle)}</tr></table>`;
+const cases = {};
+for (const v of ['2.5', '2.3', '2.75', '0.5', '1.6', '0.4', '0.99', '1.01', '3.999', '0.25', '7.5', '10.2']) {
+  cases[`border-spacing ${v}px`] = () => grid(`border-spacing:${v}px`, '');
+  cases[`border-spacing ${v}px with a table border`] = () => grid(`border-spacing:${v}px;border:3px solid #000;padding:1.5px`, '');
+  cases[`border-spacing ${v}px fixed width`] = () => grid(`border-spacing:${v}px;table-layout:fixed;width:100px`, '');
+  cases[`border-spacing ${v}px wide table`] = () => grid(`border-spacing:${v}px;width:200px`, '');
+}
+for (const [h, v] of [['2.5', '1.6'], ['0.4', '2.75'], ['1.6', '0.4'], ['0.5', '0.5'], ['2.3', '2.75']]) {
+  cases[`border-spacing ${h}px ${v}px`] = () => grid(`border-spacing:${h}px ${v}px`, '');
+  cases[`border-spacing ${h}px ${v}px with a table border`] = () => grid(`border-spacing:${h}px ${v}px;border:3px solid #000`, '');
+}
+cases['border-spacing 0.75em'] = () => grid('border-spacing:0.75em;font-size:10px', '');
+cases['border-spacing 0.15in'] = () => grid('border-spacing:0.15in', '');
+cases['border-spacing 2.5px with a caption'] = () => `<table id="t" style="border-spacing:2.5px"><caption id="cap" style="height:12px"></caption><tr>${cell('a')}${cell('b')}</tr></table>`;
+cases['border-spacing 2.5px with a colspan'] = () => `<table id="t" style="border-spacing:2.5px"><tr>${cell('a')}${cell('b')}</tr><tr><td id="c" colspan="2" style="height:10px"></td></tr></table>`;
+cases['border-spacing 2.5px with a row group'] = () => `<table id="t" style="border-spacing:2.5px"><tbody id="g1"><tr>${cell('a')}${cell('b')}</tr></tbody><tbody id="g2"><tr>${cell('c')}${cell('d')}</tr></tbody></table>`;
+for (const v of ['2.5', '0.5', '1.6']) {
+  cases[`collapse with border-spacing ${v}px`] = () => grid(`border-collapse:collapse;border-spacing:${v}px`, '');
+  cases[`collapse with border-spacing ${v}px and borders`] = () => grid(`border-collapse:collapse;border-spacing:${v}px`, 'border:2px solid #000');
+}
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, build] of Object.entries(cases)) {
+  const html = build();
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes, scale: window.devicePixelRatio }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

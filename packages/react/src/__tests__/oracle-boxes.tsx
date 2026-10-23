@@ -1,4 +1,4 @@
-/// The markup of an oracle page (`fixtures/*-oracle.html`) whose cases are boxes: `div`s, `span`s and the table
+/// The markup of an oracle page (`fixtures/*-oracle.html`) whose cases are boxes: `div`s, `span`s, `img`s and the table
 /// elements, as the elements a gpuix tree has for them, and the boxes Chrome gave every element with an `id`.
 /// The `id` of an element is its `testId`. A table element becomes the `div` with the `display` the user agent
 /// stylesheet gives it, and `colspan`, `rowspan` and `span` become the props of the same name.
@@ -22,7 +22,7 @@ const DISPLAY: Record<string, string> = {
   colgroup: "table-column-group",
 }
 
-const VOID = new Set(["col"])
+const VOID = new Set(["col", "img"])
 const COUNTS: Record<string, string> = { colspan: "colSpan", rowspan: "rowSpan", span: "span" }
 
 interface Node {
@@ -73,6 +73,10 @@ function render(nodes: (Node | string)[], override: Override | undefined, key = 
       ...(display ? { display } : {}),
       ...styleOf(node.attrs.style ?? ""),
       ...(override && node.attrs.id === override.id ? override.style : {}),
+    }
+    if (node.tag === "img") {
+      const size = { width: Number(node.attrs.width), height: Number(node.attrs.height) }
+      return React.createElement("img", { ...props, src: node.attrs.src, style: { ...style, ...size } })
     }
     const Tag = node.tag === "span" ? "span" : "div"
     if (override?.motion && node.attrs.id === override.id) {
