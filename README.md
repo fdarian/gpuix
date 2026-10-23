@@ -8895,6 +8895,7 @@ Counters you read off the renderer:
   a culled subtree apart), and the scene primitives that painting inserted against
   the ones a replay put in again, and `boundsInserts`, the draw orders worked out with the
   scene's bounds tree (a patched tick works out those of what it paints again).
+  `dormantTicks` counts the frame callbacks that carried the animations of culled content on without drawing.
   A replayed subtree counts none of the elements under it. Subtract two reads to see what one hover frame did to the content that
   did not change.
 - `getRetainedCounters()`: subtrees GPUI skipped, replayed and had to build late,

@@ -1661,6 +1661,11 @@ export interface FrameWorkCounters {
    * orders it had pays none, so the cost of a patched tick is not that of the page.
    */
   boundsInserts: number
+  /**
+   * Frame callbacks that carried the animations of culled content on without drawing
+   * (`GpuixView::dormant_tick`).
+   */
+  dormantTicks: number
 }
 
 /** Every display, in the order the OS lists them. */

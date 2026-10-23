@@ -19,6 +19,9 @@ thread_local! {
     static UNITS_OVERSIZED: Cell<u64> = const { Cell::new(0) };
     static MOTIONS_SYNCED: Cell<u64> = const { Cell::new(0) };
     static MOTION_VALUES_SAMPLED: Cell<u64> = const { Cell::new(0) };
+    /// Not cleared by `reset`: it is read with the window's frame work counters, which run from
+    /// the window's creation and are subtracted by the reader.
+    static DORMANT_TICKS: Cell<u64> = const { Cell::new(0) };
     /// Elements by the reason they are, or are not, in a subtree a retained replay could reuse.
     static RETAIN_SLOTS: RefCell<[u64; crate::retain::SLOTS]> = const { RefCell::new([0; crate::retain::SLOTS]) };
 }
@@ -79,6 +82,15 @@ pub(crate) fn motion_synced() {
 
 pub(crate) fn motion_value_sampled() {
     MOTION_VALUES_SAMPLED.with(|count| count.set(count.get() + 1));
+}
+
+pub(crate) fn dormant_tick() {
+    DORMANT_TICKS.with(|count| count.set(count.get() + 1));
+}
+
+/// Dormant ticks run since the thread began, see `GpuixView::dormant_tick`.
+pub(crate) fn dormant_ticks() -> u64 {
+    DORMANT_TICKS.with(Cell::get)
 }
 
 pub(crate) fn retain_slot(slot: usize, elements: u64) {

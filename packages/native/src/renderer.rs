@@ -8716,6 +8716,7 @@ impl GpuixView {
     /// the instant of the tick.
     fn dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         self.dormant_tick_armed = false;
+        crate::perf_counters::dormant_tick();
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
