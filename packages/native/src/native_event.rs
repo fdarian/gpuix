@@ -6,7 +6,7 @@ use std::ffi::c_void;
 
 use napi::{Error, Result};
 use objc::rc::autoreleasepool;
-use objc::runtime::{Object, NO};
+use objc::runtime::{Object, NO, YES};
 use objc::{class, msg_send, sel, sel_impl, Encode, Encoding};
 
 type Id = *mut Object;
@@ -74,6 +74,13 @@ unsafe extern "C" {
     fn CFRelease(object: *const c_void);
 }
 
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    static kCFRunLoopDefaultMode: *const c_void;
+    fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: u8)
+        -> i32;
+}
+
 pub(crate) enum Kind {
     KeyDown,
     MouseMove(Point),
@@ -99,6 +106,36 @@ impl Kind {
             ))),
         }
     }
+}
+
+/// Hands every event AppKit has queued for the application to `-[NSApp sendEvent:]` without
+/// waiting, and runs the main run loop once, which drains the main dispatch queue block that
+/// the run-loop wake sends. Returns how many events it sent.
+///
+/// # Safety
+///
+/// This must run on the main thread, and `NSApplication` must exist.
+pub(crate) unsafe fn drain_app_events() -> usize {
+    autoreleasepool(|| unsafe {
+        let app: Id = msg_send![class!(NSApplication), sharedApplication];
+        let past: Id = msg_send![class!(NSDate), distantPast];
+        let mode = kCFRunLoopDefaultMode as Id;
+        let mut sent = 0;
+        loop {
+            let event: Id = msg_send![app,
+                nextEventMatchingMask: u64::MAX
+                untilDate: past
+                inMode: mode
+                dequeue: YES];
+            if event.is_null() {
+                break;
+            }
+            let _: () = msg_send![app, sendEvent: event];
+            sent += 1;
+        }
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, 1);
+        sent
+    })
 }
 
 /// Posts the events of `kind` for the window that holds `ns_view`. `x` and `y` are in the

@@ -543,6 +543,31 @@ export declare class TestGpuixRenderer {
    */
   dispose(): void
   /**
+   * Wake JavaScript when the main run loop has work, like `GpuixRenderer.setFrameWakeCallback`:
+   * input that AppKit receives for the test window (`postNativeEvent`) is the usual wake, since
+   * the test window draws no frames. Returns true on macOS, false elsewhere. Pass null to clear.
+   */
+  setFrameWakeCallback(callback?: (() => void) | undefined | null): boolean
+  /**
+   * Whether JavaScript must call `tick()` for the frame loop: only where `setFrameWakeCallback`
+   * is.
+   */
+  requiresTick(): boolean
+  /**
+   * Hands the input AppKit has queued for the test window to it, without waiting, then runs the
+   * test context until it is parked. Draws nothing: frames stay `flush` and `drawFrame`.
+   * Returns true, since a test window stays open until `dispose`.
+   */
+  tick(): boolean
+  /**
+   * Posts a real NSEvent for the test window from `com.apple.NSEventThread`, as
+   * `GpuixRenderer.postNativeEvent` does: `kind` is `"keyDown"` (the key `a`), `"mouseMove"`,
+   * `"click"` or `"scroll"` (3 lines down); the last three need `x` and `y`, in logical pixels
+   * from the window's top left. The window is neither key nor on screen, and nothing reaches
+   * the OS. `tick()` is what delivers it to the window.
+   */
+  postNativeEvent(kind: string, x?: number | undefined | null, y?: number | undefined | null): void
+  /**
    * Registers the function native calls synchronously for `keydown` and
    * `keyup`; see `GpuixRenderer::setSyncEventHandler`. Without one, those
    * events are queued for `drainEvents` like every other.

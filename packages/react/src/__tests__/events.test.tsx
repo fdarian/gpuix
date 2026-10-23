@@ -162,6 +162,91 @@ describe("frame loop", () => {
     40_000,
   )
 
+  // The same wake path as the live test above, on the test renderer: its window is not key and
+  // not on screen, and `tick()` hands AppKit's queue for it to the window.
+  it.skipIf(process.platform !== "darwin" || !hasNativeTestRenderer)(
+    "wakes an idle test-renderer wake loop for input that AppKit receives, and runs its handler in that tick",
+    async () => {
+      const handled: { kind: string; at: number }[] = []
+      const note = (kind: string) => () => {
+        handled.push({ kind, at: performance.now() })
+      }
+      const testRoot = createTestRoot({ onKeyDown: note("keyDown") })
+      const renderer = testRoot.renderer
+      try {
+        testRoot.render(
+          <div
+            style={{ width: "100%", height: "100%" }}
+            tabIndex={0}
+            onMouseMove={note("mouseMove")}
+            onClick={note("click")}
+            onWheel={note("scroll")}
+          />,
+        )
+        const wakes: number[] = []
+        const loop = startFrameLoop({
+          requiresTick: () => renderer.requiresTick(),
+          tick: () => renderer.tick(),
+          setFrameWakeCallback: (callback) =>
+            renderer.setFrameWakeCallback(
+              callback &&
+                (() => {
+                  wakes.push(performance.now())
+                  callback()
+                }),
+            ),
+        })
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+        try {
+          const size = renderer.getWindowSize()
+          // The window's own startup work and the launch measurements wake the loop in bursts for
+          // up to ~6 s, with gaps of seconds.
+          const launchedAt = performance.now()
+          const settle = async (): Promise<number> => {
+            for (;;) {
+              const now = performance.now()
+              const quiet = now - (wakes.length === 0 ? launchedAt : wakes[wakes.length - 1])
+              if (quiet >= 800 && now - launchedAt >= 7000) return quiet
+              if (now - launchedAt > 20_000) throw new Error("the wake loop did not settle in 20 s")
+              await sleep(20)
+            }
+          }
+          await settle()
+          const idleFrom = wakes.length
+          await sleep(2000)
+          // #77: an idle window gets no wakes.
+          expect(wakes.length - idleFrom, "wakes over 2 s idle").toBe(0)
+
+          const latencies: Record<string, { postToWakeMs: number; postToHandlerMs: number }> = {}
+          for (const kind of ["keyDown", "mouseMove", "click", "scroll"]) {
+            // No wake between the settle and the post, so the wake is the event's.
+            await settle()
+            const wakesBefore = wakes.length
+            const handledBefore = handled.length
+            const postedAt = performance.now()
+            renderer.postNativeEvent(kind, size.width / 2, size.height / 2)
+            await sleep(200)
+            expect(wakes.length, `${kind} woke`).toBeGreaterThan(wakesBefore)
+            const first = handled.slice(handledBefore).find((entry) => entry.kind === kind)
+            expect(first, `${kind} handler ran`).toBeDefined()
+            latencies[kind] = {
+              postToWakeMs: wakes[wakesBefore] - postedAt,
+              postToHandlerMs: first!.at - postedAt,
+            }
+            expect(latencies[kind].postToWakeMs, `${kind} wake latency`).toBeLessThanOrEqual(20)
+            expect(latencies[kind].postToHandlerMs, `${kind} handler latency`).toBeLessThanOrEqual(50)
+          }
+          console.log(`test renderer post -> wake -> handler latencies: ${JSON.stringify(latencies)}`)
+        } finally {
+          loop.stop()
+        }
+      } finally {
+        testRoot.unmount()
+      }
+    },
+    40_000,
+  )
+
   it.skipIf(process.platform !== "darwin")(
     "arms no timer on an idle wake loop and keeps replacement loops registered",
     () => {

@@ -1373,7 +1373,7 @@ type FrameWakeHook = Arc<dyn Fn() + Send + Sync>;
 /// is dropped instead of queued behind it.
 #[cfg(target_os = "macos")]
 #[derive(Default)]
-struct FrameWake {
+pub(crate) struct FrameWake {
     pending: Arc<std::sync::atomic::AtomicBool>,
     /// The closure the run-loop watch calls, kept here so the test thread calls the same one.
     hook: Arc<Mutex<Option<FrameWakeHook>>>,
@@ -1385,7 +1385,38 @@ struct FrameWake {
 
 #[cfg(target_os = "macos")]
 impl FrameWake {
-    fn clear(&self) {
+    /// Makes `callback` what the run-loop watch wakes, at most once until `tick_finished`.
+    pub(crate) fn install(&self, callback: Function<(), ()>) -> Result<()> {
+        use std::sync::atomic::Ordering;
+
+        let pending = self.pending.clone();
+        pending.store(false, Ordering::Release);
+        let wake = callback
+            .build_threadsafe_function::<()>()
+            .callee_handled::<false>()
+            .weak::<true>()
+            .build_callback(|_| Ok(()))?;
+        let hook: FrameWakeHook = Arc::new(move || {
+            if !pending.swap(true, Ordering::AcqRel)
+                && wake.call((), ThreadsafeFunctionCallMode::NonBlocking) != napi::Status::Ok
+            {
+                pending.store(false, Ordering::Release);
+            }
+        });
+        *self.hook.lock().unwrap() = Some(hook.clone());
+        gpui_macos::set_run_loop_wake_hook(Some(hook));
+        Ok(())
+    }
+
+    /// After the frame, on every path: a wake that landed during it was dropped, and the
+    /// watch only wakes again once it is told the run loop was pumped.
+    pub(crate) fn tick_finished(&self) {
+        self.pending
+            .store(false, std::sync::atomic::Ordering::Release);
+        gpui_macos::run_loop_pumped();
+    }
+
+    pub(crate) fn clear(&self) {
         gpui_macos::set_run_loop_wake_hook(None);
         self.hook.lock().unwrap().take();
         self.pending
@@ -2237,12 +2268,7 @@ impl GpuixRenderer {
                 }
                 Ok(running)
             });
-            // After the frame, on every path: a wake that landed during it was dropped, and the
-            // watch only wakes again once it is told the run loop was pumped.
-            self.frame_wake
-                .pending
-                .store(false, std::sync::atomic::Ordering::Release);
-            gpui_macos::run_loop_pumped();
+            self.frame_wake.tick_finished();
             return result;
         }
 
@@ -2300,8 +2326,6 @@ impl GpuixRenderer {
     pub fn set_frame_wake_callback(&self, callback: Option<Function<(), ()>>) -> Result<bool> {
         #[cfg(target_os = "macos")]
         {
-            use std::sync::atomic::Ordering;
-
             let Some(callback) = callback else {
                 self.frame_wake.clear();
                 return Ok(true);
@@ -2311,22 +2335,7 @@ impl GpuixRenderer {
                     "Call init() before setting a frame wake callback",
                 ));
             }
-            let pending = self.frame_wake.pending.clone();
-            pending.store(false, Ordering::Release);
-            let wake = callback
-                .build_threadsafe_function::<()>()
-                .callee_handled::<false>()
-                .weak::<true>()
-                .build_callback(|_| Ok(()))?;
-            let hook: FrameWakeHook = Arc::new(move || {
-                if !pending.swap(true, Ordering::AcqRel)
-                    && wake.call((), ThreadsafeFunctionCallMode::NonBlocking) != napi::Status::Ok
-                {
-                    pending.store(false, Ordering::Release);
-                }
-            });
-            *self.frame_wake.hook.lock().unwrap() = Some(hook.clone());
-            gpui_macos::set_run_loop_wake_hook(Some(hook));
+            self.frame_wake.install(callback)?;
             return Ok(true);
         }
 

@@ -604,6 +604,10 @@ pub struct TestGpuixRenderer {
     /// The buttons held by simulated presses, left, middle, right. A real OS puts the held
     /// button on every move it reports, so every simulated move and exit does too.
     held_buttons: Mutex<[bool; 3]>,
+    /// The run-loop wake `setFrameWakeCallback` installs, the same path the live renderer wakes JS
+    /// on, so input AppKit receives for the test window wakes an idle frame loop.
+    #[cfg(target_os = "macos")]
+    frame_wake: crate::renderer::FrameWake,
 }
 
 impl TestGpuixRenderer {
@@ -798,6 +802,8 @@ impl TestGpuixRenderer {
             window_actions,
             media: Arc::new(Mutex::new(crate::media::TestMedia::default())),
             held_buttons: Mutex::new([false; 3]),
+            #[cfg(target_os = "macos")]
+            frame_wake: Default::default(),
         })
     }
 
@@ -806,7 +812,87 @@ impl TestGpuixRenderer {
     /// root is unmounted.
     #[napi]
     pub fn dispose(&self) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        self.frame_wake.clear();
         dispose_test_state(Some(self.id))
+    }
+
+    /// Wake JavaScript when the main run loop has work, like `GpuixRenderer.setFrameWakeCallback`:
+    /// input that AppKit receives for the test window (`postNativeEvent`) is the usual wake, since
+    /// the test window draws no frames. Returns true on macOS, false elsewhere. Pass null to clear.
+    #[napi]
+    pub fn set_frame_wake_callback(&self, callback: Option<Function<(), ()>>) -> Result<bool> {
+        #[cfg(target_os = "macos")]
+        {
+            match callback {
+                Some(callback) => self.frame_wake.install(callback)?,
+                None => self.frame_wake.clear(),
+            }
+            Ok(true)
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = callback;
+            Ok(false)
+        }
+    }
+
+    /// Whether JavaScript must call `tick()` for the frame loop: only where `setFrameWakeCallback`
+    /// is.
+    #[napi]
+    pub fn requires_tick(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
+    /// Hands the input AppKit has queued for the test window to it, without waiting, then runs the
+    /// test context until it is parked. Draws nothing: frames stay `flush` and `drawFrame`.
+    /// Returns true, since a test window stays open until `dispose`.
+    #[napi]
+    pub fn tick(&self) -> Result<bool> {
+        #[cfg(target_os = "macos")]
+        {
+            let result = with_test_state(|cx, _window, _view| {
+                // SAFETY: napi calls run on the main thread, and the test platform has made
+                // NSApplication.
+                unsafe { crate::native_event::drain_app_events() };
+                cx.run_until_parked();
+                Ok(())
+            });
+            self.frame_wake.tick_finished();
+            result?;
+            Ok(true)
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        Ok(true)
+    }
+
+    /// Posts a real NSEvent for the test window from `com.apple.NSEventThread`, as
+    /// `GpuixRenderer.postNativeEvent` does: `kind` is `"keyDown"` (the key `a`), `"mouseMove"`,
+    /// `"click"` or `"scroll"` (3 lines down); the last three need `x` and `y`, in logical pixels
+    /// from the window's top left. The window is neither key nor on screen, and nothing reaches
+    /// the OS. `tick()` is what delivers it to the window.
+    #[napi]
+    pub fn post_native_event(&self, kind: String, x: Option<f64>, y: Option<f64>) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            let kind = crate::native_event::Kind::parse(&kind, x, y)?;
+            let ns_view = with_test_state(|cx, window, _view| {
+                cx.update_window(window, |_, window, _| appkit::ns_view(window))
+                    .map_err(|error| Error::from_reason(error.to_string()))?
+            })?;
+            // SAFETY: the view is the live content view of the test window, and napi calls run
+            // on the main thread.
+            unsafe { crate::native_event::post(ns_view, kind) };
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (kind, x, y);
+            Err(Error::from_reason("postNativeEvent needs macOS"))
+        }
     }
 
     /// Registers the function native calls synchronously for `keydown` and

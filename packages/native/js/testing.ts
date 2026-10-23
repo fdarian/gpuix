@@ -66,6 +66,10 @@ interface NativeTestRendererApi
   flush(): void
   flushIfDirty(): void
   drainEvents(): EventPayload[]
+  setFrameWakeCallback(callback?: (() => void) | null): boolean
+  requiresTick(): boolean
+  tick(): boolean
+  postNativeEvent(kind: string, x?: number | null, y?: number | null): void
   simulateKeystrokes(keystrokes: string): void
   setSyncEventHandler(handler: ((event: EventPayload) => SyncDispatchResult) | null): void
   dispose(): void
@@ -533,6 +537,39 @@ export class TestRenderer implements NativeRenderer {
   /** Drain events collected by the native GPUI event handlers. */
   drainEvents(): EventPayload[] {
     return this.native.drainEvents()
+  }
+
+  // ── Frame loop ──────────────────────────────────────────────────
+  // The surface `startFrameLoop` drives, so the wake path can be checked without a live window.
+  // The test window draws no frames: a tick delivers the input AppKit has queued for it.
+
+  /** Wakes `callback` when the main run loop has work, as `GpuixRenderer.setFrameWakeCallback`
+   *  does. Returns true on macOS. Pass null to clear. */
+  setFrameWakeCallback(callback?: (() => void) | null): boolean {
+    return this.native.setFrameWakeCallback(callback)
+  }
+
+  /** Whether `startFrameLoop` must tick this renderer: true on macOS. */
+  requiresTick(): boolean {
+    return this.native.requiresTick()
+  }
+
+  /** One frame-loop step: hands the input AppKit queued for the test window (see
+   *  `postNativeEvent`) to it, then to the JS handlers, as `dispatchNativeEvents` does. Draws
+   *  nothing: frames stay `flush` and `drawFrame`. */
+  tick(): boolean {
+    const running = this.native.tick()
+    this.dispatchNativeEvents()
+    return running
+  }
+
+  /** Posts a real NSEvent for the test window from `com.apple.NSEventThread`, the way AppKit
+   *  receives input, so an idle `startFrameLoop(testRenderer)` is woken by it. `kind` is
+   *  `"keyDown"` (the key `a`), `"mouseMove"`, `"click"` or `"scroll"` (3 lines down); the last
+   *  three need `x` and `y` in logical pixels from the window's top left. The window is neither
+   *  made key nor shown, and nothing reaches the OS. `tick()` delivers the event. */
+  postNativeEvent(kind: string, x?: number, y?: number): void {
+    this.native.postNativeEvent(kind, x, y)
   }
 
   // ── Native end-to-end simulation ────────────────────────────────
