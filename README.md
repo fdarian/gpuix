@@ -3963,10 +3963,12 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   height of a table shared out over its rows and row groups (each share cut, the last row taking what the cuts
   leave). A percentage `top` or `bottom` of a relatively positioned box is of the height of its container, and `auto`
   when that height is not known before the content is laid out (an auto height, a `min-height`: a child's percentage
-  `height` is `auto` there too). A few
-  cases are still a 64th off: the leftover of `minmax(%, 1fr)` next to a `1fr` track, the
-  `align-content: stretch` of a wrapping flex container at 2x, and a flex item centred in its container (its offset
-  is not truncated, so a centred label can be a 64th off).
+  `height` is `auto` there too). The width of `fr` tracks is cut to 1/64 with the fraction carried to the next
+  track (`250.3px minmax(10%, 1fr) 1fr`, three `1fr` of a width that does not divide), free space is halved and
+  divided in 1/64 cut toward zero (`justify-content`, `align-items`, `align-content`, a table cell's `verticalAlign`,
+  auto margins, a centred absolute child), and a flex container gives the remainder of `space-between`, `space-around`,
+  `space-evenly` and a stretched `align-content` to its lines and items one 64th at a time, as Chrome does, where a grid
+  drops it.
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
   its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
   inlines is its line box, since it has no text to take the content area of its font from (a browser

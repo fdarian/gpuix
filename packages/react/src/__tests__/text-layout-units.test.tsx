@@ -63,7 +63,7 @@ describeNative("a cap-trimmed label in a fixed-height box", () => {
         )
         const label = rect("label")
         const box = rect("box")
-        within(label.top - box.top, sample.y, "label y", UNIT)
+        within(label.top - box.top, sample.y, "label y", 1e-6)
         within(label.width, sample.w, "label width", UNIT)
         within(label.height, sample.h, "label height", UNIT)
         const above = label.top - box.top

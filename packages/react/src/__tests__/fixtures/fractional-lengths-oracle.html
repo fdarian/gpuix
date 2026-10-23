@@ -289,6 +289,137 @@ for (const inset of ['top:10%', 'bottom:7.3%', 'top:10%;left:12.5%'])
 add('percent height of a parent with a min-height', box('p', 'width:200px;min-height:100px', box('a', 'width:20px;height:50%;min-height:3px') + box('s', 'height:10px')));
 add('percent height of a parent with a min-height and a height', box('p', 'width:200px;height:50px;min-height:100px', box('a', 'width:20px;height:50%') + box('s', 'height:10px')));
 
+// Grid fr tracks (ExpandFlexibleTracks): the fraction is a float of 1/64 units, the share of a track is cut to a unit
+// and the fraction left goes on to the next flexible track, so `minmax(10%, 1fr)` beside `1fr` and three `1fr` tracks of
+// a width that does not divide differ from an even split.
+const gridOf = (style, count, cell = 'height:10px') => box('o', `display:grid;${style}`, Array.from({ length: count }, (_, k) => box('abcdefgh'[k], cell)).join(''));
+const FR_COLUMNS = [
+  ['250.3px minmax(10%,1fr) 1fr', 3], ['minmax(10%,2fr) 1fr', 2], ['minmax(20%,1fr) 1fr 1fr', 3], ['1fr 1fr 1fr', 3], ['1fr 2fr 3fr', 3],
+  ['minmax(5.3%,1.5fr) 0.7fr 1fr', 3], ['minmax(40%,1fr) 1fr', 2], ['50.3px 1fr 1fr 1fr', 4], ['minmax(33.3px,1fr) 1fr 1fr', 3],
+  ['1fr 1fr 1fr 1fr 1fr 1fr 1fr', 7],
+];
+for (const [columns, count] of FR_COLUMNS)
+  for (const width of [100, 100.3, 101.7, 200.7, 299.9, 301.3])
+    if (!columns.startsWith('250.3px') || width > 260) add(`grid fr ${columns} in ${width}`, gridOf(`width:${width}px;grid-template-columns:${columns}`, count));
+for (const [columns, count] of [['minmax(10%,1fr) 1fr', 2], ['minmax(10%,1fr) 1fr 1fr', 3], ['minmax(5.3%,2fr) 1fr', 2]])
+  for (const width of [100.3, 299.9])
+    add(`grid fr ${columns} with a gap of 3.3px in ${width}`, gridOf(`width:${width}px;gap:3.3px;grid-template-columns:${columns}`, count));
+for (const [rows, count] of [['minmax(10%,1fr) 1fr', 2], ['1fr 1fr 1fr', 3], ['20.3px minmax(10%,1fr) 1fr', 3]])
+  for (const height of [100.3, 97.7])
+    add(`grid fr rows ${rows} in ${height}`, gridOf(`width:50px;height:${height}px;grid-template-rows:${rows}`, count, 'width:10px'));
+
+// Flex lines (LayoutUnitDiffuser): align-content stretches the lines by the free space diffused over them in order, and
+// space-between, space-around and space-evenly diffuse it between them; free space and centring are in 1/64, cut
+// toward zero. A line is two items of 50px in a 100px container, each line as high as its first item.
+const LINE_HEIGHTS = [10, 11.3, 13, 7.7, 9, 12.1, 8];
+const wrapped = (n, style, extra = (k) => '') => box('o', `display:flex;flex-wrap:wrap;width:100px;${style}`,
+  Array.from({ length: 2 * n }, (_, k) => box(`i${k + 1}`, `width:50px;height:${LINE_HEIGHTS[k >> 1]}px;${extra(k)}`)).join(''));
+for (const n of [3, 5, 7])
+  for (const height of [100.3, 97.7, 101])
+    for (const content of ['stretch', 'normal', 'space-between', 'space-around', 'space-evenly', 'center', 'flex-end', 'start'])
+      add(`flex lines ${n} ${content} in ${height}`, wrapped(n, `height:${height}px;align-content:${content}`));
+for (const n of [3, 5])
+  for (const content of ['stretch', 'space-between', 'space-around', 'space-evenly', 'center'])
+    add(`flex lines ${n} ${content} with a gap of 2.3px`, wrapped(n, `height:100.3px;row-gap:2.3px;align-content:${content}`));
+for (const content of ['stretch', 'space-between', 'space-around', 'space-evenly', 'center'])
+  add(`flex lines 5 ${content} wrap-reverse`, wrapped(5, `height:100.3px;flex-wrap:wrap-reverse;align-content:${content}`));
+for (const content of ['stretch', 'space-between', 'space-around', 'space-evenly', 'center', 'flex-end'])
+  add(`flex lines 5 ${content} overflowing`, wrapped(5, `height:40.3px;align-content:${content}`));
+for (const content of ['stretch', 'space-between', 'space-around', 'space-evenly', 'center'])
+  add(`flex lines 3 ${content} in a column`, box('o', `display:flex;flex-direction:column;flex-wrap:wrap;height:100px;width:101.3px;align-content:${content}`,
+    Array.from({ length: 6 }, (_, k) => box(`i${k + 1}`, `height:50px;width:${LINE_HEIGHTS[k >> 1]}px`)).join('')));
+add('flex lines 3 stretch with min-height', wrapped(3, 'min-height:100.3px;align-content:stretch'));
+add('flex lines 3 stretch with padding', wrapped(3, 'height:105.7px;padding:2.3px 0;align-content:stretch'));
+
+// justify-content in a row: free space of the line in 1/64, space-between/around/evenly diffused over the items.
+const run = (n, width, style, itemWidth = 11.3, itemStyle = (k) => '') => box('o', `display:flex;width:${width}px;${style}`,
+  Array.from({ length: n }, (_, k) => box(`i${k + 1}`, `width:${itemWidth}px;height:10px;${itemStyle(k)}`)).join(''));
+for (const n of [3, 5, 7])
+  for (const width of [100, 100.3, 99.9, 101.7])
+    for (const content of ['center', 'space-between', 'space-around', 'space-evenly', 'flex-end'])
+      add(`flex justify ${n} ${content} in ${width}`, run(n, width, `justify-content:${content}`));
+for (const content of ['center', 'space-between', 'space-around', 'space-evenly'])
+  for (const direction of ['row-reverse', 'column', 'column-reverse'])
+    add(`flex justify 5 ${content} ${direction}`, direction.startsWith('row')
+      ? run(5, 100.3, `justify-content:${content};flex-direction:${direction}`)
+      : box('o', `display:flex;flex-direction:${direction};height:100.3px;justify-content:${content}`, Array.from({ length: 5 }, (_, k) => box(`i${k + 1}`, 'width:10px;height:11.3px')).join('')));
+for (const content of ['center', 'space-between', 'space-around', 'space-evenly'])
+  add(`flex justify 5 ${content} with a gap of 2.3px`, run(5, 100.3, `justify-content:${content};column-gap:2.3px`));
+for (const content of ['center', 'space-around', 'space-evenly', 'space-between', 'flex-end'])
+  add(`flex justify 3 ${content} overflowing`, run(3, 30.3, `justify-content:${content}`, 21.3));
+for (const content of ['center', 'space-around'])
+  add(`flex justify 1 ${content}`, run(1, 100.3, `justify-content:${content}`));
+add('flex justify center in a width of 1/64 units', run(2, 100.015625, 'justify-content:center', 50));
+add('flex justify center in a width of 1/64 units wide items', run(3, 50.015625, 'justify-content:center', 11));
+
+// align-items and align-self center, cross auto margins: space / 2 cut toward zero (`safe` has no way to be written in the API, so only the default is compared).
+for (const height of [100.015625, 100.3, 100.7, 99.9, 31.7])
+  for (const item of [10, 10.3, 10.7])
+    add(`flex align-items center ${item} in ${height}`, box('o', `display:flex;width:100px;height:${height}px;align-items:center`,
+      box('a', `width:20px;height:${item}px`) + box('b', `width:20px;height:${item * 1.7}px;align-self:flex-start`) + box('c', `width:20px;height:${item}px;margin-top:auto;margin-bottom:auto`) +
+      box('d', `width:20px;height:${item}px;margin-top:auto`) + box('e', `width:20px;height:${item}px;margin-bottom:auto`)));
+for (const height of [5.3, 20.3])
+  for (const mode of ['center'])
+    add(`flex align-items ${mode} overflowing in ${height}`, box('o', `display:flex;width:100px;height:${height}px;align-items:${mode}`,
+      box('a', 'width:20px;height:10.7px') + box('b', 'width:20px;height:31.7px') + box('c', 'width:20px;height:10px;margin-top:auto;margin-bottom:auto')));
+for (const width of [100.015625, 100.3, 99.9])
+  add(`flex column align-items center in ${width}`, box('o', `display:flex;flex-direction:column;width:${width}px;align-items:center`,
+    box('a', 'width:20.3px;height:10px') + box('b', 'width:33.3px;height:10px') + box('c', 'width:21px;height:10px;margin-left:auto;margin-right:auto')));
+add('flex align-items center multi-line', wrapped(3, 'height:100.3px;align-items:center;align-content:flex-start', (k) => `height:${LINE_HEIGHTS[k >> 1] * (1 + (k & 1) * 0.3)}px`));
+add('flex align-self center wrap-reverse', wrapped(3, 'height:100.3px;align-items:center;align-content:flex-start;flex-wrap:wrap-reverse', (k) => `height:${LINE_HEIGHTS[k >> 1] * (1 + (k & 1) * 0.3)}px`));
+
+// Main-axis auto margins are the free space diffused over them (they come before justify-content).
+for (const n of [2, 3, 5])
+  for (const width of [100.3, 101.7, 99.9, 100.015625])
+    add(`flex auto margins ${n} in ${width}`, run(n, width, '', 13.3, () => 'margin-left:auto;margin-right:auto'));
+for (const width of [100.3, 101.7])
+  for (const [name, style] of [['left of one', (k) => k === 1 ? 'margin-left:auto' : ''], ['right of one', (k) => k === 1 ? 'margin-right:auto' : ''],
+    ['both of two', (k) => k % 2 ? 'margin:0 auto' : ''], ['left of three', () => 'margin-left:auto']])
+    add(`flex auto margins ${name} in ${width}`, run(5, width, '', 11.3, style));
+add('flex auto margins with justify-content center', run(3, 100.3, 'justify-content:center', 13.3, (k) => k === 1 ? 'margin-left:auto' : ''));
+add('flex auto margins with justify-content space-between', run(3, 100.3, 'justify-content:space-between', 13.3, (k) => k === 1 ? 'margin-left:auto' : ''));
+add('flex auto margins in a column', box('o', 'display:flex;flex-direction:column;height:100.3px', Array.from({ length: 3 }, (_, k) => box(`i${k + 1}`, `height:13.3px;width:10px;margin-top:auto;margin-bottom:auto`)).join('')));
+add('flex auto margins in a row-reverse', run(3, 100.3, 'flex-direction:row-reverse', 13.3, () => 'margin-left:auto;margin-right:auto'));
+add('flex auto margins overflowing', run(3, 30.3, '', 21.3, () => 'margin-left:auto;margin-right:auto'));
+
+// An absolutely positioned child with no insets of a flex container is placed where its static position is: the
+// container's centre when it centres (total / 2 cut toward zero) and the child is centred on it.
+for (const [width, height] of [[100.3, 50.7], [100.015625, 50.015625], [101.7, 33.3]])
+  for (const [justify, align] of [['center', 'center'], ['center', 'flex-start'], ['flex-end', 'center'], ['space-around', 'flex-end']]) {
+    const child = box('a', 'position:absolute;width:33.3px;height:11.1px');
+    add(`flex absolute child ${justify} ${align} in ${width} x ${height}`, box('o', `position:relative;display:flex;width:${width}px;height:${height}px;justify-content:${justify};align-items:${align}`, child + box('s', 'width:10px;height:10px')));
+    add(`flex absolute child ${justify} ${align} in a column ${width} x ${height}`, box('o', `position:relative;display:flex;flex-direction:column;width:${width}px;height:${height}px;justify-content:${justify};align-items:${align}`, child + box('s', 'width:10px;height:10px')));
+  }
+
+// Grid content distribution and self alignment (grid_track_sizing_algorithm.cc, AlignmentOffset): cut toward zero,
+// but the free space of space-between/around/evenly is not diffused, and space-around's half is cut again.
+const cellsOf = (style, count, cell = 'width:20.3px;height:11.3px') => box('o', `display:grid;${style}`, Array.from({ length: count }, (_, k) => box('abcdefghi'[k], cell)).join(''));
+for (const width of [100.7, 100, 99.9, 100.015625])
+  for (const content of ['center', 'space-between', 'space-around', 'space-evenly', 'end'])
+    add(`grid justify-content ${content} in ${width}`, cellsOf(`width:${width}px;grid-template-columns:repeat(3,20.3px);justify-content:${content}`, 3));
+for (const height of [100.7, 99.9, 100.015625])
+  for (const content of ['center', 'space-between', 'space-around', 'space-evenly', 'end'])
+    add(`grid align-content ${content} in ${height}`, cellsOf(`width:100px;height:${height}px;grid-template-rows:repeat(3,11.3px);align-content:${content}`, 3));
+for (const content of ['center', 'space-between', 'space-around', 'space-evenly'])
+  add(`grid justify-content ${content} overflowing`, cellsOf(`width:50.3px;grid-template-columns:repeat(3,20.3px);justify-content:${content}`, 3));
+for (const [width, height] of [[100.7, 40.7], [100, 40], [99.9, 41.3], [100.015625, 40.015625]])
+  add(`grid self center in ${width} x ${height}`, box('o', `display:grid;width:${width}px;height:${height}px;grid-template-columns:50.3px 1fr;grid-template-rows:20.3px 1fr`,
+    box('a', 'width:11.3px;height:10.7px;justify-self:center;align-self:center') + box('b', 'width:11.3px;height:10.7px;margin:auto') +
+    box('c', 'width:11.3px;height:10.7px;justify-self:center;align-self:center;margin-left:2.3px;margin-top:1.3px') + box('d', 'width:11.3px;height:10.7px;margin-left:auto;margin-top:auto')));
+add('grid self center overflowing', box('o', 'display:grid;width:100px;height:20px;grid-template-columns:5.3px 1fr;grid-template-rows:5.3px 1fr',
+  box('a', 'width:11.3px;height:10.7px;justify-self:center;align-self:center') + box('b', 'width:11.3px;height:10.7px;justify-self:center;align-self:center;margin-left:1px')));
+for (const [width, height] of [[100.3, 50.7], [100.015625, 50.015625]])
+  for (const [justify, align] of [['center', 'center'], ['end', 'center'], ['center', 'end']])
+    add(`grid absolute child ${justify} ${align} in ${width} x ${height}`, box('o', `position:relative;display:grid;width:${width}px;height:${height}px;justify-items:${justify};align-items:${align}`,
+      box('a', 'position:absolute;width:33.3px;height:11.1px') + box('s', 'width:10px;height:10px')));
+
+// A table cell with `vertical-align: middle` and a block with auto margins.
+for (const [height, first, second] of [[40.3, 10.3, 7.7], [40.3, 10.7, 7.1], [41.7, 10.7, 7.1], [40, 10.1, 9.9]])
+  for (const align of ['middle', 'bottom'])
+    add(`table cell vertical-align ${align} in ${height} of ${first} and ${second}`, `<table id="t" style="border-collapse:separate;border-spacing:0;width:50px;height:${height}px"><tbody id="b"><tr id="r1"><td id="c1" style="padding:0;vertical-align:${align}"><div id="d1" style="height:${first}px"></div></td><td id="c2" style="padding:0;vertical-align:${align}"><div id="d2" style="height:${second}px"></div></td></tr></tbody></table>`);
+for (const width of [100.3, 100.015625, 99.9, 101.7])
+  add(`block auto margins in ${width}`, box('o', `width:${width}px;overflow:hidden`, box('a', 'width:33.3px;height:10px;margin:0 auto') + box('b', 'width:20.7px;height:10px;margin-left:auto;margin-right:auto') + box('e', 'width:20.1px;height:10px;margin:0 auto') + box('c', 'width:30px;height:10px;margin-left:auto') + box('d', 'width:33.3px;height:10px;margin-right:auto')));
+
 const adjacentFlex = (extra) => box('o', `display:flex;width:100px;${extra}`, box('a', 'width:33.3px;height:20px') + box('b', 'width:33.3px;height:20px') + box('c', 'width:33.4px;height:20px'));
 add('adjacent 33.3 33.3 33.4 flex', adjacentFlex(''), { paint: true, scans: [hscan(10, -5, 110)] });
 add('adjacent 33.3 33.3 33.4 flex at 0.5px', adjacentFlex('margin-left:0.5px'), { paint: true, scans: [hscan(10, -5, 110)] });
