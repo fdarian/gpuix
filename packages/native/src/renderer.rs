@@ -6437,12 +6437,15 @@ impl GpuixView {
             }
         } else {
             let pointer = window.mouse_position();
+            let window_id = window.window_handle().window_id();
             let mut under_pointer: Vec<(f32, u64, &gpui::ScrollHandle)> = self
                 .scroll_handles
                 .iter()
                 .filter_map(|(id, handle)| {
                     let port = handle.padding_box();
-                    port.contains(&pointer).then(|| {
+                    // The port is in the space the scroller lays out in, which a transform maps to the window.
+                    let local = crate::automation::get_bounds(window_id, *id)?.to_local_point(pointer)?;
+                    port.contains(&local).then(|| {
                         (f32::from(port.size.width) * f32::from(port.size.height), *id, handle)
                     })
                 })
@@ -6464,7 +6467,16 @@ impl GpuixView {
         id: u64,
         options: crate::scroll::IntoView,
     ) -> bool {
-        let target = painted_rect(window.window_handle().window_id(), id);
+        let window_id = window.window_handle().window_id();
+        // The box to align is the one the nearest scroller sees: where a transform puts the element in
+        // the space the scroller lays out in.
+        let nearest_scroller = {
+            let tree = self.tree.lock().unwrap();
+            crate::layout::containing_block::reaching_ancestors(&tree, id)
+                .into_iter()
+                .find(|ancestor| self.scroll_handles.contains_key(ancestor))
+        };
+        let target = painted_rect_in(window_id, id, nearest_scroller);
         self.scroll_element_into_view_at(window, id, options, target)
     }
 
@@ -8085,12 +8097,18 @@ impl GpuixView {
 
 /// The box `id` was last painted or laid out with, for the scrolls that align it.
 pub(crate) fn painted_rect(window_id: gpui::WindowId, id: u64) -> Option<crate::scroll::Rect> {
-    crate::automation::get_bounds(window_id, id).map(|painted| crate::scroll::Rect {
-        x: painted.x as f32,
-        y: painted.y as f32,
-        width: painted.width as f32,
-        height: painted.height as f32,
-    })
+    painted_rect_in(window_id, id, None)
+}
+
+/// [`painted_rect`] where a transform puts the box, in the space of the element `space` (the
+/// window's when `None`), which is the box a scroll of that element aligns.
+pub(crate) fn painted_rect_in(window_id: gpui::WindowId, id: u64, space: Option<u64>) -> Option<crate::scroll::Rect> {
+    let painted = crate::automation::get_bounds(window_id, id)?;
+    let (x, y, width, height) = match space {
+        Some(space) => painted.box_in(&crate::automation::get_bounds(window_id, space)?)?,
+        None => painted.window_box(),
+    };
+    Some(crate::scroll::Rect { x: x as f32, y: y as f32, width: width as f32, height: height as f32 })
 }
 
 /// A text control without a `tabIndex` is a tab stop at 0.
@@ -13069,6 +13087,8 @@ fn window_insets_js(
 
 /// Last box of a host element, as layout computed it: fractional, in 1/64 of a pixel, as
 /// `getBoundingClientRect` reports it, and not the box snapped to device pixels that is painted.
+/// The box of a transformed element, or one inside a transformed element, is the smallest box that
+/// holds its corners after the transforms.
 #[derive(Debug, Clone)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct ElementBounds {
@@ -13165,11 +13185,12 @@ impl From<crate::motion::web_animation::Info> for WebAnimationInfo {
 
 impl ElementBounds {
     pub(crate) fn from_painted(bounds: crate::automation::ElementBounds) -> Self {
+        let (x, y, width, height) = bounds.window_box();
         Self {
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width,
-            height: bounds.height,
+            x,
+            y,
+            width,
+            height,
             client_left: bounds.client_left.round(),
             client_top: bounds.client_top.round(),
         }
@@ -13181,11 +13202,12 @@ fn element_bounds_js(
     bounds: crate::automation::ElementBounds,
 ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue> {
     let object = js_sys::Object::new();
+    let (x, y, width, height) = bounds.window_box();
     for (key, value) in [
-        ("x", bounds.x),
-        ("y", bounds.y),
-        ("width", bounds.width),
-        ("height", bounds.height),
+        ("x", x),
+        ("y", y),
+        ("width", width),
+        ("height", height),
         ("clientLeft", bounds.client_left.round()),
         ("clientTop", bounds.client_top.round()),
     ] {

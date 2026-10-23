@@ -18,7 +18,7 @@
 
 use std::ops::Range;
 
-use gpui::{point, size, Bounds, Pixels, Point, TextLayout, Window};
+use gpui::{point, size, Bounds, Pixels, Point, TextLayout, TransformationMatrix, Window};
 
 use crate::automation::{record_bounds, LaidOut};
 
@@ -155,7 +155,11 @@ pub fn union(fragments: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
 /// a browser does: the same rows moved by how far layout's origin of the paragraph is from the
 /// glyphs' (`TextLayout::unsnapped_offset`: the fraction of x, and of both axes in an atomic inline
 /// that is not on a device pixel). The offset the pointer is measured from stays the painted one.
-pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &Window) {
+///
+/// `to_window` is the transform the paragraph is painted through. A pass that only lays out records
+/// from `Window::publish_layout`, after the transforms around the paragraph are gone, so the caller
+/// reads `Window::transform` where the paragraph is prepainted.
+pub fn record(layout: &TextLayout, boxes: &[InlineBox], to_window: TransformationMatrix, window: &Window) {
     let shift = layout.unsnapped_offset();
     for inline in boxes {
         let Some(painted) = union(&border_box_rows(layout, &inline.range, &inline.edges)) else {
@@ -164,7 +168,7 @@ pub fn record(layout: &TextLayout, boxes: &[InlineBox], window: &Window) {
         // An inline box has no layout node: its padding and border are its style's.
         let insets = inline.edges.layout_insets(layout);
         let laid_out = Bounds::new(painted.origin + shift, painted.size);
-        record_bounds(window.window_handle().window_id(), inline.id, LaidOut::of_box(laid_out, window.scale_factor()), painted.origin, insets);
+        record_bounds(window.window_handle().window_id(), inline.id, LaidOut::of_box(laid_out, window.scale_factor()).through(to_window), painted.origin, insets);
     }
 }
 

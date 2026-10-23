@@ -649,7 +649,7 @@ impl Relevance {
             // Found when the element is first swept: an element that is built does not change the tree's revision.
             let ancestors = clips.ancestors.entry(*id).or_insert_with(|| crate::observers::clipping_ancestors(tree, *id, None));
             let boxes = crate::observers::clip_rects(window, ancestors).into_iter().map(|(_, bounds)| bounds);
-            element.near = Some(is_near(crate::observers::border_box(&painted), boxes, viewport));
+            element.near = Some(is_near(crate::observers::window_border_box(&painted), boxes, viewport));
             let wanted = element.wanted_skipped(&holds, *id);
             if first_frame && element.notified.is_none() {
                 element.notified = Some(true);

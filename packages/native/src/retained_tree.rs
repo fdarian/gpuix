@@ -1468,8 +1468,7 @@ impl RetainedTree {
         let own_box = (walk.painted_box)(id);
         let (x, y) = (walk.x, walk.y);
         let inside = |bounds: &crate::automation::ElementBounds, horizontal: bool, vertical: bool| {
-            (!horizontal || (x >= bounds.x && x < bounds.x + bounds.width))
-                && (!vertical || (y >= bounds.y && y < bounds.y + bounds.height))
+            bounds.holds_window_point(x, y, horizontal, vertical)
         };
 
         let mut clipped = match containing_block::escape(self, element) {
@@ -1664,13 +1663,14 @@ fn element_to_json(
     }
 
     if let Some(rect) = bounds.get(&id) {
+        let (x, y, width, height) = rect.window_box();
         obj.insert(
             "bounds".to_string(),
             serde_json::json!({
-                "x": rect.x,
-                "y": rect.y,
-                "width": rect.width,
-                "height": rect.height,
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
             }),
         );
     }

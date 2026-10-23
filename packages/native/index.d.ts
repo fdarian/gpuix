@@ -1317,6 +1317,8 @@ export interface EdgeInsets {
 /**
  * Last box of a host element, as layout computed it: fractional, in 1/64 of a pixel, as
  * `getBoundingClientRect` reports it, and not the box snapped to device pixels that is painted.
+ * The box of a transformed element, or one inside a transformed element, is the smallest box that
+ * holds its corners after the transforms.
  */
 export interface ElementBounds {
   x: number

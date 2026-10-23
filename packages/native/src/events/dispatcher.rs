@@ -393,10 +393,9 @@ impl<'a> Emitter<'a> {
     fn offset(&self, target: u64) -> Option<(f64, f64)> {
         let origin = self.origin(target)?;
         let border = crate::automation::get_bounds(self.window, target)?;
-        Some((
-            self.position.0 - origin.0 - border.client_left,
-            self.position.1 - origin.1 - border.client_top,
-        ))
+        // The pointer in the space the box is laid out in: the window's, unless a transform maps it.
+        let (x, y) = border.to_local(self.position.0, self.position.1)?;
+        Some((x - origin.0 - border.client_left, y - origin.1 - border.client_top))
     }
 
     /// Where the element's border box starts. The painted box is the fallback for
@@ -1969,6 +1968,30 @@ mod tests {
         }
         // The pointer is at (15, 30).
         assert_eq!(offsets, [Some((-85.0, -70.0)), Some((-485.0, -370.0))]);
+    }
+
+    #[test]
+    fn a_transformed_elements_offset_is_measured_in_its_own_space() {
+        let tree = tree(&listening_everywhere(&["pointermove"]));
+        let bounds = Bounds::new(point(px(100.0), px(100.0)), size(px(50.0), px(50.0)));
+        // A quarter turn around the middle of the box: (x, y) goes to (250 - y, x).
+        let quarter_turn = gpui::TransformationMatrix {
+            rotation_scale: [[0.0, -1.0], [1.0, 0.0]],
+            translation: [250.0, 0.0],
+        };
+        crate::automation::record_bounds(
+            WindowId::from(3),
+            4,
+            crate::automation::LaidOut::of_box(bounds, 1.0).through(quarter_turn),
+            bounds.origin,
+            gpui::LayoutInsets::default(),
+        );
+        let mut state = pressed_with_capture_on_c(&tree);
+        let moved = PointerSample { window: WindowId::from(3), ..drag_move(chain_of(&[3, 2, 1])) };
+        let output = dispatch(&mut state, &tree, &moved);
+        assert_eq!(names(&output), ["pointermove@4"]);
+        // The pointer at (15, 30) is at (30, 235) before the turn, which is (-70, 135) from the box.
+        assert_eq!(output.events[0].offset, Some((-70.0, 135.0)));
     }
 
     #[test]

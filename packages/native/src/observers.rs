@@ -314,11 +314,21 @@ pub(crate) fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Ve
             } else {
                 (-UNCLIPPED, UNCLIPPED)
             };
+            let clip = ElementBounds {
+                x: f64::from(left),
+                y: f64::from(top),
+                width: f64::from((right - left).max(0.0)),
+                height: f64::from((bottom - top).max(0.0)),
+                ..painted
+            };
+            // What an observer intersects is the target's box and the clips in the window, where a
+            // transform leaves the box it cuts to.
+            let (x, y, width, height) = clip.window_box();
             Some((
                 ancestor.id,
                 Bounds {
-                    origin: gpui::point(px(left), px(top)),
-                    size: gpui::size(px((right - left).max(0.0)), px((bottom - top).max(0.0))),
+                    origin: gpui::point(px(x as f32), px(y as f32)),
+                    size: gpui::size(px(width as f32), px(height as f32)),
                 },
             ))
         })
@@ -340,7 +350,18 @@ fn same_bounds(left: Bounds<Pixels>, right: Bounds<Pixels>) -> bool {
         && near(f32::from(left.size.height), f32::from(right.size.height))
 }
 
-/// The border box a published element has, which is what the payload of every report carries.
+/// The box that holds the corners of the border box in the window: what a transformed element
+/// covers, which an intersection is of. The border box itself outside a transform.
+pub(crate) fn window_border_box(painted: &ElementBounds) -> Bounds<Pixels> {
+    let (x, y, width, height) = painted.window_box();
+    Bounds {
+        origin: gpui::point(px(x as f32), px(y as f32)),
+        size: gpui::size(px(width as f32), px(height as f32)),
+    }
+}
+
+/// The border box a published element has before any transform, which is what the payload of
+/// every report but an intersection's carries.
 pub(crate) fn border_box(painted: &ElementBounds) -> Bounds<Pixels> {
     Bounds {
         origin: gpui::point(px(painted.x as f32), px(painted.y as f32)),
@@ -645,12 +666,19 @@ fn sweep(
         // reported gone below.
         if let Some(ancestors) = target.clips.as_ref().filter(|_| !inside_skipped_content(&tree, target.id)) {
             let clips = clip_rects(window, ancestors);
+            // A transformed box is the bounding box of its corners, whose border and scrollbar no
+            // inset describes.
+            let (border, scrollbar) = if published.is_transformed() {
+                (Insets::default(), Scrollbar::default())
+            } else {
+                (border_of(&published), Scrollbar::of(target.id))
+            };
             found.extend(report_intersection(
                 observers,
                 target.id,
-                bounds,
-                border_of(&published),
-                Scrollbar::of(target.id),
+                window_border_box(&published),
+                border,
+                scrollbar,
                 clips,
                 viewport,
             ));

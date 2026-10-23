@@ -62,11 +62,17 @@ export interface Override {
   motion?: Record<string, unknown>
 }
 
-function render(nodes: (Node | string)[], override: Override | undefined, key = ""): React.ReactNode[] {
+/** Props to put on the element with this `id`, such as the handlers of a hit test. */
+export type Extra = (id: string) => Record<string, unknown>
+
+function render(nodes: (Node | string)[], override: Override | undefined, extra: Extra | undefined, key = ""): React.ReactNode[] {
   return nodes.map((node, index) => {
     if (typeof node === "string") return node
     const props: Record<string, unknown> = { key: `${key}${index}` }
-    if (node.attrs.id) props.testId = node.attrs.id
+    if (node.attrs.id) {
+      props.testId = node.attrs.id
+      Object.assign(props, extra?.(node.attrs.id))
+    }
     for (const [name, prop] of Object.entries(COUNTS)) if (node.attrs[name]) props[prop] = Number(node.attrs[name])
     const display = DISPLAY[node.tag]
     const style = {
@@ -80,15 +86,15 @@ function render(nodes: (Node | string)[], override: Override | undefined, key = 
     }
     const Tag = node.tag === "span" ? "span" : "div"
     if (override?.motion && node.attrs.id === override.id) {
-      return React.createElement(motion.div, { ...props, ...override.motion, style }, ...render(node.children, override, `${key}${index}.`))
+      return React.createElement(motion.div, { ...props, ...override.motion, style }, ...render(node.children, override, extra, `${key}${index}.`))
     }
-    return React.createElement(Tag, { ...props, style }, ...render(node.children, override, `${key}${index}.`))
+    return React.createElement(Tag, { ...props, style }, ...render(node.children, override, extra, `${key}${index}.`))
   })
 }
 
 /** The elements of `html`. */
-export function elementsOf(html: string, override?: Override): React.ReactNode[] {
-  return render(parse(html), override)
+export function elementsOf(html: string, override?: Override, extra?: Extra): React.ReactNode[] {
+  return render(parse(html), override, extra)
 }
 
 type Rect = [number, number, number, number]

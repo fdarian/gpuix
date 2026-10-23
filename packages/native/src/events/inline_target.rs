@@ -20,7 +20,11 @@ pub fn refine(window: WindowId, mut chain: Vec<Hit>, position: Point<Pixels>) ->
     let Some(container) = chain.first().map(|hit| hit.id) else {
         return chain;
     };
-    let inside = inline_hit::boxes_under(window, container, position);
+    // The paragraph lays out in the space of its container, which a transform maps to the window.
+    let Some(local) = crate::automation::get_bounds(window, container).and_then(|painted| painted.to_local_point(position)) else {
+        return chain;
+    };
+    let inside = inline_hit::boxes_under(window, container, local);
     chain.splice(
         0..0,
         inside.into_iter().map(|(id, bounds)| Hit { id, bounds }),

@@ -33,7 +33,9 @@ pub fn host_id_of(element_id: &ElementId) -> Option<u64> {
     }
 }
 
-/// A host element under the pointer and its border box in window coordinates.
+/// A host element under the pointer and its border box in its own space: the window's outside a
+/// transform, and the space the element's transform and the ones around it map to the window
+/// otherwise (`Hitbox::bounds`). The pointer's offset in the element is measured from it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hit {
     pub id: u64,
@@ -48,10 +50,11 @@ pub struct Hit {
 /// outermost hitbox of the run, the host element's own, supplies the bounds.
 pub fn host_hit_chain(window: &Window) -> Vec<Hit> {
     let mut chain: Vec<Hit> = Vec::new();
-    for (global_id, bounds) in window.hit_chain() {
-        let Some(id) = global_id.last().and_then(host_id_of) else {
+    for entry in window.hit_chain_entries() {
+        let Some(id) = entry.id.last().and_then(host_id_of) else {
             continue;
         };
+        let bounds = entry.bounds;
         match chain.last_mut() {
             Some(last) if last.id == id => last.bounds = bounds,
             _ => chain.push(Hit { id, bounds }),

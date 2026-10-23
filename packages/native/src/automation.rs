@@ -19,17 +19,20 @@ use std::time::Duration;
 use gpui::{
     canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, LayoutInsets,
     Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput, Point,
-    Styled, Window, WindowId,
+    Styled, TransformationMatrix, Window, WindowId,
 };
 use rustc_hash::FxHashMap;
 use web_time::Instant;
 
 use crate::events::key_names::Press;
 
-/// An element's border box as layout computed it, which is what the DOM reports for
-/// `getBoundingClientRect`: fractional, in 1/64 of a pixel as Chrome's `LayoutUnit` is. The box
-/// that is painted and hit is [`snapped`](Self::snapped_origin) to device pixels and is not what
-/// these four are.
+/// An element's border box as layout computed it: fractional, in 1/64 of a pixel as Chrome's
+/// `LayoutUnit` is. The box that is painted and hit is [`snapped`](Self::snapped_origin) to device
+/// pixels and is not what these four are.
+///
+/// `x`, `y`, `width` and `height` are the box before any `transform`, in the space of its
+/// ancestors' transforms, which is what `offset*`, `client*`, `scroll*` and the layout reads
+/// measure. What `getBoundingClientRect` reports is [`Self::window_box`].
 #[derive(Clone, Copy, Debug)]
 pub struct ElementBounds {
     pub x: f64,
@@ -60,6 +63,9 @@ pub struct ElementBounds {
     /// empty content mask, so nothing of it was drawn or hit. Retention reads it to leave a
     /// paint-only animation on it dormant (`retain::Sources::dormant`).
     pub culled: bool,
+    /// From the space `x` and `y` are in to the window, in logical pixels and exact: the transforms
+    /// around the element and its own. The unit matrix for an element no transform touches.
+    pub to_window: TransformationMatrix,
 }
 
 /// Layout resolution, the one of Chrome's `LayoutUnit`: a length is cut down to a multiple of
@@ -105,7 +111,75 @@ impl ElementBounds {
             padding_bottom: f64::from(f32::from(insets.padding.bottom)),
             collapsed_table: layout.collapsed_table,
             culled: layout.culled,
+            to_window: layout.to_window,
         }
+    }
+
+    /// A transform of the window moves or deforms the box, so that it is not where `x` and `y` say.
+    pub fn is_transformed(&self) -> bool {
+        !self.to_window.is_identity()
+    }
+
+    /// The smallest box with sides parallel to the window's that holds the border box after every
+    /// transform around it and its own, which is what `getBoundingClientRect` reports.
+    pub fn window_box(&self) -> (f64, f64, f64, f64) {
+        if !self.is_transformed() {
+            return (self.x, self.y, self.width, self.height);
+        }
+        self.box_through(&self.to_window)
+    }
+
+    /// [`Self::window_box`] in the space of `space`, another element's box, which is where a scroll
+    /// aligns this one. `None` where `space` flattens the plane.
+    pub fn box_in(&self, space: &ElementBounds) -> Option<(f64, f64, f64, f64)> {
+        if !self.is_transformed() && !space.is_transformed() {
+            return Some((self.x, self.y, self.width, self.height));
+        }
+        Some(self.box_through(&space.to_window.inverse()?.compose(self.to_window)))
+    }
+
+    fn box_through(&self, matrix: &TransformationMatrix) -> (f64, f64, f64, f64) {
+        let corners = [
+            (self.x, self.y),
+            (self.x + self.width, self.y),
+            (self.x, self.y + self.height),
+            (self.x + self.width, self.y + self.height),
+        ]
+        .map(|(x, y)| apply(matrix, x, y));
+        let (mut left, mut top) = (f64::INFINITY, f64::INFINITY);
+        let (mut right, mut bottom) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (x, y) in corners {
+            left = left.min(x);
+            right = right.max(x);
+            top = top.min(y);
+            bottom = bottom.max(y);
+        }
+        (left, top, right - left, bottom - top)
+    }
+
+    /// The window point `(x, y)` in the space `self.x` and `self.y` are in, or `None` where the
+    /// transform flattens the plane and nothing is hit.
+    pub fn to_local(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        if !self.is_transformed() {
+            return Some((x, y));
+        }
+        self.to_window.inverse().map(|inverse| apply(&inverse, x, y))
+    }
+
+    /// [`Self::to_local`] for a point of the window as gpui has it.
+    pub fn to_local_point(&self, position: Point<Pixels>) -> Option<Point<Pixels>> {
+        let (x, y) = self.to_local(f64::from(f32::from(position.x)), f64::from(f32::from(position.y)))?;
+        Some(point(px(x as f32), px(y as f32)))
+    }
+
+    /// Whether the window point `(x, y)` is inside the border box, tested through the inverse of the
+    /// transforms. `horizontal` and `vertical` say which axes count, for a box that clips along one.
+    pub fn holds_window_point(&self, x: f64, y: f64, horizontal: bool, vertical: bool) -> bool {
+        let Some((x, y)) = self.to_local(x, y) else {
+            return false;
+        };
+        (!horizontal || (x >= self.x && x < self.x + self.width))
+            && (!vertical || (y >= self.y && y < self.y + self.height))
     }
 
     /// A box with no border or padding, painted where it is laid out.
@@ -130,14 +204,22 @@ impl ElementBounds {
             padding_bottom: 0.0,
             collapsed_table: false,
             culled: false,
+            to_window: TransformationMatrix::unit(),
         }
     }
 
     /// How a verified frame says the box in words. Whether prepaint took the culled walk is left
     /// out: a root kept near a scroller's clip is walked culled when it replays a recording made
-    /// far from it and unculled when it is built whole, and nothing the frame shows differs.
+    /// far from it and unculled when it is built whole, and nothing the frame shows differs. The
+    /// matrix is told to a thousandth: moving a transformed box by a replay and building it there
+    /// differ in the last bits of a single precision sum.
     fn described(self) -> String {
-        format!("{:?}", Self { culled: false, ..self })
+        let [[a, c], [b, d]] = self.to_window.rotation_scale;
+        let [e, f] = self.to_window.translation;
+        format!(
+            "{:?} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3})",
+            Self { culled: false, to_window: TransformationMatrix::unit(), ..self }
+        )
     }
 
     /// The box `offset` away, in the single precision it is measured in, which is what painting
@@ -149,8 +231,34 @@ impl ElementBounds {
             y: moved(self.y, offset.y),
             painted_x: moved(self.painted_x, offset.x),
             painted_y: moved(self.painted_y, offset.y),
+            to_window: moved_matrix(self.to_window, offset),
             ..self
         }
+    }
+}
+
+fn apply(matrix: &TransformationMatrix, x: f64, y: f64) -> (f64, f64) {
+    let [[a, b], [c, d]] = matrix.rotation_scale.map(|row| row.map(f64::from));
+    let [e, f] = matrix.translation.map(f64::from);
+    (a * x + b * y + e, c * x + d * y + f)
+}
+
+/// The matrix of a box that was moved by `offset` before it was transformed, so that it puts the
+/// moved box where it put the box, moved by `offset`. A replay only moves a subtree by a whole
+/// offset where the transform around it is a translation, which `offset` is a move in the window
+/// of.
+fn moved_matrix(matrix: TransformationMatrix, offset: Point<Pixels>) -> TransformationMatrix {
+    if matrix.is_identity() {
+        return matrix;
+    }
+    let (dx, dy) = (f32::from(offset.x), f32::from(offset.y));
+    let [[a, b], [c, d]] = matrix.rotation_scale;
+    TransformationMatrix {
+        rotation_scale: matrix.rotation_scale,
+        translation: [
+            matrix.translation[0] + dx - (a * dx + b * dy),
+            matrix.translation[1] + dy - (c * dx + d * dy),
+        ],
     }
 }
 
@@ -359,12 +467,26 @@ pub struct LaidOut {
     /// Prepaint walked the element as part of a culled subtree (`Window::is_culling`), which only
     /// prepaint knows.
     pub culled: bool,
+    /// See `ElementBounds::to_window`.
+    pub to_window: TransformationMatrix,
 }
 
 impl LaidOut {
     /// An inline box has no layout node: it holds what it is.
     pub fn of_box(border_box: Bounds<Pixels>, scale: f32) -> Self {
-        Self { border_box, content: border_box.size, scale, collapsed_table: false, culled: false }
+        Self {
+            border_box,
+            content: border_box.size,
+            scale,
+            collapsed_table: false,
+            culled: false,
+            to_window: TransformationMatrix::unit(),
+        }
+    }
+
+    /// The box as seen through `to_window`, see `ElementBounds::to_window`.
+    pub fn through(self, to_window: TransformationMatrix) -> Self {
+        Self { to_window, ..self }
     }
 }
 
@@ -391,12 +513,19 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
             }
             None => border_box.size,
         };
+        // Prepaint runs outside the element's own transform, which layout holds: the listener
+        // sees the ambient one of its parent.
+        let to_window = match window.layout_own_transform(layout_id, border_box) {
+            Some(own) => window.transform().compose(own),
+            None => window.transform(),
+        };
         let laid_out = LaidOut {
             border_box,
             content,
             scale: window.scale_factor(),
             collapsed_table: false,
             culled: window.is_culling(),
+            to_window,
         };
         slot.set(Some(laid_out));
     });
@@ -917,6 +1046,68 @@ mod tests {
         assert_eq!(layout_units(px(10.01), 2.0), 10.0078125);
         assert_eq!(layout_units(px(100.4), 2.0), 100.3984375);
         assert_eq!(layout_units(px(0.4), 2.0), 0.3984375);
+    }
+
+    /// A box of 80 x 40 at (10, 20), turned a quarter around its middle (50, 40) and moved 5 right.
+    fn turned() -> ElementBounds {
+        ElementBounds {
+            to_window: TransformationMatrix { rotation_scale: [[0.0, -1.0], [1.0, 0.0]], translation: [100.0 + 5.0, -10.0] },
+            ..ElementBounds::plain(10.0, 20.0, 80.0, 40.0)
+        }
+    }
+
+    #[test]
+    fn a_transformed_box_reports_the_box_that_holds_its_corners() {
+        // (x, y) goes to (105 - y, x - 10): the corners are (85, 0), (85, 80), (45, 0) and (45, 80).
+        assert_eq!(turned().window_box(), (45.0, 0.0, 40.0, 80.0));
+        // The size the layout measured is the one before the turn.
+        assert_eq!((turned().width, turned().height), (80.0, 40.0));
+        assert_eq!(ElementBounds::plain(10.0, 20.0, 80.0, 40.0).window_box(), (10.0, 20.0, 80.0, 40.0));
+    }
+
+    #[test]
+    fn a_point_of_the_window_is_in_a_transformed_box_where_the_inverse_puts_it_in_the_box() {
+        let turned = turned();
+        // (x, y) comes from (X, Y) as (Y + 10, 105 - X): (65, 10) is (20, 40), inside the box; (50, 70) is
+        // (80, 55), inside; (84, 79) is (89, 21), inside; and (44, 40) is (50, 61), 1px below it.
+        assert_eq!(turned.to_local(65.0, 10.0), Some((20.0, 40.0)));
+        assert!(turned.holds_window_point(65.0, 10.0, true, true));
+        assert!(turned.holds_window_point(50.0, 70.0, true, true));
+        assert!(turned.holds_window_point(84.0, 79.0, true, true));
+        assert!(!turned.holds_window_point(44.0, 40.0, true, true));
+        // Along the axis that clips, the other is not asked.
+        assert!(turned.holds_window_point(44.0, 40.0, true, false));
+    }
+
+    #[test]
+    fn a_box_that_a_transform_flattens_is_hit_nowhere() {
+        let flat = ElementBounds {
+            to_window: TransformationMatrix { rotation_scale: [[0.0, 0.0], [0.0, 1.0]], translation: [0.0, 0.0] },
+            ..ElementBounds::plain(10.0, 20.0, 80.0, 40.0)
+        };
+        assert_eq!(flat.to_local(30.0, 30.0), None);
+        assert!(!flat.holds_window_point(30.0, 30.0, true, true));
+    }
+
+    #[test]
+    fn a_replay_moves_the_transformed_box_and_the_box_it_reports_by_the_same_offset() {
+        let offset = point(px(0.0), px(30.0));
+        let moved = turned().translated(offset);
+        assert_eq!((moved.x, moved.y), (10.0, 50.0));
+        let (x, y, width, height) = turned().window_box();
+        assert_eq!(moved.window_box(), (x, y + 30.0, width, height));
+    }
+
+    #[test]
+    fn a_box_is_seen_in_the_space_of_a_transformed_scroller() {
+        let scroller = turned();
+        // Laid out at (20, 30), 10 x 10, not transformed itself: the scroller aligns it where its turn puts it
+        // back, (Y + 10, 105 - X) for its corners.
+        let inside = ElementBounds::plain(20.0, 30.0, 10.0, 10.0);
+        assert_eq!(inside.box_in(&scroller), Some((40.0, 75.0, 10.0, 10.0)));
+        // Turned by the same transform, it is where it is laid out.
+        let with_it = ElementBounds { to_window: scroller.to_window, ..inside };
+        assert_eq!(with_it.box_in(&scroller), Some((20.0, 30.0, 10.0, 10.0)));
     }
 
     #[test]
