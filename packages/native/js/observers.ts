@@ -3,7 +3,6 @@ import {
   flushPendingMutations,
   HOST_BINDING,
   HOST_MOUNT,
-  readBoundingClientRect,
   toBoundingClientRect,
   type BoundingClientRect,
   type HostBinding,
@@ -79,8 +78,17 @@ const INTERSECTION_DELIVERY = 1
 /** Creation order of the observers of this realm, across renderers: only comparisons within one hub matter. */
 let observersCreated = 0
 
+/**
+ * An observer with reports to apply. Reports are applied once all of a frame's have arrived, so that a
+ * root and a target that changed in the same frame give one entry, from the geometry of that frame.
+ */
+interface Evaluation {
+  evaluate(): void
+}
+
 interface Hub {
   readonly listening: Record<ObserveEvent, Map<number, Listening>>
+  readonly evaluating: Set<Evaluation>
   readonly queued: Set<Delivery>
   probes: Probe[]
   scheduled: ReturnType<typeof setTimeout> | ReturnType<typeof setImmediate> | undefined
@@ -101,6 +109,7 @@ function hubFor(renderer: object): Hub {
         [RESIZE_OBSERVE_EVENT]: new Map(),
         [INTERSECT_OBSERVE_EVENT]: new Map(),
       },
+      evaluating: new Set(),
       queued: new Set(),
       probes: [],
       scheduled: undefined,
@@ -196,6 +205,11 @@ function ensureScheduled(renderer: object): void {
   if (hub.scheduled === undefined) hub.scheduled = schedule(() => flushObservations(renderer))
 }
 
+function queueEvaluation(renderer: object, evaluation: Evaluation): void {
+  hubFor(renderer).evaluating.add(evaluation)
+  ensureScheduled(renderer)
+}
+
 function queueDelivery(renderer: object, delivery: Delivery): void {
   hubFor(renderer).queued.add(delivery)
   ensureScheduled(renderer)
@@ -246,6 +260,9 @@ function reportCallbackError(error: unknown): void {
 export function flushObservations(renderer: object): void {
   settleObservations(renderer)
   const hub = hubFor(renderer)
+  const evaluating = [...hub.evaluating]
+  hub.evaluating.clear()
+  for (const evaluation of evaluating) evaluation.evaluate()
   if (hub.scheduled !== undefined) {
     cancelScheduled(hub.scheduled)
     hub.scheduled = undefined
@@ -456,6 +473,8 @@ interface IntersectionSample {
 interface IntersectionRecord {
   readonly target: ObservableElement
   sample: IntersectionSample | undefined
+  /** `sample` or the root changed since it was last evaluated. */
+  dirty: boolean
   previousThresholdIndex: number
   previousIsIntersecting: boolean
   stop(): void
@@ -511,22 +530,24 @@ function contains(outer: Rect, inner: Rect): boolean {
   )
 }
 
-interface BorderWidths {
-  readonly left: number
-  readonly top: number
-  readonly right: number
-  readonly bottom: number
-}
+const NO_BOX: Rect = { x: 0, y: 0, width: 0, height: 0 }
 
-const NO_BORDER: BorderWidths = { left: 0, top: 0, right: 0, bottom: 0 }
-
-/** What an element root exposes: its overflow clip edge, inside the border. */
-function paddingBox(borderBox: BoundingClientRect, border: BorderWidths): Rect {
+/** What an element root exposes: its client box, which is the padding box less a classic scrollbar. */
+function clientBox(
+  borderBox: Rect,
+  observation: NonNullable<EventPayload["observation"]>
+): Rect {
   return {
-    x: borderBox.x + border.left,
-    y: borderBox.y + border.top,
-    width: Math.max(0, borderBox.width - border.left - border.right),
-    height: Math.max(0, borderBox.height - border.top - border.bottom),
+    x: borderBox.x + observation.borderLeft,
+    y: borderBox.y + observation.borderTop,
+    width: Math.max(
+      0,
+      borderBox.width - observation.borderLeft - observation.borderRight - observation.scrollbarWidth
+    ),
+    height: Math.max(
+      0,
+      borderBox.height - observation.borderTop - observation.borderBottom - observation.scrollbarHeight
+    ),
   }
 }
 
@@ -547,10 +568,11 @@ export class IntersectionObserver {
     order: observersCreated++,
     deliver: () => this.#deliver(),
   }
+  readonly #evaluation: Evaluation = { evaluate: () => this.#evaluateDirty() }
   #renderer!: object
   #stopWatchingRoot: (() => void) | undefined
-  /** Set by the root's first report; an element root has no padding box before it. */
-  #rootBorder: BorderWidths | undefined
+  /** Set by the root's own report; an element root has no box before it. */
+  #rootBox: Rect | undefined
 
   constructor(callback: IntersectionObserverCallback, options: IntersectionObserverInit = {}) {
     if (typeof callback !== "function") {
@@ -578,6 +600,7 @@ export class IntersectionObserver {
     const record: IntersectionRecord = {
       target,
       sample: undefined,
+      dirty: false,
       previousThresholdIndex: -1,
       previousIsIntersecting: false,
       stop: () => {},
@@ -589,20 +612,18 @@ export class IntersectionObserver {
       this.#stopWatchingRoot = listen(INTERSECT_OBSERVE_EVENT, this.root, {
         receive: (event) => {
           const observation = event.observation!
-          this.#rootBorder = observation.present
-            ? {
-                left: observation.borderLeft,
-                top: observation.borderTop,
-                right: observation.borderRight,
-                bottom: observation.borderBottom,
-              }
-            : NO_BORDER
-          this.#reevaluateAll()
+          this.#rootBox = observation.present
+            ? clientBox(
+                { x: event.x ?? 0, y: event.y ?? 0, width: event.width ?? 0, height: event.height ?? 0 },
+                observation
+              )
+            : NO_BOX
+          this.#markAllDirty()
         },
         settled: (_, painted) => {
-          if (painted || this.#rootBorder) return
-          this.#rootBorder = NO_BORDER
-          this.#reevaluateAll()
+          if (painted || this.#rootBox) return
+          this.#rootBox = NO_BOX
+          this.#markAllDirty()
         },
       })
     }
@@ -615,7 +636,8 @@ export class IntersectionObserver {
         // An element that does not paint sends no report, but the DOM still
         // reports it once, as not intersecting.
         if (!painted && record.sample === undefined) {
-          this.#evaluate(record, absentSample(binding.renderer.getWindowSize?.()))
+          record.sample = absentSample(binding.renderer.getWindowSize?.())
+          this.#markDirty(record)
         }
       },
     })
@@ -648,7 +670,7 @@ export class IntersectionObserver {
   #stopRoot(): void {
     this.#stopWatchingRoot?.()
     this.#stopWatchingRoot = undefined
-    this.#rootBorder = undefined
+    this.#rootBox = undefined
   }
 
   #receive(record: IntersectionRecord, event: EventPayload): void {
@@ -669,22 +691,33 @@ export class IntersectionObserver {
           viewport: { width: observation.viewportWidth, height: observation.viewportHeight },
         }
       : absentSample(record.sample?.viewport)
-    this.#evaluate(record, sample)
+    record.sample = sample
+    this.#markDirty(record)
   }
 
-  #reevaluateAll(): void {
+  #markDirty(record: IntersectionRecord): void {
+    record.dirty = true
+    queueEvaluation(this.#renderer, this.#evaluation)
+  }
+
+  #markAllDirty(): void {
     for (const record of this.#records.values()) {
-      if (record.sample) this.#evaluate(record, record.sample)
+      if (record.sample) this.#markDirty(record)
+    }
+  }
+
+  #evaluateDirty(): void {
+    for (const record of this.#records.values()) {
+      if (!record.dirty) continue
+      record.dirty = false
+      this.#evaluate(record)
     }
   }
 
   #rootRect(sample: IntersectionSample): Rect {
     let base: Rect
     if (this.root) {
-      const binding = this.root[HOST_BINDING]()
-      base = binding
-        ? paddingBox(readBoundingClientRect(binding.renderer, this.root.id), this.#rootBorder!)
-        : { x: 0, y: 0, width: 0, height: 0 }
+      base = this.root[HOST_BINDING]() ? this.#rootBox! : NO_BOX
     } else {
       base = { x: 0, y: 0, width: sample.viewport.width, height: sample.viewport.height }
     }
@@ -699,15 +732,15 @@ export class IntersectionObserver {
     }
   }
 
-  #evaluate(record: IntersectionRecord, sample: IntersectionSample): void {
-    record.sample = sample
-    // The root's report brings its border and re-evaluates every record.
-    if (this.root && this.root[HOST_BINDING]() && !this.#rootBorder) return
-    const rootBounds = this.#rootRect(sample)
-    const zero = { x: 0, y: 0, width: 0, height: 0 }
-    const border = sample.present ? sample.border : zero
-    let intersection = zero
+  #evaluate(record: IntersectionRecord): void {
+    const sample = record.sample!
+    // The root's report re-evaluates every record.
+    if (sample.present && this.root && this.root[HOST_BINDING]() && !this.#rootBox) return
+    // A target with no box (in skipped content, removed) has no root bounds either.
+    const rootBounds = sample.present ? this.#rootRect(sample) : NO_BOX
+    let intersection = NO_BOX
     let intersects = false
+    const border = sample.present ? sample.border : NO_BOX
     if (sample.present) {
       // Clip by the ancestors between the target and the root, like the DOM.
       // Ancestors above the root, and the window edge, do not clip.
@@ -718,7 +751,7 @@ export class IntersectionObserver {
       }
       intersection = overlap(clipped, rootBounds)
       intersects = area(intersection) > 0 || (area(border) === 0 && contains(rootBounds, border))
-      if (area(intersection) === 0 && !intersects) intersection = zero
+      if (area(intersection) === 0 && !intersects) intersection = NO_BOX
     }
     const ratio = !intersects ? 0 : area(border) === 0 ? 1 : Math.min(1, area(intersection) / area(border))
     let thresholdIndex = this.thresholds.findIndex((threshold) => threshold > ratio)

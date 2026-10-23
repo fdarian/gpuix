@@ -6,52 +6,87 @@
   before the frame's rendering steps) and leaves its log in `document.body.dataset.log`.
   `content-visibility-observers-oracle.ts` runs every scene in a page of its own (a 1280x800 viewport, no device scale)
   and writes `content-visibility-observers-oracle.json`: {scene: [{frame, ...}]} where an entry is
-  {frame, did: "what the step did"}, {frame, ro: target, border: [w, h], content: [w, h]} or
-  {frame, io: target, isIntersecting, ratio, rect: [x, y, w, h], intersection: [w, h]}.
+  {frame, did: "what the step did"}, {frame, skipped} (`contentvisibilityautostatechange` of `#host`),
+  {frame, ro: target, border: [w, h], content: [w, h]} or
+  {frame, io: target, isIntersecting, ratio, rect: [x, y, w, h], intersection: [w, h], root: [x, y, w, h] (rootBounds),
+  at: [x, y] (of the intersection rect)}.
 
   `#host` is the element that skips (at `top` on a page 8000px tall, 400px wide, `contain-intrinsic-size: 400px 200px`),
-  `#t` the target inside it (100x50 with a 10px margin, so the host is 70px tall when it shows its content).
+  `#pre` an empty box before the target in it and `#above` one before it in the flow, `#t` the target inside it
+  (100x50 with a 10px margin, so the host is 70px tall when it shows its content). `#r` is the explicit root of
+  the IntersectionObserver scenes (300x200 content box, 20px padding, 10px border, `overflow: auto`) holding `#rt`
+  (100x150) and `#rp` (100x30, 15px to the left of the content box's edge); `.sb` gives it a 15px classic scrollbar.
 -->
 <html><head><meta charset="utf-8">
 <style>
 body { margin: 0; height: 8000px; position: relative }
+#above { height: 100px; width: 10px }
 #host { position: absolute; left: 0; width: 400px; contain-intrinsic-size: 400px 200px; background: #eee }
+#pre { height: 0 }
 #t { width: 100px; height: 50px; background: #c00; margin: 10px }
+#r { position: absolute; left: 500px; top: 100px; width: 300px; height: 200px; border: 10px solid #888; padding: 20px; overflow: auto; background: #ddf }
+#r.sb::-webkit-scrollbar { width: 15px; height: 15px }
+#rt { width: 100px; height: 150px; background: #0a0 }
+#rp { width: 100px; height: 30px; margin-left: -15px; background: #a0a }
 </style></head>
-<body><div id="host"><div id="t"></div></div>
+<body><div id="above"></div><div id="host"><div id="pre"></div><div id="t"></div></div><div id="r"><div id="rt"></div><div id="rp"></div></div>
 <script>
 const name = location.hash.slice(1)
-const host = document.getElementById('host'), t = document.getElementById('t')
+const el = (id) => document.getElementById(id)
+const host = el('host'), t = el('t'), pre = el('pre'), above = el('above'), r = el('r'), rt = el('rt'), rp = el('rp')
 const log = []
 let frame = 0
 const round = (n) => Math.round(n * 100) / 100
 const pair = (width, height) => [round(width), round(height)]
+const rectOf = (r) => [round(r.x), round(r.y), round(r.width), round(r.height)]
 const first = (sizes) => pair(sizes[0].inlineSize, sizes[0].blockSize)
 const resize = new ResizeObserver((entries) => {
   for (const e of entries) log.push({ frame, ro: e.target.id, border: first(e.borderBoxSize), content: first(e.contentBoxSize) })
 })
-const intersect = new IntersectionObserver((entries) => {
-  for (const e of entries) {
-    const r = e.boundingClientRect
-    log.push({
-      frame, io: e.target.id, isIntersecting: e.isIntersecting, ratio: round(e.intersectionRatio),
-      rect: [round(r.x), round(r.y), round(r.width), round(r.height)],
-      intersection: pair(e.intersectionRect.width, e.intersectionRect.height),
-    })
+const observers = new Map()
+const observer = (options) => {
+  const key = options ? JSON.stringify([options.root && options.root.id, options.rootMargin, options.threshold]) : ''
+  if (!observers.has(key)) {
+    observers.set(key, new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const entry = {
+          frame, io: e.target.id, isIntersecting: e.isIntersecting, ratio: round(e.intersectionRatio),
+          rect: rectOf(e.boundingClientRect), intersection: pair(e.intersectionRect.width, e.intersectionRect.height),
+        }
+        entry.root = e.rootBounds && rectOf(e.rootBounds)
+        entry.at = [round(e.intersectionRect.x), round(e.intersectionRect.y)]
+        log.push(entry)
+      }
+    }, options))
   }
-})
+  return observers.get(key)
+}
 const did = (what) => log.push({ frame, did: what })
+const px = (v) => v + 'px'
 const A = {
   cv: (v) => { host.style.contentVisibility = v; did('cv=' + v) },
-  top: (px) => { host.style.top = px + 'px'; did('top=' + px) },
-  w: (px) => { t.style.width = px + 'px'; did('t.width=' + px) },
-  hw: (px) => { host.style.width = px + 'px'; did('host.width=' + px) },
-  read: () => { const r = t.getBoundingClientRect(); did('read t ' + r.width + 'x' + r.height) },
-  ro: (el) => { resize.observe(el); did('ro.observe ' + el.id) },
-  io: (el) => { intersect.observe(el); did('io.observe ' + el.id) },
+  top: (v) => { host.style.top = px(v); did('top=' + v) },
+  w: (v) => { t.style.width = px(v); did('t.width=' + v) },
+  hw: (v) => { host.style.width = px(v); did('host.width=' + v) },
+  read: () => { const b = t.getBoundingClientRect(); did('read t ' + b.width + 'x' + b.height) },
+  ro: (e) => { resize.observe(e); did('ro.observe ' + e.id) },
+  io: (e, options) => { observer(options).observe(e); did('io.observe ' + e.id) },
   scroll: (y) => { scrollTo(0, y); did('scrollY=' + y) },
+  pre: (v) => { pre.style.height = px(v); did('pre.height=' + v) },
+  above: (v) => { above.style.height = px(v); did('above.height=' + v) },
+  rl: (v) => { r.style.left = px(v); did('r.left=' + v) },
+  rw: (v) => { r.style.width = px(v); did('r.width=' + v) },
+  rh: (v) => { r.style.height = px(v); did('r.height=' + v) },
+  rtw: (v) => { rt.style.width = px(v); did('rt.width=' + v) },
+  rth: (v) => { rt.style.height = px(v); did('rt.height=' + v) },
+  sb: () => { r.classList.add('sb'); did('r.scrollbar=15') },
+  rscroll: (v) => { r.scrollTop = v; did('r.scrollTop=' + v) },
 }
+host.addEventListener('contentvisibilityautostatechange', (e) => log.push({ frame, skipped: e.skipped }))
 const FAR = 3000
+const TH = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+const IN_R = { root: r, threshold: TH }
+const MARGIN = { rootMargin: '4000px', threshold: TH }
 const scenes = {
   // 1: a target never rendered, in `hidden` content
   ro1_hidden_never: { cv: 'hidden', top: 100, steps: { 2: () => A.ro(t), 6: () => A.cv('visible'), 10: null } },
@@ -80,10 +115,31 @@ const scenes = {
   // 7: IntersectionObserver, `auto`
   io7a_auto_far_never: { cv: 'auto', top: FAR, steps: { 2: () => A.io(t), 6: () => A.scroll(FAR - 100), 10: () => A.scroll(0), 14: null } },
   io7b_auto_shown_then_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.io(t), 4: () => A.top(FAR), 8: () => A.top(100), 12: null } },
+  // 8: an explicit root: rootBounds, and the root changing in the task of a target change
+  io8a_root_box: { cv: 'visible', top: 100, steps: { 1: () => { A.io(rt, IN_R); A.io(rp, IN_R) }, 5: null } },
+  io8b_root_scrollbar: { cv: 'visible', top: 100, steps: { 1: () => { A.rth(600); A.io(rt, IN_R); A.io(rp, IN_R) }, 4: () => A.rscroll(100), 8: () => A.rscroll(0), 11: null } },
+  io8b2_root_classic_scrollbar: { cv: 'visible', top: 100, steps: { 1: () => { A.sb(); A.rth(600); A.io(rt, IN_R); A.io(rp, IN_R) }, 4: () => A.rscroll(100), 8: null } },
+  io8c_root_margin_px: { cv: 'visible', top: 100, steps: { 1: () => { A.io(rt, { root: r, rootMargin: '10px 20px 30px 40px', threshold: TH }); A.io(rp, { root: r, rootMargin: '10px 20px 30px 40px', threshold: TH }) }, 5: null } },
+  io8c2_root_margin_percent: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, { root: r, rootMargin: '10%', threshold: TH }), 5: null } },
+  io8c3_root_margin_negative: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, { root: r, rootMargin: '-10px', threshold: TH }), 5: null } },
+  io8d_root_resize_with_target: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, IN_R), 4: () => { A.rw(150); A.rh(100); A.rtw(200) }, 8: null } },
+  io8e_root_move_with_target: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, IN_R), 4: () => { A.rl(600); A.rth(300) }, 8: null } },
+  io8f_root_move_only: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, IN_R), 4: () => A.rl(600), 7: () => A.rl(500), 10: null } },
+  io8g_root_resize_only: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, IN_R), 4: () => A.rh(100), 7: () => A.rh(200), 10: () => A.rw(50), 14: null } },
+  io8h_root_move_then_target: { cv: 'visible', top: 100, steps: { 1: () => A.io(rt, IN_R), 4: () => A.rl(600), 5: () => A.rth(300), 9: null } },
+  // 9: an explicit-margin or default root, a target in `auto` content that was laid out and is now skipped
+  io9a_default_host_moves_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.io(t, { threshold: TH }), 4: () => A.top(FAR), 7: () => A.top(FAR + 500), 10: () => A.top(5000), 13: () => A.top(100), 17: null } },
+  io9b_margin_host_moves_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.io(t, MARGIN), 4: () => A.top(6000), 7: () => A.top(4780), 10: () => A.top(4730), 13: () => A.top(6000), 16: () => A.top(100), 20: null } },
+  io9c_margin_inner_grows_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.io(t, MARGIN), 4: () => A.top(4780), 7: () => A.pre(100), 10: () => A.pre(0), 13: () => A.pre(60), 16: () => A.top(100), 20: null } },
+  io9d_margin_move_and_inner_grow: { cv: 'auto', top: 100, steps: { 1: () => A.io(t, MARGIN), 4: () => A.top(4780), 7: () => { A.top(4700); A.pre(60) }, 10: () => A.top(100), 14: null } },
+  io9e_margin_never_laid_out: { cv: 'auto', top: 6000, steps: { 2: () => A.io(t, MARGIN), 5: () => A.top(4780), 8: () => A.pre(100), 11: () => A.top(100), 15: null } },
+  io9h_margin_never_laid_out_in_margin: { cv: 'auto', top: 4780, steps: { 2: () => A.io(t, MARGIN), 5: () => A.pre(100), 8: () => A.top(100), 12: null } },
+  io9f_margin_above_grows_skipped: { cv: 'auto', top: null, steps: { 1: () => A.io(t, MARGIN), 4: () => A.above(6000), 7: () => A.above(4780), 10: () => A.above(4730), 13: () => A.above(100), 17: null } },
+  io9g_default_inner_grows_skipped: { cv: 'auto', top: 100, steps: { 1: () => A.io(t, { threshold: TH }), 4: () => A.top(FAR), 7: () => A.pre(100), 10: () => A.pre(0), 13: () => A.top(100), 17: null } },
 }
 const scene = scenes[name]
 host.style.contentVisibility = scene.cv
-host.style.top = scene.top + 'px'
+if (scene.top !== null) host.style.top = scene.top + 'px'
 const last = Math.max(...Object.keys(scene.steps).map(Number))
 function tick() {
   frame++

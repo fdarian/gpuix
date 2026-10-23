@@ -1877,14 +1877,16 @@ export interface Observation {
   paddingLeft: number
   paddingTop: number
   /**
-   * The border widths of an intersection report. The padding box, which
-   * is what an `IntersectionObserver` root exposes, is the border box minus
-   * these.
+   * The border widths of an intersection report, and the room a classic scrollbar takes on
+   * the right and at the bottom. The client box, which is what an `IntersectionObserver`
+   * root exposes, is the border box minus these.
    */
   borderLeft: number
   borderTop: number
   borderRight: number
   borderBottom: number
+  scrollbarWidth: number
+  scrollbarHeight: number
   /**
    * The `overflow` clips of the ancestors, nearest first, in window
    * coordinates. JS applies the ones below its root. The window edge is not

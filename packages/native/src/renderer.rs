@@ -265,6 +265,17 @@ fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Beha
     })
 }
 
+/// The room `id` reserves for classic scrollbars as of its last layout: the width on its right and
+/// the height at its bottom. Nothing for an element that does not scroll.
+pub(crate) fn reserved_scrollbar(id: u64) -> (f32, f32) {
+    SCROLL_HANDLES.with(|cell| {
+        cell.borrow().get(&id).map_or((0.0, 0.0), |handle| {
+            let bars = handle.scrollbar_size();
+            (f32::from(bars.width), f32::from(bars.height))
+        })
+    })
+}
+
 /// `Element.scrollTop` and friends, from the last layout. See `scroll::metrics`.
 ///
 /// Callers draw pending changes first (`draw_pending_changes`, or `draw_if_dirty` inside a

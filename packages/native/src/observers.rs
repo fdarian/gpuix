@@ -65,13 +65,15 @@ pub struct Observation {
     /// inside the padding box (`ResizeObserverEntry.contentRect.x` and `.y`).
     pub padding_left: f64,
     pub padding_top: f64,
-    /// The border widths of an intersection report. The padding box, which
-    /// is what an `IntersectionObserver` root exposes, is the border box minus
-    /// these.
+    /// The border widths of an intersection report, and the room a classic scrollbar takes on
+    /// the right and at the bottom. The client box, which is what an `IntersectionObserver`
+    /// root exposes, is the border box minus these.
     pub border_left: f64,
     pub border_top: f64,
     pub border_right: f64,
     pub border_bottom: f64,
+    pub scrollbar_width: f64,
+    pub scrollbar_height: f64,
     /// The `overflow` clips of the ancestors, nearest first, in window
     /// coordinates. JS applies the ones below its root. The window edge is not
     /// one of them: an `IntersectionObserver` with a `rootMargin` sees past it.
@@ -217,8 +219,23 @@ struct IntersectionSample {
     present: bool,
     border: Bounds<Pixels>,
     border_insets: Insets,
+    scrollbar: Scrollbar,
     clips: Vec<(u64, Bounds<Pixels>)>,
     viewport: gpui::Size<Pixels>,
+}
+
+/// The room a scroll container reserves for classic scrollbars: a bar on the right and one at the bottom.
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+struct Scrollbar {
+    width: f32,
+    height: f32,
+}
+
+impl Scrollbar {
+    fn of(id: u64) -> Self {
+        let (width, height) = crate::renderer::reserved_scrollbar(id);
+        Self { width, height }
+    }
 }
 
 /// Border or padding widths of one element, in px.
@@ -270,8 +287,9 @@ pub(crate) fn clipping_ancestors(tree: &RetainedTree, id: u64, first: Option<u64
     found
 }
 
-/// The clip edge is the padding box: the border is outside it. The border is the
-/// one the ancestor painted with, so a state style that changes it moves the clip.
+/// The clip edge is the client box: the padding box less the scrollbars it reserves room for, and
+/// the border is outside it. The border is the one the ancestor painted with, so a state style
+/// that changes it moves the clip.
 pub(crate) fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Vec<(u64, Bounds<Pixels>)> {
     ancestors
         .iter()
@@ -279,10 +297,11 @@ pub(crate) fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Ve
             let painted = crate::automation::get_bounds(window, ancestor.id)?;
             let (x, y) = (painted.x as f32, painted.y as f32);
             let (width, height) = (painted.width as f32, painted.height as f32);
+            let scrollbar = Scrollbar::of(ancestor.id);
             let (left, right) = if ancestor.clip_x {
                 (
                     x + painted.client_left as f32,
-                    x + width - painted.border_right as f32,
+                    x + width - painted.border_right as f32 - scrollbar.width,
                 )
             } else {
                 (-UNCLIPPED, UNCLIPPED)
@@ -290,7 +309,7 @@ pub(crate) fn clip_rects(window: WindowId, ancestors: &[ClippingAncestor]) -> Ve
             let (top, bottom) = if ancestor.clip_y {
                 (
                     y + painted.client_top as f32,
-                    y + height - painted.border_bottom as f32,
+                    y + height - painted.border_bottom as f32 - scrollbar.height,
                 )
             } else {
                 (-UNCLIPPED, UNCLIPPED)
@@ -402,6 +421,7 @@ fn report_intersection(
     id: u64,
     bounds: Bounds<Pixels>,
     border: Insets,
+    scrollbar: Scrollbar,
     clips: Vec<(u64, Bounds<Pixels>)>,
     viewport: gpui::Size<Pixels>,
 ) -> Option<Report> {
@@ -409,6 +429,7 @@ fn report_intersection(
         last.present
             && same_bounds(last.border, bounds)
             && last.border_insets == border
+            && last.scrollbar == scrollbar
             && last.clips.len() == clips.len()
             && last
                 .clips
@@ -427,6 +448,7 @@ fn report_intersection(
             present: true,
             border: bounds,
             border_insets: border,
+            scrollbar,
             clips: clips.clone(),
             viewport,
         },
@@ -437,6 +459,8 @@ fn report_intersection(
         border_top: f64::from(border.top),
         border_right: f64::from(border.right),
         border_bottom: f64::from(border.bottom),
+        scrollbar_width: f64::from(scrollbar.width),
+        scrollbar_height: f64::from(scrollbar.height),
         clips: clips
             .iter()
             .map(|(id, rect)| ObservationClip {
@@ -617,9 +641,19 @@ fn sweep(
         if target.resize {
             found.extend(report_resize(observers, target.id, bounds, padding_of(&published), border_of(&published)));
         }
-        if let Some(ancestors) = &target.clips {
+        // The content of a skipped element is not intersecting, whatever box it has kept: it is
+        // reported gone below.
+        if let Some(ancestors) = target.clips.as_ref().filter(|_| !inside_skipped_content(&tree, target.id)) {
             let clips = clip_rects(window, ancestors);
-            found.extend(report_intersection(observers, target.id, bounds, border_of(&published), clips, viewport));
+            found.extend(report_intersection(
+                observers,
+                target.id,
+                bounds,
+                border_of(&published),
+                Scrollbar::of(target.id),
+                clips,
+                viewport,
+            ));
         }
     }
     observers.targets = Some(targets);
@@ -649,7 +683,9 @@ fn sweep(
         }
     }
     for (id, last) in observers.intersection.iter_mut() {
-        if last.present && crate::automation::get_bounds(window, *id).is_none() {
+        if last.present
+            && (crate::automation::get_bounds(window, *id).is_none() || inside_skipped_content(&tree, *id))
+        {
             last.present = false;
             gone_intersection.push(*id);
         }
