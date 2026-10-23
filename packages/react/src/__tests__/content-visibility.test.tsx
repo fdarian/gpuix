@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
+import { AnimatedCard, elapse, Filler, hovered, shotOf, Sidebar, spent, VisibleLoop } from "./skipped-animations-fixture.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -380,6 +381,159 @@ describeNative("animations in a skipped subtree", { timeout: 120_000 }, () => {
       }
     })
   }
+})
+
+// ── Animations that nobody sees because their content is skipped ──
+
+describeNative("animations in hidden content", { timeout: 120_000 }, () => {
+  const CARDS = 8
+  const TICKS = 60
+
+  type Props = { cards: number; value: "hidden" | "visible"; visibleLoop?: boolean; control?: boolean; kinds?: string[]; filler?: boolean }
+
+  const Hidden = ({ cards, value, visibleLoop, control, kinds, filler }: Props) => (
+    <div style={{ width: 400, height: 600, display: "flex", flexDirection: "row" }}>
+      <Sidebar />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {filler ? <Filler /> : null}
+        {visibleLoop ? <VisibleLoop /> : null}
+        {control ? <AnimatedCard index={100} /> : null}
+        {Array.from({ length: cards }, (_, index) => (
+          <div key={index} testId={`host-${index}`} style={{ contentVisibility: value, containIntrinsicSize: "80px 60px", flexShrink: 0 } as CSSProperties}>
+            <AnimatedCard index={index} kinds={kinds} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  const mount = (props: Props) => {
+    const root = createTestRoot({ width: 400, height: 600 })
+    const renderer = root.renderer
+    renderer.clockPause()
+    root.render(<Hidden {...props} />)
+    renderer.flush()
+    renderer.setInlineDraws(false)
+    renderer.setA11yActive(false)
+    return { root, renderer }
+  }
+
+  /** The loops start in content that is skipped, or are running when it begins to be. */
+  const STARTS = ["skipped from the start", "running when the content is hidden"] as const
+
+  const ticksOf = (props: Props, start: (typeof STARTS)[number]) => {
+    const page = mount(start === "skipped from the start" ? props : { ...props, value: "visible" })
+    try {
+      if (start !== "skipped from the start") {
+        for (let tick = 0; tick < 10; tick++) elapse(page.renderer)
+        page.root.render(<Hidden {...props} />)
+      }
+      return spent(page.renderer, TICKS)
+    } finally {
+      page.root.unmount()
+    }
+  }
+
+  for (const start of STARTS) {
+    it(`costs a page what an empty one costs: motion, motion.path and CSS loops, ${start}`, () => {
+      const empty = ticksOf({ cards: 0, value: "hidden" }, start)
+      const full = ticksOf({ cards: CARDS, value: "hidden" }, start)
+      expect(full).toEqual(empty)
+      expect(full).toMatchObject({ paintedFrames: 0, patchedFrames: 0, declines: {}, dormantTicks: 0, motionsSynced: 0 })
+    })
+
+    it(`adds nothing to the ticks of a loop that is drawn, ${start}`, () => {
+      const alone = ticksOf({ cards: 0, value: "hidden", visibleLoop: true }, start)
+      const beside = ticksOf({ cards: CARDS, value: "hidden", visibleLoop: true }, start)
+      expect(alone.patchedFrames, "the loop is patched at every tick").toBeGreaterThanOrEqual(TICKS - 1)
+      // The verifier builds each replayed frame once more, whole, and a whole build syncs every motion.
+      expect(verifying ? { ...beside, motionsSynced: alone.motionsSynced } : beside).toEqual(alone)
+    })
+  }
+
+  for (const start of STARTS) {
+    it(`builds for a hover what it builds for cards that run nothing: ${start}`, () => {
+      const frames = (kinds: string[]) => {
+        const props: Props = { cards: CARDS, value: "hidden", kinds, filler: true }
+        const page = mount(start === "skipped from the start" ? props : { ...props, value: "visible" })
+        try {
+          if (start !== "skipped from the start") {
+            for (let tick = 0; tick < 10; tick++) elapse(page.renderer)
+            page.root.render(<Hidden {...props} />)
+          }
+          for (let tick = 0; tick < 12; tick++) elapse(page.renderer)
+          return hovered(page.renderer, 20)
+        } finally {
+          page.root.unmount()
+        }
+      }
+      expect(frames(["motion", "path", "css"])).toEqual(frames([]))
+    })
+  }
+
+  it("leaves an animation on the host itself running", () => {
+    const root = createTestRoot({ width: 400, height: 600 })
+    try {
+      root.renderer.clockPause()
+      root.render(
+        <div style={{ width: 400, height: 600, flexDirection: "column" }}>
+          <div testId="host" style={{ contentVisibility: "hidden", containIntrinsicSize: "80px 60px", width: 40, height: 40, animation: "cv-pulse 1s linear infinite" } as CSSProperties} />
+        </div>
+      )
+      root.renderer.flush()
+      root.renderer.setInlineDraws(false)
+      const done = spent(root.renderer, TICKS)
+      expect(done.paintedFrames + done.patchedFrames, "a frame for each tick of the host's loop").toBeGreaterThanOrEqual(TICKS - 1)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  /** The colour of each loop of a card, at the place where it shows the time of its clock. */
+  const looks = (renderer: ReturnType<typeof createTestRoot>["renderer"], index: number, name: string) => {
+    const shot = shotOf(renderer, name)
+    const box = renderer.getElementBounds(renderer.findByTestId(`card-${index}`)!.id)!
+    expect(box.y, `card ${index} is in the window: ${JSON.stringify(box)}`).toBeLessThan(600 - 60)
+    return [
+      shot.at(box.x + 20, box.y + 20),
+      shot.at(box.x + 40 + 8 + 18, box.y + 12),
+      shot.at(box.x + 40 + 8 + 24 + 8 + 20, box.y + 20),
+    ].map((pixel) => pixel.slice(0, 3))
+  }
+
+  it("shows each loop at the current instant when the content is shown again, and runs them", () => {
+    const { root, renderer } = mount({ cards: CARDS, value: "visible", control: true })
+    try {
+      for (let tick = 0; tick < 10; tick++) elapse(renderer)
+      root.render(<Hidden cards={CARDS} value="hidden" control />)
+      for (let tick = 0; tick < 25; tick++) elapse(renderer)
+      root.render(<Hidden cards={CARDS} value="visible" control />)
+      renderer.flush()
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
+      const control = looks(renderer, 100, "control")
+      const first = looks(renderer, 3, "shown")
+      for (let at = 0; at < 3; at++) {
+        for (let channel = 0; channel < 3; channel++) {
+          expect(Math.abs(first[at]![channel]! - control[at]![channel]!), `loop ${at}, channel ${channel}: ${first[at]} against ${control[at]}`).toBeLessThanOrEqual(2)
+        }
+      }
+      for (let tick = 0; tick < 7; tick++) elapse(renderer)
+      const later = looks(renderer, 3, "later")
+      const laterControl = looks(renderer, 100, "later-control")
+      expect(later, "the loops run again").not.toEqual(first)
+      for (let at = 0; at < 3; at++) {
+        for (let channel = 0; channel < 3; channel++) {
+          expect(Math.abs(later[at]![channel]! - laterControl[at]![channel]!), `loop ${at}, channel ${channel} later`).toBeLessThanOrEqual(2)
+        }
+      }
+      const css = (index: number) => renderer.getAnimations(renderer.findByTestId(`css-${index}`)!.id)[0]!.currentTime
+      expect(css(3)).toBeCloseTo(css(100), 3)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
 })
 
 describeNative("a tick whose only change is in skipped content", { timeout: 120_000 }, () => {

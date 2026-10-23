@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest"
 import { defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from "../testing.js"
 import { verifying } from "./retained-harness.js"
+import { AnimatedCard, CARD, elapse, Filler, hovered, shotOf, Sidebar, spent, VisibleLoop } from "./skipped-animations-fixture.js"
 
 const SQUARE_FONT = fs.readFileSync(new URL("./fixtures/gpuix-test-square.ttf", import.meta.url))
 
@@ -2120,4 +2121,146 @@ describeNative("content a read forced keeps its layout across the draws that ski
       fresh.unmount()
     }
   })
+})
+
+describeNative("animations in auto content that is skipped", { timeout: 120_000 }, () => {
+  const CARDS = 6
+  const TICKS = 60
+
+  type Props = { cards: number; visibleLoop?: boolean; control?: boolean; kinds?: string[]; filler?: boolean }
+
+  /** `cards` auto elements 6000px down a scroller, far past what is near, beside a sidebar and under what is always drawn. */
+  const Far = ({ cards, visibleLoop, control, kinds, filler }: Props) => (
+    <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "row" }}>
+      <Sidebar />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {filler ? <Filler /> : null}
+        {visibleLoop ? <VisibleLoop /> : null}
+        {control ? <AnimatedCard index={100} /> : null}
+        <div testId="scroller" style={{ overflowY: "auto", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+          <div style={{ height: 6000, flexShrink: 0 }} />
+          {Array.from({ length: cards }, (_, index) => (
+            <div key={index} testId={`far-${index}`} style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px", flexShrink: 0 } as CSSProperties}>
+              <AnimatedCard index={index} kinds={kinds} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  const mount = (props: Props) => {
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    renderer.clockPause()
+    root.render(<Far {...props} />)
+    renderer.flush()
+    renderer.setInlineDraws(false)
+    renderer.setA11yActive(false)
+    return { root, renderer }
+  }
+
+  /** The loops start in content that is far, or are running when it is scrolled away from. */
+  const STARTS = ["far from the start", "running when scrolled away"] as const
+
+  const awayFrom = (renderer: TestRenderer, start: (typeof STARTS)[number]) => {
+    if (start === "far from the start") return
+    const scroller = renderer.findByTestId("scroller")!.id
+    renderer.scrollTo(scroller, 0, 6000, "instant")
+    for (let tick = 0; tick < 10; tick++) elapse(renderer)
+    renderer.scrollTo(scroller, 0, 0, "instant")
+  }
+
+  /** The scrollbar fades for a while after a scroll, and draws. */
+  const warm = (start: (typeof STARTS)[number]) => (start === "far from the start" ? 12 : 200)
+
+  const ticksOf = (props: Props, start: (typeof STARTS)[number]) => {
+    const page = mount(props)
+    try {
+      awayFrom(page.renderer, start)
+      return spent(page.renderer, TICKS, warm(start))
+    } finally {
+      page.root.unmount()
+    }
+  }
+
+  for (const start of STARTS) {
+    it(`costs a page what an empty one costs: motion, motion.path and CSS loops, ${start}`, () => {
+      const empty = ticksOf({ cards: 0 }, start)
+      const full = ticksOf({ cards: CARDS }, start)
+      expect(full).toEqual(empty)
+      expect(full).toMatchObject({ paintedFrames: 0, patchedFrames: 0, declines: {}, dormantTicks: 0, motionsSynced: 0 })
+    })
+
+    it(`adds nothing to the ticks of a loop that is drawn, ${start}`, () => {
+      const alone = ticksOf({ cards: 0, visibleLoop: true }, start)
+      const beside = ticksOf({ cards: CARDS, visibleLoop: true }, start)
+      expect(alone.paintedFrames + alone.patchedFrames, "a frame for each tick of the loop").toBeGreaterThanOrEqual(TICKS - 1)
+      // The verifier builds each replayed frame once more, whole, and a whole build syncs every motion.
+      expect(verifying ? { ...beside, motionsSynced: alone.motionsSynced } : beside).toEqual(alone)
+    })
+
+    it(`builds for a hover what it builds for cards that run nothing: ${start}`, () => {
+      const frames = (kinds: string[]) => {
+        const page = mount({ cards: CARDS, kinds, filler: true })
+        try {
+          awayFrom(page.renderer, start)
+          for (let tick = 0; tick < warm(start); tick++) elapse(page.renderer)
+          return hovered(page.renderer, 20)
+        } finally {
+          page.root.unmount()
+        }
+      }
+      expect(frames(["motion", "path", "css"])).toEqual(frames([]))
+    })
+  }
+
+  /** The colour of each loop of a card, at the place where it shows the time of its clock. */
+  const looks = (renderer: TestRenderer, card: number, name: string) => {
+    const shot = shotOf(renderer, name)
+    const box = renderer.getElementBounds(renderer.findByTestId(`card-${card}`)!.id)!
+    expect(box.y, `card ${card} is in the window: ${JSON.stringify(box)}`).toBeLessThan(SIZE.height - CARD)
+    return [shot.at(box.x + 20, box.y + 20), shot.at(box.x + 40 + 8 + 18, box.y + 12), shot.at(box.x + 40 + 8 + 24 + 8 + 20, box.y + 20)].map(
+      (pixel) => pixel.slice(0, 3)
+    )
+  }
+
+  it("shows each loop at the current instant when it is scrolled near again, and runs them", () => {
+    const { root, renderer } = mount({ cards: CARDS, control: true })
+    try {
+      const scroller = renderer.findByTestId("scroller")!.id
+      // The cards are built in the frame after the one that finds them near, and their loops start there.
+      const settle = () => {
+        for (let frame = 0; frame < 3; frame++) {
+          renderer.flush()
+          renderer.drawFrame()
+          renderer.dispatchNativeEvents()
+        }
+      }
+      renderer.scrollTo(scroller, 0, 6000, "instant")
+      settle()
+      for (let tick = 0; tick < 10; tick++) elapse(renderer)
+      renderer.scrollTo(scroller, 0, 0, "instant")
+      for (let tick = 0; tick < 25; tick++) elapse(renderer)
+      renderer.scrollTo(scroller, 0, 6000, "instant")
+      settle()
+      const first = looks(renderer, 3, "first")
+      expectSameColours(first, looks(renderer, 100, "first-control"), "when shown")
+      for (let tick = 0; tick < 7; tick++) elapse(renderer)
+      const later = looks(renderer, 3, "later")
+      expect(later, "the loops run again").not.toEqual(first)
+      expectSameColours(later, looks(renderer, 100, "later-control"), "later")
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  function expectSameColours(shown: number[][], control: number[][], when: string) {
+    for (let at = 0; at < shown.length; at++) {
+      for (let channel = 0; channel < 3; channel++) {
+        expect(Math.abs(shown[at]![channel]! - control[at]![channel]!), `loop ${at}, channel ${channel}, ${when}: ${shown[at]} against ${control[at]}`).toBeLessThanOrEqual(2)
+      }
+    }
+  }
 })

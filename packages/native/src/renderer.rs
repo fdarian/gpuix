@@ -8575,9 +8575,10 @@ fn motion_value_due(store: &crate::motion::MotionValueStore, tree: &crate::retai
         .is_some_and(|binding| store.binding_due(binding))
 }
 
-/// The elements with a motion that runs at `now`, see `retain::Sources::motion`. The motion of a
-/// shape is its `<svg>`'s: the shape is never built, and the `<svg>` is what is culled, left dormant
-/// or built again for it.
+/// The elements with a motion that runs at `now`, see `retain::Sources::motion`, but for the ones with
+/// no box (`display: none`, or the content of a `content-visibility` host that skips): that is
+/// content nobody sees, which asks for no build and no unit. The motion of a shape is its `<svg>`'s:
+/// the shape is never built, and the `<svg>` is what is culled, left dormant or built again for it.
 ///
 /// `moving` are the motions that were moving when the last sync read what it reads as it is now, if
 /// they are known: a motion that moves now was one of them, since a motion starts only with a
@@ -8599,6 +8600,9 @@ fn running_motion(
         .map(|(id, _)| *id)
         .chain(animations.svg_shapes(keyframes))
         .map(|id| crate::custom_elements::svg_tree::host_of(tree, id))
+        // Nothing is built or drawn for an element with no box, and a tick or a frame has nothing to
+        // do for what runs there: it is a change of no unit, and of no element a build reaches.
+        .filter(|host| tree.elements.get(host).is_some_and(|element| !crate::layout::box_generation::is_hidden(tree, element)))
         .collect()
 }
 
@@ -17657,5 +17661,48 @@ mod paint_statics_tests {
         assert_eq!(statics.by_element.borrow().len(), 4, "the elements that left the tree are dropped");
         statics.prune(|_| false);
         assert_eq!(statics.by_element.borrow().len(), 4, "and not again until there are twice as many");
+    }
+}
+
+#[cfg(test)]
+mod running_motion_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn tree_with_a_host() -> crate::retained_tree::RetainedTree {
+        let mut tree = crate::retained_tree::RetainedTree::new();
+        for id in 1..=4 {
+            tree.create_element(id, "div".to_owned());
+        }
+        tree.append_child(1, 2);
+        tree.append_child(2, 3);
+        tree.append_child(1, 4);
+        let hidden = serde_json::json!({"contentVisibility": "hidden"});
+        tree.set_style(2, Arc::new(serde_json::from_value(hidden).expect("a style")));
+        tree
+    }
+
+    fn looping(now: web_time::Instant) -> crate::motion::MotionState {
+        let description = serde_json::json!({
+            "initial": { "opacity": 1.0 },
+            "animate": { "opacity": [1.0, 0.25, 1.0] },
+            "transition": { "duration": 1.0, "ease": "linear", "repeat": "Infinity" },
+        });
+        let colors = crate::motion::Colors::inheriting(
+            &crate::color::ColorContext::root(color_scheme_of(gpui::WindowAppearance::Light)),
+            &crate::motion::ParentFont::initial(),
+            None,
+        );
+        crate::motion::MotionState::new(&description, None, colors, None, 0, now).expect("a motion")
+    }
+
+    #[test]
+    fn a_motion_in_skipped_content_is_no_running_motion() {
+        let now = web_time::Instant::now();
+        let tree = tree_with_a_host();
+        let states: HashMap<u64, crate::motion::MotionState> = [(3, looping(now)), (4, looping(now))].into();
+        assert!(states[&3].is_animating(now) && states[&4].is_animating(now), "both run");
+        let running = running_motion(&tree, &states, None, &Default::default(), &Default::default(), now);
+        assert_eq!(running, vec![4], "3 is under the host that skips its content, 4 is drawn");
     }
 }
