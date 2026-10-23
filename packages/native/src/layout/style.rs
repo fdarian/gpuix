@@ -150,12 +150,12 @@ pub(crate) fn apply<E: Styled>(
     el = apply_gap(el, style, lengths);
     el = apply_position(el, style, lengths);
     // Layout containment makes the box the containing block of its fixed descendants, and of its
-    // absolute ones whatever its `position`: so does a transform.
-    if style.content_visibility.is_some_and(super::content_visibility::ContentVisibility::contains)
-        || crate::css::transform::is_active(style, lengths)
-    {
+    // absolute ones whatever its `position`: so does a transform, but without the rest of
+    // layout containment (the margins of its children still collapse through it).
+    if style.content_visibility.is_some_and(super::content_visibility::ContentVisibility::contains) {
         el.style().contain_layout = Some(true);
     }
+    el.style().contain_positioned = crate::css::transform::is_active_if_declared(style, lengths);
     if let Some(value) = style.overflow_anchor {
         el = el.overflow_anchor(value.to_gpui());
     }

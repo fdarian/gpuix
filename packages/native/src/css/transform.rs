@@ -139,6 +139,17 @@ pub(crate) fn of(style: &StyleDesc, lengths: &LengthContext) -> Option<ElementTr
     Parts::of(style, lengths).element_transform()
 }
 
+/// Whether the element has a transform, see [`Parts::is_active`], for a style that declares a
+/// valid one: `Some(false)` for `none`, which a state style needs in order to clear the flag of
+/// the style under it.
+pub(crate) fn is_active_if_declared(style: &StyleDesc, lengths: &LengthContext) -> Option<bool> {
+    if !declares(style) {
+        return None;
+    }
+    let parts = Parts::of(style, lengths);
+    parts.element_transform().map(|_| parts.is_active())
+}
+
 /// Whether the element has a transform, see [`Parts::is_active`].
 pub(crate) fn is_active(style: &StyleDesc, lengths: &LengthContext) -> bool {
     declares(style) && Parts::of(style, lengths).is_active()

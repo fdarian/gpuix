@@ -137,3 +137,29 @@ describeNative("a transform is a containing block", () => {
     })
   })
 })
+
+describeNative("a transform is not layout containment", () => {
+  /**
+   * A block parent whose first child has a top margin, which collapses through the parent's top edge.
+   * The padding keeps it from collapsing further, through the wrapper the test paints in.
+   */
+  const margins = (style: Record<string, unknown>) => (
+    <div style={{ paddingTop: 10 }}>
+      <div style={{ width: 100, backgroundColor: "#ff0000", ...style }}>
+        <div style={{ marginTop: 20, width: 50, height: 50, backgroundColor: "#0000ff" }} />
+      </div>
+    </div>
+  )
+
+  it("lets the margin of a child collapse through the top edge of the box, as without it", () => {
+    for (const style of [{}, { transform: "translateX(0px)" }, { translate: "0px" }, { scale: 1 }]) {
+      paint(`margins-${Object.keys(style)[0] ?? "plain"}`, margins(style), (at) => {
+        const name = JSON.stringify(style)
+        // The box starts at y=30 with its child, instead of at 10 with the child 20px inside.
+        expect(at(75, 20), name).toEqual(WHITE)
+        expect(at(75, 40), name).toEqual(RED)
+        expect(at(25, 40), name).toEqual(BLUE)
+      })
+    }
+  })
+})
