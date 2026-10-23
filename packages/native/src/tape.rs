@@ -1208,6 +1208,39 @@ mod tests {
     }
 
     #[test]
+    fn the_boxes_a_forced_pass_left_are_read_after_frames_that_did_not_write_them() {
+        let window = WindowId::from(913);
+        let laid_out = Tape::laid_out();
+        record_laid_out(&laid_out, window, 2, 20.0);
+
+        // The pass writes one box and puts back another by a layout record, moved by 3.
+        crate::automation::forget_window(window);
+        box_at(window, 1, 5.0);
+        laid_out.borrow().replay(window, Phase::LayoutRecorded, gpui::point(gpui::px(3.0), gpui::px(0.0)));
+        assert_eq!((x_of(window, 1), x_of(window, 2)), (Some(5.0), Some(23.0)));
+        crate::automation::keep_bounds(window);
+
+        // The frames after it write and replay neither; one writes another box.
+        for frame in 0..3 {
+            crate::automation::forget_window(window);
+            box_at(window, 3, frame as f32);
+            assert_eq!((x_of(window, 1), x_of(window, 2)), (None, None));
+        }
+        let kept = crate::automation::reading_kept(|| (x_of(window, 1), x_of(window, 2), x_of(window, 3), x_of(window, 4)));
+        assert_eq!(kept, (Some(5.0), Some(23.0), Some(2.0), None), "the box a frame wrote is the frame's, and an element no pass wrote has none");
+        assert_eq!((x_of(window, 1), x_of(window, 2)), (None, None), "and a read that is not of the pass's does not see them");
+
+        // The boxes outlast a purge of a page of many boxes while they are the pass's.
+        for frame in 0..3 {
+            for id in 0..5000 {
+                box_at(window, 100 + id, frame as f32);
+            }
+            crate::automation::forget_window(window);
+        }
+        assert_eq!(crate::automation::reading_kept(|| (x_of(window, 1), x_of(window, 2))), (Some(5.0), Some(23.0)));
+    }
+
+    #[test]
     fn the_notes_of_a_build_that_is_not_a_frames_are_taken_back() {
         clear_build_effects();
         note_build(BuildEffect::Measured(1));
