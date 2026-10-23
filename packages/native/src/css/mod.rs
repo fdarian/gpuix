@@ -41,6 +41,7 @@ pub(crate) mod text_box;
 pub(crate) mod text_decoration;
 pub(crate) mod text_underline_offset;
 pub(crate) mod text_wrap;
+pub(crate) mod transform;
 pub(crate) mod url;
 pub(crate) mod vertical_align;
 pub(crate) mod word_break;

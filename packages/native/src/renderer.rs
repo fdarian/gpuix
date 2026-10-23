@@ -12234,6 +12234,10 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     if style.animating_opacity {
         el = el.has_active_opacity_animation();
     }
+    // Some(empty) is `none`, which a state style needs in order to clear the base transform too.
+    if let Some(transform) = crate::css::transform::of(style, lengths) {
+        el.style().transform = Some(transform);
+    }
     // Some(empty) is `none`, which a state style needs in order to clear the base filter.
     if let Some(filters) = style
         .filter

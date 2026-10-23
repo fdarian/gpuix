@@ -841,6 +841,31 @@ export interface StyleDesc {
    *  `view-box` are `border-box` and `fill-box` is `content-box`. `url()` and a box
    *  with no shape are invalid, so the value is ignored. */
   clipPath?: string
+  /** CSS `transform`: a space-separated list of `translate()`, `translateX()`, `translateY()`,
+   *  `scale()`, `scaleX()`, `scaleY()`, `rotate()`, `skew()`, `skewX()`, `skewY()` and
+   *  `matrix()`, or `"none"`. Moves, scales, rotates and skews the element and everything in it,
+   *  hit testing and `getBoundingClientRect()` included, around `transformOrigin`; layout is
+   *  not affected. Translations take lengths (`px`, `em`, `rem`, `vw`, `vh`, `calc()`) and
+   *  percentages of the element's own border box; angles are `deg`, `rad`, `grad` or `turn`
+   *  (or a bare `0`). The z forms (`translate3d()`, `scale3d()`, `translateZ()`, `scaleZ()`,
+   *  `rotateZ()`) are accepted and draw in 2D; `rotateX()`, `rotateY()`, `perspective()` and
+   *  `matrix3d()` are invalid. An invalid string is ignored, as in CSS.
+   *
+   *  A transform other than `none` makes the element a stacking context and the containing
+   *  block of its absolute and fixed descendants. It does nothing to a non-atomic inline
+   *  element (a `<span>` in a line of text). A pure translation keeps text sharp; rotated and
+   *  scaled text is resampled and may look softer. */
+  transform?: string
+  /** CSS `translate`, `rotate` and `scale`: the individual transform properties, applied
+   *  around `transformOrigin` as translate, then rotate, then scale, then `transform`.
+   *  `translate` is one or two lengths or percentages; `rotate` an angle (a number is
+   *  degrees); `scale` one or two numbers or percentages (a number is the factor). */
+  translate?: string
+  rotate?: number | string
+  scale?: number | string
+  /** CSS `transform-origin`: one or two of `left`, `center`, `right`, `top`, `bottom`, lengths
+   *  and percentages, `50% 50%` by default. */
+  transformOrigin?: string
   /** One to four line styles, like `borderColor`: `"dotted"`, `"dotted dashed"` (top-bottom,
    *  left-right), ... A `none` or `hidden` side has no width. One invalid keyword ignores the
    *  whole value. A side that no `border*` value gives a style is `none`, as in CSS:

@@ -5,7 +5,7 @@ use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
 use crate::css::border::{self, parse_color_sides, parse_style_sides};
 use crate::css::mask::Mask;
-use crate::css::{clip_path, filter, mask_border, text_box, text_decoration};
+use crate::css::{clip_path, filter, mask_border, text_box, text_decoration, transform};
 use crate::style::{BackgroundValue, StyleDesc};
 
 /// Takes `$base`'s value for every field `$over` leaves unset. Written as a
@@ -199,7 +199,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         filter, backdrop_filter, mask_image, mask_size, mask_position, mask_repeat, mask_origin,
         mask_clip, mask_mode, mask_composite, mask, mask_border_source, mask_border_slice,
         mask_border_width, mask_border_outset, mask_border_repeat, mask_border_mode, mask_border,
-        clip_path, font_style,
+        clip_path, transform, translate, rotate, scale, transform_origin, font_style,
         border, border_block, border_inline, border_top, border_right, border_bottom, border_left, border_top_color,
         border_right_color, border_bottom_color, border_left_color,
         border_width, border_top_width, border_right_width, border_bottom_width,
@@ -254,6 +254,11 @@ pub(crate) fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         filter: |value| filter::parse_resolved(value, &colors, &lengths).is_some(),
         backdrop_filter: |value| filter::parse_resolved(value, &colors, &lengths).is_some(),
         clip_path: |value| clip_path::parse(value, &lengths).is_some(),
+        transform: |value| transform::parse_transform(value, &lengths).is_some(),
+        translate: |value| transform::parse_translate(value, &lengths).is_some(),
+        rotate: |value| transform::parse_rotate(value).is_some(),
+        scale: |value| transform::parse_scale(value).is_some(),
+        transform_origin: |value| transform::parse_origin(value, &lengths).is_some(),
         mask: |value| background::is_valid_shorthand::<Mask>(value, &colors, &lengths),
         mask_image: |value| background::is_valid_image_list::<Mask>(value, &colors, &lengths),
         mask_size: |value| background::is_valid_list::<Mask>(Property::Size, value, &lengths),
@@ -1560,6 +1565,35 @@ mod tests {
         );
         assert_eq!(none.filter.as_deref(), Some("none"));
         assert_eq!(none.clip_path.as_deref(), Some("none"));
+    }
+
+    #[test]
+    fn a_state_transform_replaces_the_base_one_property_by_property() {
+        let resolved = resolved_hover(
+            r##"{"transform":"scale(2)","rotate":"10deg","translate":"1px","scale":2,"transformOrigin":"0 0",
+                "hover":{"transform":"none","rotate":45,"scale":"3","translate":"none","transformOrigin":"center"}}"##,
+        );
+        assert_eq!(resolved.transform.as_deref(), Some("none"));
+        assert_eq!(resolved.rotate.as_deref(), Some("45deg"));
+        assert_eq!(resolved.scale.as_deref(), Some("3"));
+        assert_eq!(resolved.translate.as_deref(), Some("none"));
+        assert_eq!(resolved.transform_origin.as_deref(), Some("center"));
+        let kept = resolved_hover(r##"{"transform":"scale(2)","rotate":"10deg","hover":{"scale":2}}"##);
+        assert_eq!(kept.transform.as_deref(), Some("scale(2)"));
+        assert_eq!(kept.rotate.as_deref(), Some("10deg"));
+    }
+
+    #[test]
+    fn an_invalid_state_transform_keeps_the_base() {
+        let resolved = resolved_hover(
+            r##"{"transform":"scale(2)","translate":"1px","rotate":"10deg","scale":2,"transformOrigin":"0 0",
+                "hover":{"transform":"scale(","translate":"1","rotate":"10","scale":"2px","transformOrigin":"left left"}}"##,
+        );
+        assert_eq!(resolved.transform.as_deref(), Some("scale(2)"));
+        assert_eq!(resolved.translate.as_deref(), Some("1px"));
+        assert_eq!(resolved.rotate.as_deref(), Some("10deg"));
+        assert_eq!(resolved.scale.as_deref(), Some("2"));
+        assert_eq!(resolved.transform_origin.as_deref(), Some("0 0"));
     }
 
     #[test]

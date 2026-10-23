@@ -79,6 +79,29 @@ fn deserialize_box_shadow<'de, D: serde::Deserializer<'de>>(
     Ok(Option::<BoxShadowInput>::deserialize(deserializer)?.and_then(BoxShadowInput::into_values))
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum NumberOrText {
+    Number(f64),
+    Text(String),
+}
+
+/// A CSS string, or a number that `unit` turns into one.
+fn text_or_number<'de, D: Deserializer<'de>>(deserializer: D, unit: &str) -> Result<Option<String>, D::Error> {
+    Ok(Option::<NumberOrText>::deserialize(deserializer)?.map(|value| match value {
+        NumberOrText::Number(number) => format!("{number}{unit}"),
+        NumberOrText::Text(text) => text,
+    }))
+}
+
+fn deserialize_degrees<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    text_or_number(deserializer, "deg")
+}
+
+fn deserialize_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    text_or_number(deserializer, "")
+}
+
 fn deserialize_shadow_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LinearLength, D::Error> {
     crate::css::length::deserialize_with(
         deserializer,
@@ -828,6 +851,20 @@ pub struct StyleDesc {
     /// CSS `clip-path`: `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`, `polygon()` or `path()` and an
     /// optional reference box, or `none`. An invalid string is ignored.
     pub clip_path: Option<String>,
+    /// CSS `transform`: a list of `translate()`, `scale()`, `rotate()`, `skew()` and `matrix()`
+    /// functions (and their `X`/`Y`/`Z`/`3d` forms, whose z does nothing), or `none`. An invalid
+    /// string is ignored.
+    pub transform: Option<String>,
+    /// CSS `translate`: `none` or one or two lengths or percentages.
+    pub translate: Option<String>,
+    /// CSS `rotate`: `none` or an angle. A number is degrees.
+    #[serde(default, deserialize_with = "deserialize_degrees")]
+    pub rotate: Option<String>,
+    /// CSS `scale`: `none` or one or two numbers or percentages. A number is the factor.
+    #[serde(default, deserialize_with = "deserialize_factor")]
+    pub scale: Option<String>,
+    /// CSS `transform-origin`: one or two keywords, lengths or percentages. `50% 50%` by default.
+    pub transform_origin: Option<String>,
     /// CSS `border-style`: one to four of `none`, `hidden`, `dotted`, `dashed`, `solid`,
     /// `double`, `groove`, `ridge`, `inset` and `outset`, for the sides like `border-color`.
     /// `none` and `hidden` leave the side without a width. An invalid string is ignored.
@@ -1165,6 +1202,16 @@ impl StyleDesc {
         painted.text_decoration_color = other.text_decoration_color.clone();
         painted.scrollbar_color = other.scrollbar_color.clone();
         painted.selection_color = other.selection_color.clone();
+        // Having a transform makes the element a containing block, which layout reads: only the
+        // values of one that stays on or off are paint.
+        let has_transform = |style: &Self| crate::css::transform::is_active(style, &LengthContext::initial(0.0, 0.0));
+        if has_transform(self) == has_transform(other) {
+            painted.transform = other.transform.clone();
+            painted.translate = other.translate.clone();
+            painted.rotate = other.rotate.clone();
+            painted.scale = other.scale.clone();
+            painted.transform_origin = other.transform_origin.clone();
+        }
         painted == *other
     }
 
@@ -1556,6 +1603,35 @@ mod tests {
 
     fn calc(text: &str) -> DimensionValue {
         DimensionValue::Calc(parse_linear_length(text).unwrap())
+    }
+
+    fn style(json: &str) -> StyleDesc {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn the_values_of_a_transform_are_paint_but_having_one_is_layout() {
+        let paint_only = |from: &str, to: &str| style(from).differs_only_in_paint(&style(to));
+        assert!(paint_only(r#"{"transform":"scale(2)"}"#, r#"{"transform":"rotate(1deg)"}"#));
+        assert!(paint_only(r#"{"translate":"1px"}"#, r#"{"translate":"9px 2px","transformOrigin":"0 0"}"#));
+        assert!(paint_only(r#"{"rotate":1}"#, r#"{"rotate":"3turn","scale":2}"#));
+        assert!(paint_only(r#"{"transform":"none"}"#, "{}"));
+        assert!(paint_only(r#"{"transform":"bogus"}"#, "{}"));
+        // Starting or ending: the element becomes or stops being a containing block.
+        assert!(!paint_only("{}", r#"{"transform":"scale(2)"}"#));
+        assert!(!paint_only(r#"{"rotate":"1deg"}"#, r#"{"transform":"none"}"#));
+        assert!(!paint_only(r#"{"transform":"scale(2)"}"#, r#"{"transform":"bogus"}"#));
+        // And a key that is layout still is.
+        assert!(!paint_only(r#"{"transform":"scale(2)","width":1}"#, r#"{"transform":"scale(3)","width":2}"#));
+    }
+
+    #[test]
+    fn rotate_and_scale_take_a_number_or_a_string() {
+        let parsed = style(r#"{"rotate":45,"scale":1.5}"#);
+        assert_eq!((parsed.rotate.as_deref(), parsed.scale.as_deref()), (Some("45deg"), Some("1.5")));
+        let parsed = style(r#"{"rotate":"0.25turn","scale":"2 3"}"#);
+        assert_eq!((parsed.rotate.as_deref(), parsed.scale.as_deref()), (Some("0.25turn"), Some("2 3")));
+        assert_eq!(style(r#"{"rotate":0}"#).rotate.as_deref(), Some("0deg"));
     }
 
     #[test]

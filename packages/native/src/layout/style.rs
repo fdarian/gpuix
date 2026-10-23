@@ -149,7 +149,11 @@ pub(crate) fn apply<E: Styled>(
     el = apply_padding(el, style, lengths);
     el = apply_gap(el, style, lengths);
     el = apply_position(el, style, lengths);
-    if style.content_visibility.is_some_and(super::content_visibility::ContentVisibility::contains) {
+    // Layout containment makes the box the containing block of its fixed descendants, and of its
+    // absolute ones whatever its `position`: so does a transform.
+    if style.content_visibility.is_some_and(super::content_visibility::ContentVisibility::contains)
+        || crate::css::transform::is_active(style, lengths)
+    {
         el.style().contain_layout = Some(true);
     }
     if let Some(value) = style.overflow_anchor {

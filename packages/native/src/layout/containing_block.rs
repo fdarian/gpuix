@@ -73,19 +73,20 @@ pub(crate) fn may_escape(element: &RetainedElement) -> bool {
 }
 
 /// A containing block for the boxes that escape to one. `<anchored>` counts: zed lays it out as
-/// absolute whatever its style says. A `display: contents` element generates no box.
+/// absolute whatever its style says, and a transformed element is one whatever its `position`.
+/// A `display: contents` element generates no box.
 pub(crate) fn is_positioned(tree: &RetainedTree, element: &RetainedElement) -> bool {
     if tree.display_of(element).0 {
         return false;
     }
-    element.element_type == "anchored" || tree.position_of(element) != Position::Static
+    element.element_type == "anchored" || tree.position_of(element) != Position::Static || tree.transformed_of(element)
 }
 
-/// Whether `element` has layout containment and makes a box, which makes it the containing block
-/// of the `position: fixed` boxes below it. A non-atomic inline has none, and a
-/// `display: contents` element makes no box.
+/// Whether `element` has layout containment or a transform and makes a box, which makes it the
+/// containing block of the `position: fixed` boxes below it. A non-atomic inline has neither, and
+/// a `display: contents` element makes no box.
 pub(crate) fn contains_fixed(tree: &RetainedTree, element: &RetainedElement) -> bool {
-    tree.content_visibility_of(element).contains()
+    (tree.content_visibility_of(element).contains() || tree.transformed_of(element))
         && !tree.display_of(element).0
         && !crate::text::inline::is_part_of_paragraph(tree, element)
 }
@@ -225,6 +226,41 @@ mod tests {
         // Another contained box above it does not matter.
         with_content_visibility(&mut tree, 1, None);
         assert_eq!(reaching_ancestors(&tree, 4), [2, 1]);
+    }
+
+    fn with_transform(tree: &mut RetainedTree, id: u64, display: Option<&str>, transform: &str) {
+        let style = crate::style::StyleDesc {
+            transform: Some(transform.to_string()),
+            display: display.map(str::to_string),
+            ..Default::default()
+        };
+        tree.set_style(id, Arc::new(style));
+    }
+
+    #[test]
+    fn a_transformed_element_is_the_containing_block_of_the_fixed_and_absolute_elements_in_it() {
+        // The static 2 is transformed: it holds the fixed 4 and the absolute 3 whatever is between.
+        let mut tree = tree(&[
+            (1, "div", Some("relative")),
+            (2, "div", None),
+            (3, "div", Some("absolute")),
+            (4, "div", Some("fixed")),
+        ]);
+        with_transform(&mut tree, 2, None, "translateX(1px)");
+        assert_eq!(reaching_ancestors(&tree, 4), [2, 1]);
+        assert_eq!(reaching_ancestors(&tree, 3), [2, 1]);
+        assert!(is_positioned(&tree, &tree.elements[&2]));
+        assert!(contains_fixed(&tree, &tree.elements[&2]));
+    }
+
+    #[test]
+    fn a_transform_that_is_none_or_invalid_or_makes_no_box_contains_nothing() {
+        for (display, transform) in [(None, "none"), (None, "bogus(1)"), (Some("contents"), "scale(2)")] {
+            let mut tree = tree(&[(1, "div", Some("relative")), (2, "div", None), (3, "div", Some("fixed"))]);
+            with_transform(&mut tree, 2, display, transform);
+            assert!(reaching_ancestors(&tree, 3).is_empty(), "{transform}");
+            assert!(!contains_fixed(&tree, &tree.elements[&2]), "{transform}");
+        }
     }
 
     #[test]

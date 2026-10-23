@@ -4,8 +4,8 @@
 //! CSS orders a positioned element in the nearest stacking context, whatever static boxes sit
 //! between it and the context. So are a flex or grid item with a `z-index` (Flexbox 4.3, Grid
 //! 9.5: it applies without a `position`) and an element whose composite is applied as a whole
-//! (`opacity` below 1, a filter, a mask, a clip path), which CSS paints as if positioned with
-//! `z-index: 0`. zed does the same for a `Div` flagged `stacking_context()`
+//! (`opacity` below 1, a filter, a mask, a clip path) and an element with a transform, which CSS
+//! paints as if positioned with `z-index: 0`. zed does the same for a `Div` flagged `stacking_context()`
 //! (`Element::lift_z`): what is lifted is painted and hit tested after the in-flow ones by
 //! `(z-index, tree order)`, the negative ones above the context's own background. Where no
 //! context is active (a layout root such as a virtual-list row, a deferred layer, a
@@ -30,7 +30,7 @@ use crate::style::StyleDesc;
 ///
 /// Lifted are a positioned element, a flex or grid item (`item`) with a `z-index` (the index
 /// does not apply to a static box otherwise), and anything that forms a context by its effect
-/// group, at 0: its own `z-index` only counts where it applies.
+/// group or its transform, at 0: its own `z-index` only counts where it applies.
 pub(crate) fn lift_z(resolved: &Resolved, item: bool) -> Option<i32> {
     if resolved.position != Position::Static {
         return Some(resolved.z_index.unwrap_or(0));
@@ -38,7 +38,7 @@ pub(crate) fn lift_z(resolved: &Resolved, item: bool) -> Option<i32> {
     if item && resolved.z_index.is_some() {
         return resolved.z_index;
     }
-    resolved.effect_group.then_some(0)
+    (resolved.effect_group || resolved.transformed).then_some(0)
 }
 
 pub(crate) fn round_z(z: f64) -> i32 {
@@ -61,9 +61,9 @@ pub(crate) fn paint_rank(resolved: &Resolved, item: bool) -> i32 {
 
 /// Whether the element forms a stacking context of its own: a positioned element with a
 /// `z-index` (not `auto`), a `fixed` or `sticky` one, a flex or grid item (`item`) with a
-/// `z-index`, an element with `content-visibility` other than `visible` (paint containment), and
-/// anything whose composite is applied as a whole, which is what zed's `effects.rs` does with an
-/// effect group. zed cannot see the latter
+/// `z-index`, an element with `content-visibility` other than `visible` (paint containment), an
+/// element with a transform, and anything whose composite is applied as a whole, which is what
+/// zed's `effects.rs` does with an effect group. zed cannot see the latter
 /// (`element_opacity` is paint-only state), so every one must be flagged.
 pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
     if resolved.position != Position::Static {
@@ -74,7 +74,7 @@ pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
     } else if item && resolved.z_index.is_some() {
         return true;
     }
-    resolved.effect_group || resolved.content_visibility.contains()
+    resolved.effect_group || resolved.transformed || resolved.content_visibility.contains()
 }
 
 /// The condition of zed's `Style::group_effect`: opacity below 1 or an animation of it that is
@@ -82,7 +82,8 @@ pub(crate) fn creates_context(resolved: &Resolved, item: bool) -> bool {
 /// `will-change: opacity` layer, so its lift does not change with the value), a non-empty `filter` or
 /// `backdrop-filter`, a mask layer or a mask border, or a clip path other than `none`. `colors` and `lengths`
 /// only decide whether a `filter` or `mask` value is valid, and a value that does not parse
-/// makes no group. Not `transform`: gpuix has no such style.
+/// makes no group. Not `transform`: gpui draws a transformed element through its matrix, and
+/// [`creates_context`] and [`lift_z`] give it its stacking context.
 pub(crate) fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> bool {
     let filters = |value: &Option<String>| {
         value
@@ -383,6 +384,34 @@ mod tests {
         assert!(!context_of(&with(|s| s.mask_border_slice = Some("10".into()))));
         assert!(!context_of(&with(|s| s.clip_path = Some("none".into()))));
         assert!(!context_of(&with(|s| s.clip_path = Some("bogus".into()))));
+    }
+
+    #[test]
+    fn an_element_with_a_transform_is_a_context_painted_in_the_layer_of_z_index_0() {
+        for set in [
+            |s: &mut StyleDesc| s.transform = Some("translateX(0)".into()),
+            |s: &mut StyleDesc| s.translate = Some("0".into()),
+            |s: &mut StyleDesc| s.rotate = Some("0deg".into()),
+            |s: &mut StyleDesc| s.scale = Some("1".into()),
+        ] {
+            let transformed = with(set);
+            assert!(context_of(&transformed));
+            assert_eq!(lift_of(&transformed, false), Some(0));
+            assert!(!resolved(&transformed).effect_group, "gpui draws it through a matrix, not as a group");
+        }
+        // A positioned one keeps its own `z-index`.
+        let positioned = StyleDesc { transform: Some("scale(2)".into()), ..style(Some("relative"), Some(3.0)) };
+        assert_eq!(lift_of(&positioned, false), Some(3));
+    }
+
+    #[test]
+    fn a_transform_that_is_none_or_not_valid_makes_no_context() {
+        assert!(!context_of(&with(|s| s.transform = Some("none".into()))));
+        assert!(!context_of(&with(|s| s.transform = Some("bogus(1)".into()))));
+        assert!(!context_of(&with(|s| s.transform = Some("rotate(45)".into()))));
+        assert!(!context_of(&with(|s| s.translate = Some("none".into()))));
+        assert!(!context_of(&with(|s| s.scale = Some("2px".into()))));
+        assert!(!context_of(&with(|s| s.transform_origin = Some("0 0".into()))));
     }
 
     #[test]

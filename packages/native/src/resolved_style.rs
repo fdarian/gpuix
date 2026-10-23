@@ -47,6 +47,11 @@ pub(crate) struct Resolved {
     /// The composite is applied as a whole (`opacity` below 1, a filter, a mask, a clip path),
     /// which CSS paints as a stacking context.
     pub effect_group: bool,
+    /// The element has a transform (`transform`, `translate`, `rotate` or `scale` other than
+    /// `none`), which CSS paints as a stacking context and makes the containing block of its
+    /// absolute and fixed descendants. Not an effect group: gpui draws the element through its
+    /// matrix. A non-atomic inline box takes no transform, see [`RetainedTree::resolved_of`].
+    pub transformed: bool,
     pub visibility: Visibility,
     pub pointer_events: PointerEvents,
     pub overflow: Axes,
@@ -64,6 +69,7 @@ impl Resolved {
         position: Position::Static,
         z_index: None,
         effect_group: false,
+        transformed: false,
         visibility: Visibility::Inherit,
         pointer_events: PointerEvents::Inherit,
         overflow: Axes {
@@ -96,6 +102,7 @@ impl Resolved {
             position: Position::parse(style.position.as_deref()),
             z_index: style.z_index.map(crate::layout::stacking::round_z),
             effect_group: crate::layout::stacking::has_effect_group(style, colors, lengths),
+            transformed: crate::css::transform::is_active(style, lengths),
             visibility: match style.visibility.as_deref() {
                 Some("hidden") => Visibility::Hidden,
                 Some("visible") => Visibility::Visible,
@@ -200,10 +207,25 @@ impl RetainedTree {
         colors: &ColorContext,
         lengths: &LengthContext,
     ) -> Resolved {
-        self.resolved
+        let resolved = self
+            .resolved
             .borrow()
             .get(element.id)
-            .unwrap_or_else(|| Resolved::declared(element, colors, lengths))
+            .unwrap_or_else(|| Resolved::declared(element, colors, lengths));
+        Resolved { transformed: resolved.transformed && !crate::text::inline::is_part_of_paragraph(self, element), ..resolved }
+    }
+
+    /// Whether `element` has a transform as painted. A non-atomic inline box takes none: it is
+    /// no box of its own for a transform to move, and no containing block.
+    pub(crate) fn transformed_of(&self, element: &RetainedElement) -> bool {
+        let transformed = match self.resolved.borrow().get(element.id) {
+            Some(resolved) => resolved.transformed,
+            None => element
+                .style
+                .as_deref()
+                .is_some_and(|style| crate::css::transform::is_active(style, &LengthContext::initial(0.0, 0.0))),
+        };
+        transformed && !crate::text::inline::is_part_of_paragraph(self, element)
     }
 
     /// The `position` `element` is painted with.
@@ -297,6 +319,29 @@ mod tests {
         assert_eq!((resolved.overflow.x, resolved.overflow.y), (Overflow::Hidden, Overflow::Auto));
         assert!(resolved.lays_out_items && !resolved.contents);
         assert_eq!(Resolved::of(element, None, &colors, &lengths), Resolved::UNSTYLED);
+    }
+
+    #[test]
+    fn a_transform_other_than_none_is_recorded_but_not_for_an_inline_box() {
+        let (colors, lengths) = contexts();
+        let transformed = style(r#"{"transform":"scale(2)"}"#);
+        let element = |json: &str| Resolved::of(&tree(&[(1, "div", StyleDesc::default())]).elements[&1], Some(&style(json)), &colors, &lengths);
+        assert!(element(r#"{"transform":"scale(2)"}"#).transformed);
+        assert!(element(r#"{"translate":"0"}"#).transformed);
+        assert!(!element(r#"{"transform":"none"}"#).transformed);
+        assert!(!element(r#"{"transform":"nonsense"}"#).transformed);
+        assert!(!element("{}").transformed);
+
+        // In a block of text, the span is part of the paragraph and has no box to transform.
+        let built = Resolved { transformed: true, ..Resolved::UNSTYLED };
+        let inline = tree(&[(1, "div", StyleDesc::default()), (2, "span", transformed.clone())]);
+        inline.resolved.borrow_mut().record(2, built);
+        assert!(!inline.transformed_of(&inline.elements[&2]));
+        assert!(!inline.resolved_of(&inline.elements[&2], &colors, &lengths).transformed);
+        let block = tree(&[(1, "div", StyleDesc::default()), (2, "div", transformed)]);
+        block.resolved.borrow_mut().record(2, built);
+        assert!(block.transformed_of(&block.elements[&2]));
+        assert!(block.resolved_of(&block.elements[&2], &colors, &lengths).transformed);
     }
 
     #[test]
