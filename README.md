@@ -2970,9 +2970,11 @@ offset is the rule of a `div`'s, and `scrollHeight` and `clientHeight` are the r
 list as laid out. Rows are measured in 1/64 of a device pixel and stacked from the list's own position, as the
 divs of a scroller are (a row of `20.3px` is `20.296875` tall and the next starts there), and the list scrolls to a
 device pixel as Chrome does. The list records its box like any element, so `getBoundingClientRect`, `onLayout`,
-`ResizeObserver` and `IntersectionObserver` (as a target, as a root, and clipping its rows) read it. A list does not
-inset its rows by its own border: with a `border` its rows, `clientHeight` and `scrollHeight` are those of the box
-with the border, and only `padding` insets them. `fixtures/virtual-list-oracle.*` pins the rest against headless Chrome.
+`ResizeObserver` and `IntersectionObserver` (as a target, as a root, and clipping its rows) read it. A list's client
+box is its padding box, as a div's is: its rows start inside the `border` and the `padding`, are clipped and hit inside
+the border, and `clientWidth`, `clientHeight`, `scrollHeight` and the largest `scrollTop` are those of the padding box.
+A row that shows only in the top padding of a scrolled list is built and counted by `visibleRange`.
+`fixtures/virtual-list-oracle.*` pins the rest against headless Chrome.
 
 On a virtual list, `scrollToItem` takes an optional **pixel offset** and the
 list reports its logical anchor:

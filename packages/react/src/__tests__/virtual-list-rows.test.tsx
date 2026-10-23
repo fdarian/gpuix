@@ -12,9 +12,9 @@
 /// exactly. Chrome scrolls to a device pixel (a `scrollTop` of 10.5 is 11 at scale 1, 10.3 is 10.5 at scale 2), and so does the list
 /// when it places its rows (the `scrollTop` it reads back keeps the fraction that was written, as a div's does).
 ///
-/// A row is compared when at least a device pixel of it is in view, the only rows a list builds. A list ignores its own
-/// border when it places and sizes its rows, and its `clientHeight` and `scrollHeight` are those of the box with its
-/// border, so the scenes with a border compare the box of the list only (a deviation, FORK.md).
+/// A row is compared when at least a device pixel of it is in view in the padding box of the list, the only rows a list
+/// builds: a row that shows only in the top padding of a scrolled list is one of them. A list is a scroller whose client
+/// box is its padding box, so its border insets its rows and its `clientWidth`, `clientHeight` and `scrollHeight`.
 
 import fs from "fs"
 import path from "path"
@@ -31,10 +31,13 @@ const describeNative = hasNativeTestRenderer ? describe : describe.skip
 type Rect = [number, number, number, number]
 type Row = { style: string; text?: string }
 interface Scene {
-  spec: { parent: string | null; list: string; rows: Row[]; compareRows: boolean; scrolls: number[] }
+  spec: { parent: string | null; list: string; rows: Row[]; scrolls: number[] }
   list: Rect
   scrollHeight: number
+  clientWidth: number
   clientHeight: number
+  /** The width of the border on each side, top first. */
+  border: [number, number, number, number]
   steps: { scroll: number; scrollTop: number; rows: Rect[] }[]
 }
 
@@ -97,11 +100,11 @@ function mount(scene: Scene, scale: Scale, colored = false) {
   return { root, rows, list: () => list! }
 }
 
-/** The rows of the step with a device pixel in view in the client box, the ones the list builds: a row whose part in
+/** The rows of the step with a device pixel in view in the padding box, the ones the list builds: a row whose part in
  *  view is thinner paints nothing, and a list that scrolls to a device pixel does not build it. */
 function inView(scene: Scene, step: Scene["steps"][number], scale: Scale): number[] {
-  const [, top] = scene.list
-  const bottom = top + scene.clientHeight
+  const top = scene.list[1] + scene.border[0]
+  const bottom = scene.list[1] + scene.list[3] - scene.border[2]
   return step.rows.flatMap(([, y, , height], index) => (Math.min(y + height, bottom) - Math.max(y, top) >= 1 / scale ? [index] : []))
 }
 
@@ -113,8 +116,8 @@ describeNative("a <virtual-list> against Chrome", () => {
         try {
           const list = mounted.list()
           expect(rectOf(list), "the box of the list").toEqual(scene.list)
-          if (!scene.spec.compareRows) return
           expect(list.scrollHeight, "scrollHeight").toBe(scene.scrollHeight)
+          expect(list.clientWidth, "clientWidth").toBe(scene.clientWidth)
           expect(list.clientHeight, "clientHeight").toBe(scene.clientHeight)
           for (const step of scene.steps) {
             list.scrollTop = step.scroll
@@ -137,12 +140,11 @@ describeNative("a <virtual-list> against Chrome", () => {
 })
 
 /** Where the rows of a list paint: a row covers the device pixel rows from its top to its bottom, each rounded half up as
- *  Chrome snaps the edges of a box, inside the list. Rows with backgrounds touch when the layout ones do, so there is no
+ *  Chrome snaps the edges of a box, inside the padding box of the list. Rows with backgrounds touch when the layout ones do, so there is no
  *  gap and no overlap between two. */
 function expectedRuns(scene: Scene, step: Scene["steps"][number], scale: Scale): string[] {
   const snap = (value: number) => Math.floor(value * scale + 0.5)
-  const [, listTop, , listHeight] = [scene.list[0], scene.list[1], scene.list[2], scene.list[3]]
-  const clip = [snap(listTop), snap(listTop + listHeight)] as const
+  const clip = [snap(scene.list[1] + scene.border[0]), snap(scene.list[1] + scene.list[3] - scene.border[2])] as const
   const colors: string[] = []
   for (let y = clip[0]; y < clip[1]; y++) {
     const row = step.rows.findIndex(([, top, , height]) => snap(top) <= y && y < snap(top + height))
@@ -154,7 +156,6 @@ function expectedRuns(scene: Scene, step: Scene["steps"][number], scale: Scale):
 describeNative("the rows of a <virtual-list> paint as Chrome paints a scroller of divs", () => {
   for (const scale of SCALES) {
     for (const [name, scene] of Object.entries(ORACLE[scale])) {
-      if (!scene.spec.compareRows) continue
       it(`${name} at scale ${scale}`, () => {
         const mounted = mount(scene, scale, true)
         try {
@@ -165,9 +166,8 @@ describeNative("the rows of a <virtual-list> paint as Chrome paints a scroller o
             const file = path.join(SHOTS_DIR, `virtual-list-rows-${name.replace(/\W+/g, "-")}-x${scale}-${step.scroll}.png`)
             mounted.root.renderer.captureScreenshot(file)
             const pixels = readPixels(file)
-            const [x, listTop] = [scene.list[0] + scene.list[2] / 2, scene.list[1]]
-            const column = Math.floor(x * scale)
-            const clipTop = Math.floor(listTop * scale + 0.5)
+            const column = Math.floor((scene.list[0] + scene.list[2] / 2) * scale)
+            const clipTop = Math.floor((scene.list[1] + scene.border[0]) * scale + 0.5)
             const painted = expectedRuns(scene, step, scale).map((_, at) => {
               const [r, g, b] = pixels.at(column, clipTop + at)
               return r > 200 && g < 60 && b < 60 ? "red" : b > 200 && r < 60 && g < 60 ? "blue" : r > 240 && g > 240 && b > 240 ? "white" : `#${[r, g, b].join(",")}`
