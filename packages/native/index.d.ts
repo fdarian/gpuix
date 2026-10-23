@@ -1961,6 +1961,11 @@ export interface RetainedCounters {
   /** Subtrees built by a layout-only pass. */
   layoutBuilds: number
   /**
+   * Of the subtrees skipped with a layout record, those that a layout moved by a whole number
+   * of device pixels and that were put where they are, not built again.
+   */
+  layoutTranslations: number
+  /**
    * Of those, the subtrees that left a layout record, which the next layout-only pass skips
    * them with until a frame is drawn.
    */

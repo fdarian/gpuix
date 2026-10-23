@@ -1816,6 +1816,7 @@ describeNative("content a read forced keeps its layout across the draws that ski
       passes: read.passes,
       built,
       skips: after.layoutSkips - before.layoutSkips,
+      translations: after.layoutTranslations - before.layoutTranslations,
       rects: read.read.map((box) => [box!.x, box!.y, box!.width, box!.height]),
     }
   }
@@ -2015,6 +2016,93 @@ describeNative("content a read forced keeps its layout across the draws that ski
     } finally {
       root.unmount()
     }
+  })
+
+  // Cards in a scroller viewport that clips (the content mask the cards are under stays where it is) and a box above them that
+  // grows: what is culled inside a card does not depend on where the card is while all of it is well inside the viewport.
+  it("skips the cards a box above them moved in a viewport that did not, where they are now, unless they reach its edge", () => {
+    const CARDS = 8
+    const VIEWPORT = 300
+    const Moved = ({ above }: { above: number }) => (
+      <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column", fontFamily: "GpuixTestSquare" }}>
+        <div testId="viewport" style={{ width: 400, height: VIEWPORT, overflow: "hidden", flexShrink: 0, margin: 4 }}>
+          <div style={{ height: above, flexShrink: 0 }} />
+          {Array.from({ length: CARDS }, (_, card) => (
+            <div key={card} testId={`card-${card}`} style={{ height: 50, width: 160, marginLeft: 30, flexShrink: 0 }}>
+              <div testId={`part-${card}`} style={{ height: 20, width: 100, flexShrink: 0 }} />
+              <text style={{ fontSize: 12 }}>{`Card ${card}`}</text>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+    const names = Array.from({ length: CARDS }, (_, card) => [`card-${card}`, `part-${card}`]).flat()
+    const read = (renderer: TestRenderer) => cost(renderer, idsOf(renderer), names)
+    const open = (above: number) => {
+      const root = createTestRoot(SIZE)
+      root.renderer.registerFont(SQUARE_FONT)
+      root.renderer.setInlineDraws(false)
+      drawFirstFrame(root, root.renderer)
+      root.render(<Moved above={above} />)
+      root.renderer.flush()
+      return root
+    }
+    /** Culled subtrees one frame skips. */
+    const culledByAFrame = (renderer: TestRenderer) => {
+      const before = renderer.getCulledSubtreeCount()
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
+      return renderer.getCulledSubtreeCount() - before
+    }
+    // Cards are 50 apart from `above`, in a viewport of 300 from 4, and what culling compares of a card reaches 15 beyond its text:
+    // the fifth card is inside the viewport for all of these, the sixth reaches its bottom edge, and the last two are outside it.
+    // A draw ends the layout records, so the reads follow each other with none between.
+    const ABOVE = [30, 50, 30, 12, 50]
+    const built = ABOVE.map((above) => {
+      const root = open(above)
+      try {
+        const boxes = read(root.renderer)
+        frames(root.renderer)
+        return { boxes, culled: culledByAFrame(root.renderer) }
+      } finally {
+        root.unmount()
+      }
+    })
+    const root = open(30)
+    try {
+      read(root.renderer)
+      const steps = ABOVE.map((above, step) => {
+        root.render(<Moved above={above} />)
+        root.renderer.flush()
+        const now = read(root.renderer)
+        sameRects(`moved to ${above}`, now.rects, built[step]!.boxes.rects)
+        return now
+      })
+      if (!verifying) {
+        // Every card but the sixth is put where it is: the five inside the viewport, and the two outside it that are culled both
+        // times. The sixth reaches the edge of the viewport before or after the move, and is built. Moved back to where it was
+        // recorded (step 2) the cards are where their records are, and none is moved.
+        expect(steps.map((now) => now.translations), "cards put where they are now").toEqual([0, 7, 0, 7, 7])
+        steps.slice(1).forEach((now, step) => expect(now.built, `step ${step + 1}: the sixth card, the page and the viewport`).toBeLessThanOrEqual(8))
+      }
+      noMismatches(root.renderer)
+    } finally {
+      root.unmount()
+    }
+    // What a frame after the move makes of the culled subtrees is a build's, whichever way the cards were put.
+    ABOVE.forEach((above, step) => {
+      const root = open(30)
+      try {
+        read(root.renderer)
+        root.render(<Moved above={above} />)
+        root.renderer.flush()
+        read(root.renderer)
+        frames(root.renderer)
+        expect(culledByAFrame(root.renderer), `culled subtrees at ${above}`).toBe(built[step]!.culled)
+      } finally {
+        root.unmount()
+      }
+    })
   })
 
   it("keeps the layout of a host that was never drawn: the first draw skips it and the read after it builds the spine", () => {
