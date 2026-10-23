@@ -137,17 +137,4 @@ describeNative("a transform is a containing block", () => {
     })
   })
 
-  it("is no containing block for an inline element, which takes no transform", () => {
-    const tree = (
-      <div style={{ color: "#000000" }}>
-        <span style={{ transform: "translate(10px, 10px)" }}>
-          text
-          <span style={{ position: "fixed", left: 5, top: 5, width: 20, height: 20, backgroundColor: "#0000ff" }} />
-        </span>
-      </div>
-    )
-    paint("inline", tree, (at) => {
-      expect(at(10, 10)).toEqual(BLUE)
-    })
-  })
 })

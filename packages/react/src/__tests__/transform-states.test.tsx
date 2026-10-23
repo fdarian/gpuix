@@ -7,7 +7,7 @@
 import fs from "fs"
 import React from "react"
 import { expect, it } from "vitest"
-import { Card, describeNative, Page, RED, setup, verifying, WINDOW } from "./retained-harness.js"
+import { Card, describeNative, Page, RED, setup, verifying } from "./retained-harness.js"
 import { createTestRoot } from "../testing.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
@@ -128,7 +128,9 @@ describeNative("a transform that changes under a retained page", () => {
     const beside = view.bounds(`card-${CARD + 1}`)
     const [x, y] = [beside.x + 5, beside.y + beside.height - 10]
     expect(view.sample("covers", x, y)).toEqual(BLUE)
-    expect(view.renderer.getElementsAt(x, y)[0]).toBe(view.idOf(`card-${CARD}`))
+    // The pointer is over the translated card, which is on top: its hover colour shows, not the other card's.
+    view.renderer.nativeSimulateMouseMove(x, y)
+    expect(view.sample("covers-hovered", x, y)).toEqual(RED)
     view.expectWhatABuildShows("covers", [`card-${CARD}`])
     view.finish(!verifying)
     view.unmount()
