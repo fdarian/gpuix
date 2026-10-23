@@ -757,11 +757,10 @@ describeNative("a forced read on a page that has not been presented since it cha
     expect(kept.counters.layoutReplays, "and the passes after them skipped with them").toBeGreaterThan(0)
     if (!verifying) {
       expect(kept.rounds[0]!.built).toBeGreaterThanOrEqual(entries * 10)
-      // The pass after the first builds ~120 elements: 11 subtrees (about the entries in view of the list) that gpui had no
-      // layout record to skip with, beside the changed entry and the spine.
-      expect(kept.rounds[1]!.built, "the entries in view, not the page").toBeLessThanOrEqual(200)
-      for (const round of kept.rounds.slice(2)) {
-        expect(round.built, "the entry that changed and the spine above it, not the page").toBeLessThanOrEqual(60)
+      // The list was laid out empty when the first pass wrapped the entries, so they were wrapped to stay where they
+      // are, and the pass after skips them as it wrapped them.
+      for (const round of kept.rounds.slice(1)) {
+        expect(round.built, "the entry that changed and the spine above it, not the page").toBeLessThanOrEqual(20)
       }
     }
 

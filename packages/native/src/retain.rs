@@ -450,6 +450,8 @@ struct Record {
     motion: Motion,
     /// Why the element is no unit though something runs on it, if the build says.
     refusal: Option<Refusal>,
+    /// `Node::wrapped` of the last build.
+    wrapped: Option<Option<gpui::Pixels>>,
 }
 
 /// Why an element something runs on is no unit: the first of these that holds of its last build.
@@ -658,6 +660,9 @@ struct Node {
     paints_only: bool,
     /// The element is a table with collapsed borders, which paints the borders of its parts.
     collapsed_table: bool,
+    /// Whether gpui was handed the element to record when it was left, and the overscan it was
+    /// recorded with (`Recording::overscan`).
+    wrapped: Option<Option<gpui::Pixels>>,
     /// Whatever the build of the element turns out to be, the frame can hand it to gpui to record,
     /// for the frame after to replay: it is built in a plain context, in a frame that plans, outside
     /// a unit and a deferred build (see `Retain::to_record`).
@@ -1984,6 +1989,7 @@ impl Retain {
             skipped: None,
             paints_only: false,
             collapsed_table: false,
+            wrapped: None,
             loading: crate::background_images::still_loading(),
             colors_frame: None,
             reads_colors: false,
@@ -2012,10 +2018,16 @@ impl Retain {
                 if record.reads_colors {
                     entry.inherited.colors.note_read();
                 }
-                let overscan = node
-                    .scroller
-                    .filter(|scroller| scroller.holds(node.id) && !record.lifts)
-                    .map(|scroller| scroller.overscan());
+                let overscan = match record.wrapped {
+                    // A scroller laid out empty is no scroller (`Scroller::of`), so the pass that
+                    // wrapped the element may have recorded it to stay where it is; skipped as
+                    // relocatable, gpui refuses its layout record (`ReplayKey`).
+                    Some(wrapped) if self.layout_only => wrapped,
+                    _ => node
+                        .scroller
+                        .filter(|scroller| scroller.holds(node.id) && !record.lifts)
+                        .map(|scroller| scroller.overscan()),
+                };
                 let planned = overscan.is_some() && moved && record.seasoned;
                 let skip = Skip {
                     token: record.token,
@@ -2133,7 +2145,9 @@ impl Retain {
         node.reads_colors = node.colors_frame.take().is_some_and(crate::color::reads::Frame::close);
         self.exited_absent = node.absent;
         self.settle(at);
-        self.to_record(at)
+        let recording = self.to_record(at);
+        self.nodes[at].wrapped = recording.as_ref().map(|recording| recording.overscan);
+        recording
     }
 
     /// Whether a frame that built the element `at` whole leaves it a root the frame after skips,
@@ -2736,6 +2750,7 @@ impl Retain {
                     unit_eligible,
                     motion,
                     refusal,
+                    wrapped: node.wrapped,
                 },
             );
         }
@@ -4677,8 +4692,15 @@ mod tests {
         }
 
         fn enter(&mut self, id: u64) -> bool {
-            let skipped = self
-                .retain
+            let skipped = self.enter_in(id, None).is_some();
+            if !skipped {
+                self.retain.stacking(|| (None, true));
+            }
+            skipped
+        }
+
+        fn enter_in(&mut self, id: u64, scroller: Option<Scroller>) -> Option<Skip> {
+            self.retain
                 .enter(Entry {
                     id,
                     revision: self.revisions.get(&id).copied().unwrap_or(7),
@@ -4694,15 +4716,10 @@ mod tests {
                     boxed: true,
                     container: None,
                     prekeyed: None,
-                    scroller: None,
+                    scroller,
                     opacity_run: &|| false,
                     costly: true,
                 })
-                .is_some();
-            if !skipped {
-                self.retain.stacking(|| (None, true));
-            }
-            skipped
         }
 
         /// Builds the element `id` the way `build_element_in` does, with `inside` building what is
@@ -4756,6 +4773,41 @@ mod tests {
                 });
             });
         }
+    }
+
+    /// A frame of the page in which 2 is entered inside `scroller`, with the skip it got.
+    fn page_in(page: &mut Units, layout_only: bool, scroller: Option<Scroller>) -> Option<Skip> {
+        let mut skip = None;
+        page.frame(&[], layout_only, |page| {
+            page.element(1, None, |page| {
+                skip = page.enter_in(2, scroller);
+                if skip.is_none() {
+                    page.retain.stacking(|| (None, true));
+                    page.leaf(3);
+                    page.leaf(4);
+                    page.retain.exit();
+                }
+            });
+        });
+        skip
+    }
+
+    #[test]
+    fn a_pass_that_only_lays_out_skips_a_root_with_the_overscan_it_was_wrapped_with() {
+        let window = gpui::WindowId::from(1);
+        let list = Scroller { window, viewport: gpui::size(gpui::px(900.0), gpui::px(780.0)), reach: gpui::px(780.0) };
+        crate::automation::set_bounds(window, 2, crate::automation::ElementBounds::plain(0.0, 0.0, 100.0, 100.0));
+        let mut page = Units::new();
+        // A list laid out empty is no scroller, and the entry is wrapped to stay where it is.
+        assert!(page_in(&mut page, true, None).is_none());
+        // The page is edited, so the frames that follow enter the entry.
+        page.edit(1);
+        let skip = page_in(&mut page, true, Some(list)).expect("the entry is skipped");
+        assert_eq!(skip.overscan, None, "gpui would refuse a layout record that is relocatable when it was not recorded to be");
+        // A pass that paints is not held to it.
+        page.edit(1);
+        let skip = page_in(&mut page, false, Some(list)).expect("the entry is skipped");
+        assert_eq!(skip.overscan, Some(gpui::px(390.0)));
     }
 
     #[test]

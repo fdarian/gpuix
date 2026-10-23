@@ -424,6 +424,12 @@ fn insert_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
     });
 }
 
+/// A box for `id`, as a pass that laid it out leaves it.
+#[cfg(test)]
+pub(crate) fn set_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
+    insert_bounds(window, id, bounds);
+}
+
 pub fn get_bounds(window: WindowId, id: u64) -> Option<ElementBounds> {
     BOUNDS.with(|cell| cell.borrow().get(&window)?.get(id))
 }
