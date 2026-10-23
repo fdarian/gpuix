@@ -23,8 +23,9 @@ use super::values::{MotionValues, PlaybackInfo, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
 use crate::css::length::{LengthContext, LinearLength};
-use crate::css::syntax::split_slash_tokens;
 use crate::css::font_variations::VariationSettings;
+use crate::css::syntax::split_slash_tokens;
+use crate::dormant_wake::Wake;
 use crate::style::StyleDesc;
 
 const NAME: &str = "motion value";
@@ -143,6 +144,11 @@ impl BindingIndex {
             }
         }
         Self { by_element, by_value }
+    }
+
+    /// Whether `asleep` holds of every element that binds the value `id`, and one does.
+    fn bound_only_to(&self, id: &ValueId, asleep: &dyn Fn(u64) -> bool) -> bool {
+        self.by_value.get(id).is_some_and(|elements| !elements.is_empty() && elements.iter().all(|element| asleep(*element)))
     }
 }
 
@@ -335,34 +341,33 @@ impl MotionValueStore {
         }
     }
 
-    /// What a frame does for values nothing draws: samples the ones `bindings` name (those of the
-    /// dormant elements) and the listened ones at `now`, and finds their events. Nothing a build
-    /// reads is touched: not the frame's values, which of them moved, nor what was written, so the
-    /// frame that draws an element again finds it as it was left.
-    pub(crate) fn advance_dormant<'a>(
-        &mut self,
-        bindings: impl IntoIterator<Item = &'a Value>,
-        now: Instant,
-    ) -> MotionValueFrame {
-        let mut active = false;
-        let mut ids = HashSet::new();
-        for binding in bindings {
-            match parse_binding(binding) {
-                Ok(pairs) => ids.extend(pairs.iter().map(Bound::id)),
-                Err(error) => self.warn(error),
-            }
-        }
-        for id in ids {
-            match self.graph.sample(id, now) {
-                Ok(sample) => active |= sample.moving,
-                Err(error) => self.warn(error),
-            }
-        }
-        active |= self.observe(now);
+    /// What a frame does for values nothing draws: finds the events of the listened ones at `now`.
+    /// The values only dormant elements bind are not sampled: a value is a function of the time,
+    /// and the frame that draws an element again samples it, so a spring that follows another
+    /// catches up there. Nothing a build reads is touched: not the frame's values, which of them
+    /// moved, nor what was written, so the frame that draws an element again finds it as it was left.
+    pub(crate) fn advance_dormant(&mut self, now: Instant) -> MotionValueFrame {
+        let active = self.observe(now);
         MotionValueFrame {
             active,
             events: std::mem::take(&mut self.pending),
         }
+    }
+
+    /// When the values that nothing draws next need a sample, which is for the events of a listened
+    /// one: Motion's `change` follows the animation and not the element being seen, so a value with a
+    /// `change` listener needs every frame it moves in; one with only an `animation` listener needs
+    /// the instant its animation ends, if that is known, and every frame if not. A value no one
+    /// listens to needs none, whoever it is bound to.
+    pub(crate) fn dormant_wake(&self, now: Instant) -> Wake {
+        Wake::merged(self.watched_moving.iter().filter_map(|id| {
+            let watch = self.watches.get(id)?;
+            Some(if watch.change {
+                Wake::NextFrame
+            } else {
+                self.graph.wake(*id, now)
+            })
+        }))
     }
 
     /// Whether a `motionValues` binding drives only properties that change what an element paints.
@@ -520,8 +525,13 @@ impl MotionValueStore {
     /// every other value is what the frame left it, since nothing but time and a write moves a
     /// value. For a tick in which the bindings, and the values read for the renderer's own use,
     /// are the ones of that frame.
-    pub(crate) fn step(&mut self, now: Instant) -> MotionValueFrame {
-        let mut again: Vec<ValueId> = self.frame_moving.iter().chain(&self.read_moving_ids).copied().collect();
+    ///
+    /// A value that only elements which `asleep` holds of are bound to is left as it is, moving:
+    /// nobody sees it, and the frame that does samples it.
+    pub(crate) fn step(&mut self, now: Instant, index: &BindingIndex, asleep: &dyn Fn(u64) -> bool) -> MotionValueFrame {
+        let (unseen, seen): (Vec<ValueId>, Vec<ValueId>) =
+            self.frame_moving.iter().copied().partition(|id| index.bound_only_to(id, asleep));
+        let mut again: Vec<ValueId> = seen.into_iter().chain(self.read_moving_ids.iter().copied()).collect();
         if !self.written.is_empty() {
             again.extend(self.frame_values.keys().copied().filter(|id| self.graph.follows_any(*id, &self.written)));
         }
@@ -529,6 +539,7 @@ impl MotionValueStore {
         again.dedup();
         self.read_moving_ids.clear();
         self.frame_moving.clear();
+        self.frame_moving.extend(unseen);
         self.read_moving = false;
         self.written.clear();
         let mut active = false;
@@ -2180,13 +2191,115 @@ mod tests {
         assert_eq!(store.demand(shown(true)), Demand::Dormant, "and one that is dormant is not");
         assert_eq!(store.demand([]), Demand::Dormant);
 
-        let dormant = store.advance_dormant([&bound], clock.at(300));
+        let dormant = store.advance_dormant(clock.at(300));
         assert!(dormant.active);
         assert_eq!(store.demand(shown(false)), Demand::Frame, "it does not change what the last frame found");
-        let done = store.advance_dormant([&bound], clock.at(1300));
+        let done = store.advance_dormant(clock.at(1300));
         assert!(!done.active);
         assert!(done.events.iter().any(|event| event.id == 1 && event.kind == MotionValueEventKind::Change), "the events of a listened value come");
         store.frame([&bound], &[], clock.at(1400));
         assert_eq!(store.demand(shown(false)), Demand::Idle);
+    }
+
+    /// A store with a source (0) that nobody binds and a watch on it, animated at `now` by `transition`.
+    fn watched(change: bool, animation: bool, transition: Value) -> (Clock, MotionValueStore) {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(0)).unwrap();
+        store.listen(0.0, change, animation, clock.at(0)).unwrap();
+        store.animate(0.0, &json!(100), Some(&transition), clock.at(0)).unwrap();
+        store.frame([], &[], clock.at(100));
+        (clock, store)
+    }
+
+    #[test]
+    fn a_value_that_nobody_listens_to_needs_no_sample_however_it_moves() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(0)).unwrap();
+        let bound = json!({ "opacity": 0 });
+        store.animate(0.0, &json!(1), Some(&json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" })), clock.at(0)).unwrap();
+        store.frame([&bound], &[], clock.at(100));
+        assert_eq!(store.demand([(true, &bound)]), Demand::Dormant);
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::Never);
+    }
+
+    #[test]
+    fn a_value_with_a_change_listener_needs_a_sample_in_every_frame_it_moves_in() {
+        let (clock, store) = watched(true, false, linear(1.0));
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::NextFrame);
+        let (clock, store) = watched(true, true, linear(1.0));
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::NextFrame, "the change listener decides");
+    }
+
+    #[test]
+    fn a_value_with_only_an_animation_listener_needs_a_sample_when_its_animation_ends() {
+        let (clock, mut store) = watched(false, true, linear(1.0));
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::At(clock.at(1000)));
+        store.pause(0.0, clock.at(200)).unwrap();
+        store.frame([], &[], clock.at(250));
+        assert_eq!(store.dormant_wake(clock.at(250)), Wake::Never, "a held animation does not end");
+        store.play(0.0, clock.at(300)).unwrap();
+        store.set_speed(0.0, 2.0, clock.at(300)).unwrap();
+        store.frame([], &[], clock.at(350));
+        // 200 ms of the second are played; at twice the pace 800 ms more take 400 ms.
+        assert_eq!(store.dormant_wake(clock.at(350)), Wake::At(clock.at(700)));
+        let done = store.advance_dormant(clock.at(700));
+        assert_eq!(kinds(&done), vec![(0, MotionValueEventKind::AnimationComplete)]);
+        assert_eq!(store.dormant_wake(clock.at(700)), Wake::Never);
+    }
+
+    #[test]
+    fn the_end_of_a_repeat_is_known_and_a_repeat_without_a_count_has_none() {
+        let twice = json!({ "duration": 1.0, "ease": "linear", "repeat": 1 });
+        let (clock, store) = watched(false, true, twice);
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::At(clock.at(2000)));
+        let forever = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" });
+        let (clock, store) = watched(false, true, forever);
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::Never);
+    }
+
+    #[test]
+    fn a_spring_is_sampled_in_every_frame_for_its_end_is_found_by_a_scan() {
+        let spring = json!({ "type": "spring", "stiffness": 200, "damping": 10 });
+        let (clock, store) = watched(false, true, spring);
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::NextFrame);
+    }
+
+    #[test]
+    fn a_value_computed_from_an_animation_ends_with_it() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(0)).unwrap();
+        store.create_transform(1.0, 0.0, vec![0.0, 100.0], &json!([0, 1]), None).unwrap();
+        store.listen(1.0, false, true, clock.at(0)).unwrap();
+        store.animate(0.0, &json!(100), Some(&linear(1.0)), clock.at(0)).unwrap();
+        store.frame([], &[], clock.at(100));
+        assert_eq!(store.dormant_wake(clock.at(100)), Wake::At(clock.at(1000)));
+    }
+
+    #[test]
+    fn a_tick_leaves_the_moving_values_that_only_sleeping_elements_bind_as_they_are() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(0)).unwrap();
+        store.create_source(1.0, &json!(0)).unwrap();
+        let bindings = [(10u64, json!({ "opacity": 0 })), (11, json!({ "opacity": 1 }))];
+        let index = BindingIndex::new(bindings.iter().map(|(element, binding)| (*element, binding)));
+        let looping = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" });
+        for id in [0.0, 1.0] {
+            store.animate(id, &json!(1), Some(&looping), clock.at(0)).unwrap();
+        }
+        store.frame(bindings.iter().map(|(_, binding)| binding), &[], clock.at(0));
+        let sampled = |store: &mut MotionValueStore, millis: u64, asleep: &dyn Fn(u64) -> bool| {
+            let before = crate::perf_counters::snapshot().motion_values_sampled;
+            store.step(clock.at(millis), &index, asleep);
+            crate::perf_counters::snapshot().motion_values_sampled - before
+        };
+        assert_eq!(sampled(&mut store, 16, &|_| false), 2, "both are seen");
+        assert_eq!(sampled(&mut store, 32, &|element| element == 11), 1, "one is bound to a sleeper");
+        assert_eq!(sampled(&mut store, 48, &|_| true), 0, "none is seen");
+        assert_eq!(store.demand([(true, &bindings[0].1), (true, &bindings[1].1)]), Demand::Dormant, "they still move");
+        assert_eq!(sampled(&mut store, 64, &|_| false), 2, "and are sampled when seen");
     }
 }

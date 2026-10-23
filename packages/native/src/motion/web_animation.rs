@@ -6,13 +6,16 @@
 //! `currentTime` is 0 at the start whatever the delay. The clock keeps a base
 //! time at an anchor instant and advances from it by `rate` while it ticks.
 //! Reads and commands happen between frames, at the instant of the last frame
-//! (the timeline time), never at `Instant::now`.
+//! (the timeline time), except for an element that is dormant, which no frame is
+//! built for and whose reads are at the clock (`GpuixView::api_instant`).
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use web_time::Instant;
+
+use crate::dormant_wake::Wake;
 
 /// One counter for the process, so an id names one run across every window and
 /// both kinds. Ids start at 1.
@@ -257,6 +260,28 @@ impl Playback {
             .unwrap_or(now)
     }
 
+    /// When the clock reaches `time` by itself, going forward. A held clock never does; one that
+    /// waits for a frame, or runs back, cannot say.
+    pub(super) fn wake_at(&self, time: f64, now: Instant) -> Wake {
+        if self.pending {
+            return Wake::NextFrame;
+        }
+        if !self.ticking || self.rate == 0.0 {
+            return Wake::Never;
+        }
+        if self.rate < 0.0 {
+            return Wake::NextFrame;
+        }
+        let wait = (time - self.unbounded(now)) / self.rate;
+        if wait <= 0.0 {
+            return Wake::At(now);
+        }
+        std::time::Duration::try_from_secs_f64(wait)
+            .ok()
+            .and_then(|wait| now.checked_add(wait))
+            .map_or(Wake::Never, Wake::At)
+    }
+
     pub(super) fn is_finished(&self, now: Instant, end: f64) -> bool {
         let time = self.current(now, end);
         (self.rate > 0.0 && time >= end) || (self.rate < 0.0 && time <= 0.0)
@@ -405,6 +430,29 @@ mod tests {
         assert_eq!(clock.unbounded(at(origin, 5000)), 5.0);
         assert_eq!(clock.status(at(origin, 500), 2.0), Status::Running);
         assert_eq!(clock.status(at(origin, 2000), 2.0), Status::Finished);
+    }
+
+    #[test]
+    fn a_clock_that_runs_reaches_a_time_at_the_instant_it_says() {
+        let (mut clock, origin) = clock();
+        assert_eq!(clock.wake_at(2.0, at(origin, 500)), Wake::At(at(origin, 2000)));
+        assert_eq!(clock.wake_at(2.0, at(origin, 2500)), Wake::At(at(origin, 2500)), "past is now");
+        clock.apply(Command::SetPlaybackRate(2.0), at(origin, 1000), 10.0).unwrap();
+        // At 1 s of time, 3 s to go at twice the pace takes 1.5 s.
+        assert_eq!(clock.wake_at(4.0, at(origin, 1000)), Wake::At(at(origin, 2500)));
+        assert_eq!(clock.wake_at(f64::INFINITY, at(origin, 1000)), Wake::Never, "it never gets there");
+    }
+
+    #[test]
+    fn a_clock_that_is_held_or_cannot_say_has_no_time_it_reaches() {
+        let (mut clock, origin) = clock();
+        clock.apply(Command::Pause, at(origin, 300), 2.0).unwrap();
+        assert_eq!(clock.wake_at(2.0, at(origin, 400)), Wake::Never);
+        clock.apply(Command::Play, at(origin, 600), 2.0).unwrap();
+        assert_eq!(clock.wake_at(2.0, at(origin, 600)), Wake::NextFrame, "it waits for a frame");
+        clock.resolve_pending(at(origin, 700));
+        clock.apply(Command::SetPlaybackRate(-1.0), at(origin, 800), 2.0).unwrap();
+        assert_eq!(clock.wake_at(2.0, at(origin, 800)), Wake::NextFrame, "it runs back");
     }
 
     #[test]

@@ -32,6 +32,7 @@ use super::value::{AnimValue, Colors, Interpolation, ParentFont};
 use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback};
 use super::{needs_layout, resolve_keyframes, InterpolateSize, PropKey};
 use crate::color::ColorContext;
+use crate::dormant_wake::Wake;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 use serde_json::Value;
@@ -898,6 +899,28 @@ struct Run {
     /// (`CssAnimations::advance_clock` leaves it out). Anything that changes the clock or the
     /// parameters, or ticks it, forgets it.
     quiet_until: Option<Instant>,
+    /// What `quiet_until` was taken with: when the run next starts, ends or is reported to
+    /// (`None`: it has no such instant before it is changed), and when it next iterates, if that
+    /// is before. Read only while `quiet_until` is.
+    events: Events,
+}
+
+/// The instants at which a run next has something to tell, see `Run::events`.
+#[derive(Clone, Copy, Default)]
+struct Events {
+    /// The end of its delay and of its active phase.
+    boundary: Option<Instant>,
+    /// The next iteration, when it comes before `boundary`.
+    iteration: Option<Instant>,
+}
+
+/// How far off the next boundary of a run is.
+enum Next {
+    /// The clock cannot say: it waits for a frame, or runs back.
+    Unknown,
+    /// None while it is held or runs for ever.
+    Never,
+    After(Duration),
 }
 
 impl Run {
@@ -914,6 +937,7 @@ impl Run {
             plan: None,
             frozen: BTreeMap::new(),
             quiet_until: None,
+            events: Events::default(),
         }
     }
 
@@ -923,16 +947,41 @@ impl Run {
     fn quiet_after(&self, now: Instant) -> Option<Instant> {
         const HELD: Duration = Duration::from_secs(3600);
         /// A tick a little before the boundary is only a tick too many.
-        const MARGIN: f64 = 0.001;
+        const MARGIN: Duration = Duration::from_millis(1);
+        match self.next_boundary(now, true) {
+            Next::Unknown => None,
+            Next::Never => now.checked_add(HELD),
+            Next::After(wait) => now.checked_add(wait.saturating_sub(MARGIN).min(HELD)),
+        }
+    }
+
+    /// The instants at which the run has something to tell: a start, an end, and an iteration
+    /// before them. Only the first two are always told of, see `CssAnimations::dormant_wake`.
+    fn events_after(&self, now: Instant) -> Events {
+        let instant = |next: Next| match next {
+            Next::After(wait) => now.checked_add(wait),
+            Next::Unknown | Next::Never => None,
+        };
+        let boundary = self.next_boundary(now, false);
+        let iteration = match (self.next_boundary(now, true), &boundary) {
+            (Next::After(iteration), Next::After(boundary)) if iteration >= *boundary => Next::Never,
+            (iteration, _) => iteration,
+        };
+        Events { boundary: instant(boundary), iteration: instant(iteration) }
+    }
+
+    /// How long until the clock reaches the next start of the active phase, end of it, and with
+    /// `iterations` the next iteration boundary.
+    fn next_boundary(&self, now: Instant, iterations: bool) -> Next {
         if self.clock.pending() {
-            return None;
+            return Next::Unknown;
         }
         let rate = self.clock.rate();
         if !self.clock.ticking() || rate == 0.0 {
-            return now.checked_add(HELD);
+            return Next::Never;
         }
         if rate < 0.0 {
-            return None;
+            return Next::Unknown;
         }
         let params = &self.params;
         let active = active_duration(params);
@@ -946,14 +995,17 @@ impl Run {
         consider(params.delay.max(0.0));
         consider((params.delay + active).max(0.0));
         consider(self.end_time());
-        if params.duration > 0.0 && params.duration.is_finite() {
-            consider(params.delay + params.duration * (((local - params.delay) / params.duration).floor() + 1.0));
+        if iterations && params.duration > 0.0 && params.duration.is_finite() {
+            let iteration = params.delay + params.duration * (((local - params.delay) / params.duration).floor() + 1.0);
+            // The end of the last iteration is the end of the animation, and nothing follows it.
+            if iteration < (params.delay + active).max(0.0) {
+                consider(iteration);
+            }
         }
         if next.is_infinite() {
-            return now.checked_add(HELD);
+            return Next::Never;
         }
-        let wait = Duration::try_from_secs_f64(((next - local) / rate - MARGIN).max(0.0)).ok()?;
-        now.checked_add(wait.min(HELD))
+        Duration::try_from_secs_f64(((next - local) / rate).max(0.0)).map_or(Next::Unknown, Next::After)
     }
 
     /// `@keyframes` is looked up at every style recalculation, so a redefinition
@@ -1326,7 +1378,6 @@ pub(crate) struct CssAnimations {
     /// The elements this frame leaves dormant (see `retain::Sources::dormant`): what keeps their
     /// animations going is a tick that builds nothing, so they do not ask for a drawn frame.
     dormant: HashSet<u64>,
-    dormant_active: bool,
     sleepers: Sleepers,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
@@ -1344,10 +1395,41 @@ struct Sleepers {
     /// Elements to look at in the next tick whatever `due` says: one just dormant, one a build or a
     /// command touched, one with a run that cannot say when it is due.
     next: HashSet<u64>,
-    /// The dormant elements with a run that is still moving, as of the last tick or build.
-    moving: HashSet<u64>,
+    /// The instant of each dormant element's next start or end of a run, which is told of whether
+    /// anything listens; with the heap of them, as `due` and `scheduled` are.
+    boundaries: BinaryHeap<Reverse<(Instant, u64)>>,
+    boundary_at: HashMap<u64, Instant>,
+    /// The dormant elements with an iteration before their next boundary, and when it comes. It is
+    /// told of only to an element that listens to `animationiteration`.
+    iterating: HashMap<u64, Instant>,
+    listening: Listening,
     #[cfg(test)]
     visits: u64,
+}
+
+/// Which of the `iterating` elements listen to `animationiteration`, as of one revision of the tree.
+#[derive(Default)]
+struct Listening {
+    revision: Option<u64>,
+    /// Iterating elements the listeners have not been looked at for.
+    unchecked: HashSet<u64>,
+    elements: HashSet<u64>,
+}
+
+impl Sleepers {
+    /// `id` is not scheduled for anything any more.
+    fn forget(&mut self, id: u64) {
+        self.scheduled.remove(&id);
+        self.boundary_at.remove(&id);
+        self.iterating.remove(&id);
+    }
+}
+
+fn earlier(first: Option<Instant>, second: Option<Instant>) -> Option<Instant> {
+    match (first, second) {
+        (Some(first), Some(second)) => Some(first.min(second)),
+        (first, second) => first.or(second),
+    }
 }
 
 impl CssAnimations {
@@ -1438,11 +1520,8 @@ impl CssAnimations {
                     now,
                 ));
             }
-            let wants = run.wants_frame(now);
-            if self.dormant.contains(&id) {
-                self.dormant_active |= wants;
-            } else {
-                self.active |= wants;
+            if !self.dormant.contains(&id) {
+                self.active |= run.wants_frame(now);
             }
         }
         state.moving = state.runs.iter().any(|run| run.wants_frame(now));
@@ -1450,7 +1529,6 @@ impl CssAnimations {
         if state.runs.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
             self.states.remove(&id);
         }
-        self.note_moving(id);
         let mut animated = AnimationStyle { style: Vec::new(), svg: Vec::new() };
         for (key, value) in values {
             let Some(value) = value else {
@@ -1466,9 +1544,8 @@ impl CssAnimations {
     }
 
     /// Brings the runs of `id` up to `now` without a style: iterations and finishes are reported
-    /// as `advance` would, `getAnimations` reads the new time, and the element asks for another
-    /// tick if a run is still moving. The frame that builds the element afterwards at the same
-    /// instant finds nothing left to report.
+    /// as `advance` would and `getAnimations` reads the new time. The frame that builds the element
+    /// afterwards at the same instant finds nothing left to report.
     pub(crate) fn advance_clock(&mut self, id: u64, now: Instant) {
         let Some(state) = self.states.get_mut(&id) else {
             return;
@@ -1480,13 +1557,12 @@ impl CssAnimations {
             }
             run.tick(id, now, &mut self.events, &mut self.api_events);
             run.quiet_until = run.quiet_after(now);
+            run.events = run.events_after(now);
             ticked = true;
         }
         if ticked {
             state.moving = state.runs.iter().any(|run| run.wants_frame(now));
         }
-        self.dormant_active |= state.moving;
-        self.note_moving(id);
     }
 
     /// Whether everything running on `id` only changes what it paints: every property its
@@ -1523,11 +1599,12 @@ impl CssAnimations {
     }
 
     /// `id` is left dormant by the frame being built: its clock is carried on by
-    /// `advance_dormant`, and what it asks of the window goes to a tick that draws nothing.
+    /// `advance_dormant`, and `dormant_wake` says when that is due.
     pub(crate) fn enter_dormant(&mut self, id: u64) {
         self.dormant.insert(id);
-        self.sleepers.next.insert(id);
-        self.note_moving(id);
+        if self.states.contains_key(&id) {
+            self.sleepers.next.insert(id);
+        }
     }
 
     pub(crate) fn leave_dormant(&mut self, id: u64) {
@@ -1535,19 +1612,7 @@ impl CssAnimations {
             return;
         }
         self.sleepers.next.remove(&id);
-        self.sleepers.scheduled.remove(&id);
-        self.sleepers.moving.remove(&id);
-    }
-
-    fn note_moving(&mut self, id: u64) {
-        if self.dormant.is_empty() {
-            return;
-        }
-        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(|state| state.moving) {
-            self.sleepers.moving.insert(id);
-        } else {
-            self.sleepers.moving.remove(&id);
-        }
+        self.sleepers.forget(id);
     }
 
     /// `advance_clock` for the dormant elements whose runs have something due at `now`: the ones
@@ -1581,32 +1646,76 @@ impl CssAnimations {
         if sleepers.due.len() > 2 * sleepers.scheduled.len() + 64 {
             sleepers.due = sleepers.scheduled.iter().map(|(id, at)| Reverse((*at, *id))).collect();
         }
-        self.dormant_active |= !self.sleepers.moving.is_empty();
+        if sleepers.boundaries.len() > 2 * sleepers.boundary_at.len() + 64 {
+            sleepers.boundaries = sleepers.boundary_at.iter().map(|(id, at)| Reverse((*at, *id))).collect();
+        }
     }
 
     /// Notes when `id` is next due: at the earliest instant one of its runs is quiet until, or in
-    /// the next tick if a run cannot say.
+    /// the next tick if a run cannot say. And when it next has something to tell, for `dormant_wake`.
     fn schedule(&mut self, id: u64) {
+        self.sleepers.forget(id);
         let Some(state) = self.states.get(&id) else {
             return;
         };
         let mut earliest: Option<Instant> = None;
+        let mut boundary: Option<Instant> = None;
+        let mut iteration: Option<Instant> = None;
         for run in &state.runs {
             let Some(until) = run.quiet_until else {
                 self.sleepers.next.insert(id);
                 return;
             };
-            earliest = Some(earliest.map_or(until, |earliest| earliest.min(until)));
+            earliest = earlier(earliest, Some(until));
+            boundary = earlier(boundary, run.events.boundary);
+            iteration = earlier(iteration, run.events.iteration);
         }
         if let Some(at) = earliest {
             self.sleepers.due.push(Reverse((at, id)));
             self.sleepers.scheduled.insert(id, at);
         }
+        if let Some(at) = boundary {
+            self.sleepers.boundaries.push(Reverse((at, id)));
+            self.sleepers.boundary_at.insert(id, at);
+        }
+        if let Some(at) = iteration.filter(|iteration| boundary.is_none_or(|boundary| *iteration < boundary)) {
+            self.sleepers.iterating.insert(id, at);
+            self.sleepers.listening.unchecked.insert(id);
+        }
     }
 
-    /// Whether a dormant element still has a run that moves, as of the last frame or tick.
-    pub(crate) fn take_dormant_active(&mut self) -> bool {
-        std::mem::take(&mut self.dormant_active)
+    /// When the dormant elements next have something to tell, which is what a tick is for: the
+    /// start and the end of a run, and an iteration of an element for which `listens` says that
+    /// its path hears `animationiteration` (nothing is told of the others, as an event with no
+    /// listener is not emitted). A run that cannot say when needs the next frame, and one that
+    /// loops for ever and is listened to by no one, nothing. `revision` is the tree's: the
+    /// listeners are asked again when it moves.
+    pub(crate) fn dormant_wake(&mut self, revision: u64, listens: &dyn Fn(u64) -> bool) -> Wake {
+        let sleepers = &mut self.sleepers;
+        if !sleepers.next.is_empty() {
+            return Wake::NextFrame;
+        }
+        let mut wake = Wake::Never;
+        while let Some(&Reverse((at, id))) = sleepers.boundaries.peek() {
+            if sleepers.boundary_at.get(&id) == Some(&at) {
+                wake = Wake::At(at);
+                break;
+            }
+            sleepers.boundaries.pop();
+        }
+        let listening = &mut sleepers.listening;
+        if listening.revision != Some(revision) {
+            listening.revision = Some(revision);
+            listening.elements.clear();
+            listening.unchecked = sleepers.iterating.keys().copied().collect();
+        }
+        for id in std::mem::take(&mut listening.unchecked) {
+            if sleepers.iterating.contains_key(&id) && listens(id) {
+                listening.elements.insert(id);
+            }
+        }
+        listening.elements.retain(|id| sleepers.iterating.contains_key(id));
+        wake.merge(Wake::merged(listening.elements.iter().map(|id| Wake::At(sleepers.iterating[id]))))
     }
 
     /// A frame of a shape inside an `<svg>`: its animations advance and the SVG
@@ -1665,7 +1774,7 @@ impl CssAnimations {
             let Some(mut state) = self.states.remove(&hidden) else {
                 continue;
             };
-            self.sleepers.moving.remove(&hidden);
+            self.sleepers.forget(hidden);
             for run in &mut state.runs {
                 run.cancel(hidden, now, &mut self.events, &mut self.api_events);
             }
@@ -1725,6 +1834,19 @@ impl CssAnimations {
             self.sleepers.next.insert(element);
         }
         Some(outcome)
+    }
+
+    /// Whether the last frame left `id` dormant.
+    pub(crate) fn is_dormant(&self, id: u64) -> bool {
+        self.dormant.contains(&id)
+    }
+
+    /// The element the run `id` is of.
+    pub(crate) fn element_of(&self, id: u64) -> Option<u64> {
+        self.states
+            .iter()
+            .find(|(_, state)| state.runs.iter().any(|run| run.clock.id() == id))
+            .map(|(element, _)| *element)
     }
 
     fn run(&self, id: u64) -> Option<&Run> {
@@ -4106,15 +4228,13 @@ mod tests {
         frames.animations.enter_dormant(1);
         frames.animations.advance_clock(1, frames.at(1100));
         assert_eq!(frames.events(), [named(Iteration, "fade", 1.0)]);
-        assert!(frames.animations.take_dormant_active());
         assert!(!frames.animations.take_active());
         near(opacity(&frames.frame(1100, &animated)), 0.1);
         assert!(frames.events().is_empty(), "the frame at the same instant has nothing left to report");
-        assert!(frames.animations.take_dormant_active(), "a dormant element that is built still asks for ticks, not frames");
-        assert!(!frames.animations.take_active());
+        assert!(!frames.animations.take_active(), "a dormant element that is built asks for ticks, not frames");
+        assert_eq!(frames.animations.dormant_wake(1, &|_| true), Wake::NextFrame, "and the build is looked at in the next one");
         frames.animations.advance_clock(1, frames.at(3100));
         assert_eq!(frames.events(), [named(End, "fade", 3.0)]);
-        assert!(!frames.animations.take_dormant_active(), "an animation that ended asks for nothing");
     }
 
     #[test]
@@ -4146,8 +4266,121 @@ mod tests {
         frames.animations.advance_clock(1, frames.at(16));
         let run = &frames.animations.states[&1].runs[0];
         assert!(run.quiet_until.is_some_and(|until| until > frames.at(900)), "nothing is due before the second");
-        frames.animations.advance_clock(1, frames.at(32));
-        assert!(frames.animations.take_dormant_active(), "a run that is not ticked still asks for ticks");
+    }
+
+    /// `wake` is at `millis` of the frames' clock, to the nearest millisecond (the clock is in seconds of f64).
+    fn assert_wakes_at(frames: &Frames, wake: Wake, millis: u64) {
+        let Wake::At(at) = wake else {
+            panic!("expected a wake at {millis} ms, got {wake:?}");
+        };
+        let off = at.max(frames.at(millis)) - at.min(frames.at(millis));
+        assert!(off < Duration::from_millis(1), "a wake at {at:?} is {off:?} from {millis} ms");
+    }
+
+    #[test]
+    fn a_dormant_loop_is_woken_for_its_iterations_when_they_are_listened_to_and_never_otherwise() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear infinite"));
+        frames.animations.enter_dormant(1);
+        frames.animations.advance_dormant(frames.at(16));
+        assert_eq!(frames.animations.dormant_wake(1, &|_| false), Wake::Never, "nobody hears an iteration");
+        let wake = frames.animations.dormant_wake(2, &|_| true);
+        assert_wakes_at(&frames, wake, 1000);
+        let wake = frames.animations.dormant_wake(2, &|_| false);
+        assert_wakes_at(&frames, wake, 1000);
+        assert_eq!(frames.animations.dormant_wake(3, &|_| false), Wake::Never, "the listeners are asked again when the tree moved");
+        frames.animations.advance_dormant(frames.at(1016));
+        let wake = frames.animations.dormant_wake(4, &|_| true);
+        assert_wakes_at(&frames, wake, 2000);
+    }
+
+    #[test]
+    fn a_dormant_run_is_woken_for_the_end_of_its_delay_and_of_its_active_phase_whatever_listens() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear 500ms 2"));
+        frames.animations.enter_dormant(1);
+        frames.animations.advance_dormant(frames.at(16));
+        let wake = frames.animations.dormant_wake(1, &|_| false);
+        assert_wakes_at(&frames, wake, 500);
+        frames.animations.advance_dormant(frames.at(520));
+        assert_eq!(frames.events(), [named(Start, "fade", 0.0)]);
+        let wake = frames.animations.dormant_wake(1, &|_| false);
+        assert_wakes_at(&frames, wake, 2500);
+        let wake = frames.animations.dormant_wake(2, &|_| true);
+        assert_wakes_at(&frames, wake, 1500);
+        frames.animations.advance_dormant(frames.at(2504));
+        assert_eq!(frames.animations.dormant_wake(3, &|_| true), Wake::Never, "an ended run has nothing more to tell");
+    }
+
+    #[test]
+    fn the_earliest_of_many_dormant_elements_is_the_wake() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let build = |frames: &mut Frames, id: u64, declared: &StyleDesc| {
+            let now = frames.at(0);
+            frames.animations.advance(id, declared, &frames.registry, Scope::Element, now);
+            frames.animations.update(
+                id,
+                declared,
+                &Subject::element(declared),
+                &frames.parent_colors,
+                &frames.parent_font,
+                None,
+                frames.inherited,
+                Scope::Element,
+                now,
+            );
+            frames.animations.enter_dormant(id);
+        };
+        build(&mut frames, 1, &fading("fade 3s linear"));
+        build(&mut frames, 2, &fading("fade 2s linear infinite"));
+        build(&mut frames, 3, &fading("fade 900ms linear"));
+        build(&mut frames, 4, &fading("fade 300ms linear infinite"));
+        frames.animations.advance_dormant(frames.at(16));
+        let wake = frames.animations.dormant_wake(1, &|id| id == 2);
+        assert_wakes_at(&frames, wake, 900);
+        let wake = frames.animations.dormant_wake(2, &|id| id == 4);
+        assert_wakes_at(&frames, wake, 300);
+        frames.animations.leave_dormant(3);
+        frames.animations.leave_dormant(4);
+        let wake = frames.animations.dormant_wake(3, &|id| id == 2);
+        assert_wakes_at(&frames, wake, 2000);
+        frames.animations.leave_dormant(2);
+        let wake = frames.animations.dormant_wake(3, &|_| true);
+        assert_wakes_at(&frames, wake, 3000);
+        frames.animations.leave_dormant(1);
+        assert_eq!(frames.animations.dormant_wake(3, &|_| true), Wake::Never);
+    }
+
+    #[test]
+    fn a_dormant_run_that_is_held_has_nothing_to_tell_and_one_that_cannot_say_asks_for_the_next_frame() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear 4 paused"));
+        frames.animations.enter_dormant(1);
+        frames.animations.advance_dormant(frames.at(16));
+        assert_eq!(frames.animations.dormant_wake(1, &|_| true), Wake::Never);
+
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear 4"));
+        frames.animations.enter_dormant(1);
+        frames.animations.advance_dormant(frames.at(16));
+        assert_ne!(frames.animations.dormant_wake(1, &|_| false), Wake::NextFrame);
+        let run = frames.animations.states[&1].runs[0].clock.id();
+        frames.animations.command(run, Command::SetPlaybackRate(-1.0), frames.at(100)).unwrap().unwrap();
+        assert_eq!(frames.animations.dormant_wake(1, &|_| false), Wake::NextFrame, "a command is looked at in the next frame");
+        frames.animations.advance_dormant(frames.at(116));
+        assert_eq!(frames.animations.dormant_wake(1, &|_| false), Wake::NextFrame, "a clock that runs back cannot say");
+    }
+
+    #[test]
+    fn an_element_with_no_animation_that_is_dormant_asks_for_nothing() {
+        let mut animations = CssAnimations::default();
+        animations.enter_dormant(7);
+        assert_eq!(animations.dormant_wake(1, &|_| true), Wake::Never);
     }
 
     #[test]
@@ -4202,11 +4435,6 @@ mod tests {
             due.animations.advance_dormant(due.at(ms));
             every_reported.extend(events(&mut every).into_iter().map(|event| (ms, event)));
             due_reported.extend(events(&mut due).into_iter().map(|event| (ms, event)));
-            assert_eq!(
-                due.animations.take_dormant_active(),
-                every.animations.take_dormant_active(),
-                "asks for ticks as long as a run moves, at {ms} ms"
-            );
         }
         assert!(every_reported.len() >= 10, "{every_reported:?}");
         assert_eq!(due_reported, every_reported, "the same events at the same frames");

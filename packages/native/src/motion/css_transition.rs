@@ -17,6 +17,7 @@ use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentFont};
 use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback, Status};
 use super::MotionState;
 use crate::color::ColorContext;
+use crate::dormant_wake::Wake;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
 
@@ -667,6 +668,12 @@ impl Running {
         (self.delay + self.duration).max(0.0)
     }
 
+    /// When the transition next has an event to report: the end of its delay, and its end.
+    fn wake(&self, now: Instant) -> Wake {
+        let started = if self.began { Wake::Never } else { self.clock.wake_at(self.delay, now) };
+        started.merge(self.clock.wake_at(self.end_time(), now))
+    }
+
     fn elapsed(&self, now: Instant) -> f64 {
         self.clock.current(now, self.end_time())
     }
@@ -1170,7 +1177,6 @@ pub(crate) struct CssTransitions {
     active: bool,
     /// See `CssAnimations::dormant`.
     dormant: HashSet<u64>,
-    dormant_active: bool,
     /// The dormant elements with a transition running, the only ones a tick has anything to do for.
     running_dormant: HashSet<u64>,
     /// The roots `display: none` has cancelled for, until they render again.
@@ -1261,14 +1267,11 @@ impl CssTransitions {
             now,
             &mut self.events,
         );
-        let wants = state
-            .running
-            .values()
-            .any(|running| running.clock.wants_frame(now, running.end_time()));
-        if self.dormant.contains(&id) {
-            self.dormant_active |= wants;
-        } else {
-            self.active |= wants;
+        if !self.dormant.contains(&id) {
+            self.active |= state
+                .running
+                .values()
+                .any(|running| running.clock.wants_frame(now, running.end_time()));
         }
         let values = state.values(now);
         self.note_running(id);
@@ -1281,10 +1284,6 @@ impl CssTransitions {
             return;
         };
         state.advance(id, now, &mut self.events);
-        self.dormant_active |= state
-            .running
-            .values()
-            .any(|running| running.clock.wants_frame(now, running.end_time()));
     }
 
     /// Whether a transition of `opacity` is running on `id`.
@@ -1331,8 +1330,15 @@ impl CssTransitions {
         }
     }
 
-    pub(crate) fn take_dormant_active(&mut self) -> bool {
-        std::mem::take(&mut self.dormant_active)
+    /// When the dormant elements next have a transition to start or end, which is what a tick is for.
+    pub(crate) fn dormant_wake(&self, now: Instant) -> Wake {
+        Wake::merged(
+            self.running_dormant
+                .iter()
+                .filter_map(|id| self.states.get(id))
+                .flat_map(|state| state.running.values())
+                .map(|running| running.wake(now)),
+        )
     }
 
     /// `id` is `display: none`, which takes it and everything below it out of
@@ -1406,6 +1412,22 @@ impl CssTransitions {
                 .find(|(_, running)| running.clock.id() == id)
                 .map(|(prop, running)| running.info(*prop, now))
         })
+    }
+
+    /// Whether the last frame left `id` dormant.
+    pub(crate) fn is_dormant(&self, id: u64) -> bool {
+        self.dormant.contains(&id)
+    }
+
+    /// The element the transition `id` is of, running or finished at its end.
+    pub(crate) fn element_of(&self, id: u64) -> Option<u64> {
+        self.states
+            .iter()
+            .find(|(_, state)| {
+                state.running.values().any(|running| running.clock.id() == id)
+                    || state.completed.values().any(|completed| completed.run.clock.id() == id)
+            })
+            .map(|(element, _)| *element)
     }
 
     /// Applies `command` to the transition `id` at `now`, the time of the last
@@ -1836,6 +1858,36 @@ mod tests {
         assert!(!clock.transitions.take_active());
         assert_eq!(width_of(&clock.frame(1200, &target)), 100.0);
         assert!(clock.events().is_empty(), "a finished transition does not restart");
+    }
+
+    #[test]
+    fn a_dormant_transition_wakes_for_the_end_of_its_delay_and_its_end_and_a_finished_one_for_nothing() {
+        let mut clock = Clock::new();
+        clock.frame(0, &sized(0.0, "width 1s linear 300ms"));
+        clock.transitions.enter_dormant(1);
+        assert_eq!(clock.transitions.dormant_wake(clock.at(0)), Wake::Never, "nothing runs");
+        clock.frame(100, &sized(100.0, "width 1s linear 300ms"));
+        assert_eq!(clock.transitions.dormant_wake(clock.at(100)), Wake::At(clock.at(400)), "the delay ends first");
+        clock.transitions.advance_dormant(clock.at(450));
+        assert_eq!(clock.events().iter().filter(|event| event.0 == Start).count(), 1);
+        assert_eq!(clock.transitions.dormant_wake(clock.at(450)), Wake::At(clock.at(1400)));
+        clock.transitions.leave_dormant(1);
+        assert_eq!(clock.transitions.dormant_wake(clock.at(450)), Wake::Never, "an element that left is not asked");
+        clock.transitions.enter_dormant(1);
+        clock.transitions.advance_dormant(clock.at(1450));
+        assert_eq!(clock.events().iter().filter(|event| event.0 == End).count(), 1);
+        assert_eq!(clock.transitions.dormant_wake(clock.at(1450)), Wake::Never);
+    }
+
+    #[test]
+    fn a_dormant_transition_that_is_held_has_no_wake_and_one_that_waits_for_a_frame_asks_for_it() {
+        let (mut clock, _target, id) = moving();
+        clock.transitions.enter_dormant(1);
+        assert_eq!(clock.transitions.dormant_wake(clock.at(100)), Wake::At(clock.at(1100)));
+        clock.transitions.command(id, Command::Pause, clock.at(100)).unwrap().unwrap();
+        assert_eq!(clock.transitions.dormant_wake(clock.at(100)), Wake::Never);
+        clock.transitions.command(id, Command::Play, clock.at(200)).unwrap().unwrap();
+        assert_eq!(clock.transitions.dormant_wake(clock.at(200)), Wake::NextFrame);
     }
 
     #[test]

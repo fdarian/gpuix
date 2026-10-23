@@ -167,8 +167,12 @@ impl GpuixView {
         self.frame_instant = Some(now);
         self.css_animations.advance_dormant(now);
         self.css_transitions.advance_dormant(now);
-        let (animating, settled) = if tree.motion_ids.is_empty() {
-            (Vec::new(), Vec::new())
+        let step = if tree.motion_ids.is_empty() {
+            crate::renderer::MotionStep {
+                awake: Vec::new(),
+                asleep: crate::dormant_wake::Wake::Never,
+                settled: Vec::new(),
+            }
         } else {
             let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
             let pointer_state = self.pointer.clone();
@@ -178,11 +182,11 @@ impl GpuixView {
         self.motion_values
             .set_appearance(crate::renderer::color_scheme_of(window.appearance()));
         let motion_values = self.step_values(&tree, window, now);
-        crate::renderer::emit_motion_settled(&callback, &tree, &settled);
+        crate::renderer::emit_motion_settled(&callback, &tree, &step.settled);
         crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
         Stepped {
-            motion: animating.iter().any(|id| !self.motion_sleeps(&tree, *id)),
-            dormant_motion: self.dormant_motion_wake(&tree, &animating, now),
+            motion: !step.awake.is_empty(),
+            dormant_motion: step.asleep,
             motion_values: self.value_demand(&tree, window),
         }
     }
@@ -190,14 +194,12 @@ impl GpuixView {
     /// Asks for the frames that what still runs after a patch needs, as the end of a frame does.
     fn continue_after_patch(&mut self, window: &mut gpui::Window, stepped: &Stepped, cx: &mut gpui::Context<Self>) {
         let running = self.css_transitions.take_active() | self.css_animations.take_active();
-        let dormant_running = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
         if running || stepped.motion || stepped.motion_values == crate::motion::Demand::Frame {
             self.request_next_frame(window, false);
         } else {
-            let wake = crate::dormant_wake::Wake::next_frame_if(
-                dormant_running || stepped.motion_values == crate::motion::Demand::Dormant,
-            )
-            .merge(stepped.dormant_motion);
+            let tree_arc = self.tree.clone();
+            let tree = tree_arc.lock().unwrap();
+            let wake = self.dormant_clock_wake(&tree).merge(stepped.dormant_motion);
             self.wake_dormant(wake, window, cx);
         }
     }

@@ -3252,7 +3252,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn get_animations(&self, element_id: f64) -> Result<Vec<WebAnimationInfo>> {
         let id = to_element_id(element_id)?;
-        self.with_motion_state(Repaint::None, move |view, _now| Ok(view.web_animations(id)))
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations(id, now)))
     }
 
     /// One CSS animation or transition by the id `getAnimations` gave. A run
@@ -3263,7 +3263,7 @@ impl GpuixRenderer {
     #[napi]
     pub fn get_animation(&self, animation_id: f64) -> Result<WebAnimationInfo> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(Repaint::None, move |view, _now| view.web_animation(id))
+        self.with_motion_state(Repaint::None, move |view, now| view.web_animation(id, now))
     }
 
     /// JS consumed one `webanimationfinish` or `webanimationcancel` event of the
@@ -3316,7 +3316,7 @@ impl GpuixRenderer {
         command: crate::motion::web_animation::Command,
     ) -> Result<()> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(Repaint::Layout, move |view, _now| view.command_web_animation(id, command))
+        self.with_motion_state(Repaint::Layout, move |view, now| view.command_web_animation(id, command, now))
     }
 
     // ── Selection API ────────────────────────────────────────────────
@@ -5621,6 +5621,25 @@ pub(crate) struct GpuixView {
 struct MotionSynced {
     inputs: u64,
     moving: Vec<u64>,
+    /// How `moving` divides, once a step has asked: a frame decides what is dormant after it syncs.
+    split: Option<MotionSplit>,
+}
+
+/// The motions that move, divided by whether anything of them is drawn (`GpuixView::motion_sleeps`).
+pub(crate) struct MotionSplit {
+    awake: Vec<u64>,
+    asleep: Vec<u64>,
+    /// When the ones that sleep next need a sample, see `MotionState::wake`.
+    wake: crate::dormant_wake::Wake,
+}
+
+/// What a step of the motions found.
+pub(crate) struct MotionStep {
+    /// The motions that move and are drawn.
+    pub(crate) awake: Vec<u64>,
+    /// When the ones that move and are not drawn need a sample.
+    pub(crate) asleep: crate::dormant_wake::Wake,
+    pub(crate) settled: Vec<(u64, u64)>,
 }
 
 #[derive(Default)]
@@ -5703,7 +5722,14 @@ pub(crate) fn sync_motion_values(
     )
 }
 
-/// What the motion values that move ask of the frames to come, given which elements are dormant.
+/// Whether nothing is drawn of the element `id` that a motion value is bound to: it is dormant, or has no
+/// box (`display: none`, or the content of a `content-visibility` ancestor that skips).
+fn value_sleeps(tree: &crate::retained_tree::RetainedTree, retain: &crate::retain::Retain, id: u64) -> bool {
+    retain.is_dormant(id)
+        || tree.elements.get(&id).is_some_and(|element| crate::layout::box_generation::is_hidden(tree, element))
+}
+
+/// What the motion values that move ask of the frames to come, given which elements are asleep.
 pub(crate) fn motion_value_demand(
     tree: &crate::retained_tree::RetainedTree,
     store: &crate::motion::MotionValueStore,
@@ -5711,25 +5737,8 @@ pub(crate) fn motion_value_demand(
 ) -> crate::motion::Demand {
     store.demand(tree.motion_value_ids.iter().filter_map(|id| {
         let element = tree.elements.get(id)?;
-        Some((retain.is_dormant(*id), element.custom_props().get("motionValues")?))
+        Some((value_sleeps(tree, retain, *id), element.custom_props().get("motionValues")?))
     }))
-}
-
-/// What a tick that draws nothing does for the values bound to dormant elements and the ones JS
-/// listens to: finds their events, and says whether they still move.
-fn advance_dormant_motion_values(
-    tree: &crate::retained_tree::RetainedTree,
-    store: &mut crate::motion::MotionValueStore,
-    retain: &crate::retain::Retain,
-    now: web_time::Instant,
-) -> crate::motion::MotionValueFrame {
-    store.advance_dormant(
-        tree.motion_value_ids
-            .iter()
-            .filter(|id| retain.is_dormant(**id))
-            .filter_map(|id| tree.elements.get(id)?.custom_props().get("motionValues")),
-        now,
-    )
 }
 
 /// Samples the values the subtree of a virtual row binds that the root's
@@ -6126,10 +6135,25 @@ fn resolve_highlight(
 }
 
 impl GpuixView {
+    /// The instant the animations of `element` are read and commanded at: the time of the last
+    /// frame, the timeline's, or the clock's `now` for an element that is dormant, since no frame
+    /// is built for it and the last one may be any time ago.
+    fn api_instant(&self, element: Option<u64>, now: web_time::Instant) -> Option<web_time::Instant> {
+        match element {
+            Some(element) if self.css_animations.is_dormant(element) || self.css_transitions.is_dormant(element) => Some(now),
+            _ => self.frame_instant,
+        }
+    }
+
+    /// The element a CSS animation or transition runs on.
+    fn element_of_web_animation(&self, id: u64) -> Option<u64> {
+        self.css_transitions.element_of(id).or_else(|| self.css_animations.element_of(id))
+    }
+
     /// The Web Animations of `element`: its CSS transitions, then its CSS
     /// animations, each in composite order, as of the last frame.
-    pub(crate) fn web_animations(&self, element: u64) -> Vec<WebAnimationInfo> {
-        let Some(now) = self.frame_instant else {
+    pub(crate) fn web_animations(&self, element: u64, now: web_time::Instant) -> Vec<WebAnimationInfo> {
+        let Some(now) = self.api_instant(Some(element), now) else {
             return Vec::new();
         };
         let transitions = self.css_transitions.list(element, now);
@@ -6139,8 +6163,8 @@ impl GpuixView {
 
     /// The run `id` as it is now, or as it showed when its finish or cancel
     /// was reported while JS has not consumed that event.
-    pub(crate) fn web_animation(&self, id: u64) -> std::result::Result<WebAnimationInfo, String> {
-        self.frame_instant
+    pub(crate) fn web_animation(&self, id: u64, now: web_time::Instant) -> std::result::Result<WebAnimationInfo, String> {
+        self.api_instant(self.element_of_web_animation(id), now)
             .and_then(|now| {
                 self.css_transitions.info(id, now).or_else(|| self.css_animations.info(id, now))
             })
@@ -6154,14 +6178,15 @@ impl GpuixView {
         self.retired_animations.release(id);
     }
 
-    /// Applies `command` at the time of the last frame, which is the time the
-    /// animation reads as. The caller requests the frame that paints it.
+    /// Applies `command` at the time the animation reads as. The caller requests the frame that
+    /// paints it.
     pub(crate) fn command_web_animation(
         &mut self,
         id: u64,
         command: crate::motion::web_animation::Command,
+        now: web_time::Instant,
     ) -> std::result::Result<(), String> {
-        let outcome = self.frame_instant.and_then(|now| {
+        let outcome = self.api_instant(self.element_of_web_animation(id), now).and_then(|now| {
             self.css_transitions
                 .command(id, command, now)
                 .or_else(|| self.css_animations.command(id, command, now))
@@ -8171,7 +8196,9 @@ impl GpuixView {
         if self.css_transitions.take_active() || self.css_animations.take_active() {
             window.request_animation_frame();
         }
-        if self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active() {
+        // A dormant element built here is looked at in the next tick; the rest of what the frame
+        // asked for is as its end left it.
+        if self.dormant_clock_wake(&tree) == crate::dormant_wake::Wake::NextFrame {
             self.wake_dormant(crate::dormant_wake::Wake::NextFrame, window, cx);
         }
         taped(&self.tapes, id, element, window)
@@ -8307,10 +8334,14 @@ impl GpuixView {
         window: &gpui::Window,
         now: web_time::Instant,
     ) -> crate::motion::MotionValueFrame {
-        if self.bindings_of(self.motion_value_key(tree, window)).is_some() {
-            self.motion_values.step(now)
-        } else {
-            self.sync_values(tree, window, now)
+        let key = self.motion_value_key(tree, window);
+        let index = self.motion_value_index.as_ref().filter(|(known, _)| *known == key).map(|(_, index)| index.clone());
+        match index {
+            Some(index) => {
+                let retain = &self.retain;
+                self.motion_values.step(now, &index, &|id| value_sleeps(tree, retain, id))
+            }
+            None => self.sync_values(tree, window, now),
         }
     }
 
@@ -8321,7 +8352,7 @@ impl GpuixView {
         window: &gpui::Window,
     ) -> crate::motion::Demand {
         match self.bindings_of(self.motion_value_key(tree, window)) {
-            Some(index) => self.motion_values.demand_in(index, |id| self.retain.is_dormant(id)),
+            Some(index) => self.motion_values.demand_in(index, |id| value_sleeps(tree, &self.retain, id)),
             None => motion_value_demand(tree, &self.motion_values, &self.retain),
         }
     }
@@ -8345,14 +8376,15 @@ impl GpuixView {
             &|id| gestures_of(tree, pointer, focus, id),
             now,
         );
-        self.motion_synced = inputs.map(|inputs| MotionSynced { inputs, moving: synced.0.clone() });
+        self.motion_synced = inputs.map(|inputs| MotionSynced { inputs, moving: synced.0.clone(), split: None });
         synced
     }
 
     /// What a sync of the motions does for a tick: the motions that were moving are stepped, and
     /// the rest of them stay as the sync that found them still left them, unless something it
     /// reads has changed since, which is a sync of all of them. The cost of a tick does not follow
-    /// the number of motions on the page.
+    /// the number of motions on the page, nor the number of those that move where nobody sees
+    /// them: the ones that sleep are stepped when the earliest `wake` of them is due.
     pub(crate) fn step_motions(
         &mut self,
         tree: &crate::retained_tree::RetainedTree,
@@ -8360,25 +8392,82 @@ impl GpuixView {
         now: web_time::Instant,
         focus: &crate::focus::FocusStyles,
         pointer: &crate::events::state::PointerState,
-    ) -> (Vec<u64>, Vec<(u64, u64)>) {
+    ) -> MotionStep {
+        use crate::dormant_wake::Wake;
+
         let inputs = self.motion_inputs(tree, window, focus, pointer);
-        let Some(synced) = self.motion_synced.as_ref().filter(|synced| inputs == Some(synced.inputs)) else {
-            return self.sync_motions(tree, window, now, focus, pointer);
-        };
-        let stepped = step_motion_states(
+        if !self.motion_synced.as_ref().is_some_and(|synced| inputs == Some(synced.inputs)) {
+            let (moving, settled) = self.sync_motions(tree, window, now, focus, pointer);
+            let (awake, asleep) = self.note_motion_split(tree, moving, now);
+            return MotionStep { awake, asleep, settled };
+        }
+        let mut synced = self.motion_synced.take().expect("the sync was just found");
+        // What the split was taken with is the instant the motions were last stepped at: a motion
+        // that ends in this step has no wake any more.
+        let split = synced.split.take();
+        let asleep_due = split.as_ref().is_none_or(|split| match split.wake {
+            Wake::Never => false,
+            Wake::NextFrame => true,
+            Wake::At(at) => at <= now,
+        });
+        let (stepped, settled) = step_motion_states(
             tree,
             &mut self.motion_states,
-            &synced.moving,
+            match &split {
+                Some(split) if !asleep_due => &split.awake,
+                _ => &synced.moving,
+            },
             &self.measurements,
             window.appearance(),
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
         );
+        let step = match split {
+            Some(split) if !asleep_due => {
+                synced.moving = stepped.iter().chain(&split.asleep).copied().collect();
+                let step = MotionStep { awake: stepped.clone(), asleep: split.wake, settled };
+                synced.split = Some(MotionSplit { awake: stepped, asleep: split.asleep, wake: split.wake });
+                step
+            }
+            _ => {
+                let split = self.split_motions(tree, stepped.clone(), now);
+                synced.moving = stepped;
+                let step = MotionStep { awake: split.awake.clone(), asleep: split.wake, settled };
+                synced.split = Some(split);
+                step
+            }
+        };
+        self.motion_synced = Some(synced);
+        step
+    }
+
+    /// Divides the motions in `moving`, which the last sync found, by whether anything of them is drawn,
+    /// and keeps it for the steps after. The motions that are drawn, and when the others need a sample.
+    pub(crate) fn note_motion_split(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        moving: Vec<u64>,
+        now: web_time::Instant,
+    ) -> (Vec<u64>, crate::dormant_wake::Wake) {
+        let split = self.split_motions(tree, moving, now);
+        let found = (split.awake.clone(), split.wake);
         if let Some(synced) = self.motion_synced.as_mut() {
-            synced.moving = stepped.0.clone();
+            synced.split = Some(split);
         }
-        stepped
+        found
+    }
+
+    /// Divides the motions in `moving` by whether anything of them is drawn.
+    fn split_motions(&self, tree: &crate::retained_tree::RetainedTree, moving: Vec<u64>, now: web_time::Instant) -> MotionSplit {
+        let (asleep, awake): (Vec<u64>, Vec<u64>) = moving.into_iter().partition(|id| self.motion_sleeps(tree, *id));
+        let wake = crate::dormant_wake::Wake::merged(asleep.iter().map(|id| {
+            self.motion_states
+                .get(id)
+                .expect("a motion that animates has a state")
+                .wake(now)
+        }));
+        MotionSplit { awake, asleep, wake }
     }
 
     /// Whether the tick at `now` can be drawn by building the units that hold what changed, and
@@ -8746,24 +8835,15 @@ impl GpuixView {
                 .is_some_and(|element| crate::layout::box_generation::is_hidden(tree, element))
     }
 
-    /// When the motions in `animating` that sleep need a sample, see `MotionState::wake`.
-    pub(crate) fn dormant_motion_wake(
-        &self,
-        tree: &crate::retained_tree::RetainedTree,
-        animating: &[u64],
-        now: web_time::Instant,
-    ) -> crate::dormant_wake::Wake {
-        crate::dormant_wake::Wake::merged(
-            animating
-                .iter()
-                .filter(|id| self.motion_sleeps(tree, **id))
-                .map(|id| {
-                    self.motion_states
-                        .get(id)
-                        .expect("a motion that animates has a state")
-                        .wake(now)
-                }),
-        )
+    /// When the dormant CSS animations and transitions, and the motion values that are listened to,
+    /// next need a tick, see `Wake`.
+    pub(crate) fn dormant_clock_wake(&mut self, tree: &crate::retained_tree::RetainedTree) -> crate::dormant_wake::Wake {
+        let listens = |id: u64| crate::events::path::path_listens(tree, id, "animationiteration");
+        let now = self.clock.now();
+        self.css_animations
+            .dormant_wake(tree.revision(), &listens)
+            .merge(self.css_transitions.dormant_wake(now))
+            .merge(self.motion_values.dormant_wake(now))
     }
 
     /// A frame in which only dormant animations run: no build, no layout, no draw. What a frame
@@ -8780,32 +8860,30 @@ impl GpuixView {
         self.frame_instant = Some(now);
         self.css_animations.advance_dormant(now);
         self.css_transitions.advance_dormant(now);
-        let (animating, settled) = if tree.motion_ids.is_empty() {
-            (Vec::new(), Vec::new())
+        let step = if tree.motion_ids.is_empty() {
+            MotionStep { awake: Vec::new(), asleep: crate::dormant_wake::Wake::Never, settled: Vec::new() }
         } else {
             let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
             let pointer_state = self.pointer.clone();
             let pointer = pointer_state.borrow();
             self.step_motions(&tree, window, now, &focus_styles, &pointer)
         };
-        emit_motion_settled(&callback, &tree, &settled);
+        emit_motion_settled(&callback, &tree, &step.settled);
         // Motion's `change` follows the animation and not the element being seen, so the events of a
         // value that only dormant elements show are sent here, in the frame they would have been in.
         self.motion_values
             .set_appearance(color_scheme_of(window.appearance()));
-        let motion_values = advance_dormant_motion_values(&tree, &mut self.motion_values, &self.retain, now);
+        let motion_values = self.motion_values.advance_dormant(now);
         emit_motion_value_events(&callback, &motion_values.events);
         emit_transition_events(&callback, &tree, self.css_transitions.take_events());
         emit_animation_events(&callback, &tree, self.css_animations.take_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
-        let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        if animating.iter().any(|id| !self.motion_sleeps(&tree, *id)) {
+        if !step.awake.is_empty() {
             // A motion that no frame has seen run: a frame of its own sets it going.
             cx.notify();
         } else {
-            let wake = crate::dormant_wake::Wake::next_frame_if(dormant_active || motion_values.active)
-                .merge(self.dormant_motion_wake(&tree, &animating, now));
+            let wake = self.dormant_clock_wake(&tree).merge(step.asleep);
             self.wake_dormant(wake, window, cx);
         }
     }
@@ -9069,9 +9147,8 @@ impl gpui::Render for GpuixView {
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
-        let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        let motion_active = motion_animating.iter().any(|id| !self.motion_sleeps(&tree, *id));
-        let dormant_motion = self.dormant_motion_wake(&tree, &motion_animating, now);
+        let (motion_awake, dormant_motion) = self.note_motion_split(&tree, motion_animating, now);
+        let motion_active = !motion_awake.is_empty();
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
@@ -9171,10 +9248,7 @@ impl gpui::Render for GpuixView {
         {
             self.request_next_frame(window, scroll_animating);
         } else {
-            let wake = crate::dormant_wake::Wake::next_frame_if(
-                dormant_active || motion_value_demand == crate::motion::Demand::Dormant,
-            )
-            .merge(dormant_motion);
+            let wake = self.dormant_clock_wake(&tree).merge(dormant_motion);
             self.wake_dormant(wake, window, cx);
         }
 

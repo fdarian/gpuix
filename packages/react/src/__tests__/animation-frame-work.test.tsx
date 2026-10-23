@@ -1723,6 +1723,35 @@ describeNative("a tick beside native motions that rest", { timeout: TIMEOUT }, (
   })
 })
 
+/** Loops of both kinds on content past the clip of the page: native motions of a colour, and CSS loops of a colour. */
+const culledLoops = (count: number) =>
+  Array.from({ length: count }, (_, index) => (
+    <React.Fragment key={index}>
+      <motion.div
+        style={{ height: 4, backgroundColor: "#99ccff" }}
+        animate={{ backgroundColor: ["#ff0000", "#0000ff", "#ff0000"] }}
+        transition={{ duration: 1.5, ease: "linear", repeat: Infinity }}
+      />
+      <text style={{ fontSize: 11, color: "#000000", animation: "afw-pulse 1.5s linear infinite" }}>{`culled ${index}`}</text>
+    </React.Fragment>
+  ))
+
+/**
+ * What a tick steps is what is awake or due: loops on content that nobody sees (clipped by the page) are neither,
+ * so a tick of the one that is in view costs what it costs alone, however many of them run beside it.
+ */
+describeNative("a tick beside loops that nobody sees", { timeout: TIMEOUT }, () => {
+  counted("syncs and works the motion in view alone, beside 40 culled motion loops and 40 culled CSS loops", async () => {
+    const alone = await ticksOf(motionHead, 500)
+    const crowded = await ticksOf(motionHead, 500, false, culledLoops(40))
+    for (let index = 0; index < TICKS; index++) {
+      expect(alone[index].motionsSynced, `tick ${index}`).toBe(1)
+      expect(crowded[index].patchedFrames, `tick ${index} is patched`).toBe(1)
+      expect(crowded[index], `tick ${index}`).toEqual(alone[index])
+    }
+  })
+})
+
 /** A tick makes the scene it patches again from the draw orders it had, so what is painted beside the loop is not paid for again. */
 describeNative("a tick beside boxes that are painted", { timeout: TIMEOUT }, () => {
   const visible = (count: number) =>
@@ -1955,6 +1984,8 @@ describeNative("a motion value bound to an element that is culled", { timeout: T
     try {
       for (let index = 0; index < 40; index++) {
         tick(page.renderer)
+        // The end of the animation is a timer of the executor, not a frame of its own.
+        page.renderer.advanceTime(16)
         page.renderer.dispatchNativeEvents()
       }
       await sleep(0)

@@ -33,15 +33,6 @@ impl Wake {
     pub(crate) fn merged(wakes: impl IntoIterator<Item = Wake>) -> Wake {
         wakes.into_iter().fold(Wake::Never, Wake::merge)
     }
-
-    /// `NextFrame` when `due`, which is what a source that has only a yes or no to give says.
-    pub(crate) fn next_frame_if(due: bool) -> Wake {
-        if due {
-            Wake::NextFrame
-        } else {
-            Wake::Never
-        }
-    }
 }
 
 /// What a wake asks of the window, after it replaced what the holder was waiting for.
@@ -149,12 +140,6 @@ mod tests {
             Wake::At(after(start, 20)),
         );
         assert_eq!(Wake::merged([Wake::Never, Wake::NextFrame, Wake::At(start)]), Wake::NextFrame);
-    }
-
-    #[test]
-    fn a_source_with_a_yes_or_no_is_the_next_frame_or_never() {
-        assert_eq!(Wake::next_frame_if(true), Wake::NextFrame);
-        assert_eq!(Wake::next_frame_if(false), Wake::Never);
     }
 
     #[test]

@@ -16,9 +16,9 @@
  */
 
 import fs from "fs"
-import React from "react"
+import React, { useEffect, useState } from "react"
 import { afterEach, describe, expect, it } from "vitest"
-import { defineKeyframes, motion } from "../index"
+import { animate, defineKeyframes, motion, useMotionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
@@ -136,7 +136,7 @@ function Card({ index, kind, onIteration }: { index: number; kind: Kind; onItera
             fill="none"
             stroke="#333333"
             strokeWidth={3}
-            onAnimationIteration={() => onIteration?.(index)}
+            onAnimationIteration={onIteration ? () => onIteration(index) : undefined}
             style={{ animation: "offscreen-dash 1s linear infinite" }}
           />
         </svg>
@@ -157,7 +157,7 @@ function Card({ index, kind, onIteration }: { index: number; kind: Kind; onItera
           <text style={{ fontSize: 14, color: "#222222" }}>{`Card title ${index}`}</text>
         </motion.div>
       ) : (
-        <text testId={`label-${index}`} onAnimationIteration={() => onIteration?.(index)} style={{ ...shared, animation }}>
+        <text testId={`label-${index}`} onAnimationIteration={onIteration ? () => onIteration(index) : undefined} style={{ ...shared, animation }}>
           {`Card title ${index}`}
         </text>
       )}
@@ -453,32 +453,19 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
     const page = await mount({ cards: 40, kind, place: "hidden", onIteration: (index) => index === 7 && seen.push(index) })
     try {
       const renderer = page.renderer
-      renderer.clockResume()
       const label = renderer.findByTestId(kind === "colour" ? "label-7" : "circle-7").id
-      for (let warm = 0; warm < 6; warm++) {
-        renderer.flush()
-        await sleep(8)
-      }
-      // The frame callbacks of the last full frame hand the page over to the ticks.
-      for (let handover = 0; handover < 4; handover++) {
-        await sleep(16)
-        renderer.drawFrame()
-      }
+      for (let warm = 0; warm < 12; warm++) elapse(renderer)
       renderer.resetBuildCounters()
       const before = read(renderer)
       const time = renderer.getAnimations(label)[0].currentTime
-      const started = Date.now()
-      while (Date.now() - started < 2300) {
-        await sleep(16)
-        renderer.drawFrame()
-        renderer.dispatchNativeEvents()
-      }
+      for (let step = 0; step < 144; step++) elapse(renderer)
       const after = read(renderer)
       expect(after.elementsBuilt, "nothing is built").toBe(0)
       expect(after.paintedFrames - before.paintedFrames, "nothing is painted").toBe(0)
       expect(after.prepainted - before.prepainted).toBe(0)
       expect(renderer.getAnimations(label)[0].currentTime - time, "the clock of the animation moves").toBeGreaterThan(2000)
       expect(seen.length, "an iteration at every second").toBeGreaterThanOrEqual(2)
+      expect(after.dormantTicks - before.dormantTicks, "a tick for each iteration").toBeLessThanOrEqual(seen.length + 2)
     } finally {
       page.root.unmount()
     }
@@ -745,5 +732,182 @@ describeNative("a native motion loop that nobody sees", { timeout: TIMEOUT }, ()
     } finally {
       page.root.unmount()
     }
+  })
+})
+
+// ── CSS animations, transitions and motion values that nobody sees ──
+
+/** What `steps` ticks of 16 ms did to a page with 40 culled cards, after the warm-up, as `spent` counts. */
+async function spentOn(props: { cards: number; kind: Kind; place: Place; onIteration?: (index: number) => void }, steps: number) {
+  const page = await mount(props)
+  try {
+    return spent(page.renderer, steps)
+  } finally {
+    page.root.unmount()
+  }
+}
+
+describeNative("a CSS loop that nobody sees", { timeout: TIMEOUT }, () => {
+  for (const kind of ["colour", "svg", "bigsvg"] as const)
+    it.skipIf(!retained || verifying)(`costs a page what an empty one costs over 60 ticks when nothing listens to it: ${kind}`, async () => {
+      const empty = await spentOn({ cards: 0, kind, place: "hidden" }, 60)
+      const full = await spentOn({ cards: 40, kind, place: "hidden" }, 60)
+      console.info(`[offscreen-animation-work] 60 ticks of 40 culled CSS loops, ${kind}: ${JSON.stringify(empty)} -> ${JSON.stringify(full)}`)
+      expect(full.dormantTicks, "dormant ticks").toBe(0)
+      expect(full).toEqual(empty)
+    })
+
+  for (const kind of ["colour", "svg"] as const)
+    it.skipIf(!retained || verifying)(`delivers every iteration at its time, in about one dormant tick for each: ${kind}`, async () => {
+      const seen: Array<[number, number]> = []
+      let step = 0
+      const page = await mount({ cards: 40, kind, place: "hidden", onIteration: (index) => seen.push([index, step]) })
+      try {
+        const renderer = page.renderer
+        for (step = -12; step < 0; step++) elapse(renderer)
+        seen.length = 0
+        const before = read(renderer)
+        // 1 s loops that began 192 ms before the count: iterations come at 1000, 2000 and 3000 ms of their time.
+        for (step = 1; step <= 200; step++) elapse(renderer)
+        const ticks = read(renderer).dormantTicks - before.dormantTicks
+        const boundaries = [1000, 2000, 3000].map((ms) => Math.ceil((ms - 12 * 16) / 16))
+        expect(new Set(seen.map(([, at]) => at)), "iterations land in the tick that passes each boundary").toEqual(new Set(boundaries))
+        expect(seen.length, "three for each card").toBe(40 * 3)
+        expect(new Set(seen.map(([index]) => index)).size).toBe(40)
+        expect(ticks, "dormant ticks").toBeLessThanOrEqual(3 + 2)
+        console.info(`[offscreen-animation-work] 200 ticks of 40 culled CSS loops with an iteration listener, ${kind}: ${ticks} dormant ticks`)
+      } finally {
+        page.root.unmount()
+      }
+    })
+
+  /** A colour animation of 500 ms that ends once, listened to for its end. */
+  function EndingCard({ index, onEnd }: { index: number; onEnd: (index: number) => void }) {
+    return (
+      <div testId={`ending-card-${index}`} style={{ height: 120, flexShrink: 0, padding: LOOP_SPACE, marginBottom: 8, backgroundColor: "#f4f4f4", borderRadius: 8, flexDirection: "column" }}>
+        <text testId={`ending-${index}`} onAnimationEnd={() => onEnd(index)} style={{ fontSize: 14, color: "#ff0000", animation: "offscreen-pulse 500ms linear forwards" }}>
+          {`Ending card ${index}`}
+        </text>
+      </div>
+    )
+  }
+
+  it.skipIf(!retained || verifying)("fires animationend at its end time, in at most two dormant ticks", async () => {
+    const done: Array<[number, number]> = []
+    let step = 0
+    const page = await mountMotion({ cards: 20, place: "hidden", card: (index) => <EndingCard index={index} onEnd={(which) => done.push([which, step])} /> })
+    try {
+      const renderer = page.renderer
+      renderer.resetBuildCounters()
+      const before = read(renderer)
+      for (step = 1; step <= 48; step++) elapse(renderer)
+      const ticks = read(renderer).dormantTicks - before.dormantTicks
+      expect(done.length, "one end for each card").toBe(20)
+      expect(new Set(done.map(([, at]) => at)), "all in the tick that passes 500 ms").toEqual(new Set([Math.ceil(500 / 16)]))
+      expect(ticks, "dormant ticks").toBeLessThanOrEqual(2)
+      console.info(`[offscreen-animation-work] 48 ticks of 20 culled CSS animations of 500 ms: ${ticks} dormant ticks`)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  /** A colour that turns blue when `flip` is called, over 500 ms. */
+  function TransitionCards({ cards, expose, onEnd }: { cards: number; expose: (flip: () => void) => void; onEnd: (index: number) => void }) {
+    const [on, setOn] = useState(false)
+    useEffect(() => {
+      expose(() => setOn(true))
+    }, [])
+    return (
+      <MotionPage
+        cards={cards}
+        place="hidden"
+        card={(index) => (
+          <div testId={`turning-card-${index}`} style={{ height: 120, flexShrink: 0, padding: LOOP_SPACE, marginBottom: 8, backgroundColor: "#f4f4f4", borderRadius: 8, flexDirection: "column" }}>
+            <text
+              testId={`turning-${index}`}
+              onTransitionEnd={() => onEnd(index)}
+              style={{ fontSize: 14, color: on ? "#0000ff" : "#ff0000", transition: "color 500ms linear" }}
+            >{`Turning card ${index}`}</text>
+          </div>
+        )}
+      />
+    )
+  }
+
+  it.skipIf(!retained || verifying)("fires transitionend at its end time, in at most two dormant ticks", async () => {
+    const done: Array<[number, number]> = []
+    let step = 0
+    let flip = () => {}
+    const root = createTestRoot({ width: SIZE.width, height: SIZE.height })
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(<TransitionCards cards={20} expose={(next) => (flip = next)} onEnd={(which) => done.push([which, step])} />)
+      await settle(renderer)
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      flip()
+      await settle(renderer)
+      renderer.drawFrame()
+      expect(renderer.getAnimations(renderer.findByTestId("turning-3").id).length, "the transition runs").toBe(1)
+      done.length = 0
+      const before = read(renderer)
+      for (step = 1; step <= 48; step++) elapse(renderer)
+      const ticks = read(renderer).dormantTicks - before.dormantTicks
+      expect(done.length, "one end for each card").toBe(20)
+      expect(new Set(done.map(([, at]) => at)), "all in the tick that passes 500 ms").toEqual(new Set([Math.ceil(500 / 16)]))
+      expect(ticks, "dormant ticks").toBeLessThanOrEqual(2)
+      console.info(`[offscreen-animation-work] 48 ticks of 20 culled CSS transitions of 500 ms: ${ticks} dormant ticks`)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
+describeNative("a motion value bound to an element that nobody sees", { timeout: TIMEOUT }, () => {
+  const changes: string[] = []
+
+  /** A text whose colour is a value that loops, and that reports its changes when `listen`. */
+  function BoundCard({ listen }: { listen: boolean }) {
+    const value = useMotionValue("#000000")
+    useEffect(() => {
+      const off = listen ? value.on("change", (latest) => changes.push(latest)) : undefined
+      const controls = animate(value, ["#000000", "#ff0000", "#000000"], { duration: 1, ease: "linear", repeat: Infinity })
+      return () => {
+        off?.()
+        controls.stop()
+      }
+    }, [value])
+    return (
+      <div style={{ height: 120, flexShrink: 0 }}>
+        <text style={{ fontSize: 14, color: value }}>bound</text>
+      </div>
+    )
+  }
+
+  const run = async (cards: number, listen: boolean) => {
+    const page = await mountMotion({ cards, place: "hidden", card: () => <BoundCard listen={listen} /> })
+    try {
+      changes.length = 0
+      const done = spent(page.renderer, 60)
+      return { ...done, changes: changes.length }
+    } finally {
+      page.root.unmount()
+    }
+  }
+
+  it.skipIf(!retained || verifying)("costs a page what an empty one costs over 60 ticks when nothing listens to it", async () => {
+    const empty = await run(0, false)
+    const full = await run(20, false)
+    console.info(`[offscreen-animation-work] 60 ticks of 20 culled bound values: ${JSON.stringify(empty)} -> ${JSON.stringify(full)}`)
+    expect(full.dormantTicks, "dormant ticks").toBe(0)
+    expect(full).toEqual(empty)
+  })
+
+  it.skipIf(!retained || verifying)("sends a change for each tick, in a dormant tick of its own, when it is listened to", async () => {
+    const full = await run(20, true)
+    expect(full.dormantTicks, "a dormant tick for each tick").toBeGreaterThanOrEqual(59)
+    expect(full.changes, "a change for each card at each tick").toBeGreaterThanOrEqual(59 * 20)
+    expect(full.paintedFrames, "no frame is drawn").toBe(0)
   })
 })

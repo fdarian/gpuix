@@ -22,10 +22,11 @@ use std::time::Duration;
 
 use web_time::Instant;
 
-use super::curve::{ease, ease_slope, validate_ease, Curve, Ease, Transition};
+use super::curve::{ease, ease_slope, validate_ease, Curve, Ease, RepeatCount, Transition};
 use super::track::{Goal, Span, Track};
 use super::value::{pair, AnimValue, Interpolation, Layout, Pair};
 use super::web_animation::{Command, Playback, Status};
+use crate::dormant_wake::Wake;
 
 const NAME: &str = "motion value";
 
@@ -251,6 +252,19 @@ impl MotionValues {
 
     pub(super) fn get(&mut self, id: ValueId, now: Instant) -> Result<AnimValue, String> {
         Ok(self.sample(id, now)?.value)
+    }
+
+    /// When the animation of `id` next needs a sample for anything but what the value is, which is a
+    /// function of the time: the instant it ends, which its listeners are told of. An animation
+    /// that does not end (a loop without a count), or is held, has none, and one that only a scan
+    /// finds the end of (a spring) is sampled in every frame.
+    pub(super) fn wake(&self, id: ValueId, now: Instant) -> Wake {
+        match self.nodes.get(&id) {
+            Some(Node::Source(source)) => source.run.as_ref().map_or(Wake::Never, |run| run.wake(now)),
+            Some(Node::Transform(transform)) => self.wake(transform.input, now),
+            Some(Node::Spring(_)) => Wake::NextFrame,
+            None => Wake::Never,
+        }
     }
 
     pub(super) fn is_animating(&mut self, id: ValueId, now: Instant) -> Result<bool, String> {
@@ -772,6 +786,19 @@ impl Run {
 
     fn value(&self, now: Instant) -> AnimValue {
         self.track.value(&self.sample(now).position)
+    }
+
+    /// See `MotionValues::wake`.
+    fn wake(&self, now: Instant) -> Wake {
+        if self.sample(now).phase != Phase::Running {
+            return Wake::Never;
+        }
+        let transition = self.track.transition();
+        match transition.curve {
+            Curve::Tween { .. } => self.playback.wake_at(self.span.end, now),
+            Curve::Spring(_) if transition.repeat.count == RepeatCount::Infinite => Wake::Never,
+            Curve::Spring(_) => Wake::NextFrame,
+        }
     }
 
     fn info(&self, now: Instant) -> PlaybackInfo {

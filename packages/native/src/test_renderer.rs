@@ -2567,7 +2567,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_animations(&self, element_id: f64) -> Result<Vec<crate::renderer::WebAnimationInfo>> {
         let id = to_element_id(element_id)?;
-        self.with_motion_state(Repaint::None, move |view, _now| Ok(view.web_animations(id)))
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations(id, now)))
     }
 
     /// The SVG an `<svg>` element with shape children painted in the last
@@ -2584,7 +2584,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_animation(&self, animation_id: f64) -> Result<crate::renderer::WebAnimationInfo> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(Repaint::None, move |view, _now| view.web_animation(id))
+        self.with_motion_state(Repaint::None, move |view, now| view.web_animation(id, now))
     }
 
     /// See the renderer's `releaseAnimation`.
@@ -2635,7 +2635,7 @@ impl TestGpuixRenderer {
         command: crate::motion::web_animation::Command,
     ) -> Result<()> {
         let id = to_element_id(animation_id)?;
-        self.with_motion_state(Repaint::Layout, move |view, _now| view.command_web_animation(id, command))
+        self.with_motion_state(Repaint::Layout, move |view, now| view.command_web_animation(id, command, now))
     }
 
     /// Runs `run` against the window's motion values at the window clock's
