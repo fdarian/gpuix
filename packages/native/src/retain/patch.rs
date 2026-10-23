@@ -73,7 +73,7 @@ pub(crate) struct Built {
 /// What the clocks that a tick moved say about the frames to come.
 struct Stepped {
     motion: bool,
-    dormant_motion: bool,
+    dormant_motion: crate::dormant_wake::Wake,
     motion_values: crate::motion::Demand,
 }
 
@@ -181,8 +181,8 @@ impl GpuixView {
         crate::renderer::emit_motion_settled(&callback, &tree, &settled);
         crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
         Stepped {
-            motion: animating.iter().any(|id| !self.retain.is_dormant(*id)),
-            dormant_motion: animating.iter().any(|id| self.retain.is_dormant(*id)),
+            motion: animating.iter().any(|id| !self.motion_sleeps(&tree, *id)),
+            dormant_motion: self.dormant_motion_wake(&tree, &animating, now),
             motion_values: self.value_demand(&tree, window),
         }
     }
@@ -193,8 +193,12 @@ impl GpuixView {
         let dormant_running = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
         if running || stepped.motion || stepped.motion_values == crate::motion::Demand::Frame {
             self.request_next_frame(window, false);
-        } else if dormant_running || stepped.dormant_motion || stepped.motion_values == crate::motion::Demand::Dormant {
-            self.arm_dormant_tick(window, cx);
+        } else {
+            let wake = crate::dormant_wake::Wake::next_frame_if(
+                dormant_running || stepped.motion_values == crate::motion::Demand::Dormant,
+            )
+            .merge(stepped.dormant_motion);
+            self.wake_dormant(wake, window, cx);
         }
     }
 }

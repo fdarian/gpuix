@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use web_time::Instant;
 
+use crate::dormant_wake::Wake;
+
 use super::curve::{
     ease, ease_slope, seconds, Curve, RepeatCount, RepeatType, Spring, Transition,
 };
@@ -648,6 +650,27 @@ impl Track {
             RepeatCount::Infinite => f64::INFINITY,
         };
         Span { iteration, end }
+    }
+
+    /// When the track next has to be sampled for anything but its value, which is a function of
+    /// the time: the instant a timed one ends. A repeat without a count never ends. A spring
+    /// comes to rest at a time that only a scan of it finds, so it is sampled in every frame.
+    pub(super) fn wake(&self, now: Instant) -> Wake {
+        if !self.sample(now).active {
+            return Wake::Never;
+        }
+        match &self.transition.curve {
+            Curve::Tween { .. } => {
+                let end = self.span().end;
+                if end.is_finite() {
+                    Wake::At(self.started + Duration::from_secs_f64(end))
+                } else {
+                    Wake::Never
+                }
+            }
+            Curve::Spring(_) if self.transition.repeat.count == RepeatCount::Infinite => Wake::Never,
+            Curve::Spring(_) => Wake::NextFrame,
+        }
     }
 
     /// The channels the track holds once it has finished: the last keyframe,

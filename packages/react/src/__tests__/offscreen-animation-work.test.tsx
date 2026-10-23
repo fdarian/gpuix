@@ -552,3 +552,198 @@ describeNative("a loop that is culled", { timeout: TIMEOUT }, () => {
     }
   })
 })
+
+// ── Native motion that nobody sees ──────────────────────────────────
+
+const LOOP_SPACE = 8
+const TINTS = ["#ff0000", "#0000ff", "#ff0000"]
+
+/** An opacity loop and a background-colour loop, 1 s each. */
+function LoopCard({ index, onComplete }: { index: number; onComplete?: (index: number) => void }) {
+  return (
+    <div
+      testId={`loop-card-${index}`}
+      style={{ height: 120, flexShrink: 0, padding: LOOP_SPACE, marginBottom: 8, backgroundColor: "#f4f4f4", borderRadius: 8, flexDirection: "column", gap: 4 }}
+    >
+      <motion.div
+        testId={`fade-${index}`}
+        style={{ height: 30 }}
+        animate={{ opacity: [1, 0.25, 1] }}
+        transition={{ duration: 1, ease: "linear", repeat: Infinity }}
+        onMotionComplete={() => onComplete?.(index)}
+      >
+        <text style={{ fontSize: 14, color: "#222222" }}>{`Loop card ${index}`}</text>
+      </motion.div>
+      <motion.div
+        testId={`tint-${index}`}
+        style={{ width: 100, height: 30, backgroundColor: "#ff0000" }}
+        animate={{ backgroundColor: TINTS }}
+        transition={{ duration: 1, ease: "linear", repeat: Infinity }}
+      />
+    </div>
+  )
+}
+
+/** A tween that ends 500 ms in, listened to for its end. */
+function FiniteCard({ index, onComplete }: { index: number; onComplete: (index: number) => void }) {
+  return (
+    <div
+      testId={`finite-card-${index}`}
+      style={{ height: 120, flexShrink: 0, padding: LOOP_SPACE, marginBottom: 8, backgroundColor: "#f4f4f4", borderRadius: 8, flexDirection: "column" }}
+    >
+      <motion.div
+        testId={`finite-${index}`}
+        style={{ height: 30 }}
+        animate={{ opacity: [1, 0.25] }}
+        transition={{ duration: 0.5, ease: "linear" }}
+        onMotionComplete={() => onComplete(index)}
+      >
+        <text style={{ fontSize: 14, color: "#222222" }}>{`Finite card ${index}`}</text>
+      </motion.div>
+    </div>
+  )
+}
+
+type MotionPlace = "hidden" | "auto" | "none"
+
+function MotionPage({ cards, place, card }: { cards: number; place: MotionPlace; card: (index: number) => React.ReactNode }) {
+  const content = Array.from({ length: cards }, (_, index) => <React.Fragment key={index}>{card(index)}</React.Fragment>)
+  return (
+    <div style={{ width: SIZE.width, height: SIZE.height, flexDirection: "column" }}>
+      {place === "none" ? (
+        <div style={{ display: "none", flexDirection: "column" }}>{content}</div>
+      ) : (
+        <div testId="scroller" style={{ width: 400, height: SCROLLER, overflow: place, flexDirection: "column" }}>
+          <div style={{ height: BEFORE, flexShrink: 0 }} />
+          {content}
+        </div>
+      )}
+    </div>
+  )
+}
+
+async function mountMotion(props: { cards: number; place: MotionPlace; card: (index: number) => React.ReactNode }) {
+  const root = createTestRoot({ width: SIZE.width, height: SIZE.height })
+  const renderer = root.renderer
+  renderer.clockPause()
+  root.render(<MotionPage {...props} />)
+  await settle(renderer)
+  renderer.setInlineDraws(false)
+  renderer.setA11yActive(false)
+  return { root, renderer }
+}
+
+/** Time passes as it does for a window: both clocks move, the frame callbacks and a pending change are drawn, events are delivered. */
+function elapse(renderer, ms = 16) {
+  renderer.clockAdvance(ms)
+  renderer.advanceTime(ms)
+  renderer.drawFrame()
+  renderer.dispatchNativeEvents()
+}
+
+/** What `steps` ticks of 16 ms did, after `warm` that are not counted. */
+function spent(renderer, steps: number, warm = 12) {
+  for (let step = 0; step < warm; step++) elapse(renderer)
+  renderer.resetBuildCounters()
+  const before = read(renderer)
+  const patchedBefore = renderer.getPatchCounters().patchedFrames
+  for (let step = 0; step < steps; step++) elapse(renderer)
+  const after = read(renderer)
+  return {
+    dormantTicks: after.dormantTicks - before.dormantTicks,
+    paintedFrames: after.paintedFrames - before.paintedFrames,
+    patchedFrames: renderer.getPatchCounters().patchedFrames - patchedBefore,
+    elementsBuilt: after.elementsBuilt,
+    motionsSynced: renderer.getBuildCounters().motionsSynced,
+  }
+}
+
+describeNative("a native motion loop that nobody sees", { timeout: TIMEOUT }, () => {
+  const loop = (index: number) => <LoopCard index={index} />
+
+  for (const place of ["hidden", "none"] as const) {
+    const where = place === "hidden" ? "clipped out of an overflow hidden scroller" : "inside a display none subtree"
+
+    it.skipIf(!retained || verifying)(`costs a page what an empty one costs over 60 ticks: ${where}`, async () => {
+      const run = async (cards: number) => {
+        const page = await mountMotion({ cards, place, card: loop })
+        try {
+          return spent(page.renderer, 60)
+        } finally {
+          page.root.unmount()
+        }
+      }
+      const empty = await run(0)
+      const full = await run(40)
+      console.info(`[offscreen-animation-work] 60 ticks of 40 culled motion loops, ${where}: ${JSON.stringify(empty)} -> ${JSON.stringify(full)}`)
+      expect(full.dormantTicks, "dormant ticks").toBe(0)
+      expect(full).toEqual(empty)
+    })
+  }
+
+  it.skipIf(!retained || verifying)("reports the end of a finite animation at its end time, with no dormant tick for each frame before it", async () => {
+    const done: Array<[number, number]> = []
+    let step = 0
+    const page = await mountMotion({
+      cards: 20,
+      place: "hidden",
+      card: (index) => <FiniteCard index={index} onComplete={(which) => done.push([which, step])} />,
+    })
+    try {
+      const renderer = page.renderer
+      done.length = 0
+      renderer.resetBuildCounters()
+      const before = read(renderer)
+      // 500 ms tween: it ends in the tick that passes 500 ms.
+      for (step = 1; step <= 48; step++) elapse(renderer)
+      const ticks = read(renderer).dormantTicks - before.dormantTicks
+      expect(done.length, "one end for each card").toBe(20)
+      expect(new Set(done.map(([, at]) => at)), "all in the tick that passes 500 ms").toEqual(new Set([Math.ceil(500 / 16)]))
+      expect(new Set(done.map(([which]) => which)).size).toBe(20)
+      expect(ticks, "dormant ticks").toBeLessThanOrEqual(2)
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  it.skipIf(!retained)("resumes when scrolled into view, and shows the colour of the current instant", async () => {
+    const page = await mountMotion({ cards: 40, place: "auto", card: loop })
+    const shot = (name: string) => {
+      const file = `${SHOTS_DIR}/offscreen-animation-${process.pid}-${name}.png`
+      fs.rmSync(file, { force: true })
+      page.renderer.captureScreenshot(file)
+      return readLogicalPixels(file, page.renderer)
+    }
+    try {
+      const renderer = page.renderer
+      for (let step = 0; step < 44; step++) elapse(renderer)
+      const scroller = renderer.findByTestId("scroller").id
+      renderer.scrollTo(scroller, 0, BEFORE + 20 * CARD, "instant")
+      renderer.flush()
+      renderer.drawFrame()
+      const tint = renderer.getElementBounds(renderer.findByTestId("tint-20").id)
+      const at = [tint.x + 50, tint.y + 15]
+      expect(tint.y).toBeLessThan(SIZE.height)
+      // 704 ms of a 1 s red, blue, red loop: 0.41 of the way back to red.
+      const [r, , b] = shot("loop-shown").at(...at)
+      expect(r).toBeLessThan(150)
+      expect(b).toBeGreaterThan(100)
+      if (!verifying) {
+        renderer.setRetainEnabled(false)
+        renderer.flush()
+        expect(shot("loop-built").at(...at)).toEqual(shot("loop-shown").at(...at))
+        renderer.setRetainEnabled(true)
+        renderer.flush()
+      }
+      const painted = renderer.getPaintedFrameCount()
+      const patched = renderer.getPatchCounters().patchedFrames
+      for (let step = 0; step < 4; step++) elapse(renderer)
+      expect(renderer.getPaintedFrameCount() + renderer.getPatchCounters().patchedFrames - painted - patched, "a frame for each tick of the loop in view").toBeGreaterThanOrEqual(4)
+      // 768 ms: redder than 704.
+      const [later] = shot("loop-later").at(...at)
+      expect(later).toBeGreaterThan(r + 10)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})

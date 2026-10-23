@@ -26,6 +26,7 @@ use std::collections::{BTreeMap, HashMap};
 use serde_json::{Map, Value};
 use web_time::Instant;
 
+use crate::dormant_wake::Wake;
 use crate::style::StyleDesc;
 pub(crate) use curve::cubic_bezier;
 pub(crate) use inline::{InlineStyles, Timeline};
@@ -1004,6 +1005,19 @@ impl MotionState {
         self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active))
     }
 
+    /// When the motion next needs a sample for something other than the picture of it: its
+    /// settling, which is an event. What an animation shows at a time is a function of the time,
+    /// so a loop nobody sees is sampled when it is seen.
+    pub(crate) fn wake(&self, now: Instant) -> Wake {
+        if !self.valid {
+            return Wake::Never;
+        }
+        if !self.pending.is_empty() {
+            return Wake::NextFrame;
+        }
+        Wake::merged(self.tracks.values().map(|track| track.wake(now)))
+    }
+
     pub(crate) fn frame(&mut self, now: Instant) -> MotionFrame {
         let active = self.valid
             && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active));
@@ -1780,6 +1794,67 @@ mod tests {
                 .width,
             Some(25.0)
         );
+    }
+
+    mod wake {
+        use super::*;
+
+        fn state(transition: serde_json::Value, animate: serde_json::Value, now: Instant) -> MotionState {
+            let description = serde_json::json!({ "initial": { "opacity": 1.0 }, "animate": animate, "transition": transition });
+            MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap()
+        }
+
+        #[test]
+        fn a_timed_animation_wakes_at_its_end() {
+            let now = Instant::now();
+            let tween = state(serde_json::json!({ "duration": 0.5, "ease": "linear" }), serde_json::json!({ "opacity": 0.25 }), now);
+            assert_eq!(tween.wake(now), Wake::At(now + Duration::from_millis(500)));
+            assert_eq!(tween.wake(now + Duration::from_millis(200)), Wake::At(now + Duration::from_millis(500)));
+            assert_eq!(tween.wake(now + Duration::from_millis(500)), Wake::Never, "it has ended");
+        }
+
+        #[test]
+        fn the_end_counts_the_delay_and_the_repeats() {
+            let now = Instant::now();
+            let repeated = state(
+                serde_json::json!({ "duration": 0.5, "ease": "linear", "delay": 0.25, "repeat": 2 }),
+                serde_json::json!({ "opacity": 0.25 }),
+                now,
+            );
+            assert_eq!(repeated.wake(now), Wake::At(now + Duration::from_millis(1750)));
+        }
+
+        #[test]
+        fn a_loop_without_a_count_never_wakes() {
+            let now = Instant::now();
+            let forever = state(
+                serde_json::json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" }),
+                serde_json::json!({ "opacity": [1.0, 0.25, 1.0] }),
+                now,
+            );
+            assert!(forever.is_animating(now));
+            assert_eq!(forever.wake(now), Wake::Never);
+            assert_eq!(forever.wake(now + Duration::from_secs(90)), Wake::Never);
+        }
+
+        #[test]
+        fn a_spring_wakes_at_every_frame_until_it_rests() {
+            let now = Instant::now();
+            let spring = state(
+                serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0 }),
+                serde_json::json!({ "opacity": 0.25 }),
+                now,
+            );
+            assert_eq!(spring.wake(now), Wake::NextFrame);
+            assert_eq!(spring.wake(now + Duration::from_secs(60)), Wake::Never, "it has come to rest");
+        }
+
+        #[test]
+        fn a_motion_with_nothing_to_run_never_wakes() {
+            let now = Instant::now();
+            let resting = state(serde_json::json!({ "duration": 0.5 }), serde_json::json!({ "opacity": 1.0 }), now);
+            assert_eq!(resting.wake(now), Wake::Never);
+        }
     }
 
     #[test]

@@ -20,6 +20,7 @@ mod color;
 mod css;
 mod custom_elements;
 mod diff;
+mod dormant_wake;
 mod element_tree;
 pub mod events;
 mod focus;

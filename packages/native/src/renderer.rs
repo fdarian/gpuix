@@ -5591,8 +5591,8 @@ pub(crate) struct GpuixView {
     /// frames. Stamped by the first pass if no draw came yet. A verifier's reference pass does not
     /// write it.
     pub(crate) frame_instant: Option<web_time::Instant>,
-    /// A frame callback that carries the dormant animations on is waiting, see `dormant_tick`.
-    dormant_tick_armed: bool,
+    /// What the dormant animations are waiting for to be carried on, see `wake_dormant`.
+    pub(crate) dormant_wake: crate::dormant_wake::DormantWake,
     paint_statics: PaintStatics,
     /// `RetainedTree::removals` when the per-element maps last dropped the destroyed elements.
     swept_at: u64,
@@ -6241,7 +6241,7 @@ impl GpuixView {
             selection_scroll_task: None,
             clock: crate::automation::AutomationClock::new(),
             frame_instant: None,
-            dormant_tick_armed: false,
+            dormant_wake: Default::default(),
             swept_at: 0,
             paint_statics: PaintStatics::default(),
             patch: crate::retain::Patching::new(),
@@ -8172,7 +8172,7 @@ impl GpuixView {
             window.request_animation_frame();
         }
         if self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active() {
-            self.arm_dormant_tick(window, cx);
+            self.wake_dormant(crate::dormant_wake::Wake::NextFrame, window, cx);
         }
         taped(&self.tapes, id, element, window)
     }
@@ -8698,16 +8698,72 @@ fn shapes_running(
 }
 
 impl GpuixView {
-    /// Asks for a frame callback that carries the dormant animations on without drawing: Chrome
-    /// runs the animations of content it does not show without painting a frame for them.
-    pub(crate) fn arm_dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
-        if std::mem::replace(&mut self.dormant_tick_armed, true) {
-            return;
+    /// Asks for what carries the dormant animations on without drawing, at `wake`: Chrome runs the
+    /// animations of content it does not show without painting a frame for them, and runs none
+    /// that nothing waits for. What an earlier call asked for and `wake` replaces is let go of.
+    pub(crate) fn wake_dormant(
+        &mut self,
+        wake: crate::dormant_wake::Wake,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        use crate::dormant_wake::Request;
+
+        match self.dormant_wake.plan(wake, self.clock.now()) {
+            Request::Nothing => {}
+            Request::Frame => self.post_dormant_tick(window, cx),
+            Request::Timer { at, wait } => {
+                let task = cx.spawn_in(window, async move |view, cx| {
+                    cx.background_executor().timer(wait).await;
+                    view.update_in(cx, |view, window, cx| {
+                        view.dormant_wake.timer_fired();
+                        if view.dormant_wake.queue_frame() == Request::Frame {
+                            view.post_dormant_tick(window, cx);
+                        }
+                    })
+                    .ok();
+                });
+                self.dormant_wake.hold(at, task);
+            }
         }
+    }
+
+    fn post_dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         let view = cx.weak_entity();
         window.on_next_frame(move |window, cx| {
             view.update(cx, |view, cx| view.dormant_tick(window, cx)).ok();
         });
+    }
+
+    /// Whether nothing is drawn of the motion at `id`: its element is culled and dormant, or it
+    /// has no box (`display: none`, or the content of a `content-visibility` ancestor that skips).
+    pub(crate) fn motion_sleeps(&self, tree: &crate::retained_tree::RetainedTree, id: u64) -> bool {
+        let host = crate::custom_elements::svg_tree::host_of(tree, id);
+        self.retain.is_dormant(host)
+            || tree
+                .elements
+                .get(&host)
+                .is_some_and(|element| crate::layout::box_generation::is_hidden(tree, element))
+    }
+
+    /// When the motions in `animating` that sleep need a sample, see `MotionState::wake`.
+    pub(crate) fn dormant_motion_wake(
+        &self,
+        tree: &crate::retained_tree::RetainedTree,
+        animating: &[u64],
+        now: web_time::Instant,
+    ) -> crate::dormant_wake::Wake {
+        crate::dormant_wake::Wake::merged(
+            animating
+                .iter()
+                .filter(|id| self.motion_sleeps(tree, **id))
+                .map(|id| {
+                    self.motion_states
+                        .get(id)
+                        .expect("a motion that animates has a state")
+                        .wake(now)
+                }),
+        )
     }
 
     /// A frame in which only dormant animations run: no build, no layout, no draw. What a frame
@@ -8715,7 +8771,7 @@ impl GpuixView {
     /// motion is stepped, `animationiteration` and its kin are emitted, and `getAnimations` reads
     /// the instant of the tick.
     fn dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
-        self.dormant_tick_armed = false;
+        self.dormant_wake.frame_ran();
         crate::perf_counters::dormant_tick();
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
@@ -8730,7 +8786,7 @@ impl GpuixView {
             let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
             let pointer_state = self.pointer.clone();
             let pointer = pointer_state.borrow();
-            self.sync_motions(&tree, window, now, &focus_styles, &pointer)
+            self.step_motions(&tree, window, now, &focus_styles, &pointer)
         };
         emit_motion_settled(&callback, &tree, &settled);
         // Motion's `change` follows the animation and not the element being seen, so the events of a
@@ -8744,11 +8800,13 @@ impl GpuixView {
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
         emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
         let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        if animating.iter().any(|id| !self.retain.is_dormant(crate::custom_elements::svg_tree::host_of(&tree, *id))) {
+        if animating.iter().any(|id| !self.motion_sleeps(&tree, *id)) {
             // A motion that no frame has seen run: a frame of its own sets it going.
             cx.notify();
-        } else if dormant_active || motion_values.active || !animating.is_empty() {
-            self.arm_dormant_tick(window, cx);
+        } else {
+            let wake = crate::dormant_wake::Wake::next_frame_if(dormant_active || motion_values.active)
+                .merge(self.dormant_motion_wake(&tree, &animating, now));
+            self.wake_dormant(wake, window, cx);
         }
     }
 }
@@ -9012,9 +9070,8 @@ impl gpui::Render for GpuixView {
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
         let dormant_active = self.css_transitions.take_dormant_active() | self.css_animations.take_dormant_active();
-        let dormant_ids = |id: &u64| self.retain.is_dormant(crate::custom_elements::svg_tree::host_of(&tree, *id));
-        let motion_active = motion_animating.iter().any(|id| !dormant_ids(id));
-        let dormant_motion = motion_animating.iter().any(dormant_ids);
+        let motion_active = motion_animating.iter().any(|id| !self.motion_sleeps(&tree, *id));
+        let dormant_motion = self.dormant_motion_wake(&tree, &motion_animating, now);
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
@@ -9113,8 +9170,12 @@ impl gpui::Render for GpuixView {
             || scroll_animating
         {
             self.request_next_frame(window, scroll_animating);
-        } else if dormant_active || dormant_motion || motion_value_demand == crate::motion::Demand::Dormant {
-            self.arm_dormant_tick(window, cx);
+        } else {
+            let wake = crate::dormant_wake::Wake::next_frame_if(
+                dormant_active || motion_value_demand == crate::motion::Demand::Dormant,
+            )
+            .merge(dormant_motion);
+            self.wake_dormant(wake, window, cx);
         }
 
         result
