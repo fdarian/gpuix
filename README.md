@@ -1086,7 +1086,9 @@ resizes the window the same way. The window is 1x, as headless Chrome's is, what
 the machine has: `createTestRoot({ scaleFactor: 2 })` opens it at the scale of a retina display,
 and `TestRenderer.setWindowScaleFactor(2)` gives it that for the frames after it. The factor
 stays until it is set again (`setWindowSize` does not reset it), and a screenshot is the
-window's size times it. `prefers-color-scheme` reports the system
+window's size times it. The window is the size asked, as headless Chrome's is, even when it is
+wider or taller than the machine's displays (`createTestRoot({ width, height })` and `setWindowSize`
+are not capped to a screen). `prefers-color-scheme` reports the system
 appearance and cannot be flipped, for the reason given under Appearance.
 The "Show scroll bars" setting (see [Scrollbars](#scrollbars)) works the same way:
 `TestRenderer.setScrollbarStyle("classic" | "overlay")`.

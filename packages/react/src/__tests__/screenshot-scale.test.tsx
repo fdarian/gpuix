@@ -1,4 +1,5 @@
 import fs from "fs"
+import { screen } from "@gpuix/native/screen"
 import { afterEach, describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
 import { readPixels, SHOTS_DIR, type Pixels } from "./test-utils.js"
@@ -137,5 +138,40 @@ describeNative("the screenshot follows the window's scale factor", () => {
       testRoot.unmount()
       testRoot = undefined
     }
+  })
+
+  // Wider and taller than the primary display: a viewport (100vw x 100vh), the window size and the
+  // drawable are all the size asked, as headless Chrome's are, in a new window and after a resize.
+  describe("a window bigger than the primary display", () => {
+    const display = screen.getPrimaryDisplay().bounds
+    const big = { width: Math.ceil(display.width) + 300, height: Math.ceil(display.height) + 300 }
+
+    function expectViewport(root: TestRoot, scale: number) {
+      expect(root.renderer.getWindowSize()).toEqual(big)
+      const viewport = root.renderer.getElementBounds(root.renderer.findByTestId("viewport")!.id)!
+      expect([viewport.width, viewport.height]).toEqual([big.width, big.height])
+      const pixels = capture(root)
+      expect([pixels.width, pixels.height]).toEqual([big.width * scale, big.height * scale])
+      expect(pixels.at(pixels.width - 1, pixels.height - 1).slice(0, 3)).toEqual([0, 0, 255])
+    }
+
+    function renderViewport(root: TestRoot) {
+      root.render(<div testId="viewport" style={{ width: "100vw", height: "100vh", backgroundColor: "#0000ff" }} />)
+    }
+
+    it.each([1, 2])("is the size asked at creation, at scale %i", (scale) => {
+      testRoot = createTestRoot({ ...big, scaleFactor: scale })
+      renderViewport(testRoot)
+      expectViewport(testRoot, scale)
+    })
+
+    it.each([1, 2])("is the size asked by setWindowSize, at scale %i", (scale) => {
+      testRoot = createTestRoot({ width: WIDTH, height: HEIGHT, scaleFactor: scale })
+      renderViewport(testRoot)
+      testRoot.renderer.setWindowSize(big.width, big.height)
+      expectViewport(testRoot, scale)
+      testRoot.renderer.setWindowSize(WIDTH, HEIGHT)
+      expect(testRoot.renderer.getWindowSize()).toEqual({ width: WIDTH, height: HEIGHT })
+    })
   })
 })
