@@ -8792,6 +8792,29 @@ it. The offscreen test window is not the active window, so the OS is never told:
 this reads what GPUI resolved. Keywords that name one cursor read back as one of
 them (`"pointer"`, `"grabbing"`, `"nwse-resize"`, `"nesw-resize"`, `"not-allowed"`).
 
+### Input that wakes an idle frame loop
+
+The test renderer has the live renderer's wake surface, so `startFrameLoop(renderer)`
+runs on the wake path and a test can check that input to an idle window wakes
+JavaScript and reaches its handler. `postNativeEvent(kind, x?, y?)` posts a real
+`NSEvent` for the test window from AppKit's event thread (`"keyDown"`,
+`"mouseMove"`, `"click"` or `"scroll"`; the last three take `x` and `y` in logical
+pixels from the window's top left). The window is neither made key nor shown and
+nothing reaches the OS. `setFrameWakeCallback(callback)` wakes on it, and
+`tick()` hands AppKit's queue for the window to it and then to the JS handlers.
+The test window draws no frames: they stay `flush()` and `drawFrame()`.
+
+```ts
+import { createTestRoot } from '@gpuix/react/testing'
+import { startFrameLoop } from '@gpuix/react'
+
+const { renderer, render } = createTestRoot()
+render(<div style={{ width: '100%', height: '100%' }} onMouseMove={() => moved++} />)
+const loop = startFrameLoop(renderer) // no timer: an idle window is not ticked
+renderer.postNativeEvent('mouseMove', 100, 100) // wakes the loop, which ticks, and runs onMouseMove
+loop.stop()
+```
+
 ### Testing native elements
 
 `getAllText()` only sees `<text>` nodes in the retained tree. `<code>`, `<diff>`
