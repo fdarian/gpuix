@@ -1414,8 +1414,10 @@ This is a remount, not React Refresh. Keeping hook state needs Bun to inject
 Native `.node` edits still need a rebuild. See [Developing the Rust side](#developing-the-rust-side).
 
 On **macOS**, `startFrameLoop` calls `renderer.tick()` when the main run loop has
-work, instead of polling every 8 ms: an input event, a block on the main queue
-(which includes a display-link frame step) or a run-loop timer. The display link
+work, instead of polling every 8 ms: a block on the main queue (which includes a
+display-link frame step), a run-loop timer or an input event (AppKit's event
+thread posts to the main queue, because nothing else wakes a main run loop that
+JavaScript's event loop owns). The display link
 runs only while a window asks for frames, so an idle window gets no wakes and
 arms no timer. Each tick drains only ready AppKit events and Core Foundation
 sources, then returns without blocking JavaScript I/O. Wakes coalesce while

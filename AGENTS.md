@@ -103,8 +103,10 @@ components. React preserves its public testing and automation subpaths as thin
 adapters or re-exports. Do not copy shared runtime code back into an adapter.
 
 `@gpuix/native/runtime` owns the desktop pump. On macOS it wakes when the main run
-loop has work (input, a main-queue block, a run-loop timer), and the display link
-runs only on frame demand, so an idle window gets no wakes and no timer. `tick()`
+loop has work (a main-queue block, a run-loop timer, or input: an observer on
+AppKit's event thread posts to the main queue, since nothing else wakes a main
+loop that libuv owns), and the display link runs only on frame demand, so an idle
+window gets no wakes and no timer. `tick()`
 clears `pending` and then calls `run_loop_pumped()` to re-arm the watch. `tick()`
 must stay non-blocking so Node.js and Bun I/O can run. Explicit `frameMs` uses
 timer polling.
