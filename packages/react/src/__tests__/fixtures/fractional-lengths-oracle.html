@@ -192,6 +192,103 @@ add('table percent column width of 99.9', `<table id="t" style="border-collapse:
 add('table percent row height of 87.7', `<table id="t" style="border-collapse:separate;border-spacing:0;width:101.3px;height:87.7px"><tbody>${tableCells(['23.3%', '37.7%', ''])}</tbody></table>`);
 add('table percent row height of 99.9', `<table id="t" style="border-collapse:separate;border-spacing:0;width:101.3px;height:99.9px"><tbody>${tableCells(['23.3%', '37.7%', ''])}</tbody></table>`);
 
+// The height of a table is shared out over its rows and row groups in 1/64 of a pixel (DistributeExcessBlockSizeToRows,
+// DistributeTableBlockSizeToSections): a row is auto when a `div` gives it its height (the cells are aligned to the top
+// since a `div` with no text has no baseline in Chrome), a length when the row has a `height`. The spacing is whole
+// pixels: Chrome keeps it in a `short`, and gpuix cuts it before the scale is applied. Three columns are 48px wide,
+// gpuix shares the width of the columns in floats.
+const td = (id, h, attrs = '', style = '') => `<td id="${id}"${attrs} style="padding:0;vertical-align:top;${style}">${h ? `<div style="height:${h}px"></div>` : ''}</td>`;
+const tr = (id, cells, style = '') => `<tr id="${id}"${style ? ` style="${style}"` : ''}>${cells.join('')}</tr>`;
+const rowsOf = (heights, prefix = 'r', style = []) => heights.map((h, i) => tr(`${prefix}${i + 1}`, [td(`${prefix}${i + 1}c`, h)], style[i] ?? '')).join('');
+const group = (id, heights, style = '', tag = 'tbody', rowStyle = []) => `<${tag} id="${id}"${style ? ` style="${style}"` : ''}>${rowsOf(heights, id, rowStyle)}</${tag}>`;
+const sharing = (style, inner) => `<table id="t" style="border-collapse:separate;border-spacing:0;width:50px;${style}">${inner}</table>`;
+for (const [height, spacing] of [[100.3, 0], [97.7, 2], [50, 0], [60.3, 1]]) {
+  const style = `height:${height}px;border-spacing:${spacing}px`;
+  const suffix = `in ${height}${spacing ? ` spacing ${spacing}` : ''}`;
+  add(`table rest auto rows 10 11 13 ${suffix}`, sharing(style, group('b', [10, 11, 13])));
+  add(`table rest auto rows 7 7 7 ${suffix}`, sharing(style, group('b', [7, 7, 7])));
+  add(`table rest empty rows ${suffix}`, sharing(style, group('b', [0, 0, 0])));
+  add(`table rest empty and filled rows ${suffix}`, sharing(style, group('b', [10, 0, 13, 0])));
+  add(`table rest percent row and auto rows ${suffix}`, sharing(style, group('b', [10, 11, 13], '', 'tbody', ['height:23.3%'])));
+  add(`table rest percent rows and an auto row ${suffix}`, sharing(style, group('b', [10, 11, 13], '', 'tbody', ['height:23.3%', 'height:37.7%'])));
+  add(`table rest percent row and empty rows ${suffix}`, sharing(style, group('b', [0, 0, 0], '', 'tbody', ['', 'height:41.1%'])));
+  add(`table rest length row and auto rows ${suffix}`, sharing(style, group('b', [10, 11, 13], '', 'tbody', ['height:20px'])));
+  add(`table rest rows with a length ${suffix}`, sharing(style, group('b', [10, 11, 13], '', 'tbody', ['height:10px', 'height:11px', 'height:13px'])));
+  add(`table rest length row and empty rows ${suffix}`, sharing(style, group('b', [0, 0, 0], '', 'tbody', ['height:9px'])));
+  add(`table rest two tbodys ${suffix}`, sharing(style, group('b1', [10, 11]) + group('b2', [13, 7])));
+  add(`table rest tbody with a length ${suffix}`, sharing(style, group('b1', [10, 11], 'height:30px') + group('b2', [13])));
+  add(`table rest tbodys with a length ${suffix}`, sharing(style, group('b1', [10, 11], 'height:30px') + group('b2', [13], 'height:20.3px')));
+  add(`table rest tbody with a percent ${suffix}`, sharing(style, group('b1', [10], 'height:33.3%') + group('b2', [11, 13])));
+  add(`table rest tbodys with a percent ${suffix}`, sharing(style, group('b1', [10], 'height:33.3%') + group('b2', [11, 13], 'height:41.7%')));
+  add(`table rest thead tbody tfoot ${suffix}`, sharing(style, group('h', [10], '', 'thead') + group('b', [11, 13]) + group('f', [7], '', 'tfoot')));
+  add(`table rest thead and tbody with a length ${suffix}`, sharing(style, group('h', [10], '', 'thead') + group('b', [11, 13], 'height:60px')));
+  add(`table rest thead and tbody with a percent ${suffix}`, sharing(style, group('h', [10], '', 'thead') + group('b', [11, 13], 'height:60.3%')));
+  add(`table rest thead with a percent ${suffix}`, sharing(style, group('h', [10], 'height:20.3%', 'thead') + group('b', [11, 13]) + group('f', [7], 'height:11%', 'tfoot')));
+  add(`table rest thead and tfoot ${suffix}`, sharing(style, group('h', [10], '', 'thead') + group('f', [7, 3], '', 'tfoot')));
+  add(`table rest rowspan ${suffix}`,
+    sharing(style, '<tbody id="b">' + tr('r1', [td('r1a', 10), td('r1b', 40, ' rowspan="2"')]) + tr('r2', [td('r2a', 11)]) + tr('r3', [td('r3a', 13)]) + '</tbody>'));
+  add(`table rest rowspan over empty rows ${suffix}`,
+    sharing(style, '<tbody id="b">' + tr('r1', [td('r1a', 0), td('r1b', 50, ' rowspan="3"')]) + tr('r2', [td('r2a', 0)]) + tr('r3', [td('r3a', 0)]) + '</tbody>'));
+  add(`table rest rowspans that start in the span ${suffix}`,
+    sharing(style, '<tbody id="b">' + tr('r1', [td('r1a', 7), td('r1b', 61.7, ' rowspan="3"')]) + tr('r2', [td('r2a', 29.3, ' rowspan="2"')]) + tr('r3', []) + tr('r4', [td('r4a', 13), td('r4b', 5)]) + '</tbody>'));
+}
+for (const spacing of [0, 2]) {
+  const style = `border-spacing:${spacing}px`;
+  const suffix = spacing ? ' spacing 2' : '';
+  add(`table rowspan over rows 10 and 11${suffix}`,
+    sharing(style, '<tbody id="b">' + tr('r1', [td('r1a', 10), td('r1b', 40.3, ' rowspan="2"')]) + tr('r2', [td('r2a', 11)]) + '</tbody>'));
+  add(`table rowspan over empty rows${suffix}`,
+    sharing(style, '<tbody id="b">' + tr('r1', [td('r1a', 0), td('r1b', 50.7, ' rowspan="3"')]) + tr('r2', [td('r2a', 0)]) + tr('r3', [td('r3a', 0)]) + '</tbody>'));
+  add(`table rowspan over a row with a length${suffix}`,
+    sharing(style, '<tbody id="b">' + tr('r1', [td('r1a', 10, '', 'height:10px'), td('r1b', 40.3, ' rowspan="2"')]) + tr('r2', [td('r2a', 11)]) + '</tbody>'));
+  add(`table rowspan over rows with a percent${suffix}`,
+    sharing(style + ';height:120.3px', '<tbody id="b">' + tr('r1', [td('r1a', 10), td('r1b', 40.3, ' rowspan="2"')], 'height:30%') + tr('r2', [td('r2a', 11)]) + '</tbody>'));
+  add(`table rowspans of different spans${suffix}`,
+    sharing(style + `;width:${48 + 4 * spacing}px`, '<tbody id="b">' + tr('r1', [td('r1a', 7), td('r1b', 61.7, ' rowspan="3"'), td('r1c', 33.3, ' rowspan="2"')]) + tr('r2', [td('r2a', 11)]) + tr('r3', [td('r3a', 5), td('r3c', 9)]) + '</tbody>'));
+  add(`table rowspan with two cells over the same rows${suffix}`,
+    sharing(style + `;width:${48 + 4 * spacing}px`, '<tbody id="b">' + tr('r1', [td('r1a', 7), td('r1b', 41.7, ' rowspan="2"'), td('r1c', 31.3, ' rowspan="2"')]) + tr('r2', [td('r2a', 11)]) + '</tbody>'));
+  add(`table tbody with a length of 77.7${suffix}`, sharing(style, group('b', [10, 11, 13], 'height:77.7px')));
+  add(`table tbody with a length of 33.3 over rows with a length${suffix}`, sharing(style, group('b', [10, 11, 13], 'height:33.3px', 'tbody', ['height:11px', '', 'height:13px'])));
+  add(`table tbody with a length of 77.7 over empty rows${suffix}`, sharing(style, group('b', [0, 0, 0], 'height:77.7px')));
+  add(`table tbody with a length of 77.7 over percent rows${suffix}`, sharing(style, group('b', [10, 11, 13], 'height:77.7px', 'tbody', ['height:23.3%', 'height:37.7%'])));
+}
+
+// `position: relative` with percentage insets (relative_utils.cc): top and bottom are of the content height of the
+// parent when it is known before its children are laid out, `auto` when it is not (an auto height, a min-height), one
+// inset set moves the box by it and one `auto` by the other negated, both set the top and the left win (the right in
+// `direction: rtl`), each cut to 1/64.
+const relative = (style) => `position:relative;width:20px;height:20px;${style}`;
+const withSibling = (style, child) => box('p', `width:200px;${style}`, child + box('s', 'height:10px'));
+for (const inset of ['top:10%', 'bottom:7.3%', 'top:10.7%;bottom:20%', 'top:-10.5%', 'bottom:-33.3%', 'top:0.5%', 'top:10%;left:12.5%', 'bottom:7.3%;right:3.3%'])
+  add(`relative ${inset} of a definite parent`, withSibling('height:140.3px', box('a', relative(inset))));
+for (const inset of ['top:10%', 'bottom:7.3%', 'top:10.7%;bottom:20%', 'top:10%;left:12.5%'])
+  add(`relative ${inset} of an auto parent`, withSibling('', box('a', relative(inset))));
+for (const inset of ['top:10%', 'bottom:7.3%'])
+  add(`relative ${inset} of a parent with a min-height`, withSibling('min-height:100px', box('a', relative(inset))));
+add('relative top 10% of a parent with padding and a height', withSibling('height:100.3px;padding:10.3px', box('a', relative('top:10%;left:10%'))));
+add('relative top 10% of a parent with padding and an auto height', withSibling('padding:10.3px', box('a', relative('top:10%;left:10%'))));
+add('relative top 10% of a parent with a percentage height', box('o', 'height:140.3px', withSibling('height:50%', box('a', relative('top:10%')))));
+add('relative top 10% of a parent with a percentage height of an auto parent', box('o', '', withSibling('height:50%', box('a', relative('top:10%')))));
+for (const inset of ['left:12.5%', 'right:12.5%', 'left:12.5%;right:3%', 'right:3%;left:12.5%', 'left:-7.7%', 'right:-7.7%'])
+  add(`relative ${inset} of a parent of 133.3px`, box('p', 'width:133.3px', box('a', relative(inset)) + box('s', 'height:10px')));
+for (const inset of ['left:12.5%', 'right:12.5%', 'left:12.5%;right:3%', 'right:3%;left:12.5%'])
+  add(`relative ${inset} of a parent of 133.3px in rtl`, box('p', 'direction:rtl;width:133.3px', box('a', relative(inset)) + box('s', 'height:10px')));
+add('relative nested insets', box('p', 'width:200.3px;height:140.3px',
+  box('a', 'position:relative;width:60%;height:50%;top:10%;left:5.5%', box('b', relative('top:50%;left:25%')) + box('c', 'position:relative;width:40%;height:50%;bottom:20%;right:10%', box('d', relative('top:-30%;left:10%'))))));
+add('relative nested insets of an auto parent', box('p', 'width:200.3px',
+  box('a', 'position:relative;width:60%;height:70.3px;top:10%;left:5.5%', box('b', relative('top:50%;left:25%')) + box('c', 'position:relative;width:40%;height:50%;bottom:20%;right:10%', box('d', relative('top:-30%;left:10%'))))));
+for (const inset of ['top:10%', 'bottom:7.3%', 'top:10.7%;bottom:20%'])
+  add(`relative ${inset} of a flex column`, box('p', 'display:flex;flex-direction:column;width:200px;height:140.3px', box('a', relative(inset)) + box('s', 'height:10px')));
+for (const inset of ['top:10%', 'bottom:7.3%'])
+  add(`relative ${inset} of a flex column with an auto height`, box('p', 'display:flex;flex-direction:column;width:200px', box('a', relative(inset)) + box('s', 'height:10px')));
+for (const inset of ['top:10%', 'bottom:7.3%', 'top:10%;left:12.5%'])
+  add(`relative ${inset} of a flex row`, box('p', 'display:flex;width:200.3px;height:140.3px', box('a', relative(inset)) + box('s', 'width:10px;height:10px')));
+add('relative top 10% of a flex row with an auto height', box('p', 'display:flex;width:200px', box('a', relative('top:10%')) + box('s', 'width:10px;height:50px')));
+for (const inset of ['top:10%', 'bottom:7.3%', 'top:10%;left:12.5%'])
+  add(`relative ${inset} of a grid`, box('p', 'display:grid;width:200.3px;height:140.3px;grid-template-rows:60.3px 50px;grid-template-columns:50.3px 100px', box('a', relative(inset)) + box('s', 'height:10px')));
+add('percent height of a parent with a min-height', box('p', 'width:200px;min-height:100px', box('a', 'width:20px;height:50%;min-height:3px') + box('s', 'height:10px')));
+add('percent height of a parent with a min-height and a height', box('p', 'width:200px;height:50px;min-height:100px', box('a', 'width:20px;height:50%') + box('s', 'height:10px')));
+
 const adjacentFlex = (extra) => box('o', `display:flex;width:100px;${extra}`, box('a', 'width:33.3px;height:20px') + box('b', 'width:33.3px;height:20px') + box('c', 'width:33.4px;height:20px'));
 add('adjacent 33.3 33.3 33.4 flex', adjacentFlex(''), { paint: true, scans: [hscan(10, -5, 110)] });
 add('adjacent 33.3 33.3 33.4 flex at 0.5px', adjacentFlex('margin-left:0.5px'), { paint: true, scans: [hscan(10, -5, 110)] });

@@ -3959,9 +3959,12 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   border width is snapped as a border width (floored to whole device pixels, a width under one is one pixel). Painted
   positions are snapped but `getBoundingClientRect` is not, it reports the layout in 1/64 of a device pixel as Chrome
   does. A percentage is cut the same way wherever layout resolves it, tables included (`25%` of 101.296875 is
-  25.3125), and a flex item's share of the free space is rounded to that unit the way Chrome rounds it. A few
-  cases are still a 64th off: a table row that takes the rest of the table's height is short, `top: 50%` on a
-  relatively positioned box in a block reads 0, the leftover of `minmax(%, 1fr)` next to a `1fr` track, the
+  25.3125), a flex item's share of the free space is rounded to that unit the way Chrome rounds it, and so is the
+  height of a table shared out over its rows and row groups (each share cut, the last row taking what the cuts
+  leave). A percentage `top` or `bottom` of a relatively positioned box is of the height of its container, and `auto`
+  when that height is not known before the content is laid out (an auto height, a `min-height`: a child's percentage
+  `height` is `auto` there too). A few
+  cases are still a 64th off: the leftover of `minmax(%, 1fr)` next to a `1fr` track, the
   `align-content: stretch` of a wrapping flex container at 2x, and a flex item centred in its container (its offset
   is not truncated, so a centred label can be a 64th off).
 - Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
@@ -7028,17 +7031,18 @@ Differences from Chrome:
 - A column no cell starts in joins the one before it in the layout, and the collapsed borders
   predict that: a table with `tableLayout: "fixed"` and a `width` keeps them, so one whose
   `width` is a percentage of a parent with no width draws no collapsed borders.
-- Rows and cells with `rowSpan`s that leave rows without a cell of their own and no height
-  can share a spanning cell's height out differently.
+- A cell aligned to the baseline whose content has no baseline (a box with no text in it) is aligned by the bottom
+  of its content, where Chrome gives it none: a cell with a `rowSpan` and such content makes its first row as tall
+  as the cell, where Chrome shares the height between the rows it spans. `verticalAlign: 'top'` is Chrome's here.
 - A table that is a flex item narrower than its least width reports that least width but is
   positioned for the width it asked for; the maximum width of a table with columns that add up
   to 100% next to columns without a percentage is what the columns ask for, where Chrome
   makes it unbounded.
 - An absolutely positioned child of a table is placed by its insets: `margin: auto` does
   not centre it.
-- Sums are floats, where Chrome counts in 1/64 of a pixel (a percentage is cut to it, a share is not), so widths
-  shared out can differ in the second decimal, and a row that takes the rest of the table's height is a 64th
-  short; the painted box is snapped to the device pixel.
+- The widths of the columns are shared out in floats, where Chrome counts in 1/64 of a pixel (a percentage is cut
+  to it, a share is not), so they can differ in the second decimal; the heights of rows and row groups are shared
+  in 1/64 as Chrome does. The painted box is snapped to the device pixel.
 - `mask` and `clipPath` reference the whole box, with the captions.
 - An element that paints nothing (`visibility: hidden`) counts as content in a cell for
   `emptyCells`.

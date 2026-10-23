@@ -79,11 +79,6 @@ const KNOWN: Record<string, string> = {
   "percent of 33.3 with padding rect": CONTENT_BOX_PERCENT,
   "percent of 33.3 with padding client": CONTENT_BOX_PERCENT,
 }
-// Chrome shares a table's height over its rows in LayoutUnits, each row cut as it gets its share; gpuix shares floats and cuts
-// what it reads, so the row that takes what is left reads a 64th short.
-for (const height of ["87.7", "99.9"]) {
-  KNOWN[`table percent row height of ${height} rect`] = "the rows that share a table's height are not cut one by one as Chrome cuts them"
-}
 
 type Colors = Record<string, { bg: string; bd?: string }>
 

@@ -25,9 +25,7 @@ describeNative("percentage heights of table parts against Chrome", () => {
       const { render, renderer, unmount } = createTestRoot()
       try {
         render(<div style={{ width: 300 }}>{elementsOf(source.html)}</div>)
-        // Chrome lays out in 1/64 of a pixel, gpuix in whole device pixels
-        const fractional = Object.values(source.boxes).some((box) => box.some((value) => !Number.isInteger(value)))
-        expectBoxes(renderer, source.boxes, fractional ? 0.75 : 0.06)
+        expectBoxes(renderer, source.boxes, 0)
       } finally {
         unmount()
       }
