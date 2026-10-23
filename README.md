@@ -3737,7 +3737,7 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 | `wordBreak` | Breaks |
 |---|---|
 | `normal` (default) | where Chrome breaks: after spaces and hyphens, between CJK characters, and wherever the Unicode line breaking rules allow (see below) |
-| `break-all` | also between any two letters, so a line is filled to its edge even when a space comes earlier |
+| `break-all` | also between letters and numbers (and before a hyphen or an opening bracket), so a line is filled to its edge even when a space comes earlier |
 | `keep-all` | not between two letters or numbers, CJK characters included, which behave like the letters of a word |
 | `break-word` | as `normal` with `overflowWrap: 'anywhere'`, whatever `overflowWrap` says |
 
@@ -3758,9 +3758,19 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
   (`ABCD-1234`, `2026-10-19`) and not in a minus sign (`-5`, `a -5`). U+2011 (the non-breaking
   hyphen) and the no-break space are glue. Thai, Lao, Khmer and Burmese are split into words
   with a dictionary. `width: 'min-content'` of a text is its longest piece.
-- `break-all` does not break before closing punctuation (`)`, `!`, `,`...), after
-  opening punctuation or next to a no-break space, and a space still hangs at the
-  edge as it does without it.
+- A line fits as Chrome's line breaker has it: the pieces of the line (one per text node), each ceiled
+  to 1/64 of a device pixel from where it starts on the line, add up to at most the width of the box
+  cut to 1/64 of a device pixel and one 1/64 more. So a text within a hair of the width of its box
+  breaks where Chrome's does, at both scales. Where a line breaks between two letters that kern
+  (`wordBreak: 'break-all'`, a word cut by `overflowWrap`) Chrome shapes the end of the line again
+  without the kern, and gpuix does not: such a line can hold one letter more than in Chrome, at a
+  width within a fraction of a pixel of the one it fits.
+- `break-all` adds the places of Blink's table for it (`kBreakAllLineBreakClassTable`) to the ones
+  above: between two letters or numbers (of any script that has them), before a hyphen and an opening
+  bracket (`a(b` breaks before the bracket), and after closing punctuation. It does not break before
+  closing punctuation (`)`, `!`, `,`...), after opening punctuation or next to a no-break space, nor
+  between a number and its `%` or between a currency sign and the number after it, and a space still
+  hangs at the edge as it does without it.
 - `keep-all` keeps letters and numbers together, CJK characters among them, but not the Thai
   family of scripts; a space, a hyphen and punctuation are still places to break. Without
   one a run of them overflows, unless `overflowWrap` cuts it.
@@ -3779,7 +3789,8 @@ Deviations, where GPUI's text layout cannot build the DOM model:
   everything but a few rare sequences: a closing or opening quote next to a small kana or the
   prolonged sound mark (`”ぁ`), and the word boundaries of Lao and Khmer, whose dictionaries differ.
 - `hyphens` and `line-break` are not styles: a soft hyphen (U+00AD) is a place to break and
-  draws no hyphen where it does, and the strictness is Chrome's `auto`.
+  draws no hyphen where it does, though the width of the hyphen counts in whether the line fits,
+  so lines break where Chrome's do, and the strictness is Chrome's `auto`.
 
 #### Balanced and pretty lines
 

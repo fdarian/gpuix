@@ -1,0 +1,5881 @@
+{
+ "cases": [
+  {
+   "family": "Times",
+   "size": 11,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Times",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Times",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "To Yo AV Ta Wa To Yo AV Ta Wa"
+  },
+  {
+   "family": "Times",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Hello To Yo AV and Ta Wa words after bA bT b"
+  },
+  {
+   "family": "Times",
+   "size": 14,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Times",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Times",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "To Yo AV Ta Wa To Yo AV Ta Wa"
+  },
+  {
+   "family": "Times",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Hello To Yo AV and Ta Wa words after bA bT b"
+  },
+  {
+   "family": "Helvetica",
+   "size": 11,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "To Yo AV Ta Wa To Yo AV Ta Wa"
+  },
+  {
+   "family": "Helvetica",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Hello To Yo AV and Ta Wa words after bA bT b"
+  },
+  {
+   "family": "Helvetica",
+   "size": 14,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "To Yo AV Ta Wa To Yo AV Ta Wa"
+  },
+  {
+   "family": "Helvetica",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Hello To Yo AV and Ta Wa words after bA bT b"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 11,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 15.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 11,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 13.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 14,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 15.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Menlo",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Times",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Times",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Times",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Helvetica",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Helvetica",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Helvetica",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-paragraph",
+   "tag": null,
+   "text": "The quick brown fox jumps over the lazy dog while fractional widths settle in a label text of Helvetica, Times and Menlo."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "A two-step size ladder \u2014 a 36px default and a 28px compact \u2014 shared by buttons, inputs, selects, tabs, and rows."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Add the Scrollbars system from Fluid Functionalism to my React app."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Already have \u2014 it sets the bar for polished React surfaces."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "Already have \u2014 it sets the bar for polished React surfaces."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Already have \u2014 it sets the bar for polished React surfaces."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Auth token refresh fails for ~4% of sessions"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Built on shadcn/ui. Each component comes in two flavors, Radix or Base UI, so you can match whichever primitive library you've already chosen. Your theme tokens (colors, radii, fonts) work as-is. One CLI command installs a component along with whatever it needs."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Can you turn this architecture sketch into a short build plan?"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "Can you turn this architecture sketch into a short build plan?"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Can you turn this architecture sketch into a short build plan?"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Controls and rows \u2014 shared so menu rows line up with their trigger"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Dialog at surface 5, role picker at surface 7 \u2014 no props passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Fade plus hairlines at the edges that have content past them"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "For the design details behind it (exact behaviors and values), add the Fluid Functionalism skill: npx skills add mickadesign/fluid-functionalism"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 28,
+   "lh": "34px",
+   "vs": "'wght' 700, 'opsz' 25",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "display",
+   "text": "How does Micka tune the springs behind these animations?"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Installs the ScrollArea component with the shape-system scrollbar and the scroll-fade edge treatment."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body",
+   "text": "Labels shift when their weight changes. Add axes: [\"opsz\"] to your next/font call."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Labels shift when their weight changes. Add axes: [\"opsz\"] to your next/font call."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 28,
+   "lh": "34px",
+   "vs": "'wght' 700, 'opsz' 25",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "display",
+   "text": "Labels shift when their weight changes. Add axes: [\"opsz\"] to your next/font call."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "M 12 16 C 14.21 16 16 14.21 16 12 C 16 9.79 14.21 8 12 8 C 9.79 8 8 9.79 8 12 C 8 14.21 9.79 16 12 16 Z"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 28,
+   "lh": "34px",
+   "vs": "'wght' 700, 'opsz' 25",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "display",
+   "text": "M 12 16 C 14.21 16 16 14.21 16 12 C 16 9.79 14.21 8 12 8 C 9.79 8 8 9.79 8 12 C 8 14.21 9.79 16 12 16 Z"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Multiple items can be expanded at the same time."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "One highlight follows your pointer smoothly between menu items."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 28,
+   "lh": "34px",
+   "vs": "'wght' 700, 'opsz' 25",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "display",
+   "text": "One highlight follows your pointer smoothly between menu items."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Prototyping flows and pages fast, then handing the patterns to the team."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Run the install command again to pull the latest versions."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Shift+Tab Shift+Tab Shift+Tab Shift+Tab Shift+Tab"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Soft 16\u201324px corners that feel approachable and read as software. Pairs well with editorial typography and dense layouts."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Spring-driven motion that feels alive instead of scripted."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Swap radius, icons, and primitive at runtime"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "The component integrates with the shape system for pill or rounded border-radius variants. All animations use spring physics."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "The overlay is drawn inside this box, not over the window."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body",
+   "text": "This label is far too wide to fit between the trigger and the right edge of the window"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "This label is far too wide to fit between the trigger and the right edge of the window"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "This label is far too wide to fit between the trigger and the right edge of the window"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "This label is far too wide to fit between the trigger and the right edge of the window"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "This label is far too wide to fit between the trigger and the right edge of the window"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Which starting template fits your project?"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "You like the direction but want to ship one real flow against it before passing it on to others."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "You like the direction but want to ship one real flow against it before passing it on to others."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "You like the direction but want to ship one real flow against it before passing it on to others."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "You like the direction but want to ship one real flow against it before passing it on to others."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "slashes",
+   "text": "Use and/or either/or, path/to/some/deep/file.txt, a/b?c=d&e=f and 1/2 3/4 or km/h per month/year."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "dashes",
+   "text": "Words\u2014joined by em dashes\u2014and ranges 1990\u20132000, 10\u201320, a \u2013 b, a \u2014 b, an ellipsis\u2026 here, and three dots... there; ok."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "dashes",
+   "text": "Words\u2014joined by em dashes\u2014and ranges 1990\u20132000, 10\u201320, a \u2013 b, a \u2014 b, an ellipsis\u2026 here, and three dots... there; ok."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "dashes",
+   "text": "Words\u2014joined by em dashes\u2014and ranges 1990\u20132000, 10\u201320, a \u2013 b, a \u2014 b, an ellipsis\u2026 here, and three dots... there; ok."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "quotes",
+   "text": "He said: \u201cGo!\u201d then \u2018left\u2019 and \"straight\" quotes, \u00abguillemets\u00bb and \u201elow\u201c marks; (parenthesised text) [brackets] {braces} <angle>."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "quotes",
+   "text": "He said: \u201cGo!\u201d then \u2018left\u2019 and \"straight\" quotes, \u00abguillemets\u00bb and \u201elow\u201c marks; (parenthesised text) [brackets] {braces} <angle>."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "numbers",
+   "text": "Price: $1,234.56 or \u20ac50.00, 50% off, 3.14159, 12:30 PM, v1.2.3-beta.1, 2024-10-23, #42, +1 (555) 123-4567, 1e-10, -5, 5-."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "numbers",
+   "text": "Price: $1,234.56 or \u20ac50.00, 50% off, 3.14159, 12:30 PM, v1.2.3-beta.1, 2024-10-23, #42, +1 (555) 123-4567, 1e-10, -5, 5-."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "nbsp",
+   "text": "Glued\u00a0together\u00a0words and 10\u00a0km, a\u00a0b c\u00a0d e\u00a0f end."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "nbsp",
+   "text": "Glued\u00a0together\u00a0words and 10\u00a0km, a\u00a0b c\u00a0d e\u00a0f end."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "zwsp",
+   "text": "Zero\u200bwidth\u200bspace\u200bseparated\u200bwords and a\u200b\u200bdouble one."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "zwsp",
+   "text": "Zero\u200bwidth\u200bspace\u200bseparated\u200bwords and a\u200b\u200bdouble one."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "punct",
+   "text": "Hello, world! What? Yes... no; maybe: sure. (Really?) \"Quoted.\" And so on, and so forth; the end!"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "punct",
+   "text": "Hello, world! What? Yes... no; maybe: sure. (Really?) \"Quoted.\" And so on, and so forth; the end!"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a minus sign after a space",
+   "text": "a -5 b"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a currency sign stays with its number",
+   "text": "price: $100.00 or \u20ac50"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "curly quotes hold on to their words",
+   "text": "the \u201cquoted\u201d text and \u2018single\u2019 quotes"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a quotation that closes a sentence",
+   "text": "He said: \u201cGo!\u201d now"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a small kana may start a line",
+   "text": "\u3042\u3041\u3042\u30fc"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "Korean breaks between syllables",
+   "text": "\ud55c\uad6d\uc5b4 \ud14d\uc2a4\ud2b8 \uc785\ub2c8\ub2e4"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "Korean breaks between syllables",
+   "text": "\ud55c\uad6d\uc5b4 \ud14d\uc2a4\ud2b8 \uc785\ub2c8\ub2e4"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "Thai breaks between its words",
+   "text": "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22\u0e40\u0e1b\u0e47\u0e19\u0e20\u0e32\u0e29\u0e32\u0e17\u0e35\u0e48\u0e21\u0e35\u0e27\u0e23\u0e23\u0e13\u0e22\u0e38\u0e01\u0e15\u0e4c"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "Thai breaks between its words",
+   "text": "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22\u0e40\u0e1b\u0e47\u0e19\u0e20\u0e32\u0e29\u0e32\u0e17\u0e35\u0e48\u0e21\u0e35\u0e27\u0e23\u0e23\u0e13\u0e22\u0e38\u0e01\u0e15\u0e4c"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a sentence with hyphens",
+   "text": "a well-known state-of-the-art design"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "hyphens in a row",
+   "text": "a-b-c"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a word that is longer than the line",
+   "text": "self-evident truths"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 12,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 28,
+   "lh": "34px",
+   "vs": "'wght' 700, 'opsz' 25",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "display",
+   "text": "Already have \u2014 it sets the bar for polished React surfaces."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body",
+   "text": "One highlight follows your pointer smoothly between menu items."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "One highlight follows your pointer smoothly between menu items."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "You like the direction but want to ship one real flow against it before passing it on to others."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "no break inside a version number, one after its hyphen",
+   "text": "v1.2.3-beta.1"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "hyphens in a row",
+   "text": "a-b-c"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a hyphen after letters before digits",
+   "text": "COVID-19 cases"
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "numbers",
+   "text": "Price: $1,234.56 or \u20ac50.00, 50% off, 3.14159, 12:30 PM, v1.2.3-beta.1, 2024-10-23, #42, +1 (555) 123-4567, 1e-10, -5, 5-."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "punct",
+   "text": "Hello, world! What? Yes... no; maybe: sure. (Really?) \"Quoted.\" And so on, and so forth; the end!"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "break-all and a bracket",
+   "text": "art(x) well-known"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "break-all and a bracket",
+   "text": "art(x) well-known"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "break-all",
+   "text": "well-known"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "break-all",
+   "text": "well-known"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "longword",
+   "text": "A supercalifragilisticexpialidocious pneumonoultramicroscopicsilicovolcanoconiosis word and aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa here."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "longword",
+   "text": "A supercalifragilisticexpialidocious pneumonoultramicroscopicsilicovolcanoconiosis word and aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa here."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "longword",
+   "text": "A supercalifragilisticexpialidocious pneumonoultramicroscopicsilicovolcanoconiosis word and aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa here."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "keep-all",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "keep-all keeps Hangul together",
+   "text": "\ud55c\uad6d\uc5b4 \ud14d\uc2a4\ud2b8 \uc785\ub2c8\ub2e4"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "keep-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "break-word",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "anywhere",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-word",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "keep-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "break-word",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "anywhere",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-word",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "keep-all",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "anywhere",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-word",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "hyphens",
+   "text": "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "anywhere",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-word",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "anywhere",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-word",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "anywhere",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "break-word",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "longword",
+   "text": "A supercalifragilisticexpialidocious pneumonoultramicroscopicsilicovolcanoconiosis word and aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa here."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "shy",
+   "text": "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational con\u00adstitutional words."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "shy",
+   "text": "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational con\u00adstitutional words."
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "shy",
+   "text": "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational con\u00adstitutional words."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 11,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Label text"
+  },
+  {
+   "family": "Menlo",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Fractional widths"
+  },
+  {
+   "family": "Helvetica",
+   "size": 13.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Fractional widths"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 16,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica",
+   "size": 13,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Hello world"
+  },
+  {
+   "family": "Helvetica",
+   "size": 15.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Controls and rows \u2014 shared so menu rows line up with their trigger"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Swap radius, icons, and primitive at runtime"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "A 28px step for dense screens, a whole app shell in a single install, and 4 changes that need a migration."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Installs the ScrollArea component with the shape-system scrollbar and the scroll-fade edge treatment."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "Spring-driven motion that feels alive instead of scripted."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "18px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "compact-body",
+   "text": "You like the direction but want to ship one real flow against it before passing it on to others."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 28,
+   "lh": "34px",
+   "vs": "'wght' 700, 'opsz' 25",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "display",
+   "text": "Command menu input change without a value"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "How does Micka tune the springs behind these animations?"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Sidebar shell, sortable tables, and form-heavy detail views. Built for back-office tools."
+  },
+  {
+   "family": "Times",
+   "size": 13.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Helvetica",
+   "size": 13.5,
+   "lh": "1.3",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "a-text-measure",
+   "tag": null,
+   "text": "Quick brown fox jumps"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Built on shadcn/ui. Each component comes in two flavors, Radix or Base UI, so you can match whichever primitive library you've already chosen. Your theme tokens (colors, radii, fonts) work as-is. One CLI command installs a component along with whatever it needs."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside a dialog both end up at the right depth, without anything passed between them."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly it lets you do what you came to do."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 11,
+   "lh": "14px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "micro",
+   "text": "Install (shadcn CLI, pulls the shared libs and npm dependencies on its own):"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "subtitle",
+   "text": "Labels shift when their weight changes. Add axes: [\"opsz\"] to your next/font call."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "Labels shift when their weight changes. Add axes: [\"opsz\"] to your next/font call."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "body-semibold",
+   "text": "One highlight follows your pointer smoothly between menu items."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 16,
+   "lh": "22px",
+   "vs": "'wght' 550, 'opsz' 18",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "title",
+   "text": "Swap radius, icons, and primitive at runtime"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "This label is far too wide to fit between the trigger and the right edge of the window"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 12,
+   "lh": "16px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "b-ff-inter",
+   "tag": "caption",
+   "text": "Tokens adapt to light and dark automatically"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 13,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "urls",
+   "text": "See https://example.com/a/b/c.html?q=1&r=2#top and www.example.org/path-with-hyphens/index.php?id=12345&sort=desc for details; mail me@example.com."
+  },
+  {
+   "family": "Inter Variable",
+   "size": 13,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-punct",
+   "tag": "zwsp",
+   "text": "Zero\u200bwidth\u200bspace\u200bseparated\u200bwords and a\u200b\u200bdouble one."
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "Korean breaks between syllables",
+   "text": "\ud55c\uad6d\uc5b4 \ud14d\uc2a4\ud2b8 \uc785\ub2c8\ub2e4"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "Thai breaks between its words",
+   "text": "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22\u0e40\u0e1b\u0e47\u0e19\u0e20\u0e32\u0e29\u0e32\u0e17\u0e35\u0e48\u0e21\u0e35\u0e27\u0e23\u0e23\u0e13\u0e22\u0e38\u0e01\u0e15\u0e4c"
+  },
+  {
+   "family": "Menlo",
+   "size": 16,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "a sentence with hyphens",
+   "text": "a well-known state-of-the-art design"
+  },
+  {
+   "family": "Helvetica Neue",
+   "size": 14,
+   "lh": "20px",
+   "vs": null,
+   "wordBreak": "normal",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "hyphens in a row",
+   "text": "a-b-c"
+  },
+  {
+   "family": "Inter Variable",
+   "size": 14,
+   "lh": "20px",
+   "vs": "'wght' 400, 'opsz' 14",
+   "wordBreak": "break-all",
+   "overflowWrap": "normal",
+   "set": "c-uax14",
+   "tag": "break-all and a bracket",
+   "text": "art(x) well-known"
+  }
+ ],
+ "rows": [
+  [
+   0,
+   57.734375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   1,
+   81.9765625,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   2,
+   30.8984375,
+   [
+    "To Yo",
+    "AV",
+    "Ta",
+    "Wa",
+    "To Yo",
+    "AV",
+    "Ta",
+    "Wa"
+   ]
+  ],
+  [
+   2,
+   102.7109375,
+   [
+    "To Yo AV Ta Wa To",
+    "Yo AV Ta Wa"
+   ]
+  ],
+  [
+   3,
+   120.0546875,
+   [
+    "Hello To Yo AV and Ta",
+    "Wa words after bA bT",
+    "b"
+   ]
+  ],
+  [
+   189,
+   70.859375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   4,
+   95.640625,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   6,
+   38.0234375,
+   [
+    "To Yo",
+    "AV",
+    "Ta",
+    "Wa",
+    "To Yo",
+    "AV",
+    "Ta",
+    "Wa"
+   ]
+  ],
+  [
+   6,
+   126.4140625,
+   [
+    "To Yo AV Ta Wa To",
+    "Yo AV Ta Wa"
+   ]
+  ],
+  [
+   7,
+   55.9140625,
+   [
+    "Hello To",
+    "Yo AV",
+    "and Ta",
+    "Wa",
+    "words",
+    "after bA",
+    "bT b"
+   ]
+  ],
+  [
+   7,
+   147.7578125,
+   [
+    "Hello To Yo AV and Ta",
+    "Wa words after bA bT",
+    "b"
+   ]
+  ],
+  [
+   8,
+   61.1328125,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   9,
+   86.03125,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   10,
+   51.1015625,
+   [
+    "To Yo AV",
+    "Ta Wa",
+    "To Yo AV",
+    "Ta Wa"
+   ]
+  ],
+  [
+   10,
+   126.0546875,
+   [
+    "To Yo AV Ta Wa To Yo",
+    "AV Ta Wa"
+   ]
+  ],
+  [
+   11,
+   46.734375,
+   [
+    "Hello To",
+    "Yo AV",
+    "and Ta",
+    "Wa",
+    "words",
+    "after bA",
+    "bT b"
+   ]
+  ],
+  [
+   11,
+   149.15625,
+   [
+    "Hello To Yo AV and Ta Wa",
+    "words after bA bT b"
+   ]
+  ],
+  [
+   190,
+   75.0234375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   179,
+   86.140625,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   13,
+   114.703125,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   14,
+   83.953125,
+   [
+    "To Yo AV Ta",
+    "Wa To Yo",
+    "AV Ta Wa"
+   ]
+  ],
+  [
+   14,
+   178.875,
+   [
+    "To Yo AV Ta Wa To Yo AV",
+    "Ta Wa"
+   ]
+  ],
+  [
+   15,
+   79.78125,
+   [
+    "Hello To Yo",
+    "AV and Ta",
+    "Wa words",
+    "after bA bT",
+    "b"
+   ]
+  ],
+  [
+   15,
+   155.71875,
+   [
+    "Hello To Yo AV and Ta",
+    "Wa words after bA bT",
+    "b"
+   ]
+  ],
+  [
+   16,
+   62.34375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   16,
+   80.671875,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   17,
+   73.6796875,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   18,
+   76.515625,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   18,
+   99.0078125,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   19,
+   102.671875,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   20,
+   113.671875,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   21,
+   72.84375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   22,
+   79.46875,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   22,
+   108.3671875,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   23,
+   86.0859375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   24,
+   89.3984375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   24,
+   121.9140625,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   25,
+   92.7109375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   26,
+   102.6484375,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   27,
+   105.953125,
+   [
+    "Quick brown",
+    "fox jumps"
+   ]
+  ],
+  [
+   28,
+   52.4609375,
+   [
+    "The quick",
+    "brown",
+    "fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in a",
+    "label text",
+    "of",
+    "Helvetica,",
+    "Times",
+    "and",
+    "Menlo."
+   ]
+  ],
+  [
+   28,
+   324.453125,
+   [
+    "The quick brown fox jumps over the lazy dog while fractional",
+    "widths settle in a label text of Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   29,
+   157.4765625,
+   [
+    "The quick brown fox jumps",
+    "over the lazy dog while",
+    "fractional widths settle in a",
+    "label text of Helvetica,",
+    "Times and Menlo."
+   ]
+  ],
+  [
+   29,
+   351.4921875,
+   [
+    "The quick brown fox jumps over the lazy dog while fractional",
+    "widths settle in a label text of Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   30,
+   193.8203125,
+   [
+    "The quick brown fox jumps",
+    "over the lazy dog while",
+    "fractional widths settle in a",
+    "label text of Helvetica,",
+    "Times and Menlo."
+   ]
+  ],
+  [
+   31,
+   65.015625,
+   [
+    "The quick",
+    "brown fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in",
+    "a label",
+    "text of",
+    "Helvetica,",
+    "Times and",
+    "Menlo."
+   ]
+  ],
+  [
+   31,
+   245.6328125,
+   [
+    "The quick brown fox jumps over the",
+    "lazy dog while fractional widths",
+    "settle in a label text of",
+    "Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   32,
+   148.703125,
+   [
+    "The quick brown fox",
+    "jumps over the lazy",
+    "dog while",
+    "fractional widths",
+    "settle in a label",
+    "text of Helvetica,",
+    "Times and Menlo."
+   ]
+  ],
+  [
+   32,
+   336.5390625,
+   [
+    "The quick brown fox jumps over the lazy dog",
+    "while fractional widths settle in a label",
+    "text of Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   33,
+   240.8125,
+   [
+    "The quick brown fox jumps",
+    "over the lazy dog while",
+    "fractional widths settle",
+    "in a label text of",
+    "Helvetica, Times and",
+    "Menlo."
+   ]
+  ],
+  [
+   34,
+   81.9765625,
+   [
+    "The quick brown",
+    "fox jumps over",
+    "the lazy dog",
+    "while fractional",
+    "widths settle in a",
+    "label text of",
+    "Helvetica, Times",
+    "and Menlo."
+   ]
+  ],
+  [
+   34,
+   198.2734375,
+   [
+    "The quick brown fox jumps over the lazy",
+    "dog while fractional widths settle in a",
+    "label text of Helvetica, Times and",
+    "Menlo."
+   ]
+  ],
+  [
+   34,
+   361.234375,
+   [
+    "The quick brown fox jumps over the lazy dog while fractional widths settle",
+    "in a label text of Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   35,
+   109.3828125,
+   [
+    "The quick brown fox",
+    "jumps over the lazy",
+    "dog while fractional",
+    "widths settle in a",
+    "label text of",
+    "Helvetica, Times",
+    "and Menlo."
+   ]
+  ],
+  [
+   35,
+   237.546875,
+   [
+    "The quick brown fox jumps over the lazy dog",
+    "while fractional widths settle in a label text",
+    "of Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   36,
+   64.4140625,
+   [
+    "The quick",
+    "brown",
+    "fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in a",
+    "label text",
+    "of",
+    "Helvetica,",
+    "Times",
+    "and",
+    "Menlo."
+   ]
+  ],
+  [
+   36,
+   233.71875,
+   [
+    "The quick brown fox jumps over the",
+    "lazy dog while fractional widths",
+    "settle in a label text of Helvetica,",
+    "Times and Menlo."
+   ]
+  ],
+  [
+   37,
+   52.0234375,
+   [
+    "The quick",
+    "brown fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in a",
+    "label text",
+    "of",
+    "Helvetica,",
+    "Times",
+    "and",
+    "Menlo."
+   ]
+  ],
+  [
+   37,
+   169.3984375,
+   [
+    "The quick brown fox jumps over",
+    "the lazy dog while fractional",
+    "widths settle in a label text of",
+    "Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   37,
+   320.1484375,
+   [
+    "The quick brown fox jumps over the lazy dog while fractional",
+    "widths settle in a label text of Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   38,
+   95.375,
+   [
+    "The quick brown",
+    "fox jumps over",
+    "the lazy dog",
+    "while fractional",
+    "widths settle in",
+    "a label text of",
+    "Helvetica, Times",
+    "and Menlo."
+   ]
+  ],
+  [
+   38,
+   231.9296875,
+   [
+    "The quick brown fox jumps over the lazy",
+    "dog while fractional widths settle in a",
+    "label text of Helvetica, Times and",
+    "Menlo."
+   ]
+  ],
+  [
+   39,
+   69.359375,
+   [
+    "The quick",
+    "brown fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in a",
+    "label text",
+    "of",
+    "Helvetica,",
+    "Times",
+    "and",
+    "Menlo."
+   ]
+  ],
+  [
+   39,
+   225.8671875,
+   [
+    "The quick brown fox jumps over",
+    "the lazy dog while fractional",
+    "widths settle in a label text of",
+    "Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   40,
+   43.359375,
+   [
+    "A 28px",
+    "step",
+    "for",
+    "dense",
+    "screens,",
+    "a",
+    "whole",
+    "app",
+    "shell in",
+    "a",
+    "single",
+    "install,",
+    "and 4",
+    "changes",
+    "that",
+    "need a",
+    "migration."
+   ]
+  ],
+  [
+   41,
+   249.265625,
+   [
+    "A 28px step for dense screens, a whole app",
+    "shell in a single install, and 4 changes that",
+    "need a migration."
+   ]
+  ],
+  [
+   42,
+   380.1484375,
+   [
+    "A 28px step for dense screens, a whole app shell in a single install, and 4",
+    "changes that need a migration."
+   ]
+  ],
+  [
+   43,
+   166.484375,
+   [
+    "A 28px step for dense",
+    "screens, a whole app",
+    "shell in a single",
+    "install, and 4 changes",
+    "that need a migration."
+   ]
+  ],
+  [
+   44,
+   241.9921875,
+   [
+    "A 28px step for dense screens, a whole",
+    "app shell in a single install, and 4",
+    "changes that need a migration."
+   ]
+  ],
+  [
+   45,
+   414.703125,
+   [
+    "A 28px step for dense screens, a whole app shell in a single install, and 4",
+    "changes that need a migration."
+   ]
+  ],
+  [
+   46,
+   269.8828125,
+   [
+    "A two-step size ladder \u2014 a 36px default and a 28px",
+    "compact \u2014 shared by buttons, inputs, selects, tabs,",
+    "and rows."
+   ]
+  ],
+  [
+   47,
+   339.4375,
+   [
+    "Add the Scrollbars system from Fluid Functionalism",
+    "to my React app."
+   ]
+  ],
+  [
+   48,
+   99.625,
+   [
+    "Already have \u2014 it",
+    "sets the bar for",
+    "polished React",
+    "surfaces."
+   ]
+  ],
+  [
+   49,
+   99.1328125,
+   [
+    "Already have",
+    "\u2014 it sets the",
+    "bar for",
+    "polished",
+    "React",
+    "surfaces."
+   ]
+  ],
+  [
+   50,
+   89.3984375,
+   [
+    "Already have",
+    "\u2014 it sets the",
+    "bar for polished",
+    "React surfaces."
+   ]
+  ],
+  [
+   191,
+   49.6015625,
+   [
+    "Built on",
+    "shadcn/ui.",
+    "Each",
+    "component",
+    "comes",
+    "in two",
+    "flavors,",
+    "Radix",
+    "or",
+    "Base",
+    "UI, so",
+    "you",
+    "can",
+    "match",
+    "whichever",
+    "primitive",
+    "library",
+    "you've",
+    "already",
+    "chosen.",
+    "Your",
+    "theme",
+    "tokens",
+    "(colors,",
+    "radii,",
+    "fonts)",
+    "work",
+    "as-is.",
+    "One",
+    "CLI",
+    "command",
+    "installs",
+    "a",
+    "component",
+    "along",
+    "with",
+    "whatever",
+    "it",
+    "needs."
+   ]
+  ],
+  [
+   52,
+   328.2109375,
+   [
+    "Built on shadcn/ui. Each component comes in two flavors,",
+    "Radix or Base UI, so you can match whichever primitive",
+    "library you've already chosen. Your theme tokens (colors,",
+    "radii, fonts) work as-is. One CLI command installs a",
+    "component along with whatever it needs."
+   ]
+  ],
+  [
+   53,
+   167.875,
+   [
+    "Can you turn this architecture",
+    "sketch into a short build",
+    "plan?"
+   ]
+  ],
+  [
+   54,
+   224.5703125,
+   [
+    "Can you turn this architecture",
+    "sketch into a short build",
+    "plan?"
+   ]
+  ],
+  [
+   55,
+   233.03125,
+   [
+    "Can you turn this architecture sketch into",
+    "a short build plan?"
+   ]
+  ],
+  [
+   56,
+   229.546875,
+   [
+    "Controls and rows \u2014 shared so menu",
+    "rows line up with their trigger"
+   ]
+  ],
+  [
+   57,
+   259,
+   [
+    "Dialog at surface 5, role picker at surface 7 \u2014",
+    "no props passed between them."
+   ]
+  ],
+  [
+   192,
+   84.6484375,
+   [
+    "Each container",
+    "knows its own",
+    "level and tells",
+    "whatever",
+    "opens inside.",
+    "A popover on",
+    "the page and",
+    "the same",
+    "popover inside",
+    "a dialog both",
+    "end up at the",
+    "right depth,",
+    "without",
+    "anything",
+    "passed",
+    "between them."
+   ]
+  ],
+  [
+   59,
+   129.484375,
+   [
+    "Each container knows its",
+    "own level and tells",
+    "whatever opens inside.",
+    "A popover on the page",
+    "and the same popover",
+    "inside a dialog both end",
+    "up at the right depth,",
+    "without anything passed",
+    "between them."
+   ]
+  ],
+  [
+   60,
+   164.796875,
+   [
+    "Each container knows its",
+    "own level and tells",
+    "whatever opens inside.",
+    "A popover on the page",
+    "and the same popover",
+    "inside a dialog both end",
+    "up at the right depth,",
+    "without anything passed",
+    "between them."
+   ]
+  ],
+  [
+   61,
+   644.1796875,
+   [
+    "Each container knows its own level and tells whatever opens inside. A popover on the",
+    "page and the same popover inside a dialog both end up at the right depth, without",
+    "anything passed between them."
+   ]
+  ],
+  [
+   62,
+   557.6015625,
+   [
+    "Each container knows its own level and tells whatever opens inside. A popover on the page",
+    "and the same popover inside a dialog both end up at the right depth, without anything",
+    "passed between them."
+   ]
+  ],
+  [
+   63,
+   683.21875,
+   [
+    "Each container knows its own level and tells whatever opens inside. A popover on the page and the same popover inside",
+    "a dialog both end up at the right depth, without anything passed between them."
+   ]
+  ],
+  [
+   64,
+   304.9609375,
+   [
+    "Fade plus hairlines at the edges that have content",
+    "past them"
+   ]
+  ],
+  [
+   65,
+   368.8828125,
+   [
+    "For the design details behind it (exact behaviors and values), add",
+    "the Fluid Functionalism skill: npx skills add mickadesign/fluid-",
+    "functionalism"
+   ]
+  ],
+  [
+   66,
+   651.3671875,
+   [
+    "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks",
+    "and more about how effortlessly it lets you do what you came to do."
+   ]
+  ],
+  [
+   67,
+   787.6953125,
+   [
+    "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less about how something looks and more about how effortlessly",
+    "it lets you do what you came to do."
+   ]
+  ],
+  [
+   193,
+   84.109375,
+   [
+    "Good design",
+    "is mostly",
+    "invisible \u2014",
+    "you only",
+    "notice it",
+    "when it's",
+    "missing. It's",
+    "less about",
+    "how",
+    "something",
+    "looks and",
+    "more about",
+    "how",
+    "effortlessly",
+    "it lets you",
+    "do what you",
+    "came to do."
+   ]
+  ],
+  [
+   69,
+   322.1484375,
+   [
+    "Good design is mostly invisible \u2014 you only",
+    "notice it when it's missing. It's less about",
+    "how something looks and more about how",
+    "effortlessly it lets you do what you came",
+    "to do."
+   ]
+  ],
+  [
+   70,
+   261.7421875,
+   [
+    "Good design is mostly invisible \u2014 you only",
+    "notice it when it's missing. It's less about",
+    "how something looks and more about how",
+    "effortlessly it lets you do what you came",
+    "to do."
+   ]
+  ],
+  [
+   71,
+   441.9296875,
+   [
+    "Good design is mostly invisible \u2014 you only notice it when it's missing. It's less",
+    "about how something looks and more about how effortlessly it lets you do",
+    "what you came to do."
+   ]
+  ],
+  [
+   194,
+   126.4609375,
+   [
+    "Install (shadcn CLI, pulls",
+    "the shared libs and npm",
+    "dependencies on its",
+    "own):"
+   ]
+  ],
+  [
+   73,
+   438.03125,
+   [
+    "Installs the ScrollArea component with the shape-system scrollbar",
+    "and the scroll-fade edge treatment."
+   ]
+  ],
+  [
+   74,
+   378.1640625,
+   [
+    "Labels shift when their weight changes. Add axes: [\"opsz\"] to",
+    "your next/font call."
+   ]
+  ],
+  [
+   195,
+   149.2890625,
+   [
+    "Labels shift when their",
+    "weight changes. Add",
+    "axes: [\"opsz\"] to your",
+    "next/font call."
+   ]
+  ],
+  [
+   196,
+   271.546875,
+   [
+    "Labels shift when their weight changes. Add",
+    "axes: [\"opsz\"] to your next/font call."
+   ]
+  ],
+  [
+   77,
+   191.5703125,
+   [
+    "M 12 16 C 14.21 16 16 14.21 16 12 C",
+    "16 9.79 14.21 8 12 8 C 9.79 8 8",
+    "9.79 8 12 C 8 14.21 9.79 16 12 16 Z"
+   ]
+  ],
+  [
+   78,
+   264.1875,
+   [
+    "M 12 16 C 14.21 16 16",
+    "14.21 16 12 C 16 9.79",
+    "14.21 8 12 8 C 9.79 8",
+    "8 9.79 8 12 C 8 14.21",
+    "9.79 16 12 16 Z"
+   ]
+  ],
+  [
+   79,
+   233.71875,
+   [
+    "Multiple items can be expanded at the",
+    "same time."
+   ]
+  ],
+  [
+   80,
+   333.734375,
+   [
+    "One highlight follows your pointer smoothly between menu",
+    "items."
+   ]
+  ],
+  [
+   197,
+   160.3125,
+   [
+    "One highlight follows your",
+    "pointer smoothly",
+    "between menu items."
+   ]
+  ],
+  [
+   82,
+   311.265625,
+   [
+    "Prototyping flows and pages fast, then handing the patterns",
+    "to the team."
+   ]
+  ],
+  [
+   83,
+   266.8515625,
+   [
+    "Run the install command again to pull the latest",
+    "versions."
+   ]
+  ],
+  [
+   188,
+   126.3203125,
+   [
+    "Sidebar shell, sortable",
+    "tables, and form-",
+    "heavy detail views.",
+    "Built for back-office",
+    "tools."
+   ]
+  ],
+  [
+   85,
+   398.0546875,
+   [
+    "Soft 16\u201324px corners that feel approachable and read as software. Pairs well",
+    "with editorial typography and dense layouts."
+   ]
+  ],
+  [
+   184,
+   120.375,
+   [
+    "Spring-driven motion",
+    "that feels alive",
+    "instead of scripted."
+   ]
+  ],
+  [
+   198,
+   267.890625,
+   [
+    "Swap radius, icons, and primitive at",
+    "runtime"
+   ]
+  ],
+  [
+   88,
+   623.3203125,
+   [
+    "The component integrates with the shape system for pill or rounded border-radius variants. All animations use",
+    "spring physics."
+   ]
+  ],
+  [
+   89,
+   276.6328125,
+   [
+    "The overlay is drawn inside this box, not over",
+    "the window."
+   ]
+  ],
+  [
+   199,
+   54.34375,
+   [
+    "This label",
+    "is far too",
+    "wide to",
+    "fit",
+    "between",
+    "the",
+    "trigger",
+    "and the",
+    "right",
+    "edge of",
+    "the",
+    "window"
+   ]
+  ],
+  [
+   91,
+   280.9453125,
+   [
+    "This label is far too wide to fit between the trigger and",
+    "the right edge of the window"
+   ]
+  ],
+  [
+   92,
+   182.9140625,
+   [
+    "This label is far too wide",
+    "to fit between the",
+    "trigger and the right",
+    "edge of the window"
+   ]
+  ],
+  [
+   93,
+   148.6171875,
+   [
+    "This label is far too wide",
+    "to fit between the",
+    "trigger and the right",
+    "edge of the window"
+   ]
+  ],
+  [
+   200,
+   76.2109375,
+   [
+    "Tokens adapt",
+    "to light and",
+    "dark",
+    "automatically"
+   ]
+  ],
+  [
+   95,
+   181.46875,
+   [
+    "Which starting template fits",
+    "your project?"
+   ]
+  ],
+  [
+   96,
+   140.0625,
+   [
+    "You like the direction but",
+    "want to ship one real",
+    "flow against it before",
+    "passing it on to others."
+   ]
+  ],
+  [
+   97,
+   421.2421875,
+   [
+    "You like the direction but want to ship one real flow against it before passing it on",
+    "to others."
+   ]
+  ],
+  [
+   98,
+   384.1640625,
+   [
+    "You like the direction but want to ship one real flow",
+    "against it before passing it on to others."
+   ]
+  ],
+  [
+   99,
+   256.21875,
+   [
+    "You like the direction but want to ship one",
+    "real flow against it before passing it on to",
+    "others."
+   ]
+  ],
+  [
+   100,
+   78.21875,
+   [
+    "A well-known",
+    "state-of-the-",
+    "art e-mail",
+    "client for 10-",
+    "20 pages:",
+    "self-evident,",
+    "anti-",
+    "establishment,",
+    "COVID-19 -5",
+    "x-1 1234-",
+    "5678 pre-(fix)",
+    "art-\"x\"."
+   ]
+  ],
+  [
+   100,
+   344.53125,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20 pages:",
+    "self-evident, anti-establishment, COVID-19 -5 x-1 1234-",
+    "5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   101,
+   262.8515625,
+   [
+    "A well-known state-of-the-art e-mail client",
+    "for 10-20 pages: self-evident, anti-",
+    "establishment, COVID-19 -5 x-1 1234-",
+    "5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   102,
+   172.1796875,
+   [
+    "A well-known state-of-",
+    "the-art e-mail client",
+    "for 10-20 pages: self-",
+    "evident, anti-",
+    "establishment, COVID-",
+    "19 -5 x-1 1234-5678",
+    "pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   103,
+   307.6953125,
+   [
+    "Use and/or either/or, path/to/some/deep/file.txt, a/b?",
+    "c=d&e=f and 1/2 3/4 or km/h per month/year."
+   ]
+  ],
+  [
+   201,
+   319.5078125,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2#top and",
+    "www.example.org/path-with-hyphens/index.php?",
+    "id=12345&sort=desc for details; mail",
+    "me@example.com."
+   ]
+  ],
+  [
+   105,
+   248.2421875,
+   [
+    "Words\u2014joined by em dashes\u2014and ranges",
+    "1990\u20132000, 10\u201320, a \u2013 b, a \u2014 b, an",
+    "ellipsis\u2026 here, and three dots... there; ok."
+   ]
+  ],
+  [
+   106,
+   191.9453125,
+   [
+    "Words\u2014joined by em dashes\u2014",
+    "and ranges 1990\u20132000, 10\u201320,",
+    "a \u2013 b, a \u2014 b, an ellipsis\u2026 here,",
+    "and three dots... there; ok."
+   ]
+  ],
+  [
+   107,
+   46.953125,
+   [
+    "Words\u2014",
+    "joined",
+    "by em",
+    "dashes",
+    "\u2014and",
+    "ranges",
+    "1990\u2013",
+    "2000,",
+    "10\u201320,",
+    "a \u2013 b,",
+    "a \u2014 b,",
+    "an",
+    "ellipsis\u2026",
+    "here,",
+    "and",
+    "three",
+    "dots...",
+    "there;",
+    "ok."
+   ]
+  ],
+  [
+   107,
+   399.15625,
+   [
+    "Words\u2014joined by em dashes\u2014and ranges 1990\u20132000, 10\u2013",
+    "20, a \u2013 b, a \u2014 b, an ellipsis\u2026 here, and three",
+    "dots... there; ok."
+   ]
+  ],
+  [
+   108,
+   86.25,
+   [
+    "He said: \u201cGo!\u201d",
+    "then \u2018left\u2019 and",
+    "\"straight\"",
+    "quotes,",
+    "\u00abguillemets\u00bb",
+    "and \u201elow\u201c",
+    "marks;",
+    "(parenthesised",
+    "text)",
+    "[brackets]",
+    "{braces}",
+    "<angle>."
+   ]
+  ],
+  [
+   109,
+   203.4921875,
+   [
+    "He said: \u201cGo!\u201d then \u2018left\u2019",
+    "and \"straight\" quotes,",
+    "\u00abguillemets\u00bb and \u201elow\u201c",
+    "marks; (parenthesised",
+    "text) [brackets] {braces}",
+    "<angle>."
+   ]
+  ],
+  [
+   110,
+   371.703125,
+   [
+    "Price: $1,234.56 or \u20ac50.00, 50% off, 3.14159, 12:30 PM, v1.2.3-",
+    "beta.1, 2024-10-23, #42, +1 (555) 123-4567, 1e-10, -5, 5-."
+   ]
+  ],
+  [
+   138,
+   46.953125,
+   [
+    "Price:",
+    "$1,234.56",
+    "or",
+    "\u20ac50.00,",
+    "50%",
+    "off,",
+    "3.14159,",
+    "12:30",
+    "PM,",
+    "v1.2.3-",
+    "beta.1,",
+    "2024-",
+    "10-23,",
+    "#42,",
+    "+1",
+    "(555)",
+    "123-",
+    "4567,",
+    "1e-10,",
+    "-5,",
+    "5-."
+   ]
+  ],
+  [
+   112,
+   216.734375,
+   [
+    "Glued\u00a0together\u00a0words and 10\u00a0km, a\u00a0b",
+    "c\u00a0d e\u00a0f end."
+   ]
+  ],
+  [
+   113,
+   273.9296875,
+   [
+    "Glued\u00a0together\u00a0words and 10\u00a0km, a\u00a0b",
+    "c\u00a0d e\u00a0f end."
+   ]
+  ],
+  [
+   202,
+   61.8671875,
+   [
+    "Zero\u200bwidth\u200b",
+    "space\u200b",
+    "separated\u200b",
+    "words",
+    "and a\u200b\u200b",
+    "double",
+    "one."
+   ]
+  ],
+  [
+   115,
+   250.4453125,
+   [
+    "Zero\u200bwidth\u200bspace\u200bseparated\u200bwords and",
+    "a\u200b\u200bdouble one."
+   ]
+  ],
+  [
+   116,
+   216.9375,
+   [
+    "Hello, world! What? Yes... no; maybe:",
+    "sure. (Really?) \"Quoted.\" And so on,",
+    "and so forth; the end!"
+   ]
+  ],
+  [
+   117,
+   228.2421875,
+   [
+    "Hello, world! What? Yes... no; maybe:",
+    "sure. (Really?) \"Quoted.\" And so on,",
+    "and so forth; the end!"
+   ]
+  ],
+  [
+   118,
+   38.5234375,
+   [
+    "a -5",
+    "b"
+   ]
+  ],
+  [
+   119,
+   89.484375,
+   [
+    "price: $100.00",
+    "or \u20ac50"
+   ]
+  ],
+  [
+   120,
+   107.359375,
+   [
+    "the \u201cquoted\u201d text",
+    "and \u2018single\u2019",
+    "quotes"
+   ]
+  ],
+  [
+   121,
+   53.75,
+   [
+    "He said:",
+    "\u201cGo!\u201d",
+    "now"
+   ]
+  ],
+  [
+   122,
+   47.9921875,
+   [
+    "\u3042\u3041\u3042",
+    "\u30fc"
+   ]
+  ],
+  [
+   203,
+   36.328125,
+   [
+    "\ud55c\uad6d\uc5b4",
+    "\ud14d\uc2a4\ud2b8",
+    "\uc785\ub2c8\ub2e4"
+   ]
+  ],
+  [
+   124,
+   64.484375,
+   [
+    "\ud55c\uad6d\uc5b4 \ud14d\uc2a4",
+    "\ud2b8 \uc785\ub2c8\ub2e4"
+   ]
+  ],
+  [
+   204,
+   55.828125,
+   [
+    "\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22",
+    "\u0e40\u0e1b\u0e47\u0e19\u0e20\u0e32\u0e29\u0e32",
+    "\u0e17\u0e35\u0e48\u0e21\u0e35",
+    "\u0e27\u0e23\u0e23\u0e13\u0e22\u0e38\u0e01\u0e15\u0e4c"
+   ]
+  ],
+  [
+   205,
+   67.421875,
+   [
+    "a well-",
+    "known",
+    "state-",
+    "of-the-",
+    "art",
+    "design"
+   ]
+  ],
+  [
+   127,
+   140.5,
+   [
+    "a well-known state-of-",
+    "the-art design"
+   ]
+  ],
+  [
+   206,
+   26.7109375,
+   [
+    "a-b-",
+    "c"
+   ]
+  ],
+  [
+   129,
+   78.8984375,
+   [
+    "self-evident",
+    "truths"
+   ]
+  ],
+  [
+   17,
+   58,
+   [
+    "Quick",
+    "brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   25,
+   177,
+   [
+    "Quick brown fox jumps"
+   ]
+  ],
+  [
+   6,
+   62,
+   [
+    "To Yo",
+    "AV Ta",
+    "Wa To",
+    "Yo AV Ta",
+    "Wa"
+   ]
+  ],
+  [
+   7,
+   95.1,
+   [
+    "Hello To Yo",
+    "AV and Ta Wa",
+    "words after",
+    "bA bT b"
+   ]
+  ],
+  [
+   7,
+   52,
+   [
+    "Hello",
+    "To Yo",
+    "AV and",
+    "Ta Wa",
+    "words",
+    "after",
+    "bA bT",
+    "b"
+   ]
+  ],
+  [
+   7,
+   293,
+   [
+    "Hello To Yo AV and Ta Wa words after bA",
+    "bT b"
+   ]
+  ],
+  [
+   11,
+   45,
+   [
+    "Hello",
+    "To Yo",
+    "AV and",
+    "Ta Wa",
+    "words",
+    "after",
+    "bA bT b"
+   ]
+  ],
+  [
+   11,
+   236,
+   [
+    "Hello To Yo AV and Ta Wa words after",
+    "bA bT b"
+   ]
+  ],
+  [
+   15,
+   78,
+   [
+    "Hello To",
+    "Yo AV and",
+    "Ta Wa",
+    "words",
+    "after bA",
+    "bT b"
+   ]
+  ],
+  [
+   29,
+   58,
+   [
+    "The quick",
+    "brown fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in a",
+    "label text",
+    "of",
+    "Helvetica,",
+    "Times",
+    "and",
+    "Menlo."
+   ]
+  ],
+  [
+   31,
+   354,
+   [
+    "The quick brown fox jumps over the lazy dog while",
+    "fractional widths settle in a label text of",
+    "Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   67,
+   93,
+   [
+    "Good design is",
+    "mostly invisible",
+    "\u2014 you only",
+    "notice it when",
+    "it's missing. It's",
+    "less about how",
+    "something looks",
+    "and more about",
+    "how effortlessly",
+    "it lets you do",
+    "what you came",
+    "to do."
+   ]
+  ],
+  [
+   71,
+   93,
+   [
+    "Good design is",
+    "mostly invisible",
+    "\u2014 you only",
+    "notice it when",
+    "it's missing. It's",
+    "less about how",
+    "something looks",
+    "and more about",
+    "how effortlessly",
+    "it lets you do",
+    "what you came",
+    "to do."
+   ]
+  ],
+  [
+   93,
+   59,
+   [
+    "This label",
+    "is far too",
+    "wide to",
+    "fit",
+    "between",
+    "the",
+    "trigger",
+    "and the",
+    "right",
+    "edge of",
+    "the",
+    "window"
+   ]
+  ],
+  [
+   135,
+   83,
+   [
+    "v1.2.3-beta.1"
+   ]
+  ],
+  [
+   121,
+   67,
+   [
+    "He said:",
+    "\u201cGo!\u201d now"
+   ]
+  ],
+  [
+   103,
+   357,
+   [
+    "Use and/or either/or, path/to/some/deep/file.txt, a/b?c=d&e=f",
+    "and 1/2 3/4 or km/h per month/year."
+   ]
+  ],
+  [
+   140,
+   19.2578125,
+   [
+    "ar",
+    "t",
+    "(x)",
+    "we",
+    "ll",
+    "-k",
+    "no",
+    "wn"
+   ]
+  ],
+  [
+   141,
+   72.0390625,
+   [
+    "art(x) well-k",
+    "nown"
+   ]
+  ],
+  [
+   207,
+   107.859375,
+   [
+    "art(x) well-know",
+    "n"
+   ]
+  ],
+  [
+   143,
+   26.140625,
+   [
+    "well",
+    "-kn",
+    "ow",
+    "n"
+   ]
+  ],
+  [
+   144,
+   69,
+   [
+    "A well-kno",
+    "wn state-of",
+    "-the-art e-",
+    "mail client f",
+    "or 10-20 pa",
+    "ges: self-ev",
+    "ident, anti-",
+    "establishm",
+    "ent, COVID",
+    "-19 -5 x-1 1",
+    "234-5678 p",
+    "re-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   144,
+   391,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20 pages: self-evi",
+    "dent, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   144,
+   115.546875,
+   [
+    "A well-known state-",
+    "of-the-art e-mail cli",
+    "ent for 10-20 page",
+    "s: self-evident, anti-",
+    "establishment, CO",
+    "VID-19 -5 x-1 1234",
+    "-5678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   144,
+   240.7421875,
+   [
+    "A well-known state-of-the-art e-mail clien",
+    "t for 10-20 pages: self-evident, anti-esta",
+    "blishment, COVID-19 -5 x-1 1234-5678 p",
+    "re-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   145,
+   67,
+   [
+    "A well-kno",
+    "wn state-o",
+    "f-the-art e",
+    "-mail clien",
+    "t for 10-20",
+    "pages: sel",
+    "f-evident,",
+    "anti-establ",
+    "ishment, C",
+    "OVID-19 -",
+    "5 x-1 1234",
+    "-5678 pre",
+    "-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   145,
+   419,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20 pages: self-evi",
+    "dent, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   145,
+   42.8671875,
+   [
+    "A well",
+    "-know",
+    "n state",
+    "-of-th",
+    "e-art e",
+    "-mail c",
+    "lient fo",
+    "r 10-2",
+    "0 page",
+    "s: self-",
+    "eviden",
+    "t, anti-",
+    "establi",
+    "shmen",
+    "t, COV",
+    "ID-19 -",
+    "5 x-1 1",
+    "234-5",
+    "678 pr",
+    "e-(fix)",
+    "art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   145,
+   123.3828125,
+   [
+    "A well-known state",
+    "-of-the-art e-mail cl",
+    "ient for 10-20 page",
+    "s: self-evident, anti-",
+    "establishment, COV",
+    "ID-19 -5 x-1 1234-5",
+    "678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   145,
+   237.0390625,
+   [
+    "A well-known state-of-the-art e-mail c",
+    "lient for 10-20 pages: self-evident, ant",
+    "i-establishment, COVID-19 -5 x-1 1234",
+    "-5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   145,
+   322.4453125,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20",
+    "pages: self-evident, anti-establishment, COVID-19 -",
+    "5 x-1 1234-5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   145,
+   417.1015625,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20 pages: self-evi",
+    "dent, anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   146,
+   137,
+   [
+    "A well-known stat",
+    "e-of-the-art e-ma",
+    "il client for 10-",
+    "20 pages: self-ev",
+    "ident, anti-estab",
+    "lishment, COVID-1",
+    "9 -5 x-1 1234-567",
+    "8 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   146,
+   31.2890625,
+   [
+    "A w",
+    "ell",
+    "-kn",
+    "own",
+    "sta",
+    "te-",
+    "of-",
+    "the",
+    "-ar",
+    "t e",
+    "-ma",
+    "il",
+    "cli",
+    "ent",
+    "for",
+    "10-",
+    "20",
+    "pag",
+    "es:",
+    "sel",
+    "f-e",
+    "vid",
+    "en",
+    "t,",
+    "ant",
+    "i-e",
+    "sta",
+    "bli",
+    "shm",
+    "en",
+    "t,",
+    "COV",
+    "ID-",
+    "19",
+    "-5",
+    "x-1",
+    "123",
+    "4-5",
+    "678",
+    "pre",
+    "-(f",
+    "ix)",
+    "art",
+    "-",
+    "\"x\"."
+   ]
+  ],
+  [
+   146,
+   93.9140625,
+   [
+    "A well-known",
+    "state-of-the",
+    "-art e-mail",
+    "client for 1",
+    "0-20 pages:",
+    "self-eviden",
+    "t, anti-esta",
+    "blishment, C",
+    "OVID-19 -5 x",
+    "-1 1234-5678",
+    "pre-(fix) ar",
+    "t-\"x\"."
+   ]
+  ],
+  [
+   146,
+   187.828125,
+   [
+    "A well-known state-of-t",
+    "he-art e-mail client fo",
+    "r 10-20 pages: self-evi",
+    "dent, anti-establishmen",
+    "t, COVID-19 -5 x-1 1234",
+    "-5678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   146,
+   320.890625,
+   [
+    "A well-known state-of-the-art e-mail clie",
+    "nt for 10-20 pages: self-evident, anti-es",
+    "tablishment, COVID-19 -5 x-1 1234-5678 pr",
+    "e-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   147,
+   26,
+   [
+    "See",
+    "http",
+    "s://e",
+    "xam",
+    "ple.",
+    "co",
+    "m/",
+    "a/b/",
+    "c.ht",
+    "ml?",
+    "q=1",
+    "&r=",
+    "2#t",
+    "op a",
+    "nd",
+    "ww",
+    "w.e",
+    "xam",
+    "ple.",
+    "org/",
+    "pat",
+    "h-wi",
+    "th-h",
+    "yph",
+    "ens/",
+    "inde",
+    "x.ph",
+    "p?id",
+    "=12",
+    "345",
+    "&so",
+    "rt=d",
+    "esc",
+    "for",
+    "deta",
+    "ils;",
+    "mail",
+    "me",
+    "@ex",
+    "amp",
+    "le.c",
+    "om."
+   ]
+  ],
+  [
+   147,
+   160,
+   [
+    "See https://example.com/",
+    "a/b/c.html?q=1&r=2#top a",
+    "nd www.example.org/path-",
+    "with-hyphens/index.php?id",
+    "=12345&sort=desc for deta",
+    "ils; mail me@example.com."
+   ]
+  ],
+  [
+   147,
+   33.2265625,
+   [
+    "See h",
+    "ttp",
+    "s://ex",
+    "ampl",
+    "e.co",
+    "m/a/",
+    "b/c.h",
+    "tml?q",
+    "=1&r",
+    "=2#t",
+    "op an",
+    "d ww",
+    "w.ex",
+    "ampl",
+    "e.or",
+    "g/pat",
+    "h-wit",
+    "h-hy",
+    "phen",
+    "s/ind",
+    "ex.ph",
+    "p?id",
+    "=123",
+    "45&s",
+    "ort=d",
+    "esc f",
+    "or de",
+    "tails;",
+    "mail",
+    "me@",
+    "exam",
+    "ple.c",
+    "om."
+   ]
+  ],
+  [
+   147,
+   107.390625,
+   [
+    "See https://examp",
+    "le.com/a/b/c.htm",
+    "l?q=1&r=2#top an",
+    "d www.example.o",
+    "rg/path-with-hyph",
+    "ens/index.php?id",
+    "=12345&sort=des",
+    "c for details; mail",
+    "me@example.co",
+    "m."
+   ]
+  ],
+  [
+   147,
+   207.0859375,
+   [
+    "See https://example.com/a/b/c.htm",
+    "l?q=1&r=2#top and www.example.",
+    "org/path-with-hyphens/index.php?i",
+    "d=12345&sort=desc for details; ma",
+    "il me@example.com."
+   ]
+  ],
+  [
+   147,
+   355.5859375,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2#top and www.",
+    "example.org/path-with-hyphens/index.php?id=12345&sort=",
+    "desc for details; mail me@example.com."
+   ]
+  ],
+  [
+   148,
+   55,
+   [
+    "See http",
+    "s://exam",
+    "ple.com/",
+    "a/b/c.ht",
+    "ml?q=1&",
+    "r=2#top",
+    "and ww",
+    "w.examp",
+    "le.org/pa",
+    "th-with-",
+    "hyphen",
+    "s/index.",
+    "php?id=",
+    "12345&s",
+    "ort=des",
+    "c for det",
+    "ails; mail",
+    "me@exa",
+    "mple.co",
+    "m."
+   ]
+  ],
+  [
+   148,
+   179,
+   [
+    "See https://example.com/a/",
+    "b/c.html?q=1&r=2#top and w",
+    "ww.example.org/path-with-h",
+    "yphens/index.php?id=12345",
+    "&sort=desc for details; mail",
+    "me@example.com."
+   ]
+  ],
+  [
+   148,
+   39.1015625,
+   [
+    "See ht",
+    "tps://",
+    "exam",
+    "ple.co",
+    "m/a/",
+    "b/c.ht",
+    "ml?q=",
+    "1&r=2",
+    "#top a",
+    "nd w",
+    "ww.ex",
+    "ampl",
+    "e.org/",
+    "path-",
+    "with-",
+    "hyphe",
+    "ns/ind",
+    "ex.ph",
+    "p?id=",
+    "12345",
+    "&sort",
+    "=desc",
+    "for de",
+    "tails;",
+    "mail",
+    "me@e",
+    "xampl",
+    "e.co",
+    "m."
+   ]
+  ],
+  [
+   148,
+   115.125,
+   [
+    "See https://examp",
+    "le.com/a/b/c.html?",
+    "q=1&r=2#top and",
+    "www.example.or",
+    "g/path-with-hyph",
+    "ens/index.php?id=",
+    "12345&sort=desc",
+    "for details; mail m",
+    "e@example.com."
+   ]
+  ],
+  [
+   148,
+   216.890625,
+   [
+    "See https://example.com/a/b/c.htm",
+    "l?q=1&r=2#top and www.example.",
+    "org/path-with-hyphens/index.php?",
+    "id=12345&sort=desc for details; m",
+    "ail me@example.com."
+   ]
+  ],
+  [
+   148,
+   357.96875,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2#top and ww",
+    "w.example.org/path-with-hyphens/index.php?id=12345&s",
+    "ort=desc for details; mail me@example.com."
+   ]
+  ],
+  [
+   149,
+   55,
+   [
+    "See htt",
+    "ps://ex",
+    "ample.c",
+    "om/a/b/",
+    "c.html?",
+    "q=1&r=2",
+    "#top an",
+    "d www.e",
+    "xample.",
+    "org/pat",
+    "h-with-",
+    "hyphen",
+    "s/inde",
+    "x.php?i",
+    "d=12345",
+    "&sort=d",
+    "esc for",
+    "detail",
+    "s; mail",
+    "me@exam",
+    "ple.co",
+    "m."
+   ]
+  ],
+  [
+   149,
+   115,
+   [
+    "See https://ex",
+    "ample.com/a/b/",
+    "c.html?q=1&r=2",
+    "#top and www.e",
+    "xample.org/pat",
+    "h-with-hyphen",
+    "s/index.php?id",
+    "=12345&sort=de",
+    "sc for detail",
+    "s; mail me@exa",
+    "mple.com."
+   ]
+  ],
+  [
+   149,
+   215,
+   [
+    "See https://example.com/a/",
+    "b/c.html?q=1&r=2#top and ww",
+    "w.example.org/path-with-hyp",
+    "hens/index.php?id=12345&sor",
+    "t=desc for details; mail me",
+    "@example.com."
+   ]
+  ],
+  [
+   149,
+   39.1171875,
+   [
+    "See",
+    "http",
+    "s://",
+    "exam",
+    "ple.",
+    "com/",
+    "a/b/",
+    "c.ht",
+    "ml?q",
+    "=1&r",
+    "=2#t",
+    "op a",
+    "nd w",
+    "ww.e",
+    "xamp",
+    "le.o",
+    "rg/p",
+    "ath-",
+    "with",
+    "-hyp",
+    "hen",
+    "s/in",
+    "dex.",
+    "php?",
+    "id=1",
+    "2345",
+    "&sor",
+    "t=de",
+    "sc f",
+    "or d",
+    "etai",
+    "ls;",
+    "mail",
+    "me@e",
+    "xamp",
+    "le.c",
+    "om."
+   ]
+  ],
+  [
+   149,
+   109.5703125,
+   [
+    "See https://ex",
+    "ample.com/a/b/",
+    "c.html?q=1&r=2",
+    "#top and www.e",
+    "xample.org/pat",
+    "h-with-hyphen",
+    "s/index.php?id",
+    "=12345&sort=de",
+    "sc for detail",
+    "s; mail me@exa",
+    "mple.com."
+   ]
+  ],
+  [
+   149,
+   203.4765625,
+   [
+    "See https://example.com/",
+    "a/b/c.html?q=1&r=2#top an",
+    "d www.example.org/path-wi",
+    "th-hyphens/index.php?id=1",
+    "2345&sort=desc for detail",
+    "s; mail me@example.com."
+   ]
+  ],
+  [
+   149,
+   328.7265625,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2",
+    "#top and www.example.org/path-with-hyphen",
+    "s/index.php?id=12345&sort=desc for detail",
+    "s; mail me@example.com."
+   ]
+  ],
+  [
+   150,
+   25.7734375,
+   [
+    "A su",
+    "perc",
+    "alifr",
+    "agili",
+    "stic",
+    "expi",
+    "alid",
+    "ocio",
+    "us p",
+    "neu",
+    "mon",
+    "oult",
+    "rami",
+    "cros",
+    "copi",
+    "csili",
+    "cov",
+    "olca",
+    "noc",
+    "onio",
+    "sis",
+    "wor",
+    "d an",
+    "d aa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "aaa",
+    "a he",
+    "re."
+   ]
+  ],
+  [
+   150,
+   137.4453125,
+   [
+    "A supercalifragilisticexp",
+    "ialidocious pneumonou",
+    "ltramicroscopicsilicovol",
+    "canoconiosis word and",
+    "aaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaa",
+    "aaaaaaa here."
+   ]
+  ],
+  [
+   150,
+   265.3125,
+   [
+    "A supercalifragilisticexpialidocious pneumono",
+    "ultramicroscopicsilicovolcanoconiosis word a",
+    "nd aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaa here."
+   ]
+  ],
+  [
+   151,
+   99.8125,
+   [
+    "A supercalifragil",
+    "isticexpialidocio",
+    "us pneumonoult",
+    "ramicroscopicsi",
+    "licovolcanoconi",
+    "osis word and a",
+    "aaaaaaaaaaaaa",
+    "aaaaaaaaaaaaa",
+    "aaaaaaaaaaaaa",
+    "aaaaa here."
+   ]
+  ],
+  [
+   151,
+   197.8671875,
+   [
+    "A supercalifragilisticexpialidocio",
+    "us pneumonoultramicroscopicsi",
+    "licovolcanoconiosis word and a",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaa here."
+   ]
+  ],
+  [
+   152,
+   109.5703125,
+   [
+    "A supercalifra",
+    "gilisticexpial",
+    "idocious pneum",
+    "onoultramicros",
+    "copicsilicovol",
+    "canoconiosis w",
+    "ord and aaaaaa",
+    "aaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaa",
+    "aaaaaaaaaaa he",
+    "re."
+   ]
+  ],
+  [
+   152,
+   258.2734375,
+   [
+    "A supercalifragilisticexpialidoci",
+    "ous pneumonoultramicroscopicsilic",
+    "ovolcanoconiosis word and aaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaa here."
+   ]
+  ],
+  [
+   153,
+   76.546875,
+   [
+    "\ud55c\uad6d\uc5b4 \ud14d\uc2a4\ud2b8",
+    "\uc785\ub2c8\ub2e4"
+   ]
+  ],
+  [
+   154,
+   344.53125,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20 pages:",
+    "self-evident, anti-establishment, COVID-19 -5 x-1 1234-",
+    "5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   155,
+   419.4140625,
+   [
+    "A well-known state-of-the-art e-mail client for 10-20 pages: self-evident,",
+    "anti-establishment, COVID-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   157,
+   78.21875,
+   [
+    "A well-known",
+    "state-of-the-",
+    "art e-mail",
+    "client for 10-",
+    "20 pages:",
+    "self-evident,",
+    "anti-",
+    "establishmen",
+    "t, COVID-19",
+    "-5 x-1 1234-",
+    "5678 pre-(fix)",
+    "art-\"x\"."
+   ]
+  ],
+  [
+   158,
+   141.609375,
+   [
+    "A well-known state-of-",
+    "the-art e-mail client",
+    "for 10-20 pages: self-",
+    "evident, anti-",
+    "establishment, COVID-",
+    "19 -5 x-1 1234-5678",
+    "pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   159,
+   123.390625,
+   [
+    "A well-known state-",
+    "of-the-art e-mail",
+    "client for 10-20",
+    "pages: self-evident,",
+    "anti-establishment,",
+    "COVID-19 -5 x-1",
+    "1234-5678 pre-(fix)",
+    "art-\"x\"."
+   ]
+  ],
+  [
+   160,
+   183.7578125,
+   [
+    "A well-known state-of-the-art",
+    "e-mail client for 10-20 pages:",
+    "self-evident, anti-",
+    "establishment, COVID-19 -5",
+    "x-1 1234-5678 pre-(fix) art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   161,
+   262.8515625,
+   [
+    "A well-known state-of-the-art e-mail client",
+    "for 10-20 pages: self-evident, anti-",
+    "establishment, COVID-19 -5 x-1 1234-",
+    "5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   162,
+   336.5390625,
+   [
+    "A well-known state-of-the-art e-mail client",
+    "for 10-20 pages: self-evident, anti-",
+    "establishment, COVID-19 -5 x-1 1234-5678",
+    "pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   163,
+   336.5390625,
+   [
+    "A well-known state-of-the-art e-mail client",
+    "for 10-20 pages: self-evident, anti-",
+    "establishment, COVID-19 -5 x-1 1234-5678",
+    "pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   164,
+   203.4921875,
+   [
+    "A well-known state-of-the-",
+    "art e-mail client for 10-",
+    "20 pages: self-evident,",
+    "anti-establishment, COVID-",
+    "19 -5 x-1 1234-5678 pre-",
+    "(fix) art-\"x\"."
+   ]
+  ],
+  [
+   167,
+   333.0390625,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2#top and",
+    "www.example.org/path-with-hyphens/index.php?",
+    "id=12345&sort=desc for details; mail",
+    "me@example.com."
+   ]
+  ],
+  [
+   169,
+   391.328125,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2#top and",
+    "www.example.org/path-with-hyphens/index.php?",
+    "id=12345&sort=desc for details; mail",
+    "me@example.com."
+   ]
+  ],
+  [
+   170,
+   199.3125,
+   [
+    "A supercalifragilisticexpialidocious",
+    "pneumonoultramicroscopicsilicov",
+    "olcanoconiosis word and",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaa here."
+   ]
+  ],
+  [
+   171,
+   78,
+   [
+    "Hy\u00adphen\u00adation",
+    "of extra\u00ad",
+    "ordinary",
+    "inter\u00adnational",
+    "con\u00ad",
+    "stitutional",
+    "words."
+   ]
+  ],
+  [
+   171,
+   98,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational",
+    "con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   171,
+   106,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   171,
+   122,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary inter\u00ad",
+    "national con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   171,
+   126,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary inter\u00ad",
+    "national con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   171,
+   152,
+   [
+    "Hy\u00adphen\u00adation of extra\u00ad",
+    "ordinary inter\u00adnational",
+    "con\u00adstitutional words."
+   ]
+  ],
+  [
+   171,
+   200,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary",
+    "inter\u00adnational con\u00adstitutional words."
+   ]
+  ],
+  [
+   171,
+   272,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational",
+    "con\u00adstitutional words."
+   ]
+  ],
+  [
+   171,
+   88.6015625,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational",
+    "con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   171,
+   325.265625,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   172,
+   85,
+   [
+    "Hy\u00adphen\u00adation",
+    "of extra\u00ad",
+    "ordinary",
+    "inter\u00adnational",
+    "con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   172,
+   105,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational",
+    "con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   172,
+   117,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   172,
+   133,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary inter\u00ad",
+    "national con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   172,
+   213,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary",
+    "inter\u00adnational con\u00adstitutional words."
+   ]
+  ],
+  [
+   172,
+   287,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational",
+    "con\u00adstitutional words."
+   ]
+  ],
+  [
+   172,
+   78.109375,
+   [
+    "Hy\u00adphen\u00adation",
+    "of extra\u00ad",
+    "ordinary",
+    "inter\u00adnational",
+    "con\u00ad",
+    "stitutional",
+    "words."
+   ]
+  ],
+  [
+   172,
+   259.671875,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational",
+    "con\u00adstitutional words."
+   ]
+  ],
+  [
+   173,
+   94,
+   [
+    "Hy\u00adphen\u00adation",
+    "of extra\u00ad",
+    "ordinary",
+    "inter\u00ad",
+    "national",
+    "con\u00ad",
+    "stitutional",
+    "words."
+   ]
+  ],
+  [
+   173,
+   100,
+   [
+    "Hy\u00adphen\u00adation",
+    "of extra\u00ad",
+    "ordinary",
+    "inter\u00ad",
+    "national",
+    "con\u00ad",
+    "stitutional",
+    "words."
+   ]
+  ],
+  [
+   173,
+   136,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational",
+    "con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   173,
+   150,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   173,
+   154,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   173,
+   158,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary inter\u00ad",
+    "national con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   173,
+   164,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary inter\u00ad",
+    "national con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   173,
+   206,
+   [
+    "Hy\u00adphen\u00adation of extra\u00ad",
+    "ordinary inter\u00adnational",
+    "con\u00adstitutional words."
+   ]
+  ],
+  [
+   173,
+   268,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary",
+    "inter\u00adnational con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   173,
+   272,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary",
+    "inter\u00adnational con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   173,
+   366,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00adnational",
+    "con\u00adstitutional words."
+   ]
+  ],
+  [
+   173,
+   109.5703125,
+   [
+    "Hy\u00adphen\u00adation of",
+    "extra\u00adordinary",
+    "inter\u00adnational",
+    "con\u00adstitutional",
+    "words."
+   ]
+  ],
+  [
+   174,
+   97.3,
+   [
+    "Label text"
+   ]
+  ],
+  [
+   175,
+   111,
+   [
+    "Fractional",
+    "widths"
+   ]
+  ],
+  [
+   4,
+   38,
+   [
+    "Quick",
+    "brown",
+    "fox",
+    "jumps"
+   ]
+  ],
+  [
+   176,
+   59.2578125,
+   [
+    "Fractional",
+    "widths"
+   ]
+  ],
+  [
+   30,
+   354,
+   [
+    "The quick brown fox jumps over the lazy dog",
+    "while fractional widths settle in a label text of",
+    "Helvetica, Times and Menlo."
+   ]
+  ],
+  [
+   39,
+   192,
+   [
+    "The quick brown fox jumps",
+    "over the lazy dog while",
+    "fractional widths settle in a",
+    "label text of Helvetica,",
+    "Times and Menlo."
+   ]
+  ],
+  [
+   177,
+   41.5078125,
+   [
+    "Quick",
+    "brown",
+    "fox",
+    "jumps"
+   ]
+  ],
+  [
+   1,
+   93,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   178,
+   53,
+   [
+    "Hello",
+    "world"
+   ]
+  ],
+  [
+   28,
+   308,
+   [
+    "The quick brown fox jumps over the lazy dog while",
+    "fractional widths settle in a label text of Helvetica, Times",
+    "and Menlo."
+   ]
+  ],
+  [
+   37,
+   57,
+   [
+    "The quick",
+    "brown fox",
+    "jumps",
+    "over the",
+    "lazy dog",
+    "while",
+    "fractional",
+    "widths",
+    "settle in a",
+    "label text",
+    "of",
+    "Helvetica,",
+    "Times and",
+    "Menlo."
+   ]
+  ],
+  [
+   20,
+   158,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   0,
+   57,
+   [
+    "Quick",
+    "brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   6,
+   143,
+   [
+    "To Yo AV Ta Wa To",
+    "Yo AV Ta Wa"
+   ]
+  ],
+  [
+   179,
+   111.1328125,
+   [
+    "Quick brown fox",
+    "jumps"
+   ]
+  ],
+  [
+   32,
+   297,
+   [
+    "The quick brown fox jumps over the",
+    "lazy dog while fractional widths",
+    "settle in a label text of Helvetica,",
+    "Times and Menlo."
+   ]
+  ],
+  [
+   42,
+   180,
+   [
+    "A 28px step for dense screens, a",
+    "whole app shell in a single install,",
+    "and 4 changes that need a",
+    "migration."
+   ]
+  ],
+  [
+   180,
+   94.5,
+   [
+    "Controls and",
+    "rows \u2014 shared so",
+    "menu rows line",
+    "up with their",
+    "trigger"
+   ]
+  ],
+  [
+   73,
+   480,
+   [
+    "Installs the ScrollArea component with the shape-system scrollbar and",
+    "the scroll-fade edge treatment."
+   ]
+  ],
+  [
+   181,
+   73.3671875,
+   [
+    "Swap",
+    "radius,",
+    "icons, and",
+    "primitive at",
+    "runtime"
+   ]
+  ],
+  [
+   182,
+   340.9453125,
+   [
+    "A 28px step for dense screens, a whole app shell",
+    "in a single install, and 4 changes that need a",
+    "migration."
+   ]
+  ],
+  [
+   58,
+   30.234375,
+   [
+    "Each",
+    "container",
+    "knows",
+    "its",
+    "own",
+    "level",
+    "and",
+    "tells",
+    "whatever",
+    "opens",
+    "inside.",
+    "A",
+    "popover",
+    "on",
+    "the",
+    "page",
+    "and",
+    "the",
+    "same",
+    "popover",
+    "inside",
+    "a",
+    "dialog",
+    "both",
+    "end",
+    "up",
+    "at",
+    "the",
+    "right",
+    "depth,",
+    "without",
+    "anything",
+    "passed",
+    "between",
+    "them."
+   ]
+  ],
+  [
+   183,
+   254,
+   [
+    "Installs the ScrollArea component with the",
+    "shape-system scrollbar and the scroll-fade",
+    "edge treatment."
+   ]
+  ],
+  [
+   184,
+   159,
+   [
+    "Spring-driven motion that",
+    "feels alive instead of",
+    "scripted."
+   ]
+  ],
+  [
+   185,
+   333.53125,
+   [
+    "You like the direction but want to ship one real flow",
+    "against it before passing it on to others."
+   ]
+  ],
+  [
+   186,
+   486,
+   [
+    "Command menu input change",
+    "without a value"
+   ]
+  ],
+  [
+   187,
+   189.578125,
+   [
+    "How does Micka tune the",
+    "springs behind these",
+    "animations?"
+   ]
+  ],
+  [
+   188,
+   227.3984375,
+   [
+    "Sidebar shell, sortable tables, and",
+    "form-heavy detail views. Built for back-",
+    "office tools."
+   ]
+  ],
+  [
+   144,
+   25,
+   [
+    "A w",
+    "ell-k",
+    "now",
+    "n st",
+    "ate-",
+    "of-t",
+    "he-",
+    "art",
+    "e-m",
+    "ail c",
+    "lient",
+    "for",
+    "10-",
+    "20",
+    "pag",
+    "es:",
+    "self",
+    "-evi",
+    "den",
+    "t, a",
+    "nti-",
+    "esta",
+    "blis",
+    "hm",
+    "ent,",
+    "CO",
+    "VID",
+    "-19",
+    "-5 x",
+    "-1 1",
+    "234",
+    "-56",
+    "78",
+    "pre-",
+    "(fix)",
+    "art-",
+    "\"x\"."
+   ]
+  ],
+  [
+   144,
+   287.203125,
+   [
+    "A well-known state-of-the-art e-mail client for 10",
+    "-20 pages: self-evident, anti-establishment, COVI",
+    "D-19 -5 x-1 1234-5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   145,
+   219.6484375,
+   [
+    "A well-known state-of-the-art e-m",
+    "ail client for 10-20 pages: self-evid",
+    "ent, anti-establishment, COVID-19 -",
+    "5 x-1 1234-5678 pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   146,
+   195.6484375,
+   [
+    "A well-known state-of-th",
+    "e-art e-mail client for",
+    "10-20 pages: self-eviden",
+    "t, anti-establishment, C",
+    "OVID-19 -5 x-1 1234-5678",
+    "pre-(fix) art-\"x\"."
+   ]
+  ],
+  [
+   147,
+   217.1875,
+   [
+    "See https://example.com/a/b/c.htm",
+    "l?q=1&r=2#top and www.example.or",
+    "g/path-with-hyphens/index.php?id=1",
+    "2345&sort=desc for details; mail me",
+    "@example.com."
+   ]
+  ],
+  [
+   148,
+   216.875,
+   [
+    "See https://example.com/a/b/c.ht",
+    "ml?q=1&r=2#top and www.exampl",
+    "e.org/path-with-hyphens/index.ph",
+    "p?id=12345&sort=desc for details;",
+    "mail me@example.com."
+   ]
+  ],
+  [
+   149,
+   391.3125,
+   [
+    "See https://example.com/a/b/c.html?q=1&r=2#top an",
+    "d www.example.org/path-with-hyphens/index.php?id=",
+    "12345&sort=desc for details; mail me@example.com."
+   ]
+  ],
+  [
+   150,
+   140.3125,
+   [
+    "A supercalifragilisticexp",
+    "ialidocious pneumonoul",
+    "tramicroscopicsilicovolc",
+    "anoconiosis word and a",
+    "aaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaa",
+    "aaaa here."
+   ]
+  ],
+  [
+   151,
+   367,
+   [
+    "A supercalifragilisticexpialidocious pneumonoultramicrosco",
+    "picsilicovolcanoconiosis word and aaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaa here."
+   ]
+  ],
+  [
+   152,
+   167,
+   [
+    "A supercalifragilisti",
+    "cexpialidocious pneum",
+    "onoultramicroscopicsi",
+    "licovolcanoconiosis w",
+    "ord and aaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaa here."
+   ]
+  ],
+  [
+   172,
+   57,
+   [
+    "Hy\u00adphen\u00ad",
+    "ation of",
+    "extra\u00ad",
+    "ordinary",
+    "inter\u00ad",
+    "national",
+    "con\u00ad",
+    "stitutional",
+    "words."
+   ]
+  ],
+  [
+   172,
+   243,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00ad",
+    "national con\u00adstitutional words."
+   ]
+  ],
+  [
+   172,
+   180.0703125,
+   [
+    "Hy\u00adphen\u00adation of extra\u00ad",
+    "ordinary inter\u00adnational con\u00ad",
+    "stitutional words."
+   ]
+  ],
+  [
+   173,
+   274,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00ad",
+    "national con\u00adstitutional words."
+   ]
+  ],
+  [
+   173,
+   328.703125,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00ad",
+    "national con\u00adstitutional words."
+   ]
+  ],
+  [
+   171,
+   240,
+   [
+    "Hy\u00adphen\u00adation of extra\u00adordinary inter\u00ad",
+    "national con\u00adstitutional words."
+   ]
+  ]
+ ]
+}
