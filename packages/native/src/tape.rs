@@ -547,15 +547,16 @@ impl TapeStore {
         self.laid_out.borrow_mut().insert(root, tape);
     }
 
-    /// Puts back what the pass that only laid out wrote when it built `root`.
-    fn replay_laid_out(&self, window: WindowId, root: u64) {
+    /// Puts back what the pass that only laid out wrote when it built `root`, `delta` from where it
+    /// wrote it.
+    fn replay_laid_out(&self, window: WindowId, root: u64, delta: Point<Pixels>) {
         let tape = self
             .laid_out
             .borrow()
             .get(&root)
             .expect("a root skipped with its layout record has the tape of the build that made it")
             .clone();
-        tape.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+        tape.borrow().replay(window, Phase::LayoutRecorded, delta);
     }
 
     /// Whether `captured`, the tape of a subtree prepainted and painted again, holds the writes
@@ -570,7 +571,7 @@ impl TapeStore {
     /// Replays what the last build of `root` wrote in `phase`, `delta` from where it wrote it.
     pub(crate) fn replay(&self, window: WindowId, root: u64, phase: Phase, delta: Point<Pixels>) {
         if phase == Phase::LayoutRecorded {
-            return self.replay_laid_out(window, root);
+            return self.replay_laid_out(window, root, delta);
         }
         let tape = self
             .tapes
@@ -1165,6 +1166,22 @@ mod tests {
         crate::automation::forget_window(window);
         outer.borrow().replay(window, Phase::LayoutRecorded, gpui::point(gpui::px(3.0), gpui::px(0.0)));
         assert_eq!((x_of(window, 1), x_of(window, 2)), (Some(8.0), Some(23.0)), "the replay of the outer moves what is nested");
+    }
+
+    #[test]
+    fn a_root_skipped_with_its_layout_record_is_put_back_where_the_skip_says() {
+        let window = WindowId::from(912);
+        let store = TapeStore::default();
+        let laid_out = Tape::laid_out();
+        record_laid_out(&laid_out, window, 1, 20.0);
+        store.set_laid_out(7, laid_out);
+
+        // Each skip is as far from the build as the place says, and not from the skip before.
+        for by in [3.0_f32, 0.0, 10.0, 10.0, -4.0] {
+            crate::automation::forget_window(window);
+            store.replay(window, 7, Phase::LayoutRecorded, gpui::point(gpui::px(by), gpui::px(0.0)));
+            assert_eq!(x_of(window, 1), Some(f64::from(20.0 + by)));
+        }
     }
 
     #[test]

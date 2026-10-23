@@ -1271,10 +1271,10 @@ describeNative("forced reads inside hidden content that is laid out once and kep
       const steps = reads(drawn)
       expect(steps[0]!.built, "the first read builds the page, the subtree in it included").toBeGreaterThanOrEqual(36)
       expect(steps[0]!.records, "and leaves a layout record of each card and of the page").toBeGreaterThanOrEqual(9)
-      // A box above it grows (step 2) and the subtree is not where it was: it is built again where it is, which Chrome does not
-      // need. Only a change that leaves it in place is cheap.
+      // A box above it grows (step 2) and the hidden element is not where it was: its cards are skipped where they are now,
+      // as Chrome keeps the layout of a locked subtree that only moves.
       // A verified pass builds the page a second time to compare it, which is not the cost being measured.
-      for (const step of verifying ? [] : [1, 3]) {
+      for (const step of verifying ? [] : [1, 2, 3]) {
         expect(steps[step]!.built, `step ${step}: the box that changed and the page, not the subtree`).toBeLessThanOrEqual(8)
         expect(steps[step]!.skips, `step ${step}: the cards are skipped with their layout records`).toBeGreaterThanOrEqual(8)
       }
@@ -1856,6 +1856,103 @@ describeNative("content a read forced keeps its layout across the draws that ski
         expect(changed.skips, "the other cards").toBeGreaterThanOrEqual(7)
       }
       noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("skips the cards a line that grew moved, where they are now", () => {
+    const scene = FIRST_READ_SCENES.firstReadKeptInside!
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(scene.render(0))
+      renderer.flush()
+      frames(renderer)
+      const names = FIRST_READS.firstReadKeptInside![0]!.names!
+      cost(renderer, idsOf(renderer), names)
+      frames(renderer)
+      root.render(scene.render(1))
+      renderer.flush()
+      frames(renderer)
+      // A line of the third card grew by 20: it is built, and the five cards after it only moved.
+      const moved = cost(renderer, idsOf(renderer), names)
+      sameRects("a line grew", moved.rects, FIRST_READS.firstReadKeptInside![1]!.rects!)
+      if (!verifying) {
+        expect(moved.built, "the card with the line, the host and the page: the cards after it are not built").toBeLessThanOrEqual(8)
+        expect(moved.skips, "and the other seven cards are skipped, the five that moved included").toBeGreaterThanOrEqual(7)
+      }
+      noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  // A scroller the user can scroll (`overflow: scroll`) is excluded from retention, and so is the card around it; one that only
+  // script scrolls (`hidden`) keeps a scroll handle and is retained.
+  it("puts the text and the scrollers of cards the page moved where a build puts them", () => {
+    const CARDS = 6
+    const Moved = ({ above }: { above: number }) => (
+      <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column", fontFamily: "GpuixTestSquare" }}>
+        <div style={{ height: above, flexShrink: 0 }} />
+        <div testId="held" style={hidden("30px", 4)}>
+          {Array.from({ length: CARDS }, (_, card) => (
+            <div key={card} testId={`card-${card}`} style={{ margin: 3, padding: 2, flexShrink: 0, width: 160 }}>
+              <div testId={`words-${card}`} style={{ flexShrink: 0 }}>
+                <text style={{ fontSize: 14 }}>{`Card ${card} has enough words in it to wrap onto more than one line`}</text>
+              </div>
+              <div testId={`scroller-${card}`} style={{ height: 24 + card, width: 60, overflow: "hidden", flexShrink: 0 }}>
+                <div style={{ height: 90, width: 40, flexShrink: 0 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+    const names = Array.from({ length: CARDS }, (_, card) => [`card-${card}`, `words-${card}`, `scroller-${card}`]).flat()
+    const read = (renderer: TestRenderer) => {
+      const ids = idsOf(renderer)
+      const boxes = cost(renderer, ids, names)
+      return { ...boxes, metrics: names.filter((name) => name.startsWith("scroller")).map((name) => renderer.getScrollMetrics(ids.get(name)!)) }
+    }
+    const open = (above: number) => {
+      const root = createTestRoot(SIZE)
+      root.renderer.registerFont(SQUARE_FONT)
+      root.renderer.setInlineDraws(false)
+      drawFirstFrame(root, root.renderer)
+      root.render(<Moved above={above} />)
+      root.renderer.flush()
+      return root
+    }
+    const ABOVE = [52, 20, 52, 7]
+    // A window of its own for each: a page that was not laid out before is built whole.
+    const built = ABOVE.map((above) => {
+      const root = open(above)
+      try {
+        return read(root.renderer)
+      } finally {
+        root.unmount()
+      }
+    })
+    const root = open(20)
+    try {
+      read(root.renderer)
+      frames(root.renderer)
+      ABOVE.forEach((above, step) => {
+        root.render(<Moved above={above} />)
+        root.renderer.flush()
+        const now = read(root.renderer)
+        sameRects(`moved to ${above}`, now.rects, built[step]!.rects)
+        expect(now.metrics, `scroll metrics at ${above}`).toEqual(built[step]!.metrics)
+        // The draw before the first move found the scrollers new and ended the records of the cards around them: that move
+        // builds them. The cards of the moves after it are skipped where they are, scrollers and text and all.
+        if (!verifying && step > 0) expect(now.built, `at ${above}: the page and the host, not the cards that only moved`).toBeLessThanOrEqual(4)
+        if (!verifying && step > 0) expect(now.skips, `at ${above}: the cards are skipped`).toBeGreaterThanOrEqual(6)
+        frames(root.renderer)
+      })
+      noMismatches(root.renderer)
     } finally {
       root.unmount()
     }
