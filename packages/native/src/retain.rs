@@ -1902,6 +1902,13 @@ impl Retain {
         Ok(units)
     }
 
+    /// Records the state the build of the custom element `id` saw, for an element the registry did
+    /// not hold when the frame began: the frame after compares its state with this and not with
+    /// nothing, which would read as a change.
+    pub(crate) fn custom_built(&mut self, id: u64, state: Option<u64>) {
+        self.seen.customs.entry(id).or_insert(state);
+    }
+
     pub(crate) fn enter_row(&mut self) {
         self.rows += 1;
     }
@@ -4654,6 +4661,8 @@ mod tests {
         scrolls: HashMap<u64, gpui::ScrollHandle>,
         /// The revision each element is entered with, 7 for those not edited.
         revisions: HashMap<u64, u64>,
+        /// The custom elements the registry holds when a frame begins, with their `retain_state`.
+        customs: Vec<(u64, Option<u64>)>,
     }
 
     impl Units {
@@ -4675,6 +4684,7 @@ mod tests {
                 handles: HashMap::new(),
                 scrolls: HashMap::new(),
                 revisions: HashMap::new(),
+                customs: Vec::new(),
             }
         }
 
@@ -4685,8 +4695,9 @@ mod tests {
 
         /// A frame in which `hovered` is under the pointer, that `build` builds.
         fn frame(&mut self, hovered: &[u64], layout_only: bool, build: impl FnOnce(&mut Self)) {
-            self.retain
-                .begin_frame(sources_of(&self.tree, &self.focus, &self.handles, &self.scrolls, hovered, layout_only));
+            let mut sources = sources_of(&self.tree, &self.focus, &self.handles, &self.scrolls, hovered, layout_only);
+            sources.customs = self.customs.clone();
+            self.retain.begin_frame(sources);
             build(self);
             self.retain.finish_frame();
         }
@@ -4808,6 +4819,21 @@ mod tests {
         page.edit(1);
         let skip = page_in(&mut page, false, Some(list)).expect("the entry is skipped");
         assert_eq!(skip.overscan, Some(gpui::px(390.0)));
+    }
+
+    #[test]
+    fn a_custom_element_the_build_made_is_not_a_change_in_the_frame_after() {
+        let mut page = Units::new();
+        page.page(&[], None, None);
+        // The registry did not hold 3 when that frame began, and the build made it.
+        page.frame(&[], false, |page| page.retain.custom_built(3, Some(9)));
+        page.customs = vec![(3, Some(9))];
+        page.page(&[], None, None);
+        assert!(!page.retain.deltas.spine.contains(&3), "{:?}", page.retain.deltas.spine);
+        // One that paints on to another state is.
+        page.customs = vec![(3, Some(10))];
+        page.page(&[], None, None);
+        assert!(page.retain.deltas.spine.contains(&3));
     }
 
     #[test]

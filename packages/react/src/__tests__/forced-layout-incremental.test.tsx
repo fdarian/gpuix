@@ -779,11 +779,9 @@ describeNative("a forced read on a page that has not been presented since it cha
 
     expect(kept.counters.layoutReplays, "the passes after the first that built skipped with layout records").toBeGreaterThan(0)
     if (!verifying) {
-      // The 500 icons are a source of the second pass (the planner names them "custom"), so it builds the entries they are in:
-      // half of the page.
-      expect(kept.rounds[1]!.built, "less than the page").toBeLessThan(kept.rounds[0]!.built / 2)
-      for (const round of kept.rounds.slice(2)) {
-        expect(round.built, "the entry that changed and the spine above it, not the icons of the page").toBeLessThanOrEqual(60)
+      // The icons the first pass made are not a change in the second: the state their build saw is the one they have.
+      for (const round of kept.rounds.slice(1)) {
+        expect(round.built, "the entry that changed and the spine above it, not the icons of the page").toBeLessThanOrEqual(20)
       }
     }
     expect(kept.mismatches).toEqual([])

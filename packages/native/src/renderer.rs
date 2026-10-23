@@ -10296,7 +10296,9 @@ fn build_element_unpumped(
             }
             // What the adapter keeps for itself is the part of its build the tree cannot show. An
             // adapter that cannot name it is rebuilt every frame.
-            match ctx.custom_registry.retain_state(id) {
+            let retain_state = ctx.custom_registry.retain_state(id);
+            ctx.retain.custom_built(id, retain_state);
+            match retain_state {
                 Some(state) => ctx.retain.shape(state),
                 // Its box is its style and its document (both in the key), whether or not a paint
                 // has shown it yet: only a pass that paints needs the raster state to settle.
