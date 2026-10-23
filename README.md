@@ -3181,10 +3181,14 @@ and the extent changes as they are built.
   that comes after that frame is told once.
 - A geometry read of an element inside a skipped subtree (`getBoundingClientRect`,
   `getElementBounds`, `getScrollMetrics`) lays the subtree out for real and returns true
-  boxes; the subtree stays skipped. The read costs a layout pass; reads that follow
-  share it while nothing that can move a box happens to the window (a style write, a
-  scroll write, a resize or a painted frame ends the share; a change of colour or
-  opacity does not). A scroller inside the subtree reports its true `scrollHeight`.
+  boxes; the subtree stays skipped. The read costs one layout pass, also when it comes
+  straight after a change inside the subtree (a write, or a style that turned an ancestor
+  `hidden`); reads that follow share it while nothing that can move a box happens to the
+  window (a style write, a scroll write, a resize or a painted frame ends the share; a
+  change of colour or opacity does not). The layout the read built is kept while the
+  frames skip the subtree again, so the next read after a frame lays out the elements
+  that changed and not the whole subtree. A scroller inside the subtree reports its true
+  `scrollHeight`.
 - An animation below a skipped element is not built or drawn and fires no event; it
   goes on from the clock when the element shows.
 
@@ -5221,6 +5225,17 @@ that lost its box: `ResizeObserver` reports 0 by 0 and `IntersectionObserver`
 reports `isIntersecting: false`, once, and nothing after that. The report comes with the
 next frame that is presented, not with a layout read in between. Call `unobserve` or
 `disconnect` to release it.
+
+A target inside [skipped](#skipping-content-with-contentvisibility) `contentVisibility`
+content has no box to observe, and the observers do not build the content to find one. A
+`ResizeObserver` reports nothing for it while it is skipped (no 0 by 0 when the content
+hides), keeps the size it last reported, and reports on show only if the size differs; a
+target that was never rendered reports once when it shows. An `IntersectionObserver`
+reports it as not intersecting with an empty rect at (0, 0) in `hidden` content, and the
+real geometry on show; in `auto` content it does so for a target that was never laid out
+and keeps the last rect of one that was. A `getBoundingClientRect` that forces the content
+delivers nothing and changes no size reported. `display: none` and a removed element are
+still 0 by 0.
 
 Observers work on `<div>`, `<text>`, `<input>`, `<textarea>`, `<img>`, `<svg>`,
 `<anchored>`, `<code>`, `<diff>` and `<markdown>`. `<virtual-list>` itself does not
