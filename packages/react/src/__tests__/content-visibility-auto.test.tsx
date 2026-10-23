@@ -932,6 +932,99 @@ function KeptPage({ step, visibility = "hidden" }: { step: number; visibility?: 
   )
 }
 
+/** The page of the scenes `firstReadKept...`: a `hidden` or `visible` element between two boxes. */
+function LockedShell({ visibility = "hidden", children }: { visibility?: "hidden" | "visible"; children: ReactNode }) {
+  return (
+    <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column" }}>
+      <div style={{ height: 20, flexShrink: 0 }} />
+      <div testId="held" style={{ ...hidden("30px", 4), contentVisibility: visibility } as CSSProperties}>
+        {children}
+      </div>
+      <div testId="after" style={{ height: 20, flexShrink: 0 }} />
+    </div>
+  )
+}
+
+/** A card of 3 lines, the middle one taller when `grown` and painted when `tinted`. */
+function LockCard({ group, grown, tinted }: { group: number; grown?: boolean; tinted?: boolean }) {
+  return (
+    <div testId={`card-${group}`} style={{ margin: 3, padding: 2, flexShrink: 0 }}>
+      {Array.from({ length: 3 }, (_, line) => (
+        <div
+          key={line}
+          testId={`line-${group}-${line}`}
+          style={{
+            height: grown && line === 1 ? 30 : 10 + line * 4 + group,
+            width: 40,
+            margin: 1,
+            flexShrink: 0,
+            backgroundColor: tinted && line === 1 ? "#ff0000" : undefined,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** The scene `firstReadKeptInside`: a line grows, a line is painted, a card is inserted and one removed. */
+function InsidePage({ step }: { step: number }) {
+  const groups = [...(step >= 3 ? [9] : []), ...[0, 1, 2, 3, 4, 5, 6, 7].filter((group) => step < 4 || group !== 0)]
+  return (
+    <LockedShell>
+      {groups.map((group) => (
+        <LockCard key={group} group={group} grown={step >= 1 && group === 2} tinted={step >= 2 && group === 2} />
+      ))}
+    </LockedShell>
+  )
+}
+
+/** The scene `firstReadKeptNested`: a `hidden` element in a `hidden` element. */
+function NestedPage({ step }: { step: number }) {
+  return (
+    <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column" }}>
+      <div style={{ height: step >= 4 ? 35 : 20, flexShrink: 0 }} />
+      <div testId="outer" style={hidden("60px", 4)}>
+        <div testId="pre" style={{ margin: 3, flexShrink: 0 }}>
+          <div testId="pre-line" style={{ height: step >= 2 ? 30 : 12, width: 40, flexShrink: 0 }} />
+        </div>
+        <div
+          testId="inner"
+          style={{ margin: 3, padding: 2, flexShrink: 0, contentVisibility: "hidden", containIntrinsicSize: step >= 3 ? "70px" : "40px" } as CSSProperties}
+        >
+          {Array.from({ length: 4 }, (_, bar) => (
+            <div key={bar} testId={`bar-${bar}`} style={{ height: bar === 1 && step >= 1 ? 25 : 8 + bar, width: 30, margin: 1, flexShrink: 0 }} />
+          ))}
+        </div>
+        <div testId="post" style={{ margin: 3, flexShrink: 0 }}>
+          <div testId="post-line" style={{ height: 14, width: 40, flexShrink: 0 }} />
+        </div>
+      </div>
+      <div testId="after" style={{ height: 20, flexShrink: 0 }} />
+    </div>
+  )
+}
+
+const SHOWN_STEPS: ("hidden" | "visible")[] = ["hidden", "visible", "visible", "hidden", "hidden", "visible"]
+
+/** The scene `firstReadKeptShown`: an element that shows, changes shown, hides, changes hidden and shows again. */
+function ShownPage({ step }: { step: number }) {
+  return (
+    <LockedShell visibility={SHOWN_STEPS[step]}>
+      {Array.from({ length: 8 }, (_, group) => (
+        <div key={group} testId={`card-${group}`} style={{ margin: 3, padding: 2, flexShrink: 0 }}>
+          {Array.from({ length: 3 }, (_, line) => (
+            <div
+              key={line}
+              testId={`line-${group}-${line}`}
+              style={{ height: group === 2 && line === 1 ? [16, 16, 30, 30, 12, 12][step] : 10 + line * 4 + group, width: 40, margin: 1, flexShrink: 0 }}
+            />
+          ))}
+        </div>
+      ))}
+    </LockedShell>
+  )
+}
+
 /** A scene of the oracle that is read right after each change, and what the page looks like at each step. */
 interface FirstRead {
   render: (step: number) => ReactNode
@@ -957,6 +1050,9 @@ const FIRST_READ_SCENES: Record<string, FirstRead> = {
   firstReadKept: {
     render: (step) => <KeptPage step={step} />,
   },
+  firstReadKeptInside: { render: (step) => <InsidePage step={step} /> },
+  firstReadKeptNested: { render: (step) => <NestedPage step={step} /> },
+  firstReadKeptShown: { render: (step) => <ShownPage step={step} />, skipped: (step) => SHOWN_STEPS[step] === "hidden" },
   // A write that turns the ancestor `hidden` or `visible` in the turn of a write inside it.
   firstReadTurns: {
     render: (step) => (
@@ -1644,6 +1740,287 @@ describeNative("a far auto element", { timeout: 120_000 }, () => {
       if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
     } finally {
       root.unmount()
+    }
+  })
+})
+
+describeNative("content a read forced keeps its layout across the draws that skip it", { timeout: 120_000 }, () => {
+  const frames = (renderer: TestRenderer, count = 3) => {
+    for (let index = 0; index < count; index++) {
+      renderer.drawFrame()
+      renderer.dispatchNativeEvents()
+    }
+  }
+
+  /** What a read of `names` costs, and the boxes it returns as [x, y, width, height]. */
+  function cost(renderer: TestRenderer, ids: Map<string, number>, names: string[]) {
+    const before = renderer.getRetainedCounters()
+    renderer.resetBuildCounters()
+    const read = reading(renderer, ids, names)
+    const built = renderer.getBuildCounters().elementsBuilt
+    const after = renderer.getRetainedCounters()
+    return {
+      passes: read.passes,
+      built,
+      skips: after.layoutSkips - before.layoutSkips,
+      rects: read.read.map((box) => [box!.x, box!.y, box!.width, box!.height]),
+    }
+  }
+
+  const sameRects = (label: string, seen: number[][], expected: number[][]) =>
+    expected.forEach((rect, index) =>
+      rect.forEach((value, side) => expect(Math.abs(seen[index]![side]! - value), `${label}: box ${index} is [${seen[index]}], Chrome's [${rect}]`).toBeLessThanOrEqual(UNIT))
+    )
+
+  const noMismatches = (renderer: TestRenderer) => {
+    if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+  }
+
+  /** What a read costs at most when only the host and the spine are built: the page, the boxes beside the host and the host. A
+   *  verified pass builds the page a second time to compare it, which is not the cost being measured. */
+  const BUILT_AT_MOST: Record<string, number> = { firstReadKeptInside: 4, firstReadKeptNested: 9, firstReadKeptShown: 4 }
+  const SKIPS_AT_LEAST: Record<string, number> = { firstReadKeptInside: 8, firstReadKeptNested: 2, firstReadKeptShown: 8 }
+
+  for (const name of ["firstReadKeptInside", "firstReadKeptNested", "firstReadKeptShown"]) {
+    it(`a read after a draw builds the host and the spine, and returns Chrome's boxes: ${name}`, () => {
+      const scene = FIRST_READ_SCENES[name]!
+      const root = createTestRoot(SIZE)
+      const renderer = root.renderer
+      try {
+        renderer.setInlineDraws(false)
+        drawFirstFrame(root, renderer)
+        root.render(scene.render(0))
+        renderer.flush()
+        frames(renderer)
+        FIRST_READS[name]!.forEach((expected, step) => {
+          if (step > 0) {
+            root.render(scene.render(step))
+            renderer.flush()
+            frames(renderer)
+          }
+          const label = `${name}, ${expected.step}`
+          const ids = idsOf(renderer)
+          const shown = scene.skipped ? !scene.skipped(step) : false
+          const first = cost(renderer, ids, expected.names!)
+          sameRects(`${label}, first read`, first.rects, expected.rects!)
+          expect(first.passes, `${label}: the first read is one pass`).toBeLessThanOrEqual(1)
+          frames(renderer)
+          const second = cost(renderer, ids, expected.names!)
+          sameRects(`${label}, read after a draw`, second.rects, expected.rects!)
+          if (shown) {
+            expect(second.passes, `${label}: shown, the draw built the boxes and there is nothing to lay out`).toBe(0)
+            expect(Boolean(renderer.getBuiltElementBounds(ids.get(expected.names![0]!)!)), `${label}: and they are built`).toBe(true)
+            return
+          }
+          expect(second.passes, `${label}: the read after the draw is one pass`).toBeLessThanOrEqual(1)
+          if (!verifying) {
+            expect(second.built, `${label}: and builds the host and the spine`).toBeLessThanOrEqual(BUILT_AT_MOST[name]!)
+            expect(second.skips, `${label}: the rest is skipped with its layout records`).toBeGreaterThanOrEqual(SKIPS_AT_LEAST[name]!)
+          }
+          frames(renderer)
+          expect(Boolean(renderer.getBuiltElementBounds(ids.get(expected.names![0]!)!)), `${label}: the content is skipped again`).toBe(false)
+        })
+        noMismatches(renderer)
+      } finally {
+        root.unmount()
+      }
+    })
+  }
+
+  it("builds the card a paint-only change inside the content is in, and not the others", () => {
+    const scene = FIRST_READ_SCENES.firstReadKeptInside!
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(scene.render(0))
+      renderer.flush()
+      frames(renderer)
+      const ids = idsOf(renderer)
+      const names = FIRST_READS.firstReadKeptInside![0]!.names!
+      cost(renderer, ids, names)
+      frames(renderer)
+      root.render(scene.render(1))
+      renderer.flush()
+      frames(renderer)
+      cost(renderer, idsOf(renderer), names)
+      frames(renderer)
+      root.render(scene.render(2))
+      renderer.flush()
+      frames(renderer)
+      const changed = cost(renderer, idsOf(renderer), names)
+      sameRects("recoloured", changed.rects, FIRST_READS.firstReadKeptInside![2]!.rects!)
+      if (!verifying) {
+        expect(changed.built, "the card with the line, the host and the page").toBeLessThanOrEqual(8)
+        expect(changed.skips, "the other cards").toBeGreaterThanOrEqual(7)
+      }
+      noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps the layout of a host that was never drawn: the first draw skips it and the read after it builds the spine", () => {
+    const scene = FIRST_READ_SCENES.firstReadKeptInside!
+    const expected = FIRST_READS.firstReadKeptInside![0]!
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(scene.render(0))
+      renderer.flush()
+      const ids = idsOf(renderer)
+      const first = cost(renderer, ids, expected.names!)
+      sameRects("never drawn", first.rects, expected.rects!)
+      expect(first.built, "the first read builds the page and what is in the host").toBeGreaterThanOrEqual(36)
+      frames(renderer)
+      const second = cost(renderer, ids, expected.names!)
+      sameRects("after the first draw", second.rects, expected.rects!)
+      if (!verifying) {
+        expect(second.built).toBeLessThanOrEqual(4)
+        expect(second.skips).toBeGreaterThanOrEqual(8)
+      }
+      noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("builds the content whole when the host shows again", () => {
+    const scene = FIRST_READ_SCENES.firstReadKeptShown!
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(scene.render(0))
+      renderer.flush()
+      frames(renderer)
+      const ids = idsOf(renderer)
+      const names = FIRST_READS.firstReadKeptShown![0]!.names!
+      cost(renderer, ids, names)
+      frames(renderer)
+      // The layout the read left is kept. The host shows: the frame builds all of it, and paints it where Chrome has it.
+      root.render(scene.render(1))
+      renderer.flush()
+      renderer.resetBuildCounters()
+      frames(renderer, 1)
+      expect(renderer.getBuildCounters().elementsBuilt, "the host, its 8 cards and their 24 lines").toBeGreaterThanOrEqual(33)
+      const shown = FIRST_READS.firstReadKeptShown![1]!
+      sameRects("shown", names.map((name) => {
+        const box = renderer.getBuiltElementBounds(idsOf(renderer).get(name)!)!
+        return [box.x, box.y, box.width, box.height]
+      }), shown.rects!)
+      noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("keeps the boxes of a page of more than 4096 across the draws", () => {
+    const CARDS = 1100
+    const Big = () => (
+      <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column" }}>
+        <div testId="held" style={hidden("30px", 4)}>
+          {Array.from({ length: CARDS }, (_, card) => (
+            <div key={card} style={{ margin: 1, flexShrink: 0 }}>
+              {Array.from({ length: 3 }, (_, line) => (
+                <div key={line} testId={card === 700 ? `line-${line}` : undefined} style={{ height: 4 + line, width: 40, flexShrink: 0 }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(<Big />)
+      renderer.flush()
+      frames(renderer)
+      const ids = idsOf(renderer)
+      const first = cost(renderer, ids, ["line-1"])
+      expect(first.rects[0]![3], "laid out").toBe(5)
+      for (let draw = 0; draw < 3; draw++) {
+        frames(renderer, 2)
+        const again = cost(renderer, ids, ["line-1"])
+        expect(again.rects, `after a draw (${draw})`).toEqual(first.rects)
+      }
+      noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("replays nothing a change under a skipped host made stale: the pointer, a motion value", () => {
+    const Page = ({ visibility, width }: { visibility: "hidden" | "visible"; width: ReturnType<typeof motionValue<number>> }) => (
+      <LockedShell visibility={visibility}>
+        {Array.from({ length: 8 }, (_, group) => (
+          <div key={group} testId={`card-${group}`} style={{ margin: 3, padding: 2, flexShrink: 0 }}>
+            <motion.div testId={`moved-${group}`} style={{ height: 12, width: group === 3 ? width : 40, margin: 1, flexShrink: 0 }} />
+            <div testId={`hovered-${group}`} style={{ height: 12, width: 40, margin: 1, flexShrink: 0, hover: { height: 30 } } as CSSProperties} />
+          </div>
+        ))}
+      </LockedShell>
+    )
+    const names = ["moved-3", "hovered-3", "moved-7", "hovered-7", "held", "after"]
+    const boxes = (renderer: TestRenderer) =>
+      names.map((name) => {
+        const box = renderer.getBuiltElementBounds(idsOf(renderer).get(name)!)!
+        return [box.x, box.y, box.width, box.height]
+      })
+    const width = motionValue(40)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    let shown: number[][]
+    try {
+      renderer.setInlineDraws(false)
+      drawFirstFrame(root, renderer)
+      root.render(<Page visibility="visible" width={width} />)
+      renderer.flush()
+      frames(renderer)
+      const ids = idsOf(renderer)
+      const spot = renderer.getBuiltElementBounds(ids.get("hovered-3")!)!
+      // The pointer is on an element of the host when it hides, and the read lays the content out with the element hovered.
+      renderer.nativeSimulateMouseMove(spot.x + 5, spot.y + 5)
+      frames(renderer)
+      expect(renderer.getBuiltElementBounds(ids.get("hovered-3")!)!.height, "hovered").toBe(30)
+      root.render(<Page visibility="hidden" width={width} />)
+      renderer.flush()
+      expect(renderer.getElementBounds(ids.get("hovered-3")!)!.height, "the pass that forces the content lays it out as it is").toBe(30)
+      expect(renderer.getElementBounds(ids.get("moved-3")!)!.width).toBe(40)
+      // The pointer leaves and a motion value moves while the draws skip the content.
+      renderer.nativeSimulateMouseExit(spot.x + 5, 900)
+      width.set(70)
+      frames(renderer)
+      expect(renderer.getElementBounds(ids.get("hovered-3")!)!.height, "the pointer left").toBe(12)
+      expect(renderer.getElementBounds(ids.get("moved-3")!)!.width, "the motion value moved").toBe(70)
+      noMismatches(renderer)
+
+      root.render(<Page visibility="visible" width={width} />)
+      renderer.flush()
+      frames(renderer)
+      shown = boxes(renderer)
+      noMismatches(renderer)
+    } finally {
+      root.unmount()
+    }
+    // When the host shows, the content is the one a fresh build has.
+    const freshWidth = motionValue(70)
+    const fresh = createTestRoot(SIZE)
+    try {
+      fresh.renderer.setInlineDraws(false)
+      drawFirstFrame(fresh, fresh.renderer)
+      fresh.render(<Page visibility="visible" width={freshWidth} />)
+      fresh.renderer.flush()
+      frames(fresh.renderer)
+      expect(shown).toEqual(boxes(fresh.renderer))
+    } finally {
+      fresh.unmount()
     }
   })
 })

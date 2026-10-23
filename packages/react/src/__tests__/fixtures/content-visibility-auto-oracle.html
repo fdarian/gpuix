@@ -387,6 +387,72 @@ Object.assign(scenes, {
     ])
   },
 
+  // A `hidden` element of 8 cards that changes inside: a line grows, a line is only recoloured, a card is inserted and removed.
+  async firstReadKeptInside() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px', padding: '4px' })
+    const card = (group) => {
+      const element = named(`card-${group}`, '', { margin: '3px', padding: '2px', flexShrink: 0 })
+      for (let line = 0; line < 3; line++) element.append(named(`line-${group}-${line}`, '', { height: `${10 + line * 4 + group}px`, width: '40px', margin: '1px', flexShrink: 0 }))
+      return element
+    }
+    for (let group = 0; group < 8; group++) held.append(card(group))
+    scroller.append(made('div', '', { height: '20px', flexShrink: 0 }), held, named('after', '', { height: '20px', flexShrink: 0 }))
+    const names = ['line-2-1', 'line-7-2', 'card-4', 'held', 'after']
+    return firstRead(page, scroller, [names, names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['line grows', () => (held.querySelector('[data-id="line-2-1"]').style.height = '30px')],
+      ['line recoloured', () => (held.querySelector('[data-id="line-2-1"]').style.backgroundColor = 'red')],
+      ['card inserted', () => held.prepend(card(9))],
+      ['card removed', () => held.querySelector('[data-id="card-0"]').remove()],
+    ])
+  },
+
+  // A `hidden` element in a `hidden` element, where the inner one, what is beside it in the outer one, and what is outside change.
+  async firstReadKeptNested() {
+    const { page, scroller } = pageOf()
+    const outer = named('outer', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '60px', padding: '4px' })
+    const pre = named('pre', '', { margin: '3px', flexShrink: 0 })
+    pre.append(named('pre-line', '', { height: '12px', width: '40px', flexShrink: 0 }))
+    const inner = named('inner', '', { margin: '3px', padding: '2px', flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '40px' })
+    for (let bar = 0; bar < 4; bar++) inner.append(named(`bar-${bar}`, '', { height: `${8 + bar}px`, width: '30px', margin: '1px', flexShrink: 0 }))
+    const post = named('post', '', { margin: '3px', flexShrink: 0 })
+    post.append(named('post-line', '', { height: '14px', width: '40px', flexShrink: 0 }))
+    outer.append(pre, inner, post)
+    const above = made('div', '', { height: '20px', flexShrink: 0 })
+    scroller.append(above, outer, named('after', '', { height: '20px', flexShrink: 0 }))
+    const names = ['bar-1', 'bar-3', 'inner', 'pre-line', 'post-line', 'outer', 'after']
+    return firstRead(page, scroller, [names, names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['inner bar grows', () => (inner.querySelector('[data-id="bar-1"]').style.height = '25px')],
+      ['pre line grows', () => (pre.firstChild.style.height = '30px')],
+      ['inner intrinsic size', () => (inner.style.containIntrinsicSize = '70px')],
+      ['above grows', () => (above.style.height = '35px')],
+    ])
+  },
+
+  // A `hidden` element that shows, changes while it is shown, hides again, changes while it is hidden and shows again.
+  async firstReadKeptShown() {
+    const { page, scroller } = pageOf()
+    const held = named('held', '', { flexShrink: 0, contentVisibility: 'hidden', containIntrinsicSize: '30px', padding: '4px' })
+    for (let group = 0; group < 8; group++) {
+      const card = named(`card-${group}`, '', { margin: '3px', padding: '2px', flexShrink: 0 })
+      for (let line = 0; line < 3; line++) card.append(named(`line-${group}-${line}`, '', { height: `${10 + line * 4 + group}px`, width: '40px', margin: '1px', flexShrink: 0 }))
+      held.append(card)
+    }
+    scroller.append(made('div', '', { height: '20px', flexShrink: 0 }), held, named('after', '', { height: '20px', flexShrink: 0 }))
+    const names = ['line-2-1', 'line-7-2', 'card-4', 'held', 'after']
+    const line = () => held.querySelector('[data-id="line-2-1"]')
+    return firstRead(page, scroller, [names, names, names, names, names, names], [
+      ['mounted', () => document.body.append(page)],
+      ['shown', () => (held.style.contentVisibility = 'visible')],
+      ['line grows shown', () => (line().style.height = '30px')],
+      ['hidden', () => (held.style.contentVisibility = 'hidden')],
+      ['line shrinks hidden', () => (line().style.height = '12px')],
+      ['shown again', () => (held.style.contentVisibility = 'visible')],
+    ])
+  },
+
   // A write that turns the ancestor of the element `hidden` or `visible` in the same turn as a layout write inside it.
   async firstReadTurns() {
     const { page, scroller } = pageOf()
