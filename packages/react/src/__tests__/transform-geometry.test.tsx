@@ -44,17 +44,9 @@ const TOLERANCE = 0.06
 const OFFSET_TOLERANCE = 0.5 + 1e-3
 
 /**
- * Where gpuix differs from Chrome, by scene and element, and why.
- *
- * - `nested` `G`: the transforms around an element are resolved against the boxes as they are painted, snapped to device
- *   pixels, and not against the layout boxes. `C` sits at a fractional offset (30.5, 20.25) in a rotated box and is scaled
- *   by 1.2 about its middle, so everything inside it moves by up to half a pixel of the difference from the identity.
- * - `flow` `f`: `scrollWidth` and `scrollHeight` of an element that does not scroll are its border box, and Chrome adds
- *   what overflows it (here a child translated 5px past the end), with or without a transform.
+ * `scrollWidth` and `scrollHeight` of an element that does not scroll are its border box in gpuix, and Chrome adds what
+ * overflows it (here, in `flow` `f`, a child translated 5px past the end), with or without a transform.
  */
-const DEVIATIONS: Record<string, Record<string, number>> = {
-  nested: { G: 0.15 },
-}
 const NOT_SCROLLERS = new Set(["flow:f"])
 
 /**
@@ -136,8 +128,7 @@ describeNative("getBoundingClientRect through a transform follows Chrome", () =>
           const bounds = mounted.renderer.getElementBounds(mounted.ids.get(id)!)
           expect(bounds, `${id} has a box`).not.toBeNull()
           const got = [bounds!.x, bounds!.y, bounds!.width, bounds!.height]
-          const tolerance = DEVIATIONS[name]?.[id] ?? TOLERANCE
-          if (got.some((value, index) => Math.abs(value - want[index]!) > tolerance)) {
+          if (got.some((value, index) => Math.abs(value - want[index]!) > TOLERANCE)) {
             wrong.push(`${id}: got [${rounded(got)}] Chrome [${rounded(want)}]`)
           }
         }
