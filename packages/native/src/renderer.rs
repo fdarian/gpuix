@@ -165,6 +165,10 @@ thread_local! {
     /// TODO: Scope by renderer/window ID when multi-window support is added.
     static SCROLL_HANDLES: RefCell<HashMap<u64, gpui::ScrollHandle>> = RefCell::new(HashMap::new());
     static VIRTUAL_LIST_STATES: RefCell<HashMap<u64, gpui::ListState>> = RefCell::new(HashMap::new());
+    /// `SCROLL_HANDLES` and `VIRTUAL_LIST_STATES` as the last forced pass of a read left them: a frame that
+    /// skips the content it forced drops the scrollers in it from both, see [`keep_scroll_state`].
+    static KEPT_SCROLL_HANDLES: RefCell<HashMap<u64, gpui::ScrollHandle>> = RefCell::new(HashMap::new());
+    static KEPT_VIRTUAL_LIST_STATES: RefCell<HashMap<u64, gpui::ListState>> = RefCell::new(HashMap::new());
     /// Virtual-list scrolls queued for the next `GpuixView::render`, applied
     /// AFTER `VirtualListEntry::sync` splices that frame's child changes.
     ///
@@ -266,12 +270,25 @@ fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Beha
 /// Callers draw pending changes first (`draw_pending_changes`, or `draw_if_dirty` inside a
 /// window command) so the layout is never older than the tree.
 pub(crate) fn scroll_metrics(window: gpui::WindowId, id: u64) -> Option<[f64; 6]> {
-    let list = VIRTUAL_LIST_STATES.with(|cell| cell.borrow().get(&id).map(|state| state.dom_scroll()));
+    let kept = crate::automation::is_reading_kept();
+    let list = VIRTUAL_LIST_STATES
+        .with(|cell| cell.borrow().get(&id).map(|state| state.dom_scroll()))
+        .or_else(|| kept.then(|| KEPT_VIRTUAL_LIST_STATES.with(|cell| cell.borrow().get(&id).map(|state| state.dom_scroll()))).flatten());
     if let Some(list) = list {
         return crate::scroll::list_metrics(list);
     }
     let painted = crate::automation::get_bounds(window, id);
-    SCROLL_HANDLES.with(|cell| crate::scroll::metrics(cell.borrow().get(&id), painted))
+    let handle = SCROLL_HANDLES
+        .with(|cell| cell.borrow().get(&id).cloned())
+        .or_else(|| kept.then(|| KEPT_SCROLL_HANDLES.with(|cell| cell.borrow().get(&id).cloned())).flatten());
+    crate::scroll::metrics(handle.as_ref(), painted)
+}
+
+/// Notes the scrollers as the forced pass that just ran left them, for a read that shares the pass
+/// (`automation::reading_kept`): the frames after it skip the content and do not have them.
+pub(crate) fn keep_scroll_state() {
+    SCROLL_HANDLES.with(|cell| KEPT_SCROLL_HANDLES.with(|kept| kept.borrow_mut().clone_from(&cell.borrow())));
+    VIRTUAL_LIST_STATES.with(|cell| KEPT_VIRTUAL_LIST_STATES.with(|kept| kept.borrow_mut().clone_from(&cell.borrow())));
 }
 
 fn parse_debug_frame_overlay_mode_str(
@@ -545,7 +562,8 @@ pub(crate) fn read_after_layout<R>(
     // A window nothing happened to since the forced pass has nothing to lay out but the content
     // that pass did not force.
     if shared.is_some() && known.iter().all(|ancestor| forcing.contains(ancestor)) {
-        return Ok(read(window_id));
+        // The frames since skipped the content the pass forced and left its boxes unwritten.
+        return Ok(if known.is_empty() { read(window_id) } else { crate::automation::reading_kept(|| read(window_id)) });
     }
     for ancestor in known {
         if !forcing.contains(&ancestor) {
@@ -586,6 +604,8 @@ pub(crate) fn read_after_layout<R>(
     relevance.unforce();
     invalidate_after_commit(cx, view.ok_or_else(no_view)?);
     if laid_out {
+        crate::automation::keep_bounds(window_id);
+        keep_scroll_state();
         relevance.remember_forced_read(forcing, window.layout_stamp());
     }
     Ok(read)

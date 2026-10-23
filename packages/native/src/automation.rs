@@ -170,6 +170,15 @@ struct WindowBounds {
     /// Boxes of elements that no frame wrote or replayed are left in `boxes` until there are this
     /// many.
     purge_at: usize,
+    /// The frame of the last forced layout pass of a read, as it left the boxes: see [`Self::get_kept`].
+    kept: Option<Kept>,
+}
+
+/// What a forced pass wrote and replayed, which the frames that skip the content it forced do not
+/// write again nor replay.
+struct Kept {
+    frame: u64,
+    live: FxHashMap<u64, Point<Pixels>>,
 }
 
 struct Stored {
@@ -197,9 +206,33 @@ impl WindowBounds {
         })
     }
 
+    /// [`Self::get`], and the box the last forced pass left of an element the frames since have not
+    /// written: a frame that skips the content that read forced writes none of its boxes, and a
+    /// read whose window is still as that pass left it (`Relevance::forced_by_last_read`) takes
+    /// them as it left them.
+    fn get_kept(&self, id: u64) -> Option<ElementBounds> {
+        if let Some(bounds) = self.get(id) {
+            return Some(bounds);
+        }
+        let kept = self.kept.as_ref()?;
+        let stored = self.boxes.get(&id)?;
+        if stored.frame == kept.frame {
+            return Some(stored.bounds);
+        }
+        [&stored.recorded, &stored.laid_out].into_iter().flatten().find_map(|(bounds, owner)| {
+            let delta = crate::tape::delta_of(*owner, &kept.live)?;
+            Some(bounds.translated(delta))
+        })
+    }
+
+    /// Notes the boxes as the pass that just ran left them.
+    fn keep(&mut self) {
+        self.kept = Some(Kept { frame: self.frame, live: self.live.clone() });
+    }
+
     fn reset(&mut self) {
         if self.boxes.len() > self.purge_at {
-            let (frame, live) = (self.frame, &self.live);
+            let (frame, live, kept) = (self.frame, &self.live, &self.kept);
             // A box a layout record holds is read again by the pass that forces the content it is in,
             // however many draws come first (`Retain::skip_content`), and no replay put it back in
             // between: it goes with its element (`retain`).
@@ -207,6 +240,10 @@ impl WindowBounds {
                 stored.frame == frame
                     || stored.laid_out.is_some()
                     || stored.recorded.iter().any(|(_, owner)| crate::tape::delta_of(*owner, live).is_some())
+                    || kept.as_ref().is_some_and(|kept| {
+                        stored.frame == kept.frame
+                            || stored.recorded.iter().any(|(_, owner)| crate::tape::delta_of(*owner, &kept.live).is_some())
+                    })
             });
             self.purge_at = (self.boxes.len() * 2).max(4096);
         }
@@ -446,7 +483,34 @@ pub(crate) fn set_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
 }
 
 pub fn get_bounds(window: WindowId, id: u64) -> Option<ElementBounds> {
-    BOUNDS.with(|cell| cell.borrow().get(&window)?.get(id))
+    BOUNDS.with(|cell| {
+        let bounds = cell.borrow();
+        let bounds = bounds.get(&window)?;
+        if is_reading_kept() { bounds.get_kept(id) } else { bounds.get(id) }
+    })
+}
+
+thread_local! {
+    static READING_KEPT: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Runs `read` with [`get_bounds`] taking the boxes of the last forced pass for the elements the
+/// frames since did not write.
+pub(crate) fn reading_kept<R>(read: impl FnOnce() -> R) -> R {
+    let was = READING_KEPT.with(|reading| reading.replace(true));
+    let result = read();
+    READING_KEPT.with(|reading| reading.set(was));
+    result
+}
+
+/// Whether a [`reading_kept`] is running.
+pub(crate) fn is_reading_kept() -> bool {
+    READING_KEPT.with(Cell::get)
+}
+
+/// Notes the boxes of `window` as the forced pass that just ran left them, for [`reading_kept`].
+pub(crate) fn keep_bounds(window: WindowId) {
+    BOUNDS.with(|cell| cell.borrow_mut().entry(window).or_default().keep());
 }
 
 /// Whether the last frame that painted or laid out `window` walked `id` in a culled subtree. An

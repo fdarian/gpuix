@@ -576,10 +576,11 @@ impl Relevance {
     }
 
     /// The elements the last forced pass of a read laid out the content of, if the window is as
-    /// that read left it: nothing invalidated it and no frame or pass was built since, so the boxes
+    /// that read left it: nothing invalidated it and no box moved or changed size since, so the boxes
     /// it published are still the window's (Chrome's locked subtree stays clean while nothing
-    /// dirties it). A frame skips them again and a mutation, a scroll write or a resize
-    /// invalidates, so each ends it.
+    /// dirties it). A frame that skips them again moves no box, and the boxes of a forced pass
+    /// outlast it; a mutation, a scroll write, a resize or a frame in which an animation moved a box
+    /// ends it.
     pub(crate) fn forced_by_last_read(&self, now: gpui::LayoutStamp) -> Option<Vec<u64>> {
         let known = self.0.lock();
         known.forced_read.as_ref().filter(|read| read.stamp == now).map(|read| read.forced.clone())

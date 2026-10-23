@@ -11,7 +11,7 @@ import path from "path"
 import type { CSSProperties, ReactNode } from "react"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
-import { defineKeyframes, motion, motionValue } from "../index"
+import { animate, defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from "../testing.js"
 import { verifying } from "./retained-harness.js"
 import { defineAnimationEventTests } from "./skipped-animation-events-fixture.js"
@@ -864,7 +864,7 @@ describeNative("consecutive reads of geometry below skipped elements", { timeout
     }
   })
 
-  it("end with a painted frame: the next read forces the entry again and the frames skip it", () => {
+  it("survive a painted frame that moved no box: the next read shares the pass and the frames skip the entry", () => {
     const { root, renderer, ids } = open()
     try {
       clean(renderer, ids)
@@ -876,13 +876,15 @@ describeNative("consecutive reads of geometry below skipped elements", { timeout
       const frames = renderer.getPaintedFrameCount()
       renderer.drawFrame()
       expect(renderer.getPaintedFrameCount() - frames, "the frame paints").toBe(1)
-      expect(renderer.getPaintedText().some((line) => line.startsWith("Entry 150:")), "and does not paint the entry").toBe(false)
 
       clean(renderer, ids)
       const after = reading(renderer, ids, ["bar-150", "row-150"])
-      expect(after.passes, "the frame skipped the entry again, so the read forces it again").toBe(1)
+      expect(after.passes, "the frame skipped the entry again but moved no box, so the pass that forced it is still the window's").toBe(0)
       expect(after.read[0]).toEqual(first.read[0])
       expect(reading(renderer, ids, ["bar-150"]).passes).toBe(0)
+      // The painted text is read through a flush, which is a layout invalidation and ends the share.
+      expect(renderer.getPaintedText().some((line) => line.startsWith("Entry 150:")), "the frame does not paint the entry").toBe(false)
+      expect(reading(renderer, ids, ["bar-150"]).passes, "and a layout invalidation ends the share").toBe(1)
 
       renderer.drawFrame()
       renderer.dispatchNativeEvents()
@@ -1321,7 +1323,7 @@ describeNative("consecutive reads inside a hidden element", { timeout: 120_000 }
 })
 
 describeNative("consecutive reads and a change that moves no box", { timeout: 120_000 }, () => {
-  it("a paint-only write leaves the shared pass, a layout write or a painted frame ends it", () => {
+  it("a paint-only write and a painted frame that moved no box leave the shared pass, a layout write ends it", () => {
     const tint = motionValue("#ff0000")
     const width = motionValue(60)
     const root = createTestRoot(SIZE)
@@ -1365,7 +1367,56 @@ describeNative("consecutive reads and a change that moves no box", { timeout: 12
       renderer.drawFrame()
       const framed = passes()
       expect(renderer.getElementBounds(ids.get("held-child")!), "after a painted frame").toEqual(child)
-      expect(passes() - framed, "the held element is forced again").toBe(1)
+      expect(passes() - framed, "the frame moved no box, so the pass that forced the held element is still the window's").toBe(0)
+      renderer.drawFrame()
+      expect(renderer.getElementBounds(ids.get("held-child")!), "and after another").toEqual(child)
+      expect(passes() - framed).toBe(0)
+      expect(renderer.getBuiltElementBounds(ids.get("held-child")!), "the frames skip the held element").toBeFalsy()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("a painted frame in which a running animation moved a box ends the shared pass", () => {
+    const above = motionValue(20)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <motion.div testId="above" style={{ width: 20, height: above, flexShrink: 0 }} />
+          <div testId="held" style={{ contentVisibility: "hidden", containIntrinsicSize: "30px", flexShrink: 0 } as CSSProperties}>
+            <div testId="held-child" style={{ height: 70, width: 40, margin: 5 }} />
+          </div>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let step = 0; step < 3; step++) renderer.drawFrame()
+      const passes = () => renderer.getLayoutPassCount()
+      const child = renderer.getElementBounds(ids.get("held-child")!)!
+      renderer.drawFrame()
+      const unmoved = passes()
+      expect(renderer.getElementBounds(ids.get("held-child")!), "a frame that moved nothing").toEqual(child)
+      expect(passes() - unmoved).toBe(0)
+
+      const controls = animate(above, 120, { duration: 1, ease: "linear" })
+      renderer.drawFrame()
+      for (let step = 0; step < 3; step++) {
+        renderer.clockFastForward(200)
+        renderer.drawFrame()
+        const before = passes()
+        const moved = renderer.getElementBounds(ids.get("held-child")!)!
+        const read = passes() - before
+        const height = renderer.getBuiltElementBounds(ids.get("above")!)!.height
+        expect(height, `step ${step}: the animation is running`).toBeGreaterThan(20)
+        expect(moved.y - child.y, `step ${step}: the box under the animated one moved with it, as a fresh pass puts it`).toBeCloseTo(height - 20, 1)
+        expect(read, `step ${step}: the frame moved a box, so the held element is laid out again`).toBe(1)
+      }
+      controls.stop()
       if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
     } finally {
       root.unmount()
@@ -1807,6 +1858,12 @@ describeNative("content a read forced keeps its layout across the draws that ski
           sameRects(`${label}, first read`, first.rects, expected.rects!)
           expect(first.passes, `${label}: the first read is one pass`).toBeLessThanOrEqual(1)
           frames(renderer)
+          const kept = cost(renderer, ids, expected.names!)
+          sameRects(`${label}, read after a draw that moved no box`, kept.rects, expected.rects!)
+          expect(kept.passes, `${label}: the draws moved no box, so the pass of the first read is still the window's`).toBe(0)
+          // A layout invalidation that moves nothing ends the share: the read after it is a pass.
+          renderer.flush()
+          frames(renderer)
           const second = cost(renderer, ids, expected.names!)
           sameRects(`${label}, read after a draw`, second.rects, expected.rects!)
           if (shown) {
@@ -1975,8 +2032,13 @@ describeNative("content a read forced keeps its layout across the draws that ski
       sameRects("never drawn", first.rects, expected.rects!)
       expect(first.built, "the first read builds the page and what is in the host").toBeGreaterThanOrEqual(36)
       frames(renderer)
+      const kept = cost(renderer, ids, expected.names!)
+      sameRects("after the first draw", kept.rects, expected.rects!)
+      expect(kept.passes, "the first draw moved no box: the pass of the first read is still the window's").toBe(0)
+      renderer.flush()
+      frames(renderer)
       const second = cost(renderer, ids, expected.names!)
-      sameRects("after the first draw", second.rects, expected.rects!)
+      sameRects("after a layout invalidation and a draw", second.rects, expected.rects!)
       if (!verifying) {
         expect(second.built).toBeLessThanOrEqual(4)
         expect(second.skips).toBeGreaterThanOrEqual(8)
@@ -2267,3 +2329,71 @@ describeNative("animations in auto content that is skipped", { timeout: 120_000 
 })
 
 defineAnimationEventTests("auto")
+
+describeNative("a read of a line in 300 hidden cards, after a paint-only write and a painted frame", { timeout: 120_000 }, () => {
+  const CARDS = 300
+  const Cards = ({ tint }: { tint: ReturnType<typeof motionValue<string>> }) => (
+    <Page>
+      <motion.div testId="tint" style={{ width: 20, height: 20, flexShrink: 0, backgroundColor: tint }} />
+      <div testId="title" style={{ flexShrink: 0 }}>
+        Three lines of 300 cards
+      </div>
+      <div style={{ overflowY: "scroll", flexGrow: 1, display: "flex", flexDirection: "column" }}>
+        <div testId="held" style={{ contentVisibility: "hidden", containIntrinsicSize: "30px", flexShrink: 0 } as CSSProperties}>
+          {Array.from({ length: CARDS }, (_, card) => (
+            <div key={card} testId={`card-${card}`} style={{ margin: 3, padding: 2, flexShrink: 0 }}>
+              {Array.from({ length: 3 }, (_, line) => (
+                <div key={line} testId={`line-${card}-${line}`} style={{ height: 10 + line * 4, width: 40, margin: 1, flexShrink: 0 }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Page>
+  )
+
+  it("runs no layout pass: no box moved, so the pass the first read forced is still the window's", () => {
+    let expected: ReturnType<TestRenderer["getElementBounds"]> | undefined
+    const tint = motionValue("#ff0000")
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(<Cards tint={tint} />)
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let index = 0; index < 3; index++) {
+        renderer.drawFrame()
+        renderer.dispatchNativeEvents()
+      }
+      const line = ids.get("line-250-1")!
+      const first = reading(renderer, ids, ["line-250-1"])
+      expect(first.passes, "the first read forces the held element").toBe(1)
+      expected = first.read[0]
+
+      const colours = ["#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"]
+      for (let round = 0; round < 15; round++) {
+        tint.set(colours[round % colours.length]!)
+        renderer.drawFrame()
+        const passes = renderer.getLayoutPassCount()
+        expect(renderer.getElementBounds(line), `round ${round}: the box a fresh pass puts it at`).toEqual(first.read[0])
+        expect(renderer.getLayoutPassCount() - passes, `round ${round}: no layout pass`).toBe(0)
+      }
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+    // The boxes are the ones a window that never drew has.
+    const fresh = createTestRoot(SIZE)
+    try {
+      fresh.renderer.setInlineDraws(false)
+      fresh.render(<Cards tint={motionValue("#ff0000")} />)
+      fresh.renderer.flush()
+      const freshIds = idsOf(fresh.renderer)
+      expect(fresh.renderer.getElementBounds(freshIds.get("line-250-1")!)).toEqual(expected)
+    } finally {
+      fresh.unmount()
+    }
+  })
+})
