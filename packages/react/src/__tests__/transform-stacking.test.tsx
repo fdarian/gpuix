@@ -136,5 +136,4 @@ describeNative("a transform is a containing block", () => {
       expect(at(10, 10)).toEqual(BLUE)
     })
   })
-
 })
