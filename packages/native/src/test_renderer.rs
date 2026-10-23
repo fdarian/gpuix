@@ -689,7 +689,7 @@ impl TestGpuixRenderer {
         let window_actions = crate::events::app_region::SimulatedWindowActions::default();
         let window_actions_clone = window_actions.clone();
 
-        let platform = gpui_platform::current_platform(false);
+        let platform = gpui_platform::current_offscreen_platform();
         let mut cx = gpui::VisualTestAppContext::new(platform);
         cx.update(|cx| {
             crate::custom_elements::input::init(cx);

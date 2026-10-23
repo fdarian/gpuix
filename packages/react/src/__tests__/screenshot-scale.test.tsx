@@ -120,4 +120,22 @@ describeNative("the screenshot follows the window's scale factor", () => {
   it("rejects a factor that is not positive", () => {
     expect(() => open(0)).toThrow(/scale factor must be positive/)
   })
+
+  // The test window is on no screen, so no display caps it: not the 921 logical px the visible
+  // frame of a 1080p display leaves, nor a wider window than the screen is.
+  it.each([
+    { width: 900, height: 1400 },
+    { width: 2000, height: 600 },
+  ])("is the size asked, $width x $height, whatever the displays", (size) => {
+    for (const scale of [1, 2]) {
+      testRoot = createTestRoot({ ...size, scaleFactor: scale })
+      testRoot.render(<div style={{ width: size.width, height: size.height, backgroundColor: "#0000ff" }} />)
+      expect(testRoot.renderer.getWindowSize()).toEqual(size)
+      const pixels = capture(testRoot)
+      expect([pixels.width, pixels.height]).toEqual([size.width * scale, size.height * scale])
+      expect(pixels.at(pixels.width - 1, pixels.height - 1).slice(0, 3)).toEqual([0, 0, 255])
+      testRoot.unmount()
+      testRoot = undefined
+    }
+  })
 })
