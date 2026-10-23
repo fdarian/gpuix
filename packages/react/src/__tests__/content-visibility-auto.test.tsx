@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest"
 import { defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from "../testing.js"
 import { verifying } from "./retained-harness.js"
+import { defineAnimationEventTests } from "./skipped-animation-events-fixture.js"
 import { AnimatedCard, CARD, elapse, Filler, hovered, shotOf, Sidebar, spent, VisibleLoop } from "./skipped-animations-fixture.js"
 
 const SQUARE_FONT = fs.readFileSync(new URL("./fixtures/gpuix-test-square.ttf", import.meta.url))
@@ -2264,3 +2265,5 @@ describeNative("animations in auto content that is skipped", { timeout: 120_000 
     }
   }
 })
+
+defineAnimationEventTests("auto")

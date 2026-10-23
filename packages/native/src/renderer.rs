@@ -9837,7 +9837,9 @@ fn animate_style(
         resolved
     });
     let (mut transitioned, mut moved, mut bound, mut animated) = (transitioned, moved, bound, animated);
-    if opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now) {
+    // Nothing was stepped for an element built as forced content (or provisionally), so there is no
+    // style that an animation of its opacity runs on, whatever the clocks of its states say.
+    if steps && opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now) {
         // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
         let current = animated
             .as_deref_mut()

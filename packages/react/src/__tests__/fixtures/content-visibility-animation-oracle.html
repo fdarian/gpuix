@@ -1,0 +1,195 @@
+<!doctype html>
+<!--
+  Oracle for animations, transitions and requestAnimationFrame JS inside `content-visibility` skipped content, in headless
+  Chrome (gpuix fork #97; the sibling of content-visibility-observers-oracle.html). The page is a scene named by its hash,
+  `#<scene>:<mode>`, where mode is `hidden` (the host gets `content-visibility: hidden` to skip, `visible` to reveal),
+  `auto` (the host is `content-visibility: auto` in a 400x500 scroller, skipped by scrolling 4000px away, revealed by
+  scrolling back) or `none` (skip and reveal do nothing: the control for q4 and q5). `#list` only publishes the names.
+  A scene is a list of [ms, action] steps run from the start of the script (setTimeout), and leaves its log in
+  `window.__log` (`window.__done` is set at the end). Every entry has t (ms since the script began), s (ms since the skip,
+  null before) and r (ms since the reveal, null before), then one of
+    {did}                                   a step or a mark
+    {ev, target, ...}                       an animation* or transition* event ({animation|property, elapsed, pseudo})
+    {state, skipped}                        contentvisibilityautostatechange on the host (auto only)
+    {probe, phase, tl, tgt (#t) / ctl: {bg, op, anims}}  a read of #t (key tgt) and #ctl (bg/op = computed style, only if the probe reads style;
+                                             anims = getAnimations(): n, state, ct = currentTime, st = startTime, prog, it)
+    {summary, phase, frames, hz, meanDelta, maxDelta, jsMean, jsMax}   q4: rAF cadence per phase
+    {loaf, dur, ...}                        a long-animation-frame entry
+  `#host` (300x200 at top 100 of the scroller; contain-intrinsic-size) holds #t and #t2 (100x40, #t2 for the delayed
+  animation) and, in q4, 2000 `.bulk` boxes. `#ctl`/`#ctl2` are the visible controls with the same animations.
+-->
+<html><head><meta charset="utf-8">
+<style>
+body { margin: 0; height: 900px; position: relative; background: #fff }
+#scroller { position: absolute; left: 0; top: 0; width: 400px; height: 500px; overflow: auto }
+#spacer { position: relative; height: 6000px }
+#host { position: absolute; left: 0; top: 100px; width: 300px; height: 200px; contain-intrinsic-size: 300px 200px; background: #eee }
+#t, #t2, #ctl, #ctl2 { width: 100px; height: 40px; background: rgb(255, 0, 0); margin: 10px }
+#t2 { position: absolute; left: 150px; top: 0 }
+#ctl, #ctl2 { position: absolute; left: 500px }
+#ctl { top: 20px } #ctl2 { top: 80px }
+.bulk { display: inline-block; width: 10px; height: 10px; background: #888 }
+.tr { transition: background-color 300ms linear }
+.loop { animation: bg 500ms linear infinite, op 500ms linear infinite }
+.fin { animation: bg 300ms linear 1 both }
+.fin2 { animation: op 300ms linear 500ms 1 both }
+@keyframes bg { from { background-color: rgb(255, 0, 0) } to { background-color: rgb(0, 0, 255) } }
+@keyframes op { from { opacity: 1 } to { opacity: 0.2 } }
+</style></head>
+<body><div id="scroller"><div id="spacer"><div id="host"><div id="t"></div><div id="t2"></div></div></div></div>
+<div id="ctl"></div><div id="ctl2"></div>
+<script>
+const FAR = 4000
+const [name, mode] = location.hash.slice(1).split(':')
+const scroller = document.getElementById('scroller'), host = document.getElementById('host')
+const t = document.getElementById('t'), t2 = document.getElementById('t2')
+const ctl = document.getElementById('ctl'), ctl2 = document.getElementById('ctl2')
+const els = { t, t2, ctl, ctl2 }
+const t0 = performance.now()
+let skipAt = null, revealAt = null
+const log = []
+const round = (n, d = 1) => (n === null || n === undefined ? n : Math.round(n * 10 ** d) / 10 ** d)
+const L = (o) => {
+  const now = performance.now()
+  log.push({ t: round(now - t0), s: skipAt === null ? null : round(now - skipAt), r: revealAt === null ? null : round(now - revealAt), ...o })
+}
+
+for (const type of ['animationstart', 'animationiteration', 'animationend', 'animationcancel', 'transitionrun', 'transitionstart', 'transitionend', 'transitioncancel']) {
+  document.addEventListener(type, (e) => L({ ev: type, target: e.target.id, ...(type.startsWith('animation') ? { animation: e.animationName } : { property: e.propertyName }), elapsed: e.elapsedTime, stamp: round(e.timeStamp - t0) }), true)
+}
+host.addEventListener('contentvisibilityautostatechange', (e) => L({ state: true, skipped: e.skipped }))
+
+const modes = {
+  hidden: { init: () => (host.style.contentVisibility = 'visible'), skip: () => (host.style.contentVisibility = 'hidden'), reveal: () => (host.style.contentVisibility = 'visible') },
+  auto: { init: () => (host.style.contentVisibility = 'auto'), skip: () => (scroller.scrollTop = FAR), reveal: () => (scroller.scrollTop = 0) },
+  none: { init: () => {}, skip: () => {}, reveal: () => {} },
+}[mode]
+
+const anims = (el) => el.getAnimations().map((a) => ({
+  n: a.animationName || a.transitionProperty, state: a.playState, ct: round(a.currentTime, 2), st: round(a.startTime, 2),
+  prog: round(a.effect.getComputedTiming().progress, 3), it: a.effect.getComputedTiming().currentIteration,
+}))
+let written = null
+function probe(phase, style = true, which = ['t', 'ctl']) {
+  const o = { probe: true, phase, tl: round(document.timeline.currentTime, 2) }
+  for (const k of which) {
+    const el = els[k]
+    const key = k === 't' ? 'tgt' : k
+    o[key] = { anims: anims(el) }
+    if (style) { const cs = getComputedStyle(el); o[key].bg = cs.backgroundColor; o[key].op = cs.opacity }
+  }
+  if (written !== null) o.written = written
+  L(o)
+}
+
+const A = {
+  skip: () => { modes.skip(); skipAt = performance.now(); L({ did: 'skip' }) },
+  reveal: () => {
+    modes.reveal(); revealAt = performance.now(); L({ did: 'reveal' })
+    if (scene.syncRead) probe('sync')
+    requestAnimationFrame(() => {
+      if (!scene.postOnly) probe('raf1')
+      setTimeout(() => probe('post1'), 0)
+      requestAnimationFrame(() => { if (!scene.postOnly) probe('raf2'); setTimeout(() => probe('post2'), 0) })
+    })
+    setTimeout(() => probe('+400'), 400)
+  },
+  readAnim: () => probe('readAnim', false),
+  readStyle: () => probe('readStyle', true),
+  change: () => { ctl.style.backgroundColor = t.style.backgroundColor = 'rgb(0, 0, 255)'; L({ did: 'change bg=blue' }) },
+  addClass: () => { ctl.classList.add('fin'); t.classList.add('fin'); ctl2.classList.add('fin2'); t2.classList.add('fin2'); L({ did: 'add animation classes' }) },
+  mark: () => { console.timeStamp('mark'); L({ did: 'mark' }) },
+}
+
+const R = { t: 'loop', ctl: 'loop' }
+const scenes = {
+  // 1: CSS animation, infinite loop (500 ms background-color + opacity), skipped after running 300 ms / from load
+  q1_run: { ...R, steps: [[300, 'skip'], [1650, 'reveal'], [2200, null]] },
+  q1_run_post: { ...R, postOnly: true, steps: [[300, 'skip'], [1650, 'reveal'], [2200, null]] },
+  q1_run_read: { ...R, steps: [[300, 'skip'], [600, 'readAnim'], [900, 'readAnim'], [1200, 'readStyle'], [1650, 'reveal'], [2200, null]] },
+  q1_load: { ...R, load: true, steps: [[1500, 'reveal'], [2000, null]] },
+  q1_load_read: { ...R, load: true, steps: [[600, 'readAnim'], [1000, 'readStyle'], [1500, 'reveal'], [2000, null]] },
+  // 2: finite 300 ms animation (#t) and one with a 500 ms delay (#t2)
+  q2_run: { t: 'fin', ctl: 'fin', t2: 'fin2', ctl2: 'fin2', steps: [[100, 'skip'], [1500, 'reveal'], [2000, null]] },
+  q2_load: { t: 'fin', ctl: 'fin', t2: 'fin2', ctl2: 'fin2', load: true, steps: [[1500, 'reveal'], [2000, null]] },
+  q2_class: { steps: [[100, 'skip'], [300, 'addClass'], [1500, 'reveal'], [2000, null]] },
+  q2_class_read: { steps: [[100, 'skip'], [300, 'addClass+readAnim'], [700, 'readAnim'], [1500, 'reveal'], [2000, null]] },
+  // 3: transitions (300 ms background-color) triggered by a style change
+  q3_before: { t: 'tr', ctl: 'tr', steps: [[100, 'change'], [150, 'skip'], [1200, 'reveal'], [1700, null]] },
+  q3_sametask: { t: 'tr', ctl: 'tr', steps: [[100, 'change+skip'], [1200, 'reveal'], [1700, null]] },
+  q3_inside: { t: 'tr', ctl: 'tr', steps: [[100, 'skip'], [300, 'change'], [1200, 'reveal'], [1700, null]] },
+  q3_inside_read: { t: 'tr', ctl: 'tr', steps: [[100, 'skip'], [300, 'change+readStyle'], [1200, 'reveal'], [1700, null]] },
+  q3_inside_mid: { t: 'tr', ctl: 'tr', steps: [[100, 'skip'], [300, 'change'], [450, 'reveal'], [1000, null]] },
+  q3_inside_mid_read: { t: 'tr', ctl: 'tr', steps: [[100, 'skip'], [300, 'change+readStyle'], [450, 'reveal'], [1000, null]] },
+  // 4: rAF-driven JS writing style to #t (and 2000 .bulk boxes) every frame; rAF cadence per phase
+  q4_empty: { raf: { writes: 0 }, steps: [[1000, 'mark+skip'], [3000, 'mark+reveal'], [3500, null]] },
+  q4_write1: { raf: { writes: 1 }, syncRead: true, steps: [[1000, 'mark+skip'], [3000, 'mark+reveal'], [3500, null]] },
+  q4_write2000: { raf: { writes: 2000 }, syncRead: true, steps: [[1000, 'mark+skip'], [3000, 'mark+reveal'], [3500, null]] },
+  // 5: frames with no JS: a CSS loop in the skipped content, in the control, in both, in neither (also from load)
+  q5_idle: { steps: [[500, 'mark+skip'], [3500, 'mark+reveal'], [4000, null]] },
+  q5_skippedloop: { t: 'loop', steps: [[500, 'mark+skip'], [3500, 'mark+reveal'], [4000, null]] },
+  q5_skippedloop_load: { t: 'loop', load: true, steps: [[500, 'mark'], [3500, 'mark+reveal'], [4000, null]] },
+  q5_ctlloop: { ctl: 'loop', steps: [[500, 'mark+skip'], [3500, 'mark+reveal'], [4000, null]] },
+  q5_bothloop: { t: 'loop', ctl: 'loop', steps: [[500, 'mark+skip'], [3500, 'mark+reveal'], [4000, null]] },
+}
+const only = { q4_empty: 1, q4_write1: 1, q4_write2000: 1 }
+window.__names = Object.keys(scenes).flatMap((n) => (n.startsWith('q4') || n.startsWith('q5') ? ['hidden', 'auto', 'none'] : ['hidden', 'auto']).map((m) => `${n}:${m}`))
+window.__log = log
+const scene = scenes[name]
+if (scene) {
+  host.classList.add('host')
+  modes.init()
+  if (scene.raf && scene.raf.writes === 2000) for (let i = 0; i < 2000; i++) { const b = document.createElement('div'); b.className = 'bulk'; host.appendChild(b) }
+  if (scene.t) t.classList.add(scene.t)
+  if (scene.ctl) ctl.classList.add(scene.ctl)
+  if (scene.t2) t2.classList.add(scene.t2)
+  if (scene.ctl2) ctl2.classList.add(scene.ctl2)
+  if (scene.t === 'tr' || scene.ctl === 'tr') { t.classList.add('tr'); ctl.classList.add('tr') }
+  if (scene.load) { modes.skip(); skipAt = performance.now(); L({ did: 'skipped from load' }) }
+  L({ did: 'start' })
+
+  const frames = []
+  if (scene.raf) {
+    const bulk = host.querySelectorAll('.bulk')
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) L({ loaf: true, dur: round(e.duration), blocking: round(e.blockingDuration), styleLayoutStart: round(e.styleAndLayoutStart - e.startTime), at: round(e.startTime - t0) })
+    }).observe({ type: 'long-animation-frame', buffered: true })
+    let first = true
+    const frame = (ts) => {
+      const start = performance.now()
+      if (revealAt !== null && first && start > revealAt) {
+        first = false
+        const cs = getComputedStyle(t)
+        L({ did: 'first frame after reveal, before the write', written, opacity: cs.opacity, bg: cs.backgroundColor })
+      }
+      const v = (Math.sin(ts / 200) + 1) / 2
+      const op = v.toFixed(4), bg = `rgb(${Math.round(v * 255)}, 0, ${255 - Math.round(v * 255)})`
+      if (scene.raf.writes >= 1) { t.style.opacity = op; t.style.backgroundColor = bg }
+      for (let i = 0; i < bulk.length; i++) { bulk[i].style.opacity = op; bulk[i].style.backgroundColor = bg }
+      if (scene.raf.writes >= 1) written = op
+      frames.push({ now: start, ts, js: performance.now() - start })
+      requestAnimationFrame(frame)
+    }
+    requestAnimationFrame(frame)
+  }
+
+  const end = Math.max(...scene.steps.map((s) => s[0]))
+  for (const [ms, action] of scene.steps) {
+    setTimeout(() => {
+      if (action) for (const a of action.split('+')) A[a]()
+      if (ms === end) {
+        if (scene.raf) {
+          const phase = (f) => (skipAt !== null && f.now >= skipAt + 100 ? (revealAt !== null && f.now >= revealAt ? 'after' : 'skipped') : 'before')
+          for (const p of ['before', 'skipped', 'after']) {
+            const fs = frames.filter((f) => phase(f) === p)
+            const deltas = fs.slice(1).map((f, i) => f.ts - fs[i].ts)
+            const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null)
+            log.push({ summary: true, phase: p, frames: fs.length, hz: round(deltas.length / (deltas.reduce((x, y) => x + y, 0) / 1000), 1), meanDelta: round(mean(deltas), 2), maxDelta: round(Math.max(...deltas), 2), jsMean: round(mean(fs.map((f) => f.js)), 3), jsMax: round(Math.max(...fs.map((f) => f.js)), 3) })
+          }
+        }
+        setTimeout(() => (window.__done = true), 150)
+      }
+    }, ms)
+  }
+}
+</script></body></html>

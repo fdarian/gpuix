@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
+import { defineAnimationEventTests } from "./skipped-animation-events-fixture.js"
 import { AnimatedCard, elapse, Filler, hovered, shotOf, Sidebar, spent, VisibleLoop } from "./skipped-animations-fixture.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
@@ -584,3 +585,5 @@ describeNative("a tick whose only change is in skipped content", { timeout: 120_
     }
   })
 })
+
+defineAnimationEventTests("hidden")

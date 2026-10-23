@@ -3198,8 +3198,21 @@ and the extent changes as they are built.
   frames skip the subtree again, so the next read after a frame lays out the elements
   that changed and not the whole subtree. A scroller inside the subtree reports its true
   `scrollHeight`.
-- An animation below a skipped element is not built or drawn and fires no event; it
-  goes on from the clock when the element shows.
+- An animation below a skipped element is not built or drawn, costs the window no frame
+  and fires no event while the element skips, and goes on from the clock when it shows. What
+  it owes is told then, as Chrome tells it: one `animationiteration` for the iteration the
+  clock has reached (not one per boundary passed), the `animationstart` and `animationend` of
+  a run that began and ended meanwhile, the `animationend` and `transitionend` of a run that
+  ended; they come in the first frame after the element shows (Chrome takes two or three),
+  none before, and the value in that frame is the one of the instant. An animation, a
+  class or a style change made while the content skips starts, or starts its transition,
+  when it shows, from the start, and so does the animation of content that was skipped
+  from its first frame. `getAnimations()` of an animation that was running when the
+  content began to skip reads the live time (`currentTime` follows the clock) and dispatches
+  nothing; of content never built it lists nothing, where Chrome's read would style the element
+  and create the animation (and then tell `animationstart` and `animationend` at the
+  reveal). The `motion` and motion values of skipped content show the instant they are
+  shown at.
 
 </details>
 
