@@ -138,6 +138,7 @@ function calls(r, ids) {
     playMotionValue: () => r.playMotionValue(910),
     matchesFocus: () => r.matchesFocus(ids.field, ":focus"),
     pointerLockElement: () => r.pointerLockElement(),
+    probeElementBounds: () => r.probeElementBounds(ids.box),
     readClipboardText: () => r.readClipboardText(),
     registerFont: () => r.registerFont(SQUARE_FONT),
     releaseAnimation: () => r.releaseAnimation(r.getAnimations(ids.box)[0].id),
