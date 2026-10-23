@@ -1168,6 +1168,29 @@ mod tests {
     }
 
     #[test]
+    fn the_box_of_a_layout_tape_outlasts_the_frames_of_a_page_of_many_boxes() {
+        let window = WindowId::from(911);
+        let laid_out = Tape::laid_out();
+        record_laid_out(&laid_out, window, 1, 20.0);
+        // The first reset purges whatever there is, the ones after it only past 4096 boxes.
+        crate::automation::forget_window(window);
+        for frame in 0..3 {
+            for id in 0..5000 {
+                box_at(window, 100 + id, frame as f32);
+            }
+            crate::automation::forget_window(window);
+        }
+        laid_out.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+        assert_eq!(x_of(window, 1), Some(20.0), "the pass that lays the content out again finds its box");
+
+        // Until the element is destroyed.
+        crate::automation::retain_bounds(window, |id| id != 1);
+        crate::automation::forget_window(window);
+        laid_out.borrow().replay(window, Phase::LayoutRecorded, Point::default());
+        assert_eq!(x_of(window, 1), None);
+    }
+
+    #[test]
     fn the_notes_of_a_build_that_is_not_a_frames_are_taken_back() {
         clear_build_effects();
         note_build(BuildEffect::Measured(1));

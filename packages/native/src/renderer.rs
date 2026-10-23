@@ -8150,7 +8150,7 @@ impl GpuixView {
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
         let mut highlight_events = Vec::new();
-        self.retain.begin_deferred(env.relocatable);
+        self.retain.begin_deferred(env.relocatable, env.forced);
         // The parent that spliced the element out of its wrappers is not there to say what they hand down.
         let splice = crate::layout::contents::splice_parent(&tree, id);
         let element = {
@@ -8814,6 +8814,7 @@ impl gpui::Render for GpuixView {
         let destroyed = tree.removals() != self.swept_at;
         if destroyed {
             self.tapes.retain(|id| tree.elements.contains_key(&id));
+            crate::automation::retain_bounds(window.window_handle().window_id(), |id| tree.elements.contains_key(&id));
         }
         self.paint_statics.prune(|id| tree.elements.contains_key(&id));
         // Pruned by listener, not existence: dropping `onLayout` and adding it
@@ -9201,6 +9202,7 @@ fn build_element_in(
             start: BuildStart::of(ctx),
             enter,
             relocatable: false,
+            forced: false,
         });
     }
     // After the retained decision: what the `display: contents` ancestors pass down is covered by
@@ -9264,6 +9266,8 @@ pub(crate) struct FrameEnv {
     enter: crate::retain::EnterKey,
     /// Whether the subtree is recorded to be put elsewhere by its scroller.
     relocatable: bool,
+    /// Whether the subtree is inside the content a read of geometry forced.
+    forced: bool,
 }
 
 #[cfg(test)]
@@ -9284,6 +9288,7 @@ impl FrameEnv {
             },
             enter,
             relocatable: false,
+            forced: false,
         }
     }
 }
@@ -9318,7 +9323,7 @@ fn retained_root(
     ctx.stacking_root = false;
     ctx.stacking_item = false;
     ctx.text_box_trim = Default::default();
-    let env = FrameEnv { start, enter: skip.enter, relocatable: skip.overscan.is_some() };
+    let env = FrameEnv { start, enter: skip.enter, relocatable: skip.overscan.is_some(), forced: ctx.retain.in_forced_content() };
     let view = cx.weak_entity();
     let mut retained = gpui::retained(
         retained_id(id),
@@ -10650,6 +10655,12 @@ pub(crate) fn build_host_container(
         skipped,
     );
     if crate::layout::content_visibility::contains_size(&ctx.tree.relevance, content_visibility, element.id) {
+        // The content of a host that contains size is built only when a read forces it, and the draws
+        // that skip it keep what that left of it (the layout nodes, the states, the layout records).
+        el = el.locked_content(skipped);
+        if !skipped {
+            ctx.retain.forced_host();
+        }
         if let Some(style) = style {
             el = crate::layout::content_visibility::contain_skipped(
                 el,

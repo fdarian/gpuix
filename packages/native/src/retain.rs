@@ -452,6 +452,9 @@ struct Record {
     refusal: Option<Refusal>,
     /// `Node::wrapped` of the last build.
     wrapped: Option<Option<gpui::Pixels>>,
+    /// Built in the content a read of geometry forced (`Node::under_forced`): the layout of it is
+    /// carried across the draws that skip the host, see [`Retain::skip_content`].
+    forced: bool,
 }
 
 /// Why an element something runs on is no unit: the first of these that holds of its last build.
@@ -667,6 +670,11 @@ struct Node {
     /// for the frame after to replay: it is built in a plain context, in a frame that plans, outside
     /// a unit and a deferred build (see `Retain::to_record`).
     records: bool,
+    /// The element is the host of content that a read of geometry forces to be built, see
+    /// [`Retain::forced_host`].
+    forced_host: bool,
+    /// An element above it is a forced host: it is built as the content of one.
+    under_forced: bool,
     /// `background_images::still_loading` when the element was entered.
     loading: u64,
     /// Open while the element is built, see [`Record::reads_colors`].
@@ -952,6 +960,9 @@ pub(crate) struct Retain {
     open: bool,
     /// A subtree gpui asked for after the frame was built is being built.
     deferred: bool,
+    /// The subtree being built late is inside the content of a forced host: nothing in `nodes`
+    /// says so, since it begins at the subtree.
+    deferred_forced: bool,
     /// The pass being built only lays out, or is built again to be compared with the frame shown.
     layout_only: bool,
     reference: bool,
@@ -1147,6 +1158,7 @@ impl Retain {
                 .unwrap_or(MIN_ROOT),
             open: false,
             deferred: false,
+            deferred_forced: false,
             layout_only: false,
             reference: false,
             unit: None,
@@ -1616,7 +1628,28 @@ impl Retain {
             .copied()
             .filter(|id| sources.tree.elements.get(id).is_none_or(|element| !element.is_built_by_ancestor(sources.tree)))
             .collect();
+        self.forget_changed_under_skipped(&spine, sources.tree);
         self.deltas = Deltas { all, spine, scrolled, scrolling };
+    }
+
+    /// A record kept of content a frame skips (`skip_content`) says what the element was when it was
+    /// built, and a frame that skips the host builds none of what changed in it: a hover, a focus, a
+    /// motion or a measurement that moved. The spine is closed under parent, so the elements in it
+    /// are the changed ones and the path up to the host, and the records of those go.
+    fn forget_changed_under_skipped(&mut self, spine: &FxHashSet<u64>, tree: &crate::retained_tree::RetainedTree) {
+        if self.skipping.is_empty() {
+            return;
+        }
+        for &id in spine {
+            let mut up = tree.elements.get(&id).and_then(|element| element.parent);
+            while let Some(above) = up {
+                if self.skipping.contains(&above) {
+                    self.records.remove(&id);
+                    break;
+                }
+                up = tree.elements.get(&above).and_then(|element| element.parent);
+            }
+        }
     }
 
     /// Makes the elements `compute_deltas` found dormant the dormant ones, and wakes those it asked
@@ -1658,9 +1691,10 @@ impl Retain {
 
     /// Starts the build of a subtree that gpui asked for after the frame was built, because the
     /// frame before did not leave it recorded as the same, or does not lay out where it was.
-    pub(crate) fn begin_deferred(&mut self, inside_relocatable: bool) {
+    pub(crate) fn begin_deferred(&mut self, inside_relocatable: bool, forced: bool) {
         self.open = self.enabled && !self.backoff.resting;
         self.deferred = true;
+        self.deferred_forced = forced;
         self.unit = None;
         self.inside_relocatable = inside_relocatable;
         self.nodes.clear();
@@ -1672,6 +1706,7 @@ impl Retain {
         self.debug.deferred(self.nodes.first(), self.nodes.len());
         let _ = self.finish_session();
         self.deferred = false;
+        self.deferred_forced = false;
         self.inside_relocatable = false;
     }
 
@@ -2001,6 +2036,8 @@ impl Retain {
             paints_only: false,
             collapsed_table: false,
             wrapped: None,
+            forced_host: false,
+            under_forced: self.nodes.get(parent as usize).map_or(self.deferred_forced, |parent| parent.forced_host || parent.under_forced),
             loading: crate::background_images::still_loading(),
             colors_frame: None,
             reads_colors: false,
@@ -2340,9 +2377,12 @@ impl Retain {
     /// The element being built skips its content (`content-visibility`): nothing below it is built,
     /// and what the frames before recorded of what is below is of builds no frame replays. A
     /// subtree that shows again is built whole, and nothing of it keeps a frame busy while it is
-    /// skipped: no record, no running motion, no sleep. Returns the elements that were dormant, for
-    /// whoever keeps their clocks. Does its work when the element begins to skip, and is cheap
-    /// while it goes on.
+    /// skipped: no running motion, no sleep, and no record but the layout of what a read forced
+    /// (`Record::forced`): the pass that forces the content again skips it with that, as a browser
+    /// keeps the layout of a locked subtree. A forced record of an element that changed meanwhile
+    /// goes too, and so does one that changes while the element skips (`commit_deltas`). Returns
+    /// the elements that were dormant, for whoever keeps their clocks. Does its work when the
+    /// element begins to skip, and is cheap while it goes on.
     pub(crate) fn skip_content(&mut self, tree: &crate::retained_tree::RetainedTree, id: u64) -> Vec<u64> {
         if !self.skipping.insert(id) {
             return Vec::new();
@@ -2350,7 +2390,9 @@ impl Retain {
         let mut asleep = Vec::new();
         let mut pending: Vec<u64> = tree.elements.get(&id).map(|element| element.children.clone()).unwrap_or_default();
         while let Some(below) = pending.pop() {
-            self.records.remove(&below);
+            if self.records.get(&below).is_some_and(|record| !record.forced || self.deltas.spine.contains(&below)) {
+                self.records.remove(&below);
+            }
             self.dynamic.remove(&below);
             self.unbuilt.remove(&below);
             self.woken.remove(&below);
@@ -2363,6 +2405,25 @@ impl Retain {
             }
         }
         asleep
+    }
+
+    /// The element being built is the host of content that a read of geometry forces: it is laid out
+    /// for the read and skipped by the frames, which keep the layout of what was built in it.
+    pub(crate) fn forced_host(&mut self) {
+        if let Some(node) = self.top() {
+            node.forced_host = true;
+        }
+    }
+
+    /// Whether what the element about to be entered holds is built as the content of a forced host.
+    pub(crate) fn in_forced_content(&self) -> bool {
+        match self.stack.last() {
+            Some(&at) => {
+                let node = &self.nodes[at as usize];
+                node.forced_host || node.under_forced
+            }
+            None => self.deferred_forced,
+        }
     }
 
     /// The element being built shows its content.
@@ -2762,6 +2823,7 @@ impl Retain {
                     motion,
                     refusal,
                     wrapped: node.wrapped,
+                    forced: node.under_forced,
                 },
             );
         }
@@ -4823,6 +4885,70 @@ mod tests {
         page.edit(1);
         let skip = page_in(&mut page, false, Some(list)).expect("the entry is skipped");
         assert_eq!(skip.overscan, Some(gpui::px(390.0)));
+    }
+
+    /// A frame of the page in which 2 holds the content a read forces (`forced`) or skips, edited so that it is
+    /// built. Says whether 3 and 4 were skipped with their records.
+    fn host_frame(page: &mut Units, hovered: &[u64], layout_only: bool, forced: bool) -> [bool; 2] {
+        let mut skipped = [false; 2];
+        page.edit(1);
+        page.edit(2);
+        page.frame(hovered, layout_only, |page| {
+            page.element(1, None, |page| {
+                page.element(2, None, |page| {
+                    if forced {
+                        page.retain.forced_host();
+                        page.retain.show_content(2);
+                        for (child, skipped) in [3, 4].into_iter().zip(&mut skipped) {
+                            *skipped = page.enter(child);
+                            if !*skipped {
+                                page.retain.exit();
+                            }
+                        }
+                    } else {
+                        page.retain.skip_content(&page.tree, 2);
+                    }
+                });
+            });
+        });
+        skipped
+    }
+
+    #[test]
+    fn a_frame_that_skips_content_keeps_the_records_of_what_a_read_forced() {
+        let mut page = Units::new();
+        assert_eq!(host_frame(&mut page, &[], true, true), [false, false], "built whole");
+        assert_eq!(host_frame(&mut page, &[], false, false), [false, false]);
+        assert!(page.retain.records.contains_key(&3) && page.retain.records.contains_key(&4));
+        assert_eq!(host_frame(&mut page, &[], true, true), [true, true], "the pass that forces it skips both");
+        assert_eq!(host_frame(&mut page, &[], false, false), [false, false]);
+        assert_eq!(host_frame(&mut page, &[], true, true), [true, true], "however many draws come first");
+
+        // A record of a build that was not forced goes when the content begins to skip.
+        let mut page = Units::new();
+        page.page(&[], None, None);
+        host_frame(&mut page, &[], false, false);
+        assert!(!page.retain.records.contains_key(&3) && !page.retain.records.contains_key(&4));
+        assert_eq!(host_frame(&mut page, &[], true, true), [false, false]);
+    }
+
+    #[test]
+    fn what_changes_under_content_a_frame_skips_is_not_replayed_when_a_read_forces_it() {
+        let mut page = Units::new();
+        host_frame(&mut page, &[], true, true);
+        // The pointer moves onto 3 in the frame that begins to skip the content.
+        host_frame(&mut page, &[3], false, false);
+        assert!(!page.retain.records.contains_key(&3), "it changed");
+        assert!(page.retain.records.contains_key(&4), "and 4 did not");
+        assert_eq!(host_frame(&mut page, &[3], true, true), [false, true]);
+
+        // It moves onto 4 in a frame after that skipped the content.
+        host_frame(&mut page, &[3], false, false);
+        assert!(page.retain.records.contains_key(&3) && page.retain.records.contains_key(&4));
+        host_frame(&mut page, &[4], false, false);
+        assert!(!page.retain.records.contains_key(&3) && !page.retain.records.contains_key(&4), "3 is no longer hovered, and 4 is");
+        assert!(page.retain.records.contains_key(&2), "the host is built by every frame");
+        assert_eq!(host_frame(&mut page, &[4], true, true), [false, false]);
     }
 
     #[test]

@@ -200,17 +200,23 @@ impl WindowBounds {
     fn reset(&mut self) {
         if self.boxes.len() > self.purge_at {
             let (frame, live) = (self.frame, &self.live);
+            // A box a layout record holds is read again by the pass that forces the content it is in,
+            // however many draws come first (`Retain::skip_content`), and no replay put it back in
+            // between: it goes with its element (`retain`).
             self.boxes.retain(|_, stored| {
                 stored.frame == frame
-                    || [&stored.recorded, &stored.laid_out]
-                        .into_iter()
-                        .flatten()
-                        .any(|(_, owner)| crate::tape::delta_of(*owner, live).is_some())
+                    || stored.laid_out.is_some()
+                    || stored.recorded.iter().any(|(_, owner)| crate::tape::delta_of(*owner, live).is_some())
             });
             self.purge_at = (self.boxes.len() * 2).max(4096);
         }
         self.frame += 1;
         self.live.clear();
+    }
+
+    /// Forgets the boxes of the elements `keep` says are gone.
+    fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
+        self.boxes.retain(|id, _| keep(*id));
     }
 
     fn insert(&mut self, id: u64, bounds: ElementBounds, owner: u64) {
@@ -262,6 +268,15 @@ pub fn bounds_frame_reset() -> impl IntoElement {
     .absolute()
     .w(px(0.0))
     .h(px(0.0))
+}
+
+/// Forgets the boxes of the elements of `window` that `keep` says are destroyed.
+pub(crate) fn retain_bounds(window: WindowId, keep: impl FnMut(u64) -> bool) {
+    BOUNDS.with(|cell| {
+        if let Some(bounds) = cell.borrow_mut().get_mut(&window) {
+            bounds.retain(keep);
+        }
+    });
 }
 
 pub(crate) fn forget_window(window: WindowId) {
