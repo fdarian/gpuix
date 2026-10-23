@@ -1494,6 +1494,10 @@ impl Retain {
             match seen.scrolls.get(id) {
                 Some(before) if before == bits => continue,
                 Some(_) => scrolling = true,
+                // What a pass that only lays out built in a scroller it found at its origin was built
+                // where it is. A frame that paints still takes a new handle as a change: clip-cull
+                // counts what the frame after the first paint of a scroller culls, which it builds.
+                None if sources.layout_only && f32::from_bits(bits.0) == 0.0 && f32::from_bits(bits.1) == 0.0 => continue,
                 None => {}
             }
             changed.push(*id);
@@ -4834,6 +4838,31 @@ mod tests {
         page.customs = vec![(3, Some(10))];
         page.page(&[], None, None);
         assert!(page.retain.deltas.spine.contains(&3));
+    }
+
+    #[test]
+    fn a_pass_that_only_lays_out_finds_a_scroller_at_its_origin_not_scrolled() {
+        let mut page = Units::new();
+        page.pass(&[], true, None, None);
+        page.scrolls.insert(2, gpui::ScrollHandle::new());
+        page.pass(&[], true, None, None);
+        assert!(!page.retain.deltas.scrolled.contains(&2));
+        assert!(!page.retain.deltas.spine.contains(&2), "{:?}", page.retain.deltas.spine);
+        assert!(page.retain.seen.scrolls.contains_key(&2), "the frame after compares with it");
+        // It moves, and is scrolled.
+        page.scrolls[&2].set_offset(gpui::point(gpui::px(0.0), gpui::px(-40.0)));
+        page.pass(&[], true, None, None);
+        assert!(page.retain.deltas.scrolled.contains(&2));
+        // One that is first found away from its origin is scrolled.
+        let moved = gpui::ScrollHandle::new();
+        moved.set_offset(gpui::point(gpui::px(0.0), gpui::px(-40.0)));
+        page.scrolls.insert(5, moved);
+        page.pass(&[], true, None, None);
+        assert!(page.retain.deltas.scrolled.contains(&5));
+        // And a frame that paints takes a new handle as a change.
+        page.scrolls.insert(3, gpui::ScrollHandle::new());
+        page.page(&[], None, None);
+        assert!(page.retain.deltas.scrolled.contains(&3));
     }
 
     #[test]

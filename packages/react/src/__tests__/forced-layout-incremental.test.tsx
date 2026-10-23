@@ -743,6 +743,96 @@ function mountWithoutAFrame(entries: number, retention: boolean, icons = false) 
   }
 }
 
+type Appearing = {
+  setShown: (shown: boolean) => void
+  setWidth: (width: number) => void
+  scroller: PublicInstance | null
+}
+
+/** A page whose scroller, with entries that all fit in it, mounts after the window has drawn. */
+function Appearing(props: { page: Appearing; entries: number }) {
+  const [shown, setShown] = useState(false)
+  const [width, setWidth] = useState(16)
+  props.page.setShown = setShown
+  props.page.setWidth = setWidth
+  return (
+    <div style={{ width: 900, height: 780, display: "flex", flexDirection: "column" }}>
+      {shown && (
+        <div
+          testId="list"
+          ref={(instance) => {
+            props.page.scroller = instance
+          }}
+          style={{ overflowY: "scroll", height: 400, display: "flex", flexDirection: "column" }}
+        >
+          {Array.from({ length: props.entries }, (_, index) => (
+            <div key={index} testId={`entry-${index}`} style={{ flexShrink: 0 }}>
+              <Entry probe={index === 0 ? width : null} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The scroller mounts in the first round and a probe in its first entry changes in each round after it, with a scroll
+ *  write after each step and no frame drawn since the scroller mounted: what each round built, and the boxes read after it. */
+function appearWithoutAFrame(entries: number, retention: boolean) {
+  const page: Appearing = { setShown: () => {}, setWidth: () => {}, scroller: null }
+  const root = createTestRoot({ width: 900, height: 780 })
+  const renderer = root.renderer
+  try {
+    root.render(<Appearing page={page} entries={entries} />)
+    renderer.clockPause()
+    renderer.setInlineDraws(false)
+    renderer.setA11yActive(false)
+    if (!retention) renderer.setRetainEnabled(false)
+    settle(renderer)
+    const painted = renderer.getPaintedFrameCount()
+    const rounds: { built: number; boxes: unknown[] }[] = []
+    const ids = new Map<string, number>()
+    for (let round = 0; round < ROUNDS; round++) {
+      renderer.resetBuildCounters()
+      flushSync(() => {
+        if (round === 0) page.setShown(true)
+        page.setWidth(20 + round)
+      })
+      page.scroller!.scrollTop = 0
+      const built = renderer.getBuildCounters().elementsBuilt
+      if (round === 0) for (const testId of ["list", "probe", "entry-0", `entry-${entries - 1}`]) ids.set(testId, renderer.findByTestId(testId)!.id)
+      rounds.push({ built, boxes: [...ids.values()].map((id) => renderer.getElementBounds(id)) })
+    }
+    expect(renderer.getPaintedFrameCount() - painted, "no frame was drawn").toBe(0)
+    return { rounds, mismatches: renderer.getRetentionMismatches() }
+  } finally {
+    renderer.setInlineDraws(true)
+    root.unmount()
+  }
+}
+
+describeNative("a forced read on a page whose scroller appeared since it was presented", { timeout: 60_000 }, () => {
+  const verifying = process.env.GPUIX_RETAIN_VERIFY !== undefined
+
+  it("builds the scroller once and the change after it, not the scroller again", () => {
+    const entries = 15
+    const kept = appearWithoutAFrame(entries, true)
+    const built = appearWithoutAFrame(entries, false)
+
+    for (const round of built.rounds) expect(round.built, "retention off builds the scroller every pass").toBeGreaterThanOrEqual(entries * 10)
+    expect(kept.rounds[0]!.built, "the first pass builds it").toBeGreaterThanOrEqual(entries * 10)
+    if (!verifying) {
+      for (const round of kept.rounds.slice(1)) {
+        expect(round.built, "the entry that changed and the spine above it, not the scroller").toBeLessThanOrEqual(20)
+      }
+    }
+    expect(kept.mismatches).toEqual([])
+    kept.rounds.forEach((round, index) => {
+      expect(round.boxes, `the boxes read after round ${index} are the ones a build gives`).toEqual(built.rounds[index]!.boxes)
+    })
+  })
+})
+
 describeNative("a forced read on a page that has not been presented since it changed", { timeout: 120_000 }, () => {
   const verifying = process.env.GPUIX_RETAIN_VERIFY !== undefined
 
