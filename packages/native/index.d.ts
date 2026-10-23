@@ -494,6 +494,15 @@ export declare class GpuixRenderer {
    * `null` stops it; clearing the wake callback stops it too.
    */
   simulateFrameWakes(intervalMs?: number | undefined | null): void
+  /**
+   * Posts a real NSEvent for this window from `com.apple.NSEventThread`, the thread AppKit
+   * receives WindowServer input on, so an idle app's wake path is exercised the way input
+   * reaches it. `kind` is `"keyDown"` (the key `a`), `"mouseMove"`, `"click"` (a left mouse
+   * down, then up) or `"scroll"` (3 lines down); the last three need `x` and `y`, in logical
+   * pixels from the window's top left. The events go to `NSApplication`'s own queue: nothing
+   * is posted to the OS, and the window is not made key.
+   */
+  postNativeEvent(kind: string, x?: number | undefined | null, y?: number | undefined | null): void
   /** Makes every `tick()` sleep `ms` inside its native call, a forced-slow frame. 0 turns it off. */
   setTickDelay(ms: number): void
 }

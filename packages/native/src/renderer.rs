@@ -4401,6 +4401,42 @@ impl GpuixRenderer {
         }
     }
 
+    /// Posts a real NSEvent for this window from `com.apple.NSEventThread`, the thread AppKit
+    /// receives WindowServer input on, so an idle app's wake path is exercised the way input
+    /// reaches it. `kind` is `"keyDown"` (the key `a`), `"mouseMove"`, `"click"` (a left mouse
+    /// down, then up) or `"scroll"` (3 lines down); the last three need `x` and `y`, in logical
+    /// pixels from the window's top left. The events go to `NSApplication`'s own queue: nothing
+    /// is posted to the OS, and the window is not made key.
+    #[napi]
+    pub fn post_native_event(&self, kind: String, x: Option<f64>, y: Option<f64>) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+            let kind = crate::native_event::Kind::parse(&kind, x, y)?;
+            let ns_view = update_window_without_view(|window, _cx| {
+                let handle = HasWindowHandle::window_handle(window)
+                    .map_err(|error| Error::from_reason(error.to_string()))?;
+                match handle.as_raw() {
+                    RawWindowHandle::AppKit(appkit) => Ok(appkit.ns_view.as_ptr() as usize),
+                    other => Err(Error::from_reason(format!(
+                        "The window is not an AppKit window: {other:?}"
+                    ))),
+                }
+            })??;
+            // SAFETY: the view is the live content view of this renderer's window, and napi
+            // calls run on the main thread.
+            unsafe { crate::native_event::post(ns_view as *mut objc::runtime::Object, kind) };
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (kind, x, y);
+            Err(Error::from_reason("postNativeEvent needs macOS"))
+        }
+    }
+
     /// Makes every `tick()` sleep `ms` inside its native call, a forced-slow frame. 0 turns it off.
     #[napi]
     pub fn set_tick_delay(&self, ms: u32) -> Result<()> {

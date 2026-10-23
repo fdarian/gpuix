@@ -28,6 +28,8 @@ mod layout;
 mod markdown;
 mod media;
 mod motion;
+#[cfg(all(feature = "test-support", target_os = "macos"))]
+mod native_event;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod platform;
 mod observers;

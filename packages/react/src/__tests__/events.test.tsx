@@ -66,6 +66,102 @@ describe("frame loop", () => {
     },
   )
 
+  // The test window is not key: nothing here activates the app or posts to the OS. The events
+  // are real NSEvents handed to NSApplication from com.apple.NSEventThread, which is how
+  // AppKit receives WindowServer input, and that thread is what the wake path has to see.
+  it.skipIf(process.platform !== "darwin")(
+    "wakes an idle wake loop for input that AppKit receives, and runs its handler in that tick",
+    () => {
+      const rendererPath = fileURLToPath(
+        new URL("../reconciler/renderer.ts", import.meta.url),
+      )
+      const script = [
+        'import React from "react"',
+        `import { createRenderer, render } from ${JSON.stringify(rendererPath)}`,
+        'import { startFrameLoop } from "@gpuix/native/runtime"',
+        "const renderer = createRenderer()",
+        "renderer.init({ focus: false })",
+        "const wakes = []",
+        "const handled = []",
+        "const note = (kind) => () => { handled.push({ kind, at: performance.now() }) }",
+        "render(",
+        '  React.createElement("div", {',
+        '    style: { width: "100%", height: "100%" },',
+        "    tabIndex: 0,",
+        '    onKeyDown: note("elementKeyDown"),',
+        '    onMouseMove: note("mouseMove"),',
+        '    onClick: note("click"),',
+        '    onWheel: note("scroll"),',
+        "  }),",
+        // Nothing has focus, so a key goes to the window's handler.
+        '  { renderer, onKeyDown: note("keyDown") },',
+        ")",
+        "startFrameLoop({",
+        "  requiresTick: () => renderer.requiresTick(),",
+        "  tick: () => renderer.tick(),",
+        "  setFrameWakeCallback: (callback) => renderer.setFrameWakeCallback(callback && (() => {",
+        "    wakes.push(performance.now())",
+        "    callback()",
+        "  })),",
+        "})",
+        "const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
+        // The launch measurements wake the loop in bursts for up to ~6 s, with gaps of seconds.
+        "const launchedAt = performance.now()",
+        "const settle = async () => {",
+        "  for (;;) {",
+        "    const now = performance.now()",
+        "    const quiet = now - (wakes.length === 0 ? launchedAt : wakes[wakes.length - 1])",
+        "    if (quiet >= 800 && now - launchedAt >= 7000) return quiet",
+        '    if (now - launchedAt > 20000) throw new Error("the wake loop did not settle in 20 s")',
+        "    await sleep(20)",
+        "  }",
+        "}",
+        "const size = renderer.getWindowSize()",
+        "await settle()",
+        "const idleFrom = wakes.length",
+        "await sleep(2000)",
+        "const idleWakes = wakes.length - idleFrom",
+        "const kinds = {}",
+        'for (const kind of ["keyDown", "mouseMove", "click", "scroll"]) {',
+        "  const quietMs = await settle()",
+        "  const wakesBefore = wakes.length",
+        "  const handledBefore = handled.length",
+        "  const postedAt = performance.now()",
+        "  renderer.postNativeEvent(kind, size.width / 2, size.height / 2)",
+        "  await sleep(400)",
+        "  const firstHandled = handled.slice(handledBefore).find((entry) => entry.kind === kind)",
+        "  kinds[kind] = {",
+        "    quietMs,",
+        "    postToWakeMs: wakes.length > wakesBefore ? wakes[wakesBefore] - postedAt : null,",
+        "    postToHandlerMs: firstHandled ? firstHandled.at - postedAt : null,",
+        "  }",
+        "}",
+        "console.log(JSON.stringify({ idleWakes, kinds }))",
+        "process.exit(0)",
+      ].join("\n")
+      const result = spawnSync("bun", ["-e", script], {
+        encoding: "utf8",
+        timeout: 40_000,
+      })
+      expect(result.status, result.stderr || result.error?.message).toBe(0)
+      const report = JSON.parse(result.stdout.trim().split("\n").at(-1) ?? "")
+      console.log(`post -> wake -> handler latencies: ${JSON.stringify(report.kinds)}`)
+
+      // #77: an idle window gets no wakes.
+      expect(report.idleWakes).toBe(0)
+      for (const kind of ["keyDown", "mouseMove", "click", "scroll"]) {
+        const measured = report.kinds[kind]
+        // No wake between the settle and the post, so the wake is the event's.
+        expect(measured.quietMs, kind).toBeGreaterThanOrEqual(800)
+        expect(measured.postToWakeMs, `${kind} woke`).not.toBeNull()
+        expect(measured.postToWakeMs, `${kind} wake latency`).toBeLessThanOrEqual(20)
+        expect(measured.postToHandlerMs, `${kind} handler ran`).not.toBeNull()
+        expect(measured.postToHandlerMs, `${kind} handler latency`).toBeLessThanOrEqual(50)
+      }
+    },
+    40_000,
+  )
+
   it.skipIf(process.platform !== "darwin")(
     "arms no timer on an idle wake loop and keeps replacement loops registered",
     () => {
