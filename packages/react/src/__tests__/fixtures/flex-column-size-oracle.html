@@ -1,0 +1,70 @@
+<!doctype html>
+<!--
+  Oracle for flex-column-size.test.tsx: the boxes (`[x, y, width, height]` relative to the case box) of every element with an
+  `id` that headless Chrome lays out for a flex column of automatic height, at device scale 1 and 2. A column container's
+  automatic height is the sum of its items' hypothetical main sizes: the flex basis clamped by the min and max height, where
+  the content only enters through `min-height: auto`. The card `card` (a column, 1px border, `overflow: hidden`) holds `prev`
+  (padding 64px 0, a column holding `content`, 300x132) and `foot` (43px high), in `outer`. There is no text. Regenerate
+  (`flex-column-size-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh flex-column-size
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+#case{position:absolute;left:0;top:0;width:700px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const OUTER = {
+  grid: 'display:grid;grid-template-columns:1fr;width:700px',
+  'grid align-start': 'display:grid;grid-template-columns:1fr;align-items:start;width:700px',
+  block: 'display:block;width:700px',
+  'flex column': 'display:flex;flex-direction:column;width:700px',
+};
+// `o` overrides what a case changes of the card, `prev` and `content`.
+const page = (outer, o = {}) => {
+  const card = `display:flex;flex-direction:column;border:1px solid #888;${o.card ?? 'overflow:hidden;min-height:0'}`;
+  const prev = `flex:${o.grow ?? 1} ${o.shrink ?? 1} ${o.basis ?? '0'};padding:${o.padding ?? '64px 0'};display:flex;flex-direction:column;${o.prev ?? 'min-height:0'}`;
+  const content = `width:300px;height:132px;flex-shrink:0;${o.content ?? ''}`;
+  const foot = o.foot === false ? '' : `<div id="foot" style="height:43px;flex-shrink:0;${o.footStyle ?? ''}"></div>`;
+  return `<div style="${OUTER[outer]}"><div id="card" style="${card}"><div id="prev" style="${prev}"><div id="content" style="${content}"></div></div>${foot}</div></div>`;
+};
+const cases = {};
+for (const basis of ['0', '0px', '1px', '0%', 'auto', '500px'])
+  for (const minHeight of ['0', 'auto'])
+    for (const overflow of ['visible', 'hidden'])
+      for (const grow of [1, 0])
+        for (const outer of Object.keys(OUTER))
+          cases[`basis ${basis} min-height ${minHeight} overflow ${overflow} grow ${grow} in ${outer}`] =
+            () => page(outer, { basis, grow, prev: `min-height:${minHeight};overflow:${overflow}` });
+// The card itself: not clipped, not allowed to shrink below its content, without the foot, its own padding and border.
+for (const outer of Object.keys(OUTER)) {
+  cases[`card overflow visible in ${outer}`] = () => page(outer, { card: 'overflow:visible;min-height:0' });
+  cases[`card min-height auto in ${outer}`] = () => page(outer, { card: 'overflow:hidden' });
+  cases[`no foot in ${outer}`] = () => page(outer, { foot: false });
+  cases[`card padding in ${outer}`] = () => page(outer, { card: 'overflow:hidden;min-height:0;padding:7px 3px' });
+  cases[`prev margin in ${outer}`] = () => page(outer, { prev: 'min-height:0;margin:9px 0 5px' });
+  cases[`prev max-height 50 in ${outer}`] = () => page(outer, { basis: 'auto', prev: 'min-height:0;max-height:50px' });
+  cases[`prev basis 500px max-height 200 in ${outer}`] = () => page(outer, { basis: '500px', grow: 0, prev: 'min-height:0;max-height:200px' });
+  cases[`prev min-height 300 in ${outer}`] = () => page(outer, { prev: 'min-height:300px' });
+  cases[`prev height 40 basis auto in ${outer}`] = () => page(outer, { basis: 'auto', prev: 'min-height:0;height:40px' });
+  cases[`prev height 40 basis 0 in ${outer}`] = () => page(outer, { prev: 'min-height:0;height:40px' });
+  cases[`prev no shrink basis 0 in ${outer}`] = () => page(outer, { shrink: 0 });
+  cases[`prev content shrinks basis 0 in ${outer}`] = () => page(outer, { content: 'flex-shrink:1' });
+  cases[`prev basis 50px grow 0 in ${outer}`] = () => page(outer, { basis: '50px', grow: 0, prev: 'min-height:auto' });
+  cases[`prev padding 0 in ${outer}`] = () => page(outer, { padding: '0', prev: 'min-height:auto' });
+}
+cases['two items basis 0 in a column'] = () => `<div style="${OUTER.grid}"><div id="card" style="display:flex;flex-direction:column;overflow:hidden;min-height:0"><div id="prev" style="flex:1 1 0;min-height:0;padding:10px 0"><div id="content" style="height:100px"></div></div><div id="foot" style="flex:1 1 0;min-height:0;padding:5px 0"><div id="inner" style="height:70px"></div></div></div></div>`;
+cases['gap between items basis 0'] = () => `<div style="${OUTER.grid}"><div id="card" style="display:flex;flex-direction:column;gap:11px;overflow:hidden;min-height:0"><div id="prev" style="flex:1 1 0;min-height:0"><div id="content" style="height:100px"></div></div><div id="foot" style="height:43px"></div></div></div>`;
+cases['row card stays by its content'] = () => `<div style="${OUTER.grid}"><div id="card" style="display:flex;flex-direction:row;overflow:hidden;min-width:0"><div id="prev" style="flex:1 1 0;min-width:0"><div id="content" style="width:132px;height:50px"></div></div><div id="foot" style="width:43px;height:20px"></div></div></div>`;
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, build] of Object.entries(cases)) {
+  const html = build();
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes, scale: window.devicePixelRatio }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

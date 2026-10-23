@@ -1,0 +1,7514 @@
+{
+ "basis 0 min-height 0 overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height 0 overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0 min-height auto overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height 0 overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0px min-height auto overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height 0 overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 1px min-height auto overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 1px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height 0 overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 0% min-height auto overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 0%;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height 0 overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis auto min-height auto overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height 0 overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow visible grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:visible\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 1 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 1 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 1 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 1 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "basis 500px min-height auto overflow hidden grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:auto;overflow:hidden\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    545
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    500
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    501,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card overflow visible in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:visible;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card min-height auto in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "no foot in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    130
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ]
+  },
+  "scale": 1
+ },
+ "card padding in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0;padding:7px 3px\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    4,
+    8,
+    692,
+    128
+   ],
+   "content": [
+    4,
+    72,
+    300,
+    132
+   ],
+   "foot": [
+    4,
+    136,
+    692,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev margin in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;margin:9px 0 5px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    1,
+    10,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    74,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    143,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev max-height 50 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:50px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 500px max-height 200 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:200px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    245
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    200
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    201,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev min-height 300 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:300px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    345
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    300
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    301,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis auto in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev no shrink basis 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 0 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev content shrinks basis 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;flex-shrink:1\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    0
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 50px grow 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 50px;padding:64px 0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev padding 0 in grid": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    177
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    132
+   ],
+   "content": [
+    1,
+    1,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    133,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card overflow visible in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:visible;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card min-height auto in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "no foot in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    130
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ]
+  },
+  "scale": 1
+ },
+ "card padding in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0;padding:7px 3px\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    4,
+    8,
+    692,
+    128
+   ],
+   "content": [
+    4,
+    72,
+    300,
+    132
+   ],
+   "foot": [
+    4,
+    136,
+    692,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev margin in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;margin:9px 0 5px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    1,
+    10,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    74,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    143,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev max-height 50 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:50px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 500px max-height 200 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:200px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    245
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    200
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    201,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev min-height 300 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:300px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    345
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    300
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    301,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis auto in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev no shrink basis 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 0 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev content shrinks basis 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;flex-shrink:1\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    0
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 50px grow 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 50px;padding:64px 0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev padding 0 in grid align-start": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;align-items:start;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    177
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    132
+   ],
+   "content": [
+    1,
+    1,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    133,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card overflow visible in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:visible;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card min-height auto in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "no foot in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    130
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ]
+  },
+  "scale": 1
+ },
+ "card padding in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0;padding:7px 3px\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    4,
+    8,
+    692,
+    128
+   ],
+   "content": [
+    4,
+    72,
+    300,
+    132
+   ],
+   "foot": [
+    4,
+    136,
+    692,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev margin in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;margin:9px 0 5px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    1,
+    10,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    74,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    143,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev max-height 50 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:50px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 500px max-height 200 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:200px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    245
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    200
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    201,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev min-height 300 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:300px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    345
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    300
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    301,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis auto in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev no shrink basis 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 0 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev content shrinks basis 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;flex-shrink:1\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    0
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 50px grow 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 50px;padding:64px 0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev padding 0 in block": {
+  "html": "<div style=\"display:block;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    177
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    132
+   ],
+   "content": [
+    1,
+    1,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    133,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card overflow visible in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:visible;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "card min-height auto in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "no foot in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    130
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ]
+  },
+  "scale": 1
+ },
+ "card padding in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0;padding:7px 3px\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    4,
+    8,
+    692,
+    128
+   ],
+   "content": [
+    4,
+    72,
+    300,
+    132
+   ],
+   "foot": [
+    4,
+    136,
+    692,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev margin in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;margin:9px 0 5px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    187
+   ],
+   "prev": [
+    1,
+    10,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    74,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    143,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev max-height 50 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:50px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 500px max-height 200 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 500px;padding:64px 0;display:flex;flex-direction:column;min-height:0;max-height:200px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    245
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    200
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    201,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev min-height 300 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:300px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    345
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    300
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    301,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis auto in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 auto;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev height 40 basis 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0;height:40px\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev no shrink basis 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 0 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev content shrinks basis 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:64px 0;display:flex;flex-direction:column;min-height:0\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;flex-shrink:1\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    173
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    128
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    0
+   ],
+   "foot": [
+    1,
+    129,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev basis 50px grow 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:0 1 50px;padding:64px 0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    305
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    260
+   ],
+   "content": [
+    1,
+    65,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    261,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "prev padding 0 in flex column": {
+  "html": "<div style=\"display:flex;flex-direction:column;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;border:1px solid #888;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;padding:0;display:flex;flex-direction:column;min-height:auto\"><div id=\"content\" style=\"width:300px;height:132px;flex-shrink:0;\"></div></div><div id=\"foot\" style=\"height:43px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    177
+   ],
+   "prev": [
+    1,
+    1,
+    698,
+    132
+   ],
+   "content": [
+    1,
+    1,
+    300,
+    132
+   ],
+   "foot": [
+    1,
+    133,
+    698,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "two items basis 0 in a column": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;min-height:0;padding:10px 0\"><div id=\"content\" style=\"height:100px\"></div></div><div id=\"foot\" style=\"flex:1 1 0;min-height:0;padding:5px 0\"><div id=\"inner\" style=\"height:70px\"></div></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    30
+   ],
+   "prev": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "content": [
+    0,
+    10,
+    700,
+    100
+   ],
+   "foot": [
+    0,
+    20,
+    700,
+    10
+   ],
+   "inner": [
+    0,
+    25,
+    700,
+    70
+   ]
+  },
+  "scale": 1
+ },
+ "gap between items basis 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:column;gap:11px;overflow:hidden;min-height:0\"><div id=\"prev\" style=\"flex:1 1 0;min-height:0\"><div id=\"content\" style=\"height:100px\"></div></div><div id=\"foot\" style=\"height:43px\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    54
+   ],
+   "prev": [
+    0,
+    0,
+    700,
+    0
+   ],
+   "content": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "foot": [
+    0,
+    11,
+    700,
+    43
+   ]
+  },
+  "scale": 1
+ },
+ "row card stays by its content": {
+  "html": "<div style=\"display:grid;grid-template-columns:1fr;width:700px\"><div id=\"card\" style=\"display:flex;flex-direction:row;overflow:hidden;min-width:0\"><div id=\"prev\" style=\"flex:1 1 0;min-width:0\"><div id=\"content\" style=\"width:132px;height:50px\"></div></div><div id=\"foot\" style=\"width:43px;height:20px\"></div></div></div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "prev": [
+    0,
+    0,
+    657,
+    50
+   ],
+   "content": [
+    0,
+    0,
+    132,
+    50
+   ],
+   "foot": [
+    657,
+    0,
+    43,
+    20
+   ]
+  },
+  "scale": 1
+ }
+}
