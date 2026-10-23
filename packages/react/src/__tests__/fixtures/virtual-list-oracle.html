@@ -1,0 +1,115 @@
+<!doctype html>
+<!--
+  Oracle for the rows of a <virtual-list> (round 15c, 15a leftovers: virtual-list rows on the device pixel, a virtual
+  list's getBoundingClientRect): a scroller of divs whose heights are fractions of a pixel, in Chrome. A <virtual-list>
+  is the same page with its rows built on demand, so the page is a list of scenes (`spec`) the test renders as both.
+
+  A scene is a positioned parent (optional), the scroller and its rows (`style` is a CSS declaration list; a row with
+  `text` holds it as its text), and the scroll offsets the scroller is set to one after the other. The scroller is
+  `overflow: auto` with `scrollbar-width: none`, so a row is as wide as the scroller inside its padding.
+
+  The JSON is `{ <scene>: { spec, list, scrollHeight, clientHeight, steps: [{ scroll, scrollTop, rows }] } }` with every
+  box `[x, y, width, height]` relative to the holder (at 0, 0): the scroller's getBoundingClientRect, and for each offset
+  the offset it was set to, the one Chrome scrolled to (a device pixel) and the box of every row. Regenerate with
+
+    sh dsf-oracle.sh virtual-list
+
+  (device scale 1 into virtual-list-oracle.json and 2 into virtual-list-oracle-x2.json, as Blink zooms the page by the
+  display's scale).
+-->
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .holder { position: absolute; left: 0; top: 0; width: 600px; height: 400px; }
+</style>
+</head>
+<body>
+<script>
+  const FONT = 'font-family:Helvetica;font-size:13px;line-height:1.15'
+  const fixed = (count, height) => Array.from({ length: count }, () => ({ style: `height:${height}px` }))
+  const text = (count) => Array.from({ length: count }, (_, index) => ({ style: FONT, text: `Row ${index}` }))
+  const mixed = (count) => Array.from({ length: count }, (_, index) => {
+    const kind = index % 4
+    if (kind === 0) return { style: 'height:20.3px' }
+    if (kind === 1) return { style: FONT, text: `Row ${index}` }
+    if (kind === 2) return { style: 'height:33.33px' }
+    return { style: 'height:7.77px' }
+  })
+  const LIST = 'width:200px;height:100px;overflow:auto;scrollbar-width:none'
+
+  const scenes = {
+    'rows of 20.3px': { list: LIST, rows: fixed(12, 20.3), scrolls: [0, 10.3, 10.5, 33.7, 81.2, 1000] },
+    'rows of 13px text at 1.15': { list: LIST, rows: text(20), scrolls: [0, 7.4, 29.5, 118.2, 1000] },
+    'rows of mixed fractions': { list: LIST, rows: mixed(16), scrolls: [0, 40.5, 77.7, 1000] },
+    'a list of 100.3px': { list: 'width:200px;height:100.3px;overflow:auto;scrollbar-width:none', rows: fixed(12, 20.3), scrolls: [0, 10.5, 1000] },
+    'a list of 99.7px with rows of 14.95px': { list: 'width:200px;height:99.7px;overflow:auto;scrollbar-width:none', rows: text(20), scrolls: [0, 13.5, 1000] },
+    'padded': { list: `${LIST};padding:3.3px 5.7px`, rows: fixed(12, 20.3), scrolls: [0, 10.5, 1000] },
+    'padded with text rows': { list: `${LIST};padding:7.4px 1.3px 2.2px`, rows: text(20), scrolls: [0, 25.5, 1000] },
+    'bordered and padded': { list: `${LIST};border:2px solid #000;padding:3.3px`, rows: null, scrolls: [0] },
+    'in a positioned parent': {
+      parent: 'position:relative;left:10.3px;top:7.6px;width:300px;height:200px',
+      list: 'position:absolute;left:5.7px;top:3.3px;width:200.5px;height:100.3px;overflow:auto;scrollbar-width:none',
+      rows: fixed(12, 20.3),
+      scrolls: [0, 10.5, 1000],
+    },
+    'in a positioned parent with text rows': {
+      parent: 'position:relative;left:0.5px;top:0.5px;width:300px;height:200px',
+      list: 'position:absolute;left:0.25px;top:0.75px;width:200px;height:100px;overflow:auto;scrollbar-width:none',
+      rows: text(20),
+      scrolls: [0, 7.5, 1000],
+    },
+    'bordered, padded, positioned': {
+      parent: 'position:relative;left:10.3px;top:7.6px;width:300px;height:200px',
+      list: 'position:absolute;left:5.7px;top:3.3px;width:200.5px;height:100.3px;overflow:auto;scrollbar-width:none;border:1px solid #000;padding:2.5px',
+      rows: null,
+      scrolls: [0],
+    },
+    'a few rows': { list: LIST, rows: fixed(3, 20.3), scrolls: [0, 1000] },
+  }
+
+  const box = (element, origin) => {
+    const rect = element.getBoundingClientRect()
+    return [rect.x - origin.x, rect.y - origin.y, rect.width, rect.height]
+  }
+  const out = {}
+  for (const [name, scene] of Object.entries(scenes)) {
+    const holder = document.createElement('div')
+    holder.className = 'holder'
+    const parent = scene.parent ? document.createElement('div') : holder
+    if (scene.parent) {
+      parent.setAttribute('style', scene.parent)
+      holder.appendChild(parent)
+    }
+    const list = document.createElement('div')
+    list.setAttribute('style', scene.list)
+    // A scene with no rows to compare still has some, so the list scrolls as the page would.
+    const rows = scene.rows ?? text(20)
+    for (const row of rows) {
+      const element = document.createElement('div')
+      element.setAttribute('style', row.style)
+      if (row.text) element.textContent = row.text
+      list.appendChild(element)
+    }
+    parent.appendChild(list)
+    document.body.appendChild(holder)
+    const origin = holder.getBoundingClientRect()
+    const steps = []
+    for (const scroll of scene.scrolls) {
+      list.scrollTop = scroll
+      steps.push({ scroll, scrollTop: list.scrollTop, rows: scene.rows ? [...list.children].map((row) => box(row, origin)) : [] })
+    }
+    out[name] = {
+      spec: { parent: scene.parent ?? null, list: scene.list, rows: scene.rows ?? text(20), compareRows: scene.rows !== null, scrolls: scene.scrolls },
+      list: box(list, origin),
+      scrollHeight: list.scrollHeight,
+      clientHeight: list.clientHeight,
+      steps,
+    }
+    document.body.removeChild(holder)
+  }
+  document.body.setAttribute('data-rects', JSON.stringify(out))
+</script>
+</body>
+</html>

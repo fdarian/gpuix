@@ -2965,8 +2965,12 @@ function Results({ rows }: { rows: Result[] }) {
 rows are unmeasured; `getListScrollTop` below is exact. A write to it is scroll-only, as on a
 `div`: the list clamps it from its last layout and the next frame builds the rows at the new offset. Its largest
 offset is the rule of a `div`'s, and `scrollHeight` and `clientHeight` are the rows with their padding and the
-list as laid out. Rows are measured on the device pixel, so a row with a fractional height differs from
-Chrome's, and a `<virtual-list>` records no bounds of its own: its `getBoundingClientRect()` is zeros.
+list as laid out. Rows are measured in 1/64 of a device pixel and stacked from the list's own position, as the
+divs of a scroller are (a row of `20.3px` is `20.296875` tall and the next starts there), and the list scrolls to a
+device pixel as Chrome does. The list records its box like any element, so `getBoundingClientRect`, `onLayout`,
+`ResizeObserver` and `IntersectionObserver` (as a target, as a root, and clipping its rows) read it. A list does not
+inset its rows by its own border: with a `border` its rows, `clientHeight` and `scrollHeight` are those of the box
+with the border, and only `padding` insets them. `fixtures/virtual-list-oracle.*` pins the rest against headless Chrome.
 
 On a virtual list, `scrollToItem` takes an optional **pixel offset** and the
 list reports its logical anchor:

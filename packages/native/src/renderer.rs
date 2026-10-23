@@ -10532,6 +10532,13 @@ fn build_virtual_list(
         list = crate::layout::container::contain(list, scope, ctx.containers.clone());
     }
     let list = apply_accessibility(list, element.id, element.custom_props(), None);
+    // The box of the list is recorded like a host element's: the rows are not in its layout, so
+    // it has no scrollable overflow of its own to measure, and no selection region.
+    ctx.paint_reports
+        .borrow_mut()
+        .observers
+        .note_clip_origin(element.id, element.events(), None);
+    let list = crate::automation::track_host_bounds(list, element.id, None, false, false, None);
     let default_style = StyleDesc::default();
     crate::scrollbar::attach_to_list(
         list,
