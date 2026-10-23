@@ -1896,6 +1896,11 @@ export interface PatchCounters {
   patchedFrames: number
   /** Units painted again by those frames. */
   patchedUnits: number
+  /**
+   * Ticks that changed nothing that is drawn (every change was in skipped or sleeping content):
+   * no frame was built or presented.
+   */
+  emptyTicks: number
   /** JSON object: ticks gpui drew whole after the patcher tried, by reason (`PatchDecline`). */
   declines: string
   /**

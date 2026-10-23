@@ -13180,6 +13180,9 @@ pub struct PatchCounters {
     pub patched_frames: f64,
     /// Units painted again by those frames.
     pub patched_units: f64,
+    /// Ticks that changed nothing that is drawn (every change was in skipped or sleeping content):
+    /// no frame was built or presented.
+    pub empty_ticks: f64,
     /// JSON object: ticks gpui drew whole after the patcher tried, by reason (`PatchDecline`).
     pub declines: String,
     /// JSON object: ticks gpuix did not try to patch, by kind (`Unpatchable`, and the units it
@@ -13196,6 +13199,7 @@ pub(crate) fn patch_counters_js(view: &GpuixView, window: &gpui::Window) -> Patc
     PatchCounters {
         patched_frames: counters.patched_frames as f64,
         patched_units: counters.patched_units as f64,
+        empty_ticks: counters.empty_ticks as f64,
         declines: object(
             gpui::PatchDecline::ALL
                 .into_iter()

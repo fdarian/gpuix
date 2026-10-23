@@ -13,7 +13,7 @@ import path from "path"
 import type { CSSProperties } from "react"
 import { fileURLToPath } from "url"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { defineKeyframes } from "../index"
+import { defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
@@ -380,4 +380,53 @@ describeNative("animations in a skipped subtree", { timeout: 120_000 }, () => {
       }
     })
   }
+})
+
+describeNative("a tick whose only change is in skipped content", { timeout: 120_000 }, () => {
+  const CARDS = 8
+  const WRITES = 20
+
+  /** Time passes as it does for a window: both clocks move, the frame callbacks and a pending change are drawn, events are delivered. */
+  const elapse = (renderer: ReturnType<typeof createTestRoot>["renderer"]) => {
+    renderer.clockAdvance(16)
+    renderer.advanceTime(16)
+    renderer.drawFrame()
+    renderer.dispatchNativeEvents()
+  }
+
+  it("draws nothing and is counted as an empty tick: a motion value bound inside hidden content is written", () => {
+    const tints = Array.from({ length: CARDS }, () => motionValue("#ff0000"))
+    const root = createTestRoot({ width: 400, height: 600 })
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(
+        <div style={{ width: 400, height: 600, flexDirection: "column" }}>
+          {tints.map((tint, index) => (
+            <div key={index} style={{ contentVisibility: "hidden", containIntrinsicSize: "80px 60px", flexShrink: 0 } as CSSProperties}>
+              <motion.div testId={`bound-${index}`} style={{ width: 40, height: 40, backgroundColor: tint }} />
+            </div>
+          ))}
+        </div>
+      )
+      renderer.flush()
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      for (let tick = 0; tick < 12; tick++) elapse(renderer)
+      const before = renderer.getPatchCounters()
+      const painted = renderer.getPaintedFrameCount()
+      for (let write = 0; write < WRITES; write++) {
+        for (const tint of tints) tint.set(write % 2 === 0 ? "#0000ff" : "#ff0000")
+        elapse(renderer)
+      }
+      const after = renderer.getPatchCounters()
+      expect(renderer.getPaintedFrameCount() - painted, "no frame is built").toBe(0)
+      expect(after.patchedFrames - before.patchedFrames).toBe(0)
+      expect(after.declines).toEqual(before.declines)
+      expect(after.unpatchable).toEqual(before.unpatchable)
+      expect(after.emptyTicks - before.emptyTicks, "a tick for each write").toBe(WRITES)
+    } finally {
+      root.unmount()
+    }
+  })
 })

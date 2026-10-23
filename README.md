@@ -8906,7 +8906,8 @@ Counters you read off the renderer:
   `hit` and a `replay`; an element with a motion running in it is not recorded.
 - `getPatchCounters()`, also on the live `GpuixRenderer` so a window with the display
   link can tell a patched tick from one drawn whole: `patchedFrames` and
-  `patchedUnits`, and two JSON objects keyed by reason, `declines` (ticks GPUI drew
+  `patchedUnits`, `emptyTicks` (ticks whose only changes are in content nobody sees, such as the
+  content of a `content-visibility` host that skips: no frame is built and none is presented), and two JSON objects keyed by reason, `declines` (ticks GPUI drew
   whole after trying to patch them) and `unpatchable` (ticks gpuix did not try to
   patch, such as `Sourced` for a pointer move and `Edited` for a commit). While
   something runs, every tick drawn whole is counted in one of the two, on a page with

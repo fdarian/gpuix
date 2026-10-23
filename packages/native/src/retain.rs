@@ -886,6 +886,10 @@ pub(crate) enum Unpatchable {
     /// a source goes on listing it): the frame built whole in the tick's place does not make it a
     /// unit, so a patch would repaint a root that frame does not have.
     Ended(u64),
+    /// Nothing is left to repaint, but elements are to enter the dormant set (culled, with only
+    /// paint running) or its verdicts moved: a tick draws nothing and settles neither, which the
+    /// frame built whole in its place does.
+    Dormancy,
 }
 
 /// The most frames that follow a recorded frame which found nothing a later frame could skip,
@@ -1932,6 +1936,9 @@ impl Retain {
             .map(|unit| unit.id)
             .filter(|id| touched.contains(id))
             .collect();
+        if units.is_empty() && (found.stale || !found.entered.is_empty()) {
+            return Err(Unpatchable::Dormancy);
+        }
         if let Some(&ended) = units
             .iter()
             .find(|id| !self.records.get(id).is_some_and(Record::is_unit_candidate))
@@ -5560,6 +5567,27 @@ mod tests {
         assert!(!page.retain.is_dormant(3));
         let (asked, _) = dormancy_frame(&mut page, &none, 2);
         assert_eq!(asked, vec![3, 4], "what runs on an element that is not dormant is asked about in every frame");
+    }
+
+    #[test]
+    fn a_tick_with_nothing_to_repaint_is_drawn_whole_until_the_elements_are_dormant_and_is_empty_after() {
+        let mut page = Units::new();
+        let none = |_: u64| false;
+        let culled = |_: u64| true;
+        dormancy_frame(&mut page, &none, 0);
+        dormancy_frame(&mut page, &none, 0);
+        let preview = |page: &Units, dormant: &dyn Fn(u64) -> bool, verdicts: u64| {
+            let mut sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
+            sources.dormant = dormant;
+            sources.verdicts = verdicts;
+            sources.motion = vec![3, 4];
+            page.retain.preview(&sources, false)
+        };
+        assert_eq!(preview(&page, &culled, 0), Err(Unpatchable::Dormancy), "3 and 4 are to enter the dormant set, which a frame does");
+        dormancy_frame(&mut page, &culled, 0);
+        assert!(page.retain.is_dormant(3) && page.retain.is_dormant(4));
+        assert_eq!(preview(&page, &culled, 0), Ok(vec![]), "they sleep: nothing to repaint, and nothing to settle");
+        assert_eq!(preview(&page, &culled, 1), Err(Unpatchable::Dormancy), "the answers they sleep on moved");
     }
 
     fn in_order(mut ids: Vec<u64>) -> Vec<u64> {

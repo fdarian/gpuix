@@ -57,6 +57,7 @@ impl Unpatchable {
             Unpatchable::Sourced => "Sourced".to_owned(),
             Unpatchable::Outside(_) => "Outside".to_owned(),
             Unpatchable::Ended(_) => "Ended".to_owned(),
+            Unpatchable::Dormancy => "Dormancy".to_owned(),
             Unpatchable::Refused(refusal) => refusal.key(),
         }
     }
@@ -124,7 +125,8 @@ impl GpuixView {
 
     /// Steps what a frame steps before it builds, at `now`, and builds the units the tick changes.
     /// None if the tick cannot be patched: what was stepped stays, for the frame built whole in
-    /// its place to find at its own instant.
+    /// its place to find at its own instant. A tick that changes nothing that is drawn (every change
+    /// is in content that is skipped, or asleep) has no unit, and gpui counts it as an empty tick.
     pub(crate) fn build_patch(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> Option<Built> {
         if !self.patch.enabled {
             return None;
@@ -140,10 +142,6 @@ impl GpuixView {
                 return None;
             }
         };
-        if ids.is_empty() {
-            self.patch.decline("NoUnits".to_owned());
-            return None;
-        }
         let stepped = self.step_clocks(window, now);
         let mut units = Vec::with_capacity(ids.len());
         let mut tapes = Vec::with_capacity(ids.len());
@@ -184,6 +182,12 @@ impl GpuixView {
         let motion_values = self.step_values(&tree, window, now);
         crate::renderer::emit_motion_settled(&callback, &tree, &step.settled);
         crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
+        // The units built after this emit these too, but a tick with none must not leave the end of
+        // a transition or an iteration that was due for the frame that follows.
+        crate::renderer::emit_transition_events(&callback, &tree, self.css_transitions.take_events());
+        crate::renderer::emit_animation_events(&callback, &tree, self.css_animations.take_events());
+        crate::renderer::emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
+        crate::renderer::emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
         Stepped {
             motion: !step.awake.is_empty(),
             dormant_motion: step.asleep,
