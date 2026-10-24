@@ -232,13 +232,8 @@ pub(crate) fn queue_virtual_list_scroll(id: u64, index: usize, offset_in_item: f
 /// `id`, or `None` for anything else.
 fn scroll_element_position(id: u64) -> Option<[f64; 2]> {
     VIRTUAL_LIST_STATES
-        .with(|cell| {
-            cell.borrow()
-                .get(&id)
-                .map(|state| state.scroll_px_offset_for_scrollbar())
-        })
-        .or_else(|| SCROLL_HANDLES.with(|cell| cell.borrow().get(&id).map(|handle| handle.offset())))
-        .map(crate::scroll::dom_position)
+        .with(|cell| cell.borrow().get(&id).map(crate::scroll::list_position))
+        .or_else(|| SCROLL_HANDLES.with(|cell| cell.borrow().get(&id).map(crate::scroll::handle_position)))
 }
 
 /// Scrolls the virtual list or scroll container `id` to the DOM scroll position `left`, `top`,
@@ -248,13 +243,8 @@ fn scroll_element_position(id: u64) -> Option<[f64; 2]> {
 /// is, as a browser's setter does.
 fn scroll_element_to(id: u64, left: f64, top: f64, behavior: crate::scroll::Behavior) -> bool {
     let offset = crate::scroll::gpui_offset(left, top);
-    let list = VIRTUAL_LIST_STATES.with(|cell| {
-        let states = cell.borrow();
-        let state = states.get(&id)?;
-        let before = state.scroll_px_offset_for_scrollbar();
-        state.set_offset_from_scrollbar(offset);
-        Some(state.scroll_px_offset_for_scrollbar() != before)
-    });
+    let list = VIRTUAL_LIST_STATES
+        .with(|cell| cell.borrow().get(&id).map(|state| crate::scroll::scroll_list_to(state, offset)));
     if let Some(moved) = list {
         return moved;
     }
@@ -6905,18 +6895,11 @@ impl GpuixView {
         offset: gpui::Point<gpui::Pixels>,
     ) -> Option<bool> {
         let entry = self.virtual_lists.get(&id)?;
-        let before = entry.state.scroll_px_offset_for_scrollbar();
-        entry.state.set_offset_from_scrollbar(offset);
-        Some(entry.state.scroll_px_offset_for_scrollbar() != before)
+        Some(crate::scroll::scroll_list_to(&entry.state, offset))
     }
 
-    pub(crate) fn virtual_list_offset(&self, id: u64) -> Option<gpui::Point<gpui::Pixels>> {
-        Some(
-            self.virtual_lists
-                .get(&id)?
-                .state
-                .scroll_px_offset_for_scrollbar(),
-        )
+    pub(crate) fn virtual_list_position(&self, id: u64) -> Option<[f64; 2]> {
+        Some(crate::scroll::list_position(&self.virtual_lists.get(&id)?.state))
     }
 
     pub(crate) fn reveal_virtual_list_ancestor(&self, id: u64) -> bool {

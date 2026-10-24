@@ -1,0 +1,138 @@
+<!doctype html>
+<!--
+  Oracle for fractional scroll offsets (round 20, 2e): what a scroller of divs reads back and where its content sits after
+  a script writes a fractional offset (`scrollTop = 10.5`, `scrollTo(12.5, 7.25)`, `scrollBy(0.5, 0)` twice), in Chrome. A
+  <virtual-list> is the same page with its rows built on demand, and scrolls along y only, so a scene with `axes: "y"` is
+  rendered as both a div and a list, and one with `axes: "xy"` as a div.
+
+  A scene is a scroller (`list`, a CSS declaration list; `overflow: auto` with `scrollbar-width: none`), its rows (`style`),
+  and the operations run one after the other: `["top", v]` sets `scrollTop`, `["left", v]` sets `scrollLeft`,
+  `["to", x, y]` is `scrollTo(x, y)` and `["by", x, y]` is `scrollBy(x, y)`. The JSON is `{ <scene>: { spec, list,
+  scrollWidth, scrollHeight, clientWidth, clientHeight, steps: [{ op, scrollLeft, scrollTop, rows }] } }` with every box
+  `[x, y, width, height]` relative to the holder (at 0, 0): the scroller's getBoundingClientRect, and after each
+  operation what the scroller reads back and the box of every row. Regenerate with
+
+    sh dsf-oracle.sh scroll-fraction
+
+  (device scale 1 into scroll-fraction-oracle.json and 2 into scroll-fraction-oracle-x2.json).
+-->
+<html>
+<head>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .holder { position: absolute; left: 0; top: 0; width: 600px; height: 400px; }
+</style>
+</head>
+<body>
+<script>
+  const rows = (count, height, width = '') => Array.from({ length: count }, () => ({ style: `height:${height}px${width && `;width:${width}px`}` }))
+  const LIST = 'width:200px;height:100px;overflow:auto;scrollbar-width:none'
+  const WRITES = [['top', 10.5], ['top', 10.4], ['top', 10.25], ['top', 10.75], ['top', 10.3], ['top', 0.5], ['top', 0.25], ['top', -0.5], ['top', 0], ['top', 1.5], ['top', 2.5], ['top', 0]]
+
+  const scenes = {
+    'writes to scrollTop': { axes: 'y', list: LIST, rows: rows(20, 20), ops: WRITES },
+    'writes to scrollTop with fractional rows': { axes: 'y', list: LIST, rows: rows(20, 20.3), ops: WRITES },
+    'scrollTo and scrollBy': {
+      axes: 'y',
+      list: LIST,
+      rows: rows(20, 20),
+      ops: [['to', 0, 7.25], ['to', 12.5, 10.5], ['top', 0], ['by', 0, 0.5], ['by', 0, 0.5], ['by', 0, 0.5], ['by', 0, 0.25], ['by', 0, 0.25], ['by', 0, -0.5], ['by', 0, -0.5], ['by', 0, 10.3], ['by', 0, 10.3]],
+    },
+    'writes past a fractional maximum': {
+      axes: 'y',
+      list: LIST,
+      rows: rows(7, 20.3),
+      ops: [['top', 1000], ['top', 42.1], ['top', 42.4], ['top', 41.6], ['top', 42], ['top', 43], ['by', 0, 10], ['top', 0], ['by', 0, 0.5]],
+    },
+    'writes past a fractional maximum of a fractional list': {
+      axes: 'y',
+      list: 'width:200px;height:100.3px;overflow:auto;scrollbar-width:none',
+      rows: rows(8, 20.3),
+      ops: [['top', 1000], ['top', 61.8], ['top', 62], ['top', 62.2], ['top', 61.5], ['top', 61], ['top', 0], ['by', 0, 1000]],
+    },
+    'writes past a maximum that rounds up': {
+      axes: 'y',
+      list: LIST,
+      rows: rows(7, 20.4),
+      ops: [['top', 1000], ['top', 42.4], ['top', 42.6], ['top', 42.8], ['top', 43], ['top', 43.4], ['top', 0], ['by', 0, 1000]],
+    },
+    'writes past the maximum of a list that rounds up': {
+      axes: 'y',
+      list: 'width:200px;height:100.6px;overflow:auto;scrollbar-width:none',
+      rows: rows(8, 20.3),
+      ops: [['top', 1000], ['top', 60.6], ['top', 61.4], ['top', 61.6], ['top', 61.8], ['top', 62], ['top', 0], ['by', 0, 1000]],
+    },
+    'writes past the maximum of a list that rounds down': {
+      axes: 'y',
+      list: 'width:200px;height:99.7px;overflow:auto;scrollbar-width:none',
+      rows: rows(8, 20.3),
+      ops: [['top', 1000], ['top', 62.4], ['top', 62.6], ['top', 62.8], ['top', 63], ['top', 0], ['by', 0, 1000]],
+    },
+    'writes to a bordered and padded list': {
+      axes: 'y',
+      list: `${LIST};border:2px solid #000;padding:3.3px`,
+      rows: rows(12, 20.3),
+      ops: [['top', 10.5], ['top', 10.3], ['top', 10.75], ['by', 0, 0.5], ['top', 1000], ['top', 0]],
+    },
+    'writes to scrollLeft': {
+      axes: 'xy',
+      list: LIST,
+      rows: rows(20, 20, 300),
+      ops: [['left', 10.5], ['left', 10.4], ['left', 10.25], ['left', 10.75], ['left', 0.5], ['left', -0.5], ['left', 0], ['left', 1000], ['left', 0]],
+    },
+    'writes to scrollLeft with a fractional width': {
+      axes: 'xy',
+      list: LIST,
+      rows: rows(20, 20, 300.4),
+      ops: [['left', 1000], ['left', 100.4], ['left', 100.6], ['left', 100], ['left', 0]],
+    },
+    'scrollTo and scrollBy on both axes': {
+      axes: 'xy',
+      list: LIST,
+      rows: rows(20, 20.3, 300.4),
+      ops: [['to', 12.5, 7.25], ['to', 0, 0], ['to', 10.4, 10.4], ['to', 0, 0], ['by', 0.5, 0.5], ['by', 0.5, 0.5], ['by', 0.5, 0.5], ['to', 1000.5, 1000.5], ['to', 0.5, 0.5], ['to', -0.5, -0.5]],
+    },
+  }
+
+  const box = (element, origin) => {
+    const rect = element.getBoundingClientRect()
+    return [rect.x - origin.x, rect.y - origin.y, rect.width, rect.height]
+  }
+  const out = {}
+  for (const [name, scene] of Object.entries(scenes)) {
+    const holder = document.createElement('div')
+    holder.className = 'holder'
+    const list = document.createElement('div')
+    list.setAttribute('style', scene.list)
+    for (const row of scene.rows) {
+      const element = document.createElement('div')
+      element.setAttribute('style', row.style)
+      list.appendChild(element)
+    }
+    holder.appendChild(list)
+    document.body.appendChild(holder)
+    const origin = holder.getBoundingClientRect()
+    const steps = []
+    for (const op of scene.ops) {
+      if (op[0] === 'top') list.scrollTop = op[1]
+      else if (op[0] === 'left') list.scrollLeft = op[1]
+      else if (op[0] === 'to') list.scrollTo(op[1], op[2])
+      else list.scrollBy(op[1], op[2])
+      steps.push({ op, scrollLeft: list.scrollLeft, scrollTop: list.scrollTop, rows: [...list.children].map((row) => box(row, origin)) })
+    }
+    out[name] = {
+      spec: { axes: scene.axes, list: scene.list, rows: scene.rows, ops: scene.ops },
+      list: box(list, origin),
+      scrollWidth: list.scrollWidth,
+      scrollHeight: list.scrollHeight,
+      clientWidth: list.clientWidth,
+      clientHeight: list.clientHeight,
+      steps,
+    }
+    document.body.removeChild(holder)
+  }
+  document.body.setAttribute('data-rects', JSON.stringify(out))
+</script>
+</body>
+</html>

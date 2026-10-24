@@ -2226,9 +2226,9 @@ impl TestGpuixRenderer {
     pub fn get_scroll_offset(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
         update_view(|view, _window, _cx| {
-            view.virtual_list_offset(id)
-                .or_else(|| view.scrollable_handle(id).map(|handle| handle.offset()))
-                .map(|offset| crate::scroll::dom_position(offset).to_vec())
+            view.virtual_list_position(id)
+                .or_else(|| view.scrollable_handle(id).map(crate::scroll::handle_position))
+                .map(|position| position.to_vec())
         })
     }
 

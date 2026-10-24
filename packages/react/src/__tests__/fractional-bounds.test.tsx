@@ -203,13 +203,14 @@ describeNative("fractional bounds", () => {
     }
   })
 
-  it("leaves the scroll offsets as they are", () => {
+  it("rounds a scroll offset to a device pixel, as Chrome does", () => {
     const { element, renderer, unmount } = setup()
     try {
       const scroller = element("scroller")
       renderer.scrollTo(scroller.id, 12.5, 7.25, "instant")
       renderer.flush()
-      expect([scroller.scrollLeft, scroller.scrollTop]).toEqual([12.5, 7.25])
+      // Chrome: scrollTo(12.5, 7.25) reads back 13, 7 at scale 1 (fixtures/scroll-fraction-oracle.json).
+      expect([scroller.scrollLeft, scroller.scrollTop]).toEqual([13, 7])
     } finally {
       unmount()
     }

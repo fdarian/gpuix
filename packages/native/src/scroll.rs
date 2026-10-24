@@ -168,7 +168,7 @@ pub(crate) fn apply_container<E: gpui::Styled + gpui::StatefulInteractiveElement
 }
 
 /// `[scrollLeft, scrollTop, scrollWidth, scrollHeight, clientWidth, clientHeight]` as the DOM
-/// reports them. `painted` is the element's box, which an element that does not scroll has no
+/// reports them. The scroll position is a whole device pixel (see [`dom_position`]). `painted` is the element's box, which an element that does not scroll has no
 /// scroll handle for: its content is as big as it is.
 ///
 /// The sizes are integers, as Chrome's are: the size of the padding box (or of the scrollable
@@ -188,10 +188,10 @@ pub(crate) fn metrics(
         return Some(client.unscrolled());
     };
     let offset = clamp_offset(handle.offset(), handle.max_offset());
+    let position = dom_position(offset, handle.scale_factor());
     Some([
-        // `0.0 -` rather than negation: an offset of 0 must read +0, not -0.
-        0.0 - f64::from(f32::from(offset.x)),
-        0.0 - f64::from(f32::from(offset.y)),
+        position[0],
+        position[1],
         round_half_up(client.width.max(painted.content_width)),
         round_half_up(client.height.max(painted.content_height)),
         client.rounded_width,
@@ -335,12 +335,54 @@ pub(crate) fn gpui_offset(left: f64, top: f64) -> gpui::Point<gpui::Pixels> {
     gpui::point(gpui::px((0.0 - left) as f32), gpui::px((0.0 - top) as f32))
 }
 
-/// The DOM scroll position `[scrollLeft, scrollTop]` of a GPUI scroll offset.
-pub(crate) fn dom_position(offset: gpui::Point<gpui::Pixels>) -> [f64; 2] {
+/// The DOM scroll position `[scrollLeft, scrollTop]` of a GPUI scroll offset, rounded half up to a
+/// device pixel of a window of `scale`, as Chrome reads back a scroll offset that lies between two
+/// (a wheel or a trackpad scrolls by fractions). `None` is a scroller that has not been laid out,
+/// which has no scale to snap to and is read as it is stored.
+pub(crate) fn dom_position(offset: gpui::Point<gpui::Pixels>, scale: Option<f32>) -> [f64; 2] {
     [
-        0.0 - f64::from(f32::from(offset.x)),
-        0.0 - f64::from(f32::from(offset.y)),
+        snap_to_device(0.0 - f64::from(f32::from(offset.x)), scale),
+        snap_to_device(0.0 - f64::from(f32::from(offset.y)), scale),
     ]
+}
+
+fn snap_to_device(position: f64, scale: Option<f32>) -> f64 {
+    match scale {
+        Some(scale) => {
+            let scale = f64::from(scale);
+            (position * scale + 0.5).floor() / scale
+        }
+        None => position,
+    }
+}
+
+/// `offset` held to a whole device pixel: the offset whose [`dom_position`] is the position it
+/// would be written back as. A write is rounded here before it is clamped, as Chrome snaps the
+/// offset a script asks for.
+fn snapped_offset(offset: gpui::Point<gpui::Pixels>, scale: Option<f32>) -> gpui::Point<gpui::Pixels> {
+    let position = dom_position(offset, scale);
+    gpui_offset(position[0], position[1])
+}
+
+/// The DOM scroll position of a scroll container.
+pub(crate) fn handle_position(handle: &gpui::ScrollHandle) -> [f64; 2] {
+    dom_position(handle.offset(), handle.scale_factor())
+}
+
+/// The DOM scroll position of a virtual list.
+pub(crate) fn list_position(state: &gpui::ListState) -> [f64; 2] {
+    match state.dom_scroll() {
+        Some(list) => [0.0, f64::from(f32::from(list.top))],
+        None => dom_position(state.scroll_px_offset_for_scrollbar(), None),
+    }
+}
+
+/// Scrolls a virtual list to `target` (an offset: zero, then negative) rounded to a device pixel
+/// and held to the range of the last layout. Returns whether it moved.
+pub(crate) fn scroll_list_to(state: &gpui::ListState, target: gpui::Point<gpui::Pixels>) -> bool {
+    let before = state.scroll_px_offset_for_scrollbar();
+    state.set_offset_from_scrollbar(snapped_offset(target, state.scale_factor()));
+    state.scroll_px_offset_for_scrollbar() != before
 }
 
 /// Moves a scroller to `target` (an offset: zero, then negative), instantly or by a smooth
@@ -348,8 +390,8 @@ pub(crate) fn dom_position(offset: gpui::Point<gpui::Pixels>) -> [f64; 2] {
 /// at only does that: it moves nothing, so the caller need not draw or report a scroll. Returns
 /// whether the scroller moved or will.
 ///
-/// `target` is held to the range of the last layout, as `scrollTop = n` is in a browser, which
-/// lays out first when the tree changed: a caller that has just changed the content lays out
+/// `target` is rounded to a device pixel and then held to the range of the last layout, as
+/// `scrollTop = n` is in a browser, which lays out first when the tree changed: a caller that has just changed the content lays out
 /// before it calls (`draw_if_dirty`), and a scroller that shrinks later is clamped by the layout
 /// that shrank it.
 pub(crate) fn scroll_to(
@@ -358,7 +400,7 @@ pub(crate) fn scroll_to(
     target: gpui::Point<gpui::Pixels>,
     behavior: Behavior,
 ) -> bool {
-    let target = clamp_offset(target, handle.max_offset());
+    let target = clamp_offset(snapped_offset(target, handle.scale_factor()), handle.max_offset());
     ANIMATIONS.with(|animations| animations.borrow_mut().remove(&id));
     if target == handle.offset() {
         return false;
@@ -686,7 +728,10 @@ pub(crate) fn scroll_into_view(
         port.bottom(),
     );
     let next = clamp_offset(
-        gpui::point(offset.x - gpui::px(dx), offset.y - gpui::px(dy)),
+        snapped_offset(
+            gpui::point(offset.x - gpui::px(dx), offset.y - gpui::px(dy)),
+            handle.scale_factor(),
+        ),
         max,
     );
     if next == offset {
@@ -765,9 +810,31 @@ mod tests {
     fn a_dom_scroll_position_is_the_negated_gpui_offset_and_back() {
         let offset = gpui_offset(12.0, 80.0);
         assert_eq!((f32::from(offset.x), f32::from(offset.y)), (-12.0, -80.0));
-        assert_eq!(dom_position(offset), [12.0, 80.0]);
-        let origin = dom_position(gpui_offset(0.0, 0.0));
+        assert_eq!(dom_position(offset, Some(1.0)), [12.0, 80.0]);
+        let origin = dom_position(gpui_offset(0.0, 0.0), Some(2.0));
         assert!(origin.iter().all(|value| value.is_sign_positive() && *value == 0.0));
+    }
+
+    #[test]
+    fn a_scroll_position_is_rounded_half_up_to_a_device_pixel() {
+        let position = |top: f64, scale: f32| dom_position(gpui_offset(0.0, top), Some(scale))[1];
+        assert_eq!(position(10.5, 1.0), 11.0);
+        assert_eq!(position(10.4, 1.0), 10.0);
+        assert_eq!(position(10.3, 2.0), 10.5);
+        assert_eq!(position(10.25, 2.0), 10.5);
+        assert_eq!(position(10.75, 2.0), 11.0);
+        assert_eq!(position(0.25, 1.0), 0.0);
+        assert!(position(0.25, 1.0).is_sign_positive());
+        // A scroller that has not been laid out has no scale to snap to.
+        assert_eq!(dom_position(gpui_offset(0.0, 10.5), None)[1], 10.5);
+    }
+
+    #[test]
+    fn a_written_offset_is_the_one_that_reads_back() {
+        let written = snapped_offset(gpui_offset(12.5, 7.25), Some(1.0));
+        assert_eq!(dom_position(written, Some(1.0)), [13.0, 7.0]);
+        let written = snapped_offset(gpui_offset(12.5, 7.25), Some(2.0));
+        assert_eq!(dom_position(written, Some(2.0)), [12.5, 7.5]);
     }
 
     fn style(overflow: Option<&str>, x: Option<&str>, y: Option<&str>) -> StyleDesc {

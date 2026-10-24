@@ -10,7 +10,7 @@
 /// scroll offsets; the page records its box, its `scrollHeight` and `clientHeight`, and for each offset the `scrollTop`
 /// Chrome scrolled to and the box of every row. The same scene is rendered here with a `<virtual-list>` and compared
 /// exactly. Chrome scrolls to a device pixel (a `scrollTop` of 10.5 is 11 at scale 1, 10.3 is 10.5 at scale 2), and so does the list
-/// when it places its rows (the `scrollTop` it reads back keeps the fraction that was written, as a div's does).
+/// (the `scrollTop` it reads back is the device pixel it scrolled to, as a div's is: `scroll-fraction.test.tsx`).
 ///
 /// A row is compared when at least a device pixel of it is in view in the padding box of the list, the only rows a list
 /// builds: a row that shows only in the top padding of a scrolled list is one of them. A list is a scroller whose client
