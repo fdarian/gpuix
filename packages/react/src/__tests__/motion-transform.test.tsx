@@ -362,6 +362,27 @@ describeNative("a tick of an animation of the transform keys", { timeout: TIMEOU
     })
   }
 
+  // The slot clips the word: what it drops from the scene is still an operation, so a word that rolls
+  // into the slot, or out of it, is repainted with the operations it was recorded with.
+  for (const from of ["80%", "130%"]) {
+    it(`patches every tick of a word that rolls up into an overflow hidden slot from y: ${from}`, async () => {
+      const word = (
+        <div style={{ overflow: "hidden", width: 200, height: 24 }}>
+          <motion.div
+            testId="head"
+            style={{ height: 24, backgroundColor: "#99ccff" }}
+            initial={{ y: from }}
+            animate={{ y: "0%" }}
+            transition={{ duration: 1.5, ease: "linear" }}
+          >
+            <text style={{ fontSize: 14, color: "#222222" }}>rolling</text>
+          </motion.div>
+        </div>
+      )
+      expectPatched(await ticksOf(word))
+    })
+  }
+
   it("patches every tick of a motion value that is set each frame", async () => {
     let x!: MotionValue<number>
     let rotate!: MotionValue<number>
