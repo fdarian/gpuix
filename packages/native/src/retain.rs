@@ -1106,6 +1106,7 @@ enum Kept {
     Inherited,
     Shape,
     OpacityRun,
+    Unmoved,
 }
 
 impl Kept {
@@ -1127,6 +1128,7 @@ impl Kept {
             Self::Inherited => "enter-inherited",
             Self::Shape => "enter-shape",
             Self::OpacityRun => "opacity-run",
+            Self::Unmoved => "no-longer-moved",
         }
     }
 }
@@ -2180,6 +2182,15 @@ impl Retain {
         // a replay that cannot be used makes the element as it is lifted now.
         if record.opacity_run != (entry.opacity_run)() {
             return Err(Kept::OpacityRun);
+        }
+        // A record made to be moved by a scroller is replayed as one that is not only after a build:
+        // gpui keeps the overscan around what it recorded (and the handles that put it elsewhere), which
+        // a build that is not asked to move it does not. A pass that only lays out follows the wrap.
+        if !self.layout_only
+            && record.wrapped.is_some_and(|overscan| overscan.is_some())
+            && !(node.scroller.is_some_and(|scroller| scroller.holds(node.id)) && !record.lifts)
+        {
+            return Err(Kept::Unmoved);
         }
         Ok(record)
     }
@@ -4915,6 +4926,25 @@ mod tests {
         page.edit(1);
         assert!(page_in(&mut page, false, Some(list)).is_some(), "relocated, not built");
         assert!(page.retain.deltas.scrolled.contains(&1));
+    }
+
+    #[test]
+    fn a_record_made_to_be_moved_is_built_again_where_its_scroller_moves_nothing_now() {
+        let window = gpui::WindowId::from(3);
+        let list = Scroller { window, viewport: gpui::size(gpui::px(900.0), gpui::px(780.0)), reach: gpui::px(780.0) };
+        crate::automation::set_bounds(window, 2, crate::automation::ElementBounds::plain(0.0, 0.0, 100.0, 100.0));
+        let mut page = Units::new();
+        assert!(page_in(&mut page, false, Some(list)).is_none());
+        page.edit(1);
+        let skip = page_in(&mut page, false, Some(list)).expect("skipped while the scroller can move it");
+        assert_eq!(skip.overscan, Some(gpui::px(390.0)));
+        // The scroller laid out with nothing to scroll (`Scroller::of`): gpui keeps the overscan and the handles of
+        // what it recorded to be moved, which a build that is not asked to move it leaves out.
+        page.edit(1);
+        assert!(page_in(&mut page, false, None).is_none(), "built, to be recorded as it is now");
+        page.edit(1);
+        let skip = page_in(&mut page, false, None).expect("the build recorded it where it stays");
+        assert_eq!(skip.overscan, None);
     }
 
     /// A frame of the page in which 2 holds the content a read forces (`forced`) or skips, edited so that it is
