@@ -16,6 +16,7 @@ import {
   gestureHandlers,
   IGNORED_SPAN_PROPS,
   layoutDescription,
+  motionComponentStyle,
   observeViewport,
   reduceMotionValues,
   resolveExit,
@@ -129,13 +130,12 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
     ])
     // A span takes no layout, drag or transform: what Framer would move with one is left where it is.
     const [, withoutIgnored] = splitProps(ownProps, inline ? (IGNORED_SPAN_PROPS as string[]) : [])
-    const hostProps = inline
-      ? mergeProps(withoutIgnored, {
-          get style() {
-            return withoutIgnoredSpanStyle((ownProps as { style?: unknown }).style)
-          },
-        })
-      : withoutIgnored
+    const hostProps = mergeProps(withoutIgnored, {
+      get style() {
+        const style = (ownProps as { style?: unknown }).style
+        return inline ? withoutIgnoredSpanStyle(style) : motionComponentStyle(style)
+      },
+    })
     const isPresent = useIsPresent()
     const group = useContext(PresenceGroupContext)
     const config = useContext(MotionConfigContext)

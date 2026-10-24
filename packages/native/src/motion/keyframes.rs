@@ -198,7 +198,7 @@ fn parse_block(block: &Value) -> Result<Keyframe, String> {
                 .map(|(prop, value)| (PropKey::Style(*prop), value.clone()))
                 .collect(),
             None => {
-                let style = AnimProp::from_name(name).map(PropKey::Style);
+                let style = AnimProp::from_css_animated_name(name).map(PropKey::Style);
                 let svg = SvgAttr::from_name(name)
                     .filter(|attr| attr.is_css_property())
                     .map(PropKey::Svg);

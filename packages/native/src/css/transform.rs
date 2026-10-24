@@ -7,6 +7,8 @@
 
 use gpui::{ElementTransform, TransformFunction, TransformLength};
 
+use super::length::LinearLength;
+
 use super::cache::{Cache, Inputs};
 use super::dimension::{
     parse_length, parse_length_percentage, parse_number, parse_number_or_percentage, split_dimension, LengthPercentage,
@@ -93,8 +95,11 @@ impl Parts {
             translate: style.translate.as_deref().and_then(|value| parse_translate(value, lengths)),
             rotate: style.rotate.as_deref().and_then(parse_rotate),
             scale: style.scale.as_deref().and_then(parse_scale),
-            list: style.transform.as_deref().and_then(|value| parse_transform(value, lengths)),
-            origin: style.transform_origin.as_deref().and_then(|value| parse_origin(value, lengths)),
+            // Motion writes its keys into `transform`, so they replace it.
+            list: motion_list(style, lengths)
+                .map(Value::List)
+                .or_else(|| style.transform.as_deref().and_then(|value| parse_transform(value, lengths))),
+            origin: motion_origin(style, lengths, style.transform_origin.as_deref().and_then(|value| parse_origin(value, lengths))),
         }
     }
 
@@ -125,6 +130,46 @@ impl Parts {
     }
 }
 
+fn transform_length(length: &LinearLength, lengths: &LengthContext) -> TransformLength {
+    let (px, fraction) = lengths.split(length);
+    TransformLength { px: px as f32, fraction: fraction as f32 }
+}
+
+/// The functions of Motion's keys, in the order of its `buildTransform`; `None` when the style has
+/// none. A key at its default stays in the list: the element has a transform whatever the value.
+/// The 3D keys are not read: nothing draws them.
+fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Vec<TransformFunction>> {
+    let zero = TransformLength::default();
+    let mut functions = Vec::new();
+    let horizontal = |length: &LinearLength| TransformFunction::Translate(transform_length(length, lengths), zero);
+    let vertical = |length: &LinearLength| TransformFunction::Translate(zero, transform_length(length, lengths));
+    functions.extend(style.x.as_ref().map(horizontal));
+    functions.extend(style.y.as_ref().map(vertical));
+    functions.extend(style.translate_x.as_ref().map(horizontal));
+    functions.extend(style.translate_y.as_ref().map(vertical));
+    functions.extend(style.motion_scale.map(|factor| TransformFunction::Scale(factor as f32, factor as f32)));
+    functions.extend(style.scale_x.map(|factor| TransformFunction::Scale(factor as f32, 1.0)));
+    functions.extend(style.scale_y.map(|factor| TransformFunction::Scale(1.0, factor as f32)));
+    functions.extend(style.motion_rotate.map(|degrees| TransformFunction::Rotate(degrees.to_radians() as f32)));
+    functions.extend(style.rotate_z.map(|degrees| TransformFunction::Rotate(degrees.to_radians() as f32)));
+    functions.extend(style.skew.map(|degrees| TransformFunction::Skew(degrees.to_radians() as f32, 0.0)));
+    functions.extend(style.skew_x.map(|degrees| TransformFunction::Skew(degrees.to_radians() as f32, 0.0)));
+    functions.extend(style.skew_y.map(|degrees| TransformFunction::Skew(0.0, degrees.to_radians() as f32)));
+    (!functions.is_empty()).then_some(functions)
+}
+
+/// `transform-origin` with the axes `originX` and `originY` replace.
+fn motion_origin(style: &StyleDesc, lengths: &LengthContext, declared: Option<Origin>) -> Option<Origin> {
+    if style.origin_x.is_none() && style.origin_y.is_none() {
+        return declared;
+    }
+    let base = declared.unwrap_or(DEFAULT_ORIGIN);
+    Some((
+        style.origin_x.as_ref().map_or(base.0, |length| transform_length(length, lengths)),
+        style.origin_y.as_ref().map_or(base.1, |length| transform_length(length, lengths)),
+    ))
+}
+
 /// `50% 50%`.
 const DEFAULT_ORIGIN: Origin = (
     TransformLength { px: 0.0, fraction: 0.5 },
@@ -143,6 +188,9 @@ pub(crate) fn of(style: &StyleDesc, lengths: &LengthContext) -> Option<ElementTr
 /// valid one: `Some(false)` for `none`, which a state style needs in order to clear the flag of
 /// the style under it.
 pub(crate) fn is_active_if_declared(style: &StyleDesc, lengths: &LengthContext) -> Option<bool> {
+    if style.animating_transform {
+        return Some(true);
+    }
     if !declares(style) {
         return None;
     }
@@ -152,11 +200,33 @@ pub(crate) fn is_active_if_declared(style: &StyleDesc, lengths: &LengthContext) 
 
 /// Whether the element has a transform, see [`Parts::is_active`].
 pub(crate) fn is_active(style: &StyleDesc, lengths: &LengthContext) -> bool {
-    declares(style) && Parts::of(style, lengths).is_active()
+    style.animating_transform || (declares(style) && Parts::of(style, lengths).is_active())
 }
 
 fn declares(style: &StyleDesc) -> bool {
-    style.transform.is_some() || style.translate.is_some() || style.rotate.is_some() || style.scale.is_some()
+    style.transform.is_some()
+        || style.translate.is_some()
+        || style.rotate.is_some()
+        || style.scale.is_some()
+        || has_motion_keys(style)
+}
+
+/// Whether the style has a key of Motion's transform. `originX` and `originY` are not one: they
+/// place a transform and are none.
+pub(crate) fn has_motion_keys(style: &StyleDesc) -> bool {
+    [&style.x, &style.y, &style.translate_x, &style.translate_y].into_iter().any(Option::is_some)
+        || [
+            style.motion_scale,
+            style.scale_x,
+            style.scale_y,
+            style.motion_rotate,
+            style.rotate_z,
+            style.skew,
+            style.skew_x,
+            style.skew_y,
+        ]
+        .into_iter()
+        .any(|key| key.is_some())
 }
 
 fn parse_transform_uncached(value: &str, lengths: &LengthContext) -> Option<Value> {
@@ -243,16 +313,21 @@ fn finite_number(token: &str) -> Option<f64> {
 
 /// An angle in radians. A unitless number is only valid for zero.
 fn parse_angle(token: &str) -> Option<f32> {
+    parse_degrees(token).map(|degrees| degrees.to_radians() as f32)
+}
+
+/// An angle in degrees. A unitless number is only valid for zero.
+pub(crate) fn parse_degrees(token: &str) -> Option<f64> {
     let (value, unit) = split_dimension(token.trim())?;
-    let radians = match unit.as_str() {
-        "deg" => value.to_radians(),
-        "grad" => value * std::f64::consts::PI / 200.0,
-        "rad" => value,
-        "turn" => value * std::f64::consts::TAU,
+    let degrees = match unit.as_str() {
+        "deg" => value,
+        "grad" => value * 0.9,
+        "rad" => value.to_degrees(),
+        "turn" => value * 360.0,
         "" if value == 0.0 => 0.0,
         _ => return None,
     };
-    radians.is_finite().then_some(radians as f32)
+    degrees.is_finite().then_some(degrees)
 }
 
 /// `none | <length-percentage> [<length-percentage> <length>?]?`. The length along z does nothing,
@@ -636,6 +711,83 @@ mod tests {
         let transform = of(&style(r#"{"transform":"bogus(1)","scale":2,"rotate":"banana"}"#), &lengths()).unwrap();
         assert_eq!(transform.functions, [TransformFunction::Scale(2.0, 2.0)]);
         assert_eq!(of(&style(r#"{"transform":"bogus(1)","rotate":"banana"}"#), &lengths()), None);
+    }
+
+    #[test]
+    fn motions_keys_compose_in_the_order_of_build_transform() {
+        let transform = of(
+            &style(
+                r#"{"skewY":4,"skewX":3,"skew":"5deg","rotateZ":10,"motionRotate":20,"scaleY":0.5,"scaleX":2,"motionScale":1.5,
+                    "translateY":"7px","translateX":"5%","y":20,"x":10}"#,
+            ),
+            &lengths(),
+        )
+        .unwrap();
+        let zero = TransformLength::default();
+        assert_eq!(
+            transform.functions,
+            [
+                TransformFunction::Translate(px(10.0), zero),
+                TransformFunction::Translate(zero, px(20.0)),
+                TransformFunction::Translate(fraction(0.05), zero),
+                TransformFunction::Translate(zero, px(7.0)),
+                TransformFunction::Scale(1.5, 1.5),
+                TransformFunction::Scale(2.0, 1.0),
+                TransformFunction::Scale(1.0, 0.5),
+                TransformFunction::Rotate(20f32.to_radians()),
+                TransformFunction::Rotate(10f32.to_radians()),
+                TransformFunction::Skew(5f32.to_radians(), 0.0),
+                TransformFunction::Skew(3f32.to_radians(), 0.0),
+                TransformFunction::Skew(0.0, 4f32.to_radians()),
+            ]
+        );
+    }
+
+    #[test]
+    fn motions_keys_replace_transform_but_not_the_individual_properties() {
+        let transform = of(&style(r#"{"transform":"scale(9)","x":5,"translate":"1px"}"#), &lengths()).unwrap();
+        assert_eq!(
+            transform.functions,
+            [
+                TransformFunction::Translate(px(1.0), TransformLength::default()),
+                TransformFunction::Translate(px(5.0), TransformLength::default()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_motion_key_at_its_default_is_still_a_transform() {
+        assert!(is_active(&style(r#"{"x":0}"#), &lengths()));
+        assert!(is_active(&style(r#"{"motionScale":1}"#), &lengths()));
+        assert!(!is_active(&style(r#"{"originX":0.5}"#), &lengths()));
+        assert!(!is_active(&style(r#"{"z":4,"rotateX":10}"#), &lengths()));
+    }
+
+    #[test]
+    fn origin_x_and_y_replace_one_axis_of_the_origin() {
+        let origin = |json: &str| of(&style(json), &lengths()).unwrap().origin;
+        assert_eq!(origin(r#"{"x":1,"originX":0}"#), (fraction(0.0), fraction(0.5)));
+        assert_eq!(origin(r#"{"x":1,"originY":"10px"}"#), (fraction(0.5), px(10.0)));
+        assert_eq!(origin(r#"{"x":1,"originX":1,"transformOrigin":"0 0"}"#), (fraction(1.0), px(0.0)));
+        assert_eq!(origin(r#"{"x":1,"originX":"25%","originY":0.75}"#), (fraction(0.25), fraction(0.75)));
+    }
+
+    #[test]
+    fn an_animating_transform_is_active_whatever_the_style_says() {
+        let running = StyleDesc { animating_transform: true, ..Default::default() };
+        assert!(is_active(&running, &lengths()));
+        assert_eq!(is_active_if_declared(&running, &lengths()), Some(true));
+        assert!(!is_active(&style(r#"{"transform":"none"}"#), &lengths()));
+    }
+
+    #[test]
+    fn angles_are_degrees_or_css_angles() {
+        let degrees = |json: &str| style(json).skew_x;
+        assert_eq!(degrees(r#"{"skewX":30}"#), Some(30.0));
+        assert_eq!(degrees(r#"{"skewX":"0.25turn"}"#), Some(90.0));
+        assert_eq!(degrees(r#"{"skewX":"100grad"}"#), Some(90.0));
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"skewX":"30"}"#).is_err());
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"skewX":"fast"}"#).is_err());
     }
 
     #[test]

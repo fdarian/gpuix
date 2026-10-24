@@ -5,7 +5,7 @@
 import type { MotionTransition } from "./host.js"
 import type { MotionValue } from "./motion-value.js"
 
-/** `true` and `"position"` glide the box to its new position. `"size"` snaps, as nothing can scale a box; it still moves a box that holds a `layoutId`. */
+/** `true` and `"position"` glide the box to its new position. `"size"` snaps, as the glide moves the box and scales nothing; it still moves a box that holds a `layoutId`. */
 export type LayoutMode = boolean | "position" | "size"
 
 export interface MotionLayoutProps {

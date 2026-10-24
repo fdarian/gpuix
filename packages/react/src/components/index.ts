@@ -7,6 +7,7 @@ import {
   gestureDescription,
   gestureHandlers,
   layoutDescription,
+  motionComponentStyle,
   observeViewport,
   reduceMotionValues,
   resolveExit,
@@ -175,7 +176,9 @@ export function createMotionComponent<Source extends MotionSource<object, Motion
     ref
   ): ReactElement {
     // A span takes no transform: what Framer would move with one is accepted and left where it is.
-    const props = inline ? withoutIgnoredSpanProps({ ...rest, style: withoutIgnoredSpanStyle(Reflect.get(rest, "style")) }) : rest
+    const props = inline
+      ? withoutIgnoredSpanProps({ ...rest, style: withoutIgnoredSpanStyle(Reflect.get(rest, "style")) })
+      : { ...rest, style: motionComponentStyle(Reflect.get(rest, "style")) }
     const [inView, setInView] = useState(false)
     const observed = useRef<PublicInstance | null>(null)
     const setRef = useCallback(

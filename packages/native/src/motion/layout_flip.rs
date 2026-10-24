@@ -1,7 +1,7 @@
 //! The `layout` prop: when a box's layout position changes, it glides from
 //! where it was shown to where layout put it, FLIP style.
 //!
-//! GPUI has no transforms, but everything prepainted inside
+//! It is not a transform: everything prepainted inside
 //! `Window::with_element_offset` (bounds, hitboxes, paint) is shifted by it.
 //! [`FlipOffset`] wraps an element's built subtree and prepaints it inside an
 //! offset that starts at `old position - new position` and eases to zero, so
@@ -122,7 +122,7 @@ fn default_transition() -> Transition {
 /// to the `transition` and `reducedMotion` of the motion description.
 ///
 /// `None` when nothing animates natively: `false`, and `"size"`, as a size
-/// change snaps (there is no transform to scale by). A `layoutId` still moves
+/// change snaps (the glide is an offset, which scales nothing). A `layoutId` still moves
 /// the box with `"size"`, as the point of sharing an id is the move.
 fn parse(source: &Value) -> Result<Option<Config>, String> {
     let empty = serde_json::Map::new();

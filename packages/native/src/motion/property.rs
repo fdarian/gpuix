@@ -65,6 +65,10 @@ enum Kind {
     Integer,
     /// `vertical-align`: a length (or a percentage of the line height), or a keyword, which no length blends with.
     VerticalAlign,
+    /// An angle of Motion's transform, held as a number of degrees.
+    Angle,
+    /// `originX` and `originY`: a length, where a number is a fraction of the border box.
+    Origin,
 }
 
 /// The range the applied value is held to. Physics keeps the unclamped value.
@@ -118,6 +122,8 @@ enum Initial {
     InheritedVisibility,
     /// The multiplier of the `line-height` the element inherits, when it is one.
     InheritedLineHeight,
+    /// `50%`, the middle of the border box.
+    Center,
 }
 
 #[derive(Clone, Copy)]
@@ -639,7 +645,7 @@ macro_rules! properties {
                 }
             }
 
-            pub(super) fn name(self) -> &'static str {
+            fn wire_name(self) -> &'static str {
                 match self {
                     $(Self::$variant => $name),*
                 }
@@ -682,7 +688,9 @@ macro_rules! properties {
                 // A `calc()` clamps to the range of its property, which only a
                 // resolved length can be held to.
                 value.map(|value| match self.kind() {
-                    Kind::Length | Kind::Corner | Kind::Spacing | Kind::Dimension | Kind::Offset => self.clamp_value(value),
+                    Kind::Length | Kind::Corner | Kind::Spacing | Kind::Dimension | Kind::Offset | Kind::Origin => {
+                        self.clamp_value(value)
+                    }
                     _ => value,
                 })
             }
@@ -697,7 +705,7 @@ macro_rules! properties {
 }
 
 use Initial::{
-    BorderWidth, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
+    BorderWidth, Center, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
     InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoShadows, Number,
     Transparent, Unresolved, Unset,
 };
@@ -788,6 +796,23 @@ properties! {
     JustifyContent "justifyContent" Keyword None Unset, justify_content;
     JustifyItems "justifyItems" Keyword None Unset, justify_items;
     JustifySelf "justifySelf" Keyword None Unset, justify_self;
+
+    // Motion's transform keys. `motionScale` and `motionRotate` are Motion's `scale` and `rotate`,
+    // which `AnimProp::from_name` maps; the names here are the ones of the style.
+    X "x" Length None Number(0.0), x;
+    Y "y" Length None Number(0.0), y;
+    TranslateX "translateX" Length None Number(0.0), translate_x;
+    TranslateY "translateY" Length None Number(0.0), translate_y;
+    MotionScale "motionScale" Number None Number(1.0), motion_scale;
+    ScaleX "scaleX" Number None Number(1.0), scale_x;
+    ScaleY "scaleY" Number None Number(1.0), scale_y;
+    MotionRotate "motionRotate" Angle None Number(0.0), motion_rotate;
+    RotateZ "rotateZ" Angle None Number(0.0), rotate_z;
+    Skew "skew" Angle None Number(0.0), skew;
+    SkewX "skewX" Angle None Number(0.0), skew_x;
+    SkewY "skewY" Angle None Number(0.0), skew_y;
+    OriginX "originX" Origin None Center, origin_x;
+    OriginY "originY" Origin None Center, origin_y;
 }
 
 impl AnimProp {
@@ -795,23 +820,51 @@ impl AnimProp {
     /// the size of a line of text, so a bounds or scroll read after it needs no layout pass
     /// (see `Window::draw_if_dirty`). This is the one list: a property is left out unless
     /// nothing in layout, text measure, scroll overflow or the position of a box reads it.
-    /// There is no transform property: GPUI has none, and `top`, `left` and `inset` move boxes.
+    /// `top`, `left` and `inset` move boxes, so they are not here; a transform moves what a box
+    /// paints and where it is hit, and no box.
     pub(super) fn paints_only(self) -> bool {
+        self.is_motion_only()
+            || matches!(
+                self,
+                Self::Opacity
+                    | Self::BoxShadow
+                    | Self::Color
+                    | Self::BackgroundColor
+                    | Self::BorderTopColor
+                    | Self::BorderRightColor
+                    | Self::BorderBottomColor
+                    | Self::BorderLeftColor
+                    | Self::OutlineColor
+                    | Self::TextDecorationColor
+                    | Self::ScrollbarColor
+                    | Self::SelectionColor
+            )
+    }
+
+    /// Motion's transform keys, which no CSS property carries the name of.
+    pub(super) fn is_motion_only(self) -> bool {
         matches!(
             self,
-            Self::Opacity
-                | Self::BoxShadow
-                | Self::Color
-                | Self::BackgroundColor
-                | Self::BorderTopColor
-                | Self::BorderRightColor
-                | Self::BorderBottomColor
-                | Self::BorderLeftColor
-                | Self::OutlineColor
-                | Self::TextDecorationColor
-                | Self::ScrollbarColor
-                | Self::SelectionColor
+            Self::X
+                | Self::Y
+                | Self::TranslateX
+                | Self::TranslateY
+                | Self::MotionScale
+                | Self::ScaleX
+                | Self::ScaleY
+                | Self::MotionRotate
+                | Self::RotateZ
+                | Self::Skew
+                | Self::SkewX
+                | Self::SkewY
+                | Self::OriginX
+                | Self::OriginY
         )
+    }
+
+    /// Whether a change of this property moves, scales or turns what the element paints.
+    pub(super) fn is_transform(self) -> bool {
+        self.is_motion_only() && !matches!(self, Self::OriginX | Self::OriginY)
     }
 }
 
@@ -1051,15 +1104,42 @@ pub(crate) enum Axis {
 }
 
 impl AnimProp {
-    /// The property `animate` and keyframes name: not a discrete one.
+    /// The property a motion description (`animate`, a transition, a motion value) names: not a
+    /// discrete one. `scale` and `rotate` are Motion's, which turn about the element, and not the
+    /// CSS properties of those names.
     pub(super) fn from_name(name: &str) -> Option<Self> {
-        Self::lookup(name).filter(|prop| !prop.is_discrete())
+        match name {
+            "scale" => Some(Self::MotionScale),
+            "rotate" => Some(Self::MotionRotate),
+            "motionScale" | "motionRotate" => None,
+            _ => Self::lookup(name).filter(|prop| !prop.is_discrete()),
+        }
     }
 
     /// The property a CSS `transition-property` name stands for, discrete ones
     /// included.
     pub(super) fn from_css_name(name: &str) -> Option<Self> {
-        Self::lookup(name)
+        Self::lookup(name).filter(|prop| !prop.is_motion_only())
+    }
+
+    /// The property a CSS keyframe names: not a discrete one.
+    pub(super) fn from_css_animated_name(name: &str) -> Option<Self> {
+        Self::from_css_name(name).filter(|prop| !prop.is_discrete())
+    }
+
+    /// Motion's keys that move or turn an element in depth. Nothing draws them, which is what they do
+    /// without a perspective, so a motion component takes them and leaves them out.
+    pub(super) fn is_depth_key(name: &str) -> bool {
+        matches!(name, "z" | "translateZ" | "rotateX" | "rotateY" | "transformPerspective")
+    }
+
+    /// What the property is called in a motion description and in an error.
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::MotionScale => "scale",
+            Self::MotionRotate => "rotate",
+            prop => prop.wire_name(),
+        }
     }
 
     /// Whether the value flips instead of blending, so only a transition with
@@ -1111,13 +1191,10 @@ impl AnimProp {
     }
 
     /// Whether reduced motion replaces the property's animation with a jump.
-    /// Framer's `positionalKeys` less the transforms GPUI does not have; padding,
-    /// margin, gap, min/max sizes and `flexBasis` keep animating there.
+    /// Framer's `positionalKeys`; padding, margin, gap, min/max sizes and `flexBasis` keep animating there.
     pub(super) fn is_positional(self) -> bool {
-        matches!(
-            self,
-            Self::Width | Self::Height | Self::Top | Self::Right | Self::Bottom | Self::Left
-        )
+        self.is_motion_only()
+            || matches!(self, Self::Width | Self::Height | Self::Top | Self::Right | Self::Bottom | Self::Left)
     }
 
     /// Whether the property's grammar takes a percentage. Border widths and the
@@ -1153,6 +1230,7 @@ impl AnimProp {
         match self.initial_rule() {
             Initial::Unresolved => None,
             Initial::Auto => Some(AnimValue::auto_keyword()),
+            Initial::Center => Some(AnimValue::Percent(0.5)),
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(
                 f64::from(crate::css::border::resolve_width(&crate::css::border::MEDIUM, &colors.lengths)),
@@ -1251,6 +1329,21 @@ impl AnimProp {
                 }
                 self.resolve_length(&length, lengths)?
             }
+            Kind::Angle => AnimValue::Number(match value {
+                Value::String(text) => crate::css::transform::parse_degrees(text)
+                    .ok_or_else(|| format!("motion {name} must be a number of degrees or a CSS angle"))
+                    .and_then(|degrees| check_finite(name, degrees))?,
+                value => parse_number(name, value)?,
+            }),
+            Kind::Origin => match value.as_f64() {
+                Some(fraction) => AnimValue::length(0.0, check_finite(name, fraction)?),
+                None => {
+                    let length: LinearLength = serde_json::from_value(value.clone()).map_err(|error| {
+                        format!("motion {name} must be a fraction or a CSS length: {error}")
+                    })?;
+                    self.resolve_length(&length, lengths)?
+                }
+            },
             Kind::Corner => {
                 let corner: CornerRadiusValue = serde_json::from_value(value.clone())
                     .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
@@ -1412,12 +1505,13 @@ impl AnimProp {
             || (self.kind() == Kind::Thickness && matches!(value, AnimValue::Keyword(Some(keyword)) if keyword == FROM_FONT))
             || matches!(
                 (self.kind(), value),
-                (Kind::Number | Kind::Integer | Kind::FontWeight | Kind::FontSize, AnimValue::Number(_))
+                (Kind::Number | Kind::Integer | Kind::FontWeight | Kind::FontSize | Kind::Angle, AnimValue::Number(_))
                     | (
                         Kind::Dimension
                             | Kind::Offset
                             | Kind::Length
                             | Kind::Corner
+                            | Kind::Origin
                             | Kind::UnderlineOffset
                             | Kind::Thickness
                             | Kind::VerticalAlign,
@@ -1512,6 +1606,72 @@ fn parse_number(name: &str, value: &Value) -> Result<f64, String> {
 mod tests {
     use super::*;
     use crate::color::Scheme;
+
+    #[test]
+    fn motions_transform_keys_are_named_for_motion_and_not_for_css() {
+        for name in ["x", "y", "translateX", "translateY", "scaleX", "scaleY", "rotateZ", "skew", "skewX", "skewY", "originX", "originY"] {
+            let prop = AnimProp::from_name(name).unwrap();
+            assert_eq!(prop.name(), name);
+            assert!(prop.paints_only() && prop.is_positional() && prop.is_motion_only(), "{name}");
+            assert!(AnimProp::from_css_name(name).is_none(), "{name} is no CSS property");
+            assert!(AnimProp::from_css_animated_name(name).is_none(), "{name} is no CSS keyframe");
+        }
+        // Motion's scale and rotate turn the element, and have their own names in a style.
+        assert_eq!(AnimProp::from_name("scale"), Some(AnimProp::MotionScale));
+        assert_eq!(AnimProp::from_name("rotate"), Some(AnimProp::MotionRotate));
+        assert_eq!((AnimProp::MotionScale.name(), AnimProp::MotionRotate.name()), ("scale", "rotate"));
+        assert!(AnimProp::from_name("motionScale").is_none() && AnimProp::from_name("motionRotate").is_none());
+        assert!(AnimProp::from_css_name("scale").is_none() && AnimProp::from_css_name("rotate").is_none());
+        for name in ["z", "translateZ", "rotateX", "rotateY", "transformPerspective"] {
+            assert!(AnimProp::from_name(name).is_none() && AnimProp::is_depth_key(name), "{name}");
+        }
+        assert!(!AnimProp::OriginX.is_transform() && AnimProp::X.is_transform() && !AnimProp::Opacity.is_transform());
+    }
+
+    #[test]
+    fn an_unset_transform_key_starts_from_motions_default() {
+        let colors = Colors::root();
+        let initial = |prop: AnimProp| prop.initial(None, &colors);
+        for prop in [AnimProp::X, AnimProp::TranslateY, AnimProp::MotionRotate, AnimProp::Skew] {
+            assert_eq!(initial(prop), Some(AnimValue::Number(0.0)), "{}", prop.name());
+        }
+        for prop in [AnimProp::MotionScale, AnimProp::ScaleX, AnimProp::ScaleY] {
+            assert_eq!(initial(prop), Some(AnimValue::Number(1.0)), "{}", prop.name());
+        }
+        assert_eq!(initial(AnimProp::OriginX), Some(AnimValue::Percent(0.5)));
+    }
+
+    #[test]
+    fn transform_keys_take_lengths_angles_and_fractions() {
+        let colors = Colors::root();
+        let parse = |prop: AnimProp, json: serde_json::Value| prop.parse(&json, &colors);
+        assert_eq!(parse(AnimProp::X, serde_json::json!(40)), Ok(AnimValue::Number(40.0)));
+        assert_eq!(parse(AnimProp::X, serde_json::json!("-50%")), Ok(AnimValue::Percent(-0.5)));
+        assert_eq!(parse(AnimProp::Y, serde_json::json!("calc(50% + 4px)")), Ok(AnimValue::Calc { px: 4.0, percent: 0.5 }));
+        assert_eq!(parse(AnimProp::MotionRotate, serde_json::json!(90)), Ok(AnimValue::Number(90.0)));
+        assert_eq!(parse(AnimProp::RotateZ, serde_json::json!("0.5turn")), Ok(AnimValue::Number(180.0)));
+        assert!(parse(AnimProp::SkewX, serde_json::json!("10px")).is_err());
+        assert_eq!(parse(AnimProp::ScaleX, serde_json::json!(2)), Ok(AnimValue::Number(2.0)));
+        assert_eq!(parse(AnimProp::OriginX, serde_json::json!(0.25)), Ok(AnimValue::Percent(0.25)));
+        assert_eq!(parse(AnimProp::OriginY, serde_json::json!("12px")), Ok(AnimValue::Number(12.0)));
+        assert!(parse(AnimProp::OriginY, serde_json::json!("nowhere")).is_err());
+    }
+
+    #[test]
+    fn transform_keys_are_written_to_and_read_from_the_style() {
+        let colors = Colors::root();
+        let mut style = StyleDesc::default();
+        AnimProp::X.write(&mut style, AnimValue::Calc { px: 4.0, percent: 0.5 });
+        AnimProp::MotionRotate.write(&mut style, AnimValue::Number(30.0));
+        AnimProp::MotionScale.write(&mut style, AnimValue::Number(2.0));
+        AnimProp::OriginX.write(&mut style, AnimValue::Percent(0.25));
+        assert_eq!(style.x.map(|x| (x.px, x.percent)), Some((4.0, 0.5)));
+        assert_eq!((style.motion_rotate, style.motion_scale), (Some(30.0), Some(2.0)));
+        assert_eq!(AnimProp::X.read(&style, &colors), Some(AnimValue::Calc { px: 4.0, percent: 0.5 }));
+        assert_eq!(AnimProp::OriginX.read(&style, &colors), Some(AnimValue::Percent(0.25)));
+        assert_eq!(AnimProp::MotionRotate.read(&style, &colors), Some(AnimValue::Number(30.0)));
+        assert_eq!(AnimProp::Y.read(&style, &colors), None);
+    }
 
     #[test]
     fn every_property_round_trips_its_name() {

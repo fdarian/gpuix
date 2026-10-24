@@ -663,6 +663,17 @@ impl MotionValueStore {
         })
     }
 
+    /// Whether a value bound to a key of the transform by `binding` was changing by itself when the
+    /// frame sampled it.
+    pub(crate) fn animates_transform(&self, binding: &Value) -> bool {
+        parse_binding(binding).is_ok_and(|bound| {
+            bound.iter().any(|bound| match bound {
+                Bound::Longhand { prop, id } => prop.is_transform() && self.frame_moving.contains(id),
+                Bound::Shorthand { .. } => false,
+            })
+        })
+    }
+
     /// The number the last frame sampled for a value passed as `read`.
     pub(crate) fn sampled(&self, id: f64) -> Option<f64> {
         match self.frame_values.get(&value_id(id).ok()?)? {
@@ -1021,6 +1032,9 @@ fn parse_binding(binding: &Value) -> Result<Vec<Bound>, String> {
             id.as_f64()
                 .ok_or_else(|| format!("motionValues.{name} must be a motion value id"))?,
         )?;
+        if AnimProp::is_depth_key(name) {
+            continue;
+        }
         match (AnimProp::from_name(name), expand_shorthand(name)) {
             (Some(prop), _) => bound.push(Bound::Longhand { prop, id }),
             (None, Some(_)) if name == "flex" => {

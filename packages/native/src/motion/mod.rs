@@ -250,6 +250,8 @@ impl Transitions {
                 }
             } else if let Some(prop) = PropKey::from_name(target, &key) {
                 per_prop.insert(prop, transition);
+            } else if target == Target::Style && AnimProp::is_depth_key(&key) {
+                continue;
             } else {
                 return Err(format!("unknown motion transition key: {key}"));
             }
@@ -1000,6 +1002,14 @@ impl MotionState {
                 .is_some_and(|track| track.sample(now).active)
     }
 
+    /// Whether a track that moves, scales or turns the element is moving at `now`.
+    pub(crate) fn animates_transform(&self, now: Instant) -> bool {
+        self.valid
+            && self.tracks.iter().any(|(key, track)| {
+                matches!(key, PropKey::Style(prop) if prop.is_transform()) && track.sample(now).active
+            })
+    }
+
     /// Whether a track is still moving at `now`: what it shows differs from one frame to the next.
     pub(crate) fn is_animating(&self, now: Instant) -> bool {
         self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active))
@@ -1686,6 +1696,8 @@ fn parse_goals(
             }
         } else if let Some(prop) = PropKey::from_name(target, key) {
             goals.insert(prop, parse_goal(prop, value, colors)?);
+        } else if target == Target::Style && AnimProp::is_depth_key(key) {
+            continue;
         } else {
             return Err(match target {
                 Target::Style => format!(

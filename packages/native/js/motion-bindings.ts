@@ -40,6 +40,24 @@ export function splitMotionStyle(
   return { style: (motionValues ? plain : style) as StyleDesc, motionValues }
 }
 
+const MOTION_TRANSFORM_WIRE_NAMES: Record<string, string> = { scale: "motionScale", rotate: "motionRotate" }
+
+/**
+ * The style of a motion component: its static `scale` and `rotate` are Motion's, which native knows
+ * under other names so that they do not meet the CSS properties. A motion value keeps its key, which
+ * native reads as Motion's too.
+ */
+export function motionComponentStyle<Style>(style: Style): Style {
+  if (typeof style !== "object" || style === null) return style
+  if (!Object.hasOwn(style, "scale") && !Object.hasOwn(style, "rotate")) return style
+  const renamed: Record<string, unknown> = {}
+  for (const key of Object.keys(style)) {
+    const value: unknown = Reflect.get(style, key)
+    renamed[isMotionValue(value) ? key : (MOTION_TRANSFORM_WIRE_NAMES[key] ?? key)] = value
+  }
+  return renamed as Style
+}
+
 function sameBindings(
   left: Record<string, MotionValue> | undefined,
   right: Record<string, MotionValue> | undefined

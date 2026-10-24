@@ -207,7 +207,8 @@ export type MotionStyleTargets = Pick<
   | "scrollbarColor"
   | "scrollbarWidth"
   | "selectionColor"
-> & {
+> &
+  MotionTransformKeys & {
   width?: MotionLength | "auto"
   height?: MotionLength | "auto"
   minWidth?: MotionLength
@@ -220,11 +221,47 @@ export type MotionStyleTargets = Pick<
 export type MotionLength = DimensionValue
 
 /**
+ * Motion's transform keys, composed in Motion's order (`x`, `y`, `translateX`, `translateY`, `scale`,
+ * `scaleX`, `scaleY`, `rotate`, `rotateZ`, `skew`, `skewX`, `skewY`) around the origin. They replace
+ * `transform`, as Motion's do, and the element is a stacking context and the containing block of its
+ * absolute and fixed descendants whenever one is set. On a `motion.*` component `scale` and `rotate`
+ * are these and not the CSS properties of the same names. They animate with tweens, springs and
+ * keyframes, and a motion value can drive each. Layout is not affected.
+ */
+export interface MotionTransformKeys {
+  /** A number is px; a string is a CSS length, and `%` is of the element's own border box. */
+  x?: MotionLength
+  y?: MotionLength
+  translateX?: MotionLength
+  translateY?: MotionLength
+  scale?: number
+  scaleX?: number
+  scaleY?: number
+  /** A number is degrees; a string is a CSS angle (`"0.25turn"`). */
+  rotate?: number | string
+  rotateZ?: number | string
+  skew?: number | string
+  skewX?: number | string
+  skewY?: number | string
+  /** A number is a fraction of the border box (`0.5` is the middle, the default); a string is a CSS length. */
+  originX?: number | string
+  originY?: number | string
+  /** Accepted and ignored: nothing draws in depth. */
+  z?: MotionLength
+  translateZ?: MotionLength
+  rotateX?: number | string
+  rotateY?: number | string
+  transformPerspective?: number
+}
+
+/**
  * `StyleDesc` where each animatable property may hold a motion value instead.
  * The adapter binds it to the element rather than sending it as style.
  */
 export type MotionValueStyle = Omit<StyleDesc, Exclude<keyof MotionStyle, "flex">> & {
-  [Property in Exclude<keyof MotionStyle, "flex">]?: StyleDesc[Property] | MotionValue
+  [Property in Exclude<keyof MotionStyle, "flex" | keyof MotionTransformKeys>]?: StyleDesc[Property] | MotionValue
+} & {
+  [Property in keyof MotionTransformKeys]?: MotionTransformKeys[Property] | MotionValue
 }
 
 export type MotionEase =

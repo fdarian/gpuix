@@ -9366,8 +9366,9 @@ fn build_element_in(
             boxed,
             prekeyed,
             scroller: ctx.scroller,
-            opacity_run: &|| {
+            lift_run: &|| {
                 opacity_runs(known, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now)
+                    || transform_runs(known, ctx.motion_states, ctx.motion_values, ctx.now)
             },
             costly: known.content.is_some()
                 || !crate::text::inline::is_host_type(&known.element_type)
@@ -9880,16 +9881,20 @@ fn animate_style(
     let (mut transitioned, mut moved, mut bound, mut animated) = (transitioned, moved, bound, animated);
     // Nothing was stepped for an element built as forced content (or provisionally), so there is no
     // style that an animation of its opacity runs on, whatever the clocks of its states say.
-    if steps && opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now) {
-        // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
-        let current = animated
-            .as_deref_mut()
-            .or(bound.as_deref_mut())
-            .or(moved.as_deref_mut())
-            .or(transitioned.as_deref_mut().map(|declared| &mut declared.style));
-        current
-            .expect("an opacity that runs has the style it runs on")
-            .animating_opacity = true;
+    if steps {
+        let opacity = opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now);
+        let transform = transform_runs(element, ctx.motion_states, ctx.motion_values, ctx.now);
+        if opacity || transform {
+            // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
+            let current = animated
+                .as_deref_mut()
+                .or(bound.as_deref_mut())
+                .or(moved.as_deref_mut())
+                .or(transitioned.as_deref_mut().map(|declared| &mut declared.style))
+                .expect("an animation that runs has the style it runs on");
+            current.animating_opacity |= opacity;
+            current.animating_transform |= transform;
+        }
     }
     Animated {
         hidden: false,
@@ -9922,6 +9927,19 @@ fn opacity_runs(
         || (props.contains_key("motion")
             && motion_states.get(&element.id).is_some_and(|state| state.animates_opacity(now)))
         || props.get("motionValues").is_some_and(|binding| motion_values.animates_opacity(binding))
+}
+
+/// Whether a `motion` track or a motion value that moves, scales or turns `element` is moving. For as long
+/// as one is, the element has a transform at every value it samples (`StyleDesc::animating_transform`).
+fn transform_runs(
+    element: &crate::retained_tree::RetainedElement,
+    motion_states: &HashMap<u64, crate::motion::MotionState>,
+    motion_values: &crate::motion::MotionValueStore,
+    now: web_time::Instant,
+) -> bool {
+    let props = element.custom_props();
+    (props.contains_key("motion") && motion_states.get(&element.id).is_some_and(|state| state.animates_transform(now)))
+        || props.get("motionValues").is_some_and(|binding| motion_values.animates_transform(binding))
 }
 
 /// What a `display: contents` element handed down in a frame, kept for the other children spliced
@@ -10232,7 +10250,7 @@ fn build_element_unpumped(
     );
     tree.resolved.borrow_mut().record(id, resolved);
     let (colors, lengths) = (&ctx.inherited.colors, &ctx.inherited.lengths);
-    ctx.retain.opacity_run(style.is_some_and(|style| style.animating_opacity));
+    ctx.retain.lift_run(style.is_some_and(|style| style.animating_opacity || style.animating_transform));
     ctx.retain.stacking(|| {
         (
             crate::layout::stacking::lift_z(&resolved, stacking_item),

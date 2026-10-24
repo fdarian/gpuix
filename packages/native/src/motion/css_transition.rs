@@ -897,7 +897,11 @@ impl ElementState {
         let style_changed = self.previous != *after;
         if style_changed || config_changed || colors_changed {
             let props: Vec<AnimProp> = if style_changed || colors_changed {
-                AnimProp::ALL.iter().copied().filter(|prop| scope.animates(*prop)).collect()
+                AnimProp::ALL
+                    .iter()
+                    .copied()
+                    .filter(|prop| scope.animates(*prop) && !prop.is_motion_only())
+                    .collect()
             } else {
                 self.running
                     .keys()

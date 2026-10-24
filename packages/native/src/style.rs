@@ -102,6 +102,30 @@ fn deserialize_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Opti
     text_or_number(deserializer, "")
 }
 
+fn deserialize_angle<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+    Option::<NumberOrText>::deserialize(deserializer)?
+        .map(|value| match value {
+            NumberOrText::Number(degrees) => Ok(degrees),
+            NumberOrText::Text(text) => crate::css::transform::parse_degrees(&text)
+                .ok_or_else(|| serde::de::Error::custom(format!("invalid angle \"{text}\": expected a number of degrees or a CSS angle"))),
+        })
+        .transpose()
+}
+
+fn deserialize_origin<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LinearLength>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Origin {
+        Fraction(f64),
+        Length(LinearLength),
+    }
+
+    Ok(Option::<Origin>::deserialize(deserializer)?.map(|origin| match origin {
+        Origin::Fraction(fraction) => LinearLength { percent: fraction, ..LinearLength::default() },
+        Origin::Length(length) => length,
+    }))
+}
+
 fn deserialize_shadow_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LinearLength, D::Error> {
     crate::css::length::deserialize_with(
         deserializer,
@@ -865,6 +889,34 @@ pub struct StyleDesc {
     pub scale: Option<String>,
     /// CSS `transform-origin`: one or two keywords, lengths or percentages. `50% 50%` by default.
     pub transform_origin: Option<String>,
+    /// Motion's transform keys, sent by `motion.*` components only (see `css/transform.rs`): a
+    /// number is px, a string a CSS length (`%` is of the border box).
+    pub x: Option<LinearLength>,
+    pub y: Option<LinearLength>,
+    pub translate_x: Option<LinearLength>,
+    pub translate_y: Option<LinearLength>,
+    /// Motion's `scale` and `rotate`, under other names so that they do not meet the CSS `scale`
+    /// and `rotate` above. The motion components rename the keys of their style.
+    pub motion_scale: Option<f64>,
+    pub scale_x: Option<f64>,
+    pub scale_y: Option<f64>,
+    /// An angle: a number is degrees, a string a CSS angle.
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub motion_rotate: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub rotate_z: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub skew: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub skew_x: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub skew_y: Option<f64>,
+    /// Motion's `originX` and `originY`: a number is a fraction of the border box, a string a CSS
+    /// length or percentage. They replace the axis of `transformOrigin`.
+    #[serde(default, deserialize_with = "deserialize_origin")]
+    pub origin_x: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_origin")]
+    pub origin_y: Option<LinearLength>,
     /// CSS `border-style`: one to four of `none`, `hidden`, `dotted`, `dashed`, `solid`,
     /// `double`, `groove`, `ridge`, `inset` and `outset`, for the sides like `border-color`.
     /// `none` and `hidden` leave the side without a width. An invalid string is ignored.
@@ -1056,6 +1108,11 @@ pub struct StyleDesc {
     /// at opacity 0 still paints. A run that ends puts the element back to what its static opacity says.
     #[serde(skip)]
     pub animating_opacity: bool,
+    /// Set by the renderer like `animating_opacity`, for an animation of the transform: the element
+    /// has a transform, a stacking context and is a containing block, at every value it samples
+    /// (`none` and the identity included), so a tick never flips them.
+    #[serde(skip)]
+    pub animating_transform: bool,
 
     // CSS animations: CSS syntax, as in a DOM inline style. The longhands win
     // over the `animation` shorthand. Names refer to `defineKeyframes`.
@@ -1183,7 +1240,8 @@ impl StyleDesc {
     /// `RetainedTree::take_dirty`). The keys are those of `AnimProp::paints_only`, which is the
     /// list of what no layout, text measure, scroll overflow or box position reads, and the
     /// shorthand `borderColor`, which is four colours and nothing else. The `border` and `outline`
-    /// shorthands carry widths, so they are not here.
+    /// shorthands carry widths, so they are not here. The transform keys (CSS and Motion's) are paint
+    /// while the element keeps or lacks a transform, because having one makes it a containing block.
     ///
     /// Every other field, a state style (`hover`, ...) and a custom property included, is compared
     /// whole: a key that is added to the struct is a layout key until it is listed here.
@@ -1211,6 +1269,20 @@ impl StyleDesc {
             painted.rotate = other.rotate.clone();
             painted.scale = other.scale.clone();
             painted.transform_origin = other.transform_origin.clone();
+            painted.x = other.x;
+            painted.y = other.y;
+            painted.translate_x = other.translate_x;
+            painted.translate_y = other.translate_y;
+            painted.motion_scale = other.motion_scale;
+            painted.scale_x = other.scale_x;
+            painted.scale_y = other.scale_y;
+            painted.motion_rotate = other.motion_rotate;
+            painted.rotate_z = other.rotate_z;
+            painted.skew = other.skew;
+            painted.skew_x = other.skew_x;
+            painted.skew_y = other.skew_y;
+            painted.origin_x = other.origin_x;
+            painted.origin_y = other.origin_y;
         }
         painted == *other
     }
@@ -1623,6 +1695,11 @@ mod tests {
         assert!(!paint_only(r#"{"transform":"scale(2)"}"#, r#"{"transform":"bogus"}"#));
         // And a key that is layout still is.
         assert!(!paint_only(r#"{"transform":"scale(2)","width":1}"#, r#"{"transform":"scale(3)","width":2}"#));
+        // Motion's keys are the same: their values are paint while the element keeps its transform.
+        assert!(paint_only(r#"{"x":1,"originX":0}"#, r#"{"x":9,"motionScale":2,"skewX":"1deg","originX":1,"originY":"4px"}"#));
+        assert!(!paint_only("{}", r#"{"x":9}"#));
+        assert!(!paint_only(r#"{"motionRotate":3}"#, "{}"));
+        assert!(paint_only("{}", r#"{"originX":1}"#));
     }
 
     #[test]

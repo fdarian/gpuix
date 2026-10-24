@@ -577,7 +577,7 @@ impl PropTarget {
     fn takes(self, key: PropKey) -> bool {
         match (self, key) {
             (Self::Element | Self::SvgHost, PropKey::Style(_)) | (Self::SvgShape, PropKey::Svg(_)) => true,
-            (Self::SvgHost, PropKey::Svg(attr)) => AnimProp::from_name(attr.name()).is_none(),
+            (Self::SvgHost, PropKey::Svg(attr)) => AnimProp::from_css_animated_name(attr.name()).is_none(),
             _ => false,
         }
     }
