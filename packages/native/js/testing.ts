@@ -110,6 +110,7 @@ export interface RetainedCounters {
   layoutSkips: number
   layoutReplays: number
   layoutBuilds: number
+  layoutTranslations: number
   layoutRecords: number
   verified: number
   mismatches: number
