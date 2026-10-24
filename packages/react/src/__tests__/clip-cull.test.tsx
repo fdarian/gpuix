@@ -33,11 +33,17 @@ function setup(element: React.ReactElement, size = { width: 300, height: 400 }) 
   const ref = (name: string) => (instance) => {
     if (instance) refs.set(name, instance)
   }
-  root.render(typeof element === "function" ? element(ref) : element)
   const culled = () => root.renderer.getCulledSubtreeCount()
-  /** How many subtrees one more frame skips. */
+  let beforeMount: number | null = culled()
+  root.render(typeof element === "function" ? element(ref) : element)
+  /**
+   * How many subtrees one more frame skips. The first call also counts what the frames that mounted the page skipped: the
+   * frame after the first paint of a scroller replays the records of the frame before it instead of building and skipping
+   * again, so that frame alone skips nothing new, and a count of it would not tell a page that skips from one that does not.
+   */
   const skippedPerFrame = () => {
-    const before = culled()
+    const before = beforeMount === null ? culled() : beforeMount
+    beforeMount = null
     root.renderer.flush()
     return culled() - before
   }

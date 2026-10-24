@@ -15,10 +15,16 @@ const CLIP = { width: 200, height: 100 }
 
 function mount(code: () => unknown) {
   const app = createTestRoot({ width: 300, height: 400 })
+  let beforeMount: number | null = app.renderer.getCulledSubtreeCount()
   app.render(code as never)
-  /** How many subtrees one more frame skips. */
+  /**
+   * How many subtrees one more frame skips. The first call also counts what the frames that mounted the page skipped: the
+   * frame after the first paint of a scroller replays the records of the frame before it instead of building and skipping
+   * again, so that frame alone skips nothing new, and a count of it would not tell a page that skips from one that does not.
+   */
   const skippedPerFrame = () => {
-    const before = app.renderer.getCulledSubtreeCount()
+    const before = beforeMount === null ? app.renderer.getCulledSubtreeCount() : beforeMount
+    beforeMount = null
     app.renderer.flush()
     return app.renderer.getCulledSubtreeCount() - before
   }

@@ -916,9 +916,7 @@ const hidden = (intrinsic: string, padding: number) =>
 
 /** The page of the scene `firstReadKept`: a `hidden` element of 8 cards of 3 lines, between two boxes that change. */
 function KeptPage({ step, visibility = "hidden" }: { step: number; visibility?: "hidden" | "visible" }) {
-  // No scroll container around the page, unlike the oracle's (and `Page`, which clips): the first layout pass that finds a scroll
-  // handle takes the content under it as moved, which gets no layout record, so a cold page in a scroller is built whole once
-  // more in its second pass. The boxes are the same.
+  // No scroll container around the page, unlike the oracle's (and `Page`, which clips). The boxes are the same.
   return (
     <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column" }}>
       <div style={{ height: [20, 20, 30, 30][step], flexShrink: 0 }} />
@@ -2006,10 +2004,11 @@ describeNative("content a read forced keeps its layout across the draws that ski
         const now = read(root.renderer)
         sameRects(`moved to ${above}`, now.rects, built[step]!.rects)
         expect(now.metrics, `scroll metrics at ${above}`).toEqual(built[step]!.metrics)
-        // The draw before the first move found the scrollers new and ended the records of the cards around them: that move
-        // builds them. The cards of the moves after it are skipped where they are, scrollers and text and all.
-        if (!verifying && step > 0) expect(now.built, `at ${above}: the page and the host, not the cards that only moved`).toBeLessThanOrEqual(4)
-        if (!verifying && step > 0) expect(now.skips, `at ${above}: the cards are skipped`).toBeGreaterThanOrEqual(6)
+        // The draw before the first move found the scrollers new, at their origin: that is not a change, so the records of the
+        // cards around them stay and every move, the first included, skips the cards where they are, scrollers and text and all
+        // (the first built 21 elements and skipped 6 when a new handle was a change).
+        if (!verifying) expect(now.built, `at ${above}: the page and the host, not the cards that only moved`).toBeLessThanOrEqual(4)
+        if (!verifying) expect(now.skips, `at ${above}: the cards are skipped`).toBeGreaterThanOrEqual(6)
         frames(root.renderer)
       })
       noMismatches(root.renderer)

@@ -1510,10 +1510,9 @@ impl Retain {
             match seen.scrolls.get(id) {
                 Some(before) if before == bits => continue,
                 Some(_) => scrolling = true,
-                // What a pass that only lays out built in a scroller it found at its origin was built
-                // where it is. A frame that paints still takes a new handle as a change: clip-cull
-                // counts what the frame after the first paint of a scroller culls, which it builds.
-                None if sources.layout_only && f32::from_bits(bits.0) == 0.0 && f32::from_bits(bits.1) == 0.0 => continue,
+                // What a frame built in a scroller it found at its origin was built where it is, and
+                // `Scroller::of` records it to be moved: the first scroll relocates it.
+                None if f32::from_bits(bits.0) == 0.0 && f32::from_bits(bits.1) == 0.0 => continue,
                 None => {}
             }
             changed.push(*id);
@@ -4894,6 +4893,30 @@ mod tests {
         assert_eq!(skip.overscan, Some(gpui::px(390.0)));
     }
 
+    #[test]
+    fn the_content_under_a_scroller_first_found_in_a_painted_frame_is_still_recorded_to_be_moved() {
+        let window = gpui::WindowId::from(2);
+        let list = Scroller { window, viewport: gpui::size(gpui::px(900.0), gpui::px(780.0)), reach: gpui::px(780.0) };
+        crate::automation::set_bounds(window, 2, crate::automation::ElementBounds::plain(0.0, 0.0, 100.0, 100.0));
+        let mut page = Units::new();
+        assert!(page_in(&mut page, false, Some(list)).is_none());
+        // 2 is built in the frame that finds the handle of the scroller, at its origin, and recorded: a handle
+        // that is new is not a scroll, so what is under it is not moved.
+        page.scrolls.insert(1, gpui::ScrollHandle::new());
+        page.edit(1);
+        page.edit(2);
+        assert!(page_in(&mut page, false, Some(list)).is_none(), "2 was edited");
+        assert!(!page.retain.deltas.scrolled.contains(&1));
+        page.edit(1);
+        let skip = page_in(&mut page, false, Some(list)).expect("the frame after skips the record the frame that found the handle made");
+        assert_eq!(skip.overscan, Some(gpui::px(390.0)), "recorded to be moved by the scroller");
+        // The first scroll puts it elsewhere instead of building it.
+        page.scrolls[&1].set_offset(gpui::point(gpui::px(0.0), gpui::px(-40.0)));
+        page.edit(1);
+        assert!(page_in(&mut page, false, Some(list)).is_some(), "relocated, not built");
+        assert!(page.retain.deltas.scrolled.contains(&1));
+    }
+
     /// A frame of the page in which 2 holds the content a read forces (`forced`) or skips, edited so that it is
     /// built. Says whether 3 and 4 were skipped with their records.
     fn host_frame(page: &mut Units, hovered: &[u64], layout_only: bool, forced: bool) -> [bool; 2] {
@@ -4974,7 +4997,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pass_that_only_lays_out_finds_a_scroller_at_its_origin_not_scrolled() {
+    fn a_scroller_first_found_at_its_origin_is_not_scrolled() {
         let mut page = Units::new();
         page.pass(&[], true, None, None);
         page.scrolls.insert(2, gpui::ScrollHandle::new());
@@ -4992,10 +5015,19 @@ mod tests {
         page.scrolls.insert(5, moved);
         page.pass(&[], true, None, None);
         assert!(page.retain.deltas.scrolled.contains(&5));
-        // And a frame that paints takes a new handle as a change.
+
+        // A frame that paints finds them the same: at the origin is not a change, away from it is.
         page.scrolls.insert(3, gpui::ScrollHandle::new());
+        let moved = gpui::ScrollHandle::new();
+        moved.set_offset(gpui::point(gpui::px(-8.0), gpui::px(0.0)));
+        page.scrolls.insert(6, moved);
         page.page(&[], None, None);
-        assert!(page.retain.deltas.scrolled.contains(&3));
+        assert!(!page.retain.deltas.scrolled.contains(&3));
+        assert!(!page.retain.deltas.spine.contains(&3), "{:?}", page.retain.deltas.spine);
+        assert!(page.retain.deltas.scrolled.contains(&6));
+        page.scrolls[&3].set_offset(gpui::point(gpui::px(0.0), gpui::px(-40.0)));
+        page.page(&[], None, None);
+        assert!(page.retain.deltas.scrolled.contains(&3), "its first scroll is the change");
     }
 
     #[test]
