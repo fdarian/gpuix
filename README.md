@@ -1736,6 +1736,45 @@ Variants and shared layout animations are not available yet. See
 [Keyframes](#keyframes) for lists of values.
 **Exit** uses `AnimatePresence`, like Motion for React.
 
+### Move, scale and turn
+
+A `motion` component takes Motion's transform keys in `animate`, `initial`, `exit`, variants, keyframe lists, gestures and
+`style`. They move the painted element, so a tick lays nothing out and costs a patched frame
+(see [Frame cost in tests](#frame-cost-in-tests)).
+
+```tsx
+<motion.div
+  initial={{ x: -24, scale: 0.96, opacity: 0 }}
+  animate={{ x: 0, scale: 1, opacity: 1 }}
+  transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+/>
+```
+
+| Key | Value | At rest |
+|---|---|---|
+| `x`, `y`, `translateX`, `translateY` | a number (px) or a CSS length; a `%` is of the element's own border box | `0` |
+| `scale`, `scaleX`, `scaleY` | a number, or a percentage in a static `style` | `1` |
+| `rotate`, `rotateZ`, `skew`, `skewX`, `skewY` | degrees, or a CSS angle (`"0.25turn"`) | `0` |
+| `originX`, `originY` | a fraction of the border box (`0.5`, the default, is the middle) or a CSS length | `0.5` |
+
+- **They compose in Motion's order**, around the origin: `x`, `y`, `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`,
+  `rotate`, `rotateZ`, `skew`, `skewX`, `skewY`. Any one of them replaces the `transform` string of the same element, as in
+  Motion, so use one or the other.
+- **On a `motion` component `scale` and `rotate` are Motion's**, a factor and degrees; on a plain element they are the CSS
+  properties of [Transforms](#transforms), which take strings too. Tweens, springs, keyframes, `transition` per key and
+  [motion values](#motion-values) bind to every key (`style={{ x: motionValue }}`). A motion value carries numbers, so an
+  angle is in degrees there.
+- **An element with a key set is a stacking context and the containing block of its `absolute` and `fixed` children**, as
+  with a `transform`, even while the key rests at its default. Motion writes no transform for `x: 0`; GPUIX does, so that the
+  element does not change layer when it starts to move.
+- **`animate` takes the keys, not a `transform` string.** A `transform` string animates through
+  [CSS transitions](#css-transitions) and [CSS animations](#css-animations), and a motion key does not: `x` is not a CSS
+  property, and `transition: all` leaves it alone. Name it in the `transition` prop of the component.
+- **3D keys** (`z`, `translateZ`, `rotateX`, `rotateY`, `transformPerspective`, `perspective`) are accepted and ignored.
+- **Reduced motion** makes the keys jump to their target, as it does `width` and `top` (see
+  [MotionConfig and reduced motion](#motionconfig-and-reduced-motion)). CSS transforms are not reduced.
+- A `<span>` ignores all of them (see [Animate an inline span](#animate-an-inline-span)).
+
 ### Springs
 
 Set **`type: "spring"`** to animate with a damped spring instead of a timed
@@ -1787,8 +1826,7 @@ or shadow spring carries its speed per channel when the target changes. The moti
 every animated value is within `restDelta` and `restSpeed` of its target.
 
 `AnimatePresence` exit works with springs: the child leaves after the spring
-settles. Transform properties such as scale and translate are not animatable
-yet, so an enter that scales an element cannot be expressed.
+settles. A spring drives the [transform keys](#move-scale-and-turn) like any other.
 
 ### Keyframes
 
@@ -2423,8 +2461,10 @@ Reduced, `width`, `height`, `top`, `right`, `bottom` and `left` jump to their
 target instead of animating, and so do [layout animations](#layout-animations).
 Nothing else changes: padding, margin, `gap`, min and max sizes, `flexBasis`,
 opacity, colours, shadows, radii and borders still animate with their
-transition. This is Motion for React's rule, less the transforms GPUI does not
-have. The jump still counts as the animation settling: `onMotionComplete`
+transition. This is Motion for React's rule for width, height and the insets;
+Motion's [transform keys](#move-scale-and-turn) (`x`, `scale`, `rotate`, ...) jump
+too, as Motion's transform animations do, while CSS transforms are not reduced.
+The jump still counts as the animation settling: `onMotionComplete`
 fires, and `AnimatePresence` exits complete. Flipping the setting while an
 animation runs finishes the jumping properties at once.
 
@@ -2506,8 +2546,9 @@ function Tabs({ tabs, active, onSelect }) {
 
 Differences from Motion for React:
 
-- Only position glides. A size change snaps, because GPUIX has no transform to
-  scale a box with and re-laying out every frame would flash. `layout="size"`
+- Only position glides. A size change snaps: the glide is an offset, and GPUIX
+  does not scale a box with a transform and correct its children, as Motion's
+  FLIP does, while re-laying out every frame would flash. `layout="size"`
   therefore does nothing on its own; with a `layoutId` it still moves the box.
   `"preserve-aspect"` is not supported.
 - The element that held a `layoutId` is not hidden when another takes the id.
@@ -6561,6 +6602,8 @@ CSS-like styling via the `style` prop:
 
 **Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth` (one to four values), `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderBlock`, `borderInline`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `maskBorder`, `maskBorderSource`, `maskBorderSlice`, `maskBorderWidth`, `maskBorderOutset`, `maskBorderRepeat`, `maskBorderMode`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
 
+**Transform:** `transform`, `translate`, `rotate`, `scale` and `transformOrigin`; see [Transforms](#transforms)
+
 ### Lengths
 
 Every length-typed style field takes a number (pixels) or a CSS string: `px`,
@@ -6895,12 +6938,12 @@ so that animation starts at `0`.
   with a `zIndex`, whatever its `position` (`zIndex` applies to an item without
   one, but not to any other static box, and `auto` leaves it in tree order);
   and an element composited as a whole (`opacity` below 1, `filter`,
-  `backdropFilter`, `maskImage`, `clipPath`), which paints in the 0 layer with
+  `backdropFilter`, `maskImage`, `clipPath`) or with a [transform](#transforms), which paints in the 0 layer with
   the positioned `auto` and 0 elements, in tree order, though it is not
   positioned (it takes its `zIndex` where one applies). Layout is unaffected.
   These form a context: the window root, a positioned element with a `zIndex`
   (not `auto`), `position: fixed` and `sticky`, a flex or grid item with a
-  `zIndex` (not `auto`), and anything composited as a whole. A `zIndex` inside
+  `zIndex` (not `auto`), anything composited as a whole, and an element with a transform. A `zIndex` inside
   one cannot rise above what is outside it. An `<anchored>` layer and each row
   of a `<virtual-list>` is a context of its own too, and nothing is lifted out
   of a row: a row's content never rises above the next row. The children of a
@@ -6910,7 +6953,7 @@ so that animation starts at `0`.
   `<diff>`, `<markdown>`, `<virtual-list>`) draw themselves and do not lay
   their children out as a flex or grid container, so a child of one is no item
   and takes no `zIndex` without a `position`.
-  There is no `transform`. `getElementsAt` and the stacking contexts it models
+  `getElementsAt` and the stacking contexts it models
   read the style an element was last painted with, so an `opacity`, `zIndex`,
   `visibility`, `pointerEvents`, `overflow` or `position` that comes from a
   state style, an `@container` block, a transition, a CSS animation or a motion
@@ -7128,6 +7171,53 @@ Differences from Chrome:
   one, and the order of mixed-direction text is CoreText's. Wrapping and hit tests inside a right-to-left run are
   approximate.
 - `direction` is not animatable.
+
+### Transforms
+
+`transform` moves, scales, rotates and skews an element and everything in it, around `transformOrigin`, without touching
+layout: the box keeps its place in the flow and its neighbours do not move. It is the cheap way to animate a position or a
+size, since a moving transform lays nothing out.
+
+```tsx
+<div style={{ transform: 'translate(8px, -4px) rotate(15deg) scale(1.1)', transformOrigin: 'top left' }} />
+<div style={{ translate: '50% 0', rotate: '45deg', scale: 1.5 }} />
+```
+
+- **`transform`** is `none` or a list of `translate()`, `translateX()`, `translateY()`, `scale()`, `scaleX()`, `scaleY()`,
+  `rotate()`, `skew()`, `skewX()`, `skewY()` and `matrix()`. Translations take any [length](#lengths), and a `%` is of the
+  element's own border box. Angles are `deg`, `rad`, `grad` or `turn`, or a bare `0`. A string that does not parse is
+  ignored as a whole, as in CSS.
+- **`translate`, `rotate` and `scale`** are the individual properties. `rotate` takes an angle or a number of degrees, `scale`
+  one or two numbers or percentages. Around the origin they apply in the order `translate`, `rotate`, `scale`, then `transform`.
+- **`transformOrigin`** is one or two of `left`, `center`, `right`, `top`, `bottom`, lengths and percentages, `50% 50%` by default.
+- **3D is not drawn.** `translate3d()`, `scale3d()`, `translateZ()`, `scaleZ()` and `rotateZ()` are accepted and draw in 2D.
+  `rotateX()`, `rotateY()`, `perspective()` and `matrix3d()` are invalid, so the whole `transform` is ignored.
+- **A transform other than `none` makes the element a stacking context and the containing block of its `absolute` and `fixed`
+  descendants**, as in CSS, even when its value is the identity (`translateZ(0)`). `none` and an invalid value do neither.
+- **What the transform moves.** Painting, hit testing, `getBoundingClientRect()` (the smallest box that holds the four
+  corners of the border box after the transforms around the element and its own), `getElementsAt`, `scrollIntoView` and
+  `IntersectionObserver`. A scroller scrolls as far as the transformed boxes inside it reach. `offsetX` and `offsetY` of a
+  pointer event are in the target's own, untransformed space. `offsetWidth`, `clientWidth`, `scrollWidth`, `ResizeObserver` and
+  `onLayout` still report the layout box.
+- **A `<span>` takes no transform while it is an inline box.** CSS does not transform a non-atomic inline box, and neither does
+  GPUIX; the same span with `display: inline-block` (an atomic inline) does. A `motion.span` drops the Motion keys whatever its
+  `display` (see [Animate an inline span](#animate-an-inline-span)).
+- **Text.** A translation is pixel-snapped and exactly as sharp as the same text placed there. Rotated and scaled text is resampled
+  and can look softer than in Chrome.
+- **State styles** (`hover`, `focus`, ...) take all five keys.
+- **Animating.** The five properties take `transition` and `defineKeyframes` like any other. Two `transform` lists with the same
+  functions in the same order blend function by function (`rotate(0)` to `rotate(270deg)` turns three quarters, not a quarter back),
+  the shorter list padded with identity functions, and `none` blends as the identity of the other list. From the first pair
+  of functions that do not match, the rest of both lists blends as 2D matrices, as in Chrome. A tick of any of this is a patched
+  frame. [Motion's keys](#move-scale-and-turn) are the way to animate from `animate`, springs and motion values.
+
+Differences from Chrome:
+
+- A rotated child that has its own `overflow: hidden` inside a rotated, clipping ancestor is cut to the ancestor's bounding box,
+  with its rounded corners dropped, where Chrome cuts to the rotated shape. A pointer aimed at such a clip is loose in the same way.
+- `backdropFilter` and `maskImage` under a rotation, scale or skew use the bounding box of what they cover, not its shape.
+- `layout="size"` still does not scale a box (see [Layout animations](#layout-animations)).
+- Selection-drag autoscroll and focus scrolling into view do not account for transforms.
 
 ### Cursors
 
@@ -8139,8 +8229,9 @@ render per frame.
   length of `transitionProperty`.
   Every property `motion` can animate (see [Targets and timing](#targets-and-timing))
   can transition. Shorthand names (`padding`, `margin`, `border-radius`, `inset`,
-  `flex`, ...) cover their longhands. A valid CSS name gpuix does not animate
-  (`transform`) is accepted and matches nothing. A camelCase name, a bad time or
+  `flex`, ...) cover their longhands. `transform`, `translate`, `rotate`, `scale` and
+  `transform-origin` transition too (see [Transforms](#transforms)); a valid CSS name
+  gpuix does not animate (`perspective`) is accepted and matches nothing. A camelCase name, a bad time or
   timing function, or an unparsable value is rejected when the style is set, like
   any other invalid style
 - **Inline boxes.** A `<span>` transitions what an inline box shows too, and only that (see
@@ -8334,8 +8425,8 @@ Differences from a browser:
 - A property the keyframes name counts as driven by the animation for as long as
   it runs or fills, so a declared change on it starts no transition even where
   the animation cannot produce a value for it (it waits for layout)
-- Only the properties `motion` can animate are animatable, so `transform` and
-  discrete properties such as `display` cannot be keyframed. The SVG properties
+- Only the properties `motion` can animate are animatable, so discrete properties
+  such as `display` cannot be keyframed. The SVG properties
   CSS animates are, on [SVG shapes](#css-keyframes-on-svg-properties)
 - `animation-composition`, `animation-timeline` and `animation-range` are not
   supported
