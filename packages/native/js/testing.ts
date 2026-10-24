@@ -13,10 +13,6 @@ import {
   hasTestGpuixRenderer,
   TestGpuixRenderer,
   validateKeyframes,
-  type BuildCounters,
-  type FrameWorkCounters,
-  type LayoutCounters,
-  type RetainedCounters,
   type EventPayload,
   type MediaFeatures,
   type MotionValuePlayback,
@@ -55,6 +51,73 @@ export {
   readMacCpuThrottle,
 } from "./cpu-throttle.js"
 export type { MacCpuThrottle } from "./cpu-throttle.js"
+
+// The release index.d.ts has no test-support types, so these mirror the generated
+// interfaces of the test-support build (fields documented in src/test_renderer.rs).
+// __tests__/testing-types.check.ts fails when either side drifts.
+export interface BuildCounters {
+  elementsBuilt: number
+  elementsSkipped: number
+  styleDescClones: number
+  inheritedClones: number
+  retainableRoots: number
+  retainableElements: number
+  retainableElementsLarge: number
+  retainMismatches: number
+  unitsBuilt: number
+  unitsOversized: number
+  motionsSynced: number
+  motionValuesSampled: number
+  retainReasons: string
+}
+
+export interface FrameWorkCounters {
+  prepainted: number
+  culledPrepainted: number
+  painted: number
+  culledPainted: number
+  paintedPrimitives: number
+  replayedPrimitives: number
+  boundsInserts: number
+}
+
+export interface LayoutCounters {
+  nodesCreated: number
+  nodesReused: number
+  nodesRemoved: number
+  stylesSet: number
+  childrenSet: number
+  passes: number
+  measures: number
+  nodesLaidOut: number
+  nodesSized: number
+  relationVisits: number
+  shapes: number
+  wrappedLayouts: number
+  lineLayoutHits: number
+  shapeCacheHits: number
+  extentWalks: number
+  overflowWalks: number
+  unsnappedOverflowWalks: number
+}
+
+export interface RetainedCounters {
+  hits: number
+  replays: number
+  lazyBuilds: number
+  builds: number
+  layoutFallbacks: number
+  layoutSkips: number
+  layoutReplays: number
+  layoutBuilds: number
+  layoutRecords: number
+  verified: number
+  mismatches: number
+  nonReusable: string
+  relocations: number
+  nonRelocatable: string
+  relocationMisses: string
+}
 
 interface NativeTestRendererApi
   extends Omit<NativeRenderer, keyof MotionValueHost>,
