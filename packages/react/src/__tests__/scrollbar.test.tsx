@@ -540,7 +540,8 @@ describeNative("classic scrollbars", () => {
       renderer.nativeSimulateMouseMove(92, 80)
       renderer.nativeSimulateMouseDown(92, 80)
       renderer.nativeSimulateMouseUp(92, 80)
-      expect(top() - before, "down a page, 90% of the 85px scrollport").toBeCloseTo(76.5, 1)
+      // 76.5 from a whole pixel lands on a half, which a scroll position rounds up.
+      expect(top() - before, "down a page, 90% of the 85px scrollport").toBe(77)
     } finally {
       harness.unmount()
     }
