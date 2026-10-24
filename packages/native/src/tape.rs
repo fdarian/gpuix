@@ -244,8 +244,20 @@ impl Entries {
     }
 
     fn lines(&self) -> Vec<(bool, String)> {
+        self.lines_by(|effect, offset| effect.describe(offset))
+    }
+
+    /// [`Self::lines`] with the boxes described apart from the transforms around them.
+    fn lines_apart_from_transforms(&self) -> Vec<(bool, String)> {
+        self.lines_by(|effect, offset| match effect.kind() {
+            Kind::Bounds => crate::automation::describe_apart_from_transform(effect.data(), offset),
+            _ => effect.describe(offset),
+        })
+    }
+
+    fn lines_by(&self, describe: impl Fn(&Effect, Point<Pixels>) -> String) -> Vec<(bool, String)> {
         let mut lines = Vec::new();
-        self.walk(Point::default(), false, &mut |effect, offset| lines.push((effect.in_layout(), effect.describe(offset))));
+        self.walk(Point::default(), false, &mut |effect, offset| lines.push((effect.in_layout(), describe(effect, offset))));
         lines
     }
 }
@@ -390,6 +402,32 @@ impl Tape {
             && self.paint.lines() == other.paint.lines()
             && self.lifted.len() == other.lifted.len()
             && self.lifted.iter().zip(&other.lifted).all(|(left, right)| left.lines() == right.lines())
+    }
+
+    /// [`Self::same_writes`] where the boxes of the elements may differ in the transforms around
+    /// them. A patch of a transform that moves paints the same, and the boxes it publishes are the
+    /// ones of [`Self::each_bounds`].
+    pub(crate) fn same_writes_apart_from_transforms(&self, other: &Tape) -> bool {
+        self.prepaint.lines_apart_from_transforms() == other.prepaint.lines_apart_from_transforms()
+            && self.paint.lines_apart_from_transforms() == other.paint.lines_apart_from_transforms()
+            && self.lifted.len() == other.lifted.len()
+            && self
+                .lifted
+                .iter()
+                .zip(&other.lifted)
+                .all(|(left, right)| left.lines_apart_from_transforms() == right.lines_apart_from_transforms())
+    }
+
+    /// Calls `visit` with the data of every write to the registry of boxes, and how far from where
+    /// it was made it is made now (none).
+    pub(crate) fn each_bounds(&self, visit: &mut dyn FnMut(&dyn Any, Point<Pixels>)) {
+        for entries in [&self.prepaint, &self.paint].into_iter().chain(&self.lifted) {
+            entries.walk(Point::default(), false, &mut |effect, offset| {
+                if effect.kind() == Kind::Bounds {
+                    visit(effect.data(), offset);
+                }
+            });
+        }
     }
 
     fn entries(&self, phase: Phase) -> Option<&Rc<Entries>> {
@@ -560,12 +598,13 @@ impl TapeStore {
     }
 
     /// Whether `captured`, the tape of a subtree prepainted and painted again, holds the writes
-    /// that the tape of the build of `root` the frame was recorded from holds.
+    /// that the tape of the build of `root` the frame was recorded from holds, the transforms around
+    /// its elements aside.
     pub(crate) fn same_as_recorded(&self, root: u64, captured: &SharedTape) -> bool {
         self.tapes
             .borrow()
             .get(&root)
-            .is_some_and(|recorded| captured.borrow().same_writes(&recorded.borrow()))
+            .is_some_and(|recorded| captured.borrow().same_writes_apart_from_transforms(&recorded.borrow()))
     }
 
     /// Replays what the last build of `root` wrote in `phase`, `delta` from where it wrote it.
@@ -979,6 +1018,48 @@ mod tests {
         record(&different, &[8]);
         assert!(!tapes.same_as_recorded(1, &different));
         assert!(!tapes.same_as_recorded(2, &same), "a root with no recording has nothing to be the same as");
+    }
+
+    fn laid_out(to_window: gpui::TransformationMatrix) -> crate::automation::LaidOut {
+        let mut laid_out = crate::automation::LaidOut::of_box(
+            gpui::Bounds::new(gpui::point(gpui::px(10.0), gpui::px(20.0)), gpui::size(gpui::px(30.0), gpui::px(40.0))),
+            1.0,
+        );
+        laid_out.to_window = to_window;
+        laid_out
+    }
+
+    fn record_box(tape: &SharedTape, window: WindowId, to_window: gpui::TransformationMatrix, width: f32) {
+        let _recording = Recorder::begin(tape, Phase::Paint);
+        let mut laid_out = laid_out(to_window);
+        laid_out.border_box.size.width = gpui::px(width);
+        crate::automation::record_bounds(window, 1, laid_out, gpui::point(gpui::px(10.0), gpui::px(20.0)), Default::default());
+    }
+
+    #[test]
+    fn a_capture_may_differ_from_the_recording_in_the_transforms_and_nothing_else() {
+        let window = WindowId::from(911);
+        let moved = |dx: f32| gpui::TransformationMatrix { rotation_scale: [[1.0, 0.0], [0.0, 1.0]], translation: [dx, 0.0] };
+        let tapes = TapeStore::default();
+        let recorded = SharedTape::default();
+        record_box(&recorded, window, moved(5.0), 30.0);
+        tapes.set(1, recorded.clone());
+
+        let later = Tape::capturing();
+        record_box(&later, window, moved(9.0), 30.0);
+        assert!(!later.borrow().same_writes(&recorded.borrow()), "the placement is a write like the others");
+        assert!(tapes.same_as_recorded(1, &later), "but a patch of a transform that moves paints the same");
+        let wider = Tape::capturing();
+        record_box(&wider, window, moved(5.0), 31.0);
+        assert!(!tapes.same_as_recorded(1, &wider), "a box that is another size is not the same");
+
+        let mut published = 0;
+        later.borrow().each_bounds(&mut |data, offset| {
+            published += 1;
+            crate::automation::publish_captured_bounds(data, offset);
+        });
+        assert_eq!(published, 1);
+        assert_eq!(crate::automation::get_bounds(window, 1).unwrap().to_window, moved(9.0));
     }
 
     fn log(window: WindowId, text: &'static str) {

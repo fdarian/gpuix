@@ -94,11 +94,16 @@ impl GpuixView {
             };
             let tapes = view.read(app).tapes.clone();
             let scratch = built.tapes;
+            let captured = scratch.clone();
             let accepted = move |_: &mut gpui::Window, _: &mut gpui::App| {
                 scratch.iter().all(|(id, tape)| tapes.same_as_recorded(*id, tape))
             };
             if window.repaint_in_place(built.units, app, accepted).is_err() {
                 return false;
+            }
+            // The boxes are the one write that a transform that moves changes without a build.
+            for (_, tape) in &captured {
+                tape.borrow().each_bounds(&mut crate::automation::publish_captured_bounds);
             }
             view.update(app, |view, cx| view.continue_after_patch(window, &built.stepped, cx));
             true

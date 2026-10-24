@@ -216,10 +216,11 @@ impl ElementBounds {
     fn described(self) -> String {
         let [[a, c], [b, d]] = self.to_window.rotation_scale;
         let [e, f] = self.to_window.translation;
-        format!(
-            "{:?} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3})",
-            Self { culled: false, to_window: TransformationMatrix::unit(), ..self }
-        )
+        format!("{} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3})", self.described_apart_from_transform())
+    }
+
+    fn described_apart_from_transform(self) -> String {
+        format!("{:?}", Self { culled: false, to_window: TransformationMatrix::unit(), ..self })
     }
 
     /// The box `offset` away, in the single precision it is measured in, which is what painting
@@ -596,6 +597,23 @@ pub fn record_bounds(
         |(window, id, bounds)| insert_bounds(*window, *id, bounds.translated(Point::default())),
         |(_, id, bounds), offset| format!("bounds {id} {}", bounds.translated(offset).described()),
     );
+}
+
+/// What a [`record_bounds`] write says, apart from the transforms around the element, which an
+/// animation of a transform changes at every tick of a patch.
+pub(crate) fn describe_apart_from_transform(data: &dyn std::any::Any, offset: Point<Pixels>) -> String {
+    let (_, id, bounds) = bounds_write(data);
+    format!("bounds {id} {}", bounds.translated(offset).described_apart_from_transform())
+}
+
+/// Makes a [`record_bounds`] write that a patch captured, which painted again without writing it.
+pub(crate) fn publish_captured_bounds(data: &dyn std::any::Any, offset: Point<Pixels>) {
+    let (window, id, bounds) = bounds_write(data);
+    insert_bounds(*window, *id, bounds.translated(offset));
+}
+
+fn bounds_write(data: &dyn std::any::Any) -> &(WindowId, u64, ElementBounds) {
+    data.downcast_ref().expect("a write of the bounds registry holds a window, an element and its box")
 }
 
 fn insert_bounds(window: WindowId, id: u64, bounds: ElementBounds) {
