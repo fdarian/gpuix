@@ -21,75 +21,65 @@ function expectBox(got: number[], want: number[]) {
 
 function reference(transform: string): [number, number, number, number] {
   const app = createTestRoot()
-  try {
-    app.renderer.clockPause()
-    app.render(() => (
-      <div style={frame}>
-        <div testId="box" style={{ ...box, transform }} />
-      </div>
-    ))
-    return boundsOf(app.renderer)
-  } finally {
-    app.unmount()
-  }
+  app.renderer.clockPause()
+  app.render(() => (
+    <div style={frame}>
+      <div testId="box" style={{ ...box, transform }} />
+    </div>
+  ))
+  const bounds = boundsOf(app.renderer)
+  app.unmount()
+  return bounds
 }
 
 describe.skipIf(!hasNativeTestRenderer)("Solid motion transform keys", () => {
   it("composes a static style like the CSS transform, with scale and rotate Motion's", () => {
+    // A reference mounts a root of its own, which the root under test cannot be open beside.
+    const want = reference("translateX(10px) translateY(50%) scale(2) rotate(30deg)")
     const app = createTestRoot()
-    try {
-      app.renderer.clockPause()
-      app.render(() => (
-        <div style={frame}>
-          <motion.div testId="box" style={{ ...box, x: 10, y: "50%", scale: 2, rotate: 30 }} />
-        </div>
-      ))
-      expectBox(boundsOf(app.renderer), reference("translateX(10px) translateY(50%) scale(2) rotate(30deg)"))
-    } finally {
-      app.unmount()
-    }
+    app.renderer.clockPause()
+    app.render(() => (
+      <div style={frame}>
+        <motion.div testId="box" style={{ ...box, x: 10, y: "50%", scale: 2, rotate: 30 }} />
+      </div>
+    ))
+    expectBox(boundsOf(app.renderer), want)
   })
 
   it("animates x, rotate and scale from Motion's defaults", () => {
+    const want = reference("translateX(50px) scale(1.5) rotate(45deg)")
     const app = createTestRoot()
-    try {
-      const renderer = app.renderer
-      renderer.clockPause()
-      app.render(() => (
-        <div style={frame}>
-          <motion.div
-            testId="box"
-            style={box}
-            animate={{ x: 100, rotate: 90, scale: 2 }}
-            transition={{ duration: 1, ease: "linear" }}
-          />
-        </div>
-      ))
-      renderer.clockFastForward(500)
-      renderer.flush()
-      renderer.dispatchNativeEvents()
-      expectBox(boundsOf(renderer), reference("translateX(50px) scale(1.5) rotate(45deg)"))
-    } finally {
-      app.unmount()
-    }
+    const renderer = app.renderer
+    renderer.clockPause()
+    app.render(() => (
+      <div style={frame}>
+        <motion.div
+          testId="box"
+          style={box}
+          animate={{ x: 100, rotate: 90, scale: 2 }}
+          transition={{ duration: 1, ease: "linear" }}
+        />
+      </div>
+    ))
+    renderer.clockFastForward(500)
+    renderer.flush()
+    renderer.dispatchNativeEvents()
+    expectBox(boundsOf(renderer), want)
   })
 
   it("follows a reactive style", () => {
+    const [first, second] = [reference("translateX(10px)"), reference("translateX(60px)")]
     const app = createTestRoot()
-    try {
-      const [x, setX] = createSignal(10)
-      app.renderer.clockPause()
-      app.render(() => (
-        <div style={frame}>
-          <motion.div testId="box" style={{ ...box, x: x() }} />
-        </div>
-      ))
-      expectBox(boundsOf(app.renderer), reference("translateX(10px)"))
-      setX(60)
-      app.renderer.flush()
-      expectBox(boundsOf(app.renderer), reference("translateX(60px)"))
-    } finally {
-      app.unmount()
-    }
+    const [x, setX] = createSignal(10)
+    app.renderer.clockPause()
+    app.render(() => (
+      <div style={frame}>
+        <motion.div testId="box" style={{ ...box, x: x() }} />
+      </div>
+    ))
+    expectBox(boundsOf(app.renderer), first)
+    setX(60)
+    app.renderer.flush()
+    expectBox(boundsOf(app.renderer), second)
   })
 })

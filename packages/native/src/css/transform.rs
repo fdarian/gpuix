@@ -307,6 +307,11 @@ fn scale_factor(token: &str) -> Option<f32> {
     parse_number_or_percentage(token).filter(|value| value.is_finite()).map(|value| value as f32)
 }
 
+/// A number, or a percentage as its fraction, as one factor of `scale`.
+pub(crate) fn parse_factor(token: &str) -> Option<f64> {
+    scale_factor(token).map(f64::from)
+}
+
 fn finite_number(token: &str) -> Option<f64> {
     parse_number(token).filter(|value| value.is_finite())
 }
@@ -778,6 +783,13 @@ mod tests {
         assert!(is_active(&running, &lengths()));
         assert_eq!(is_active_if_declared(&running, &lengths()), Some(true));
         assert!(!is_active(&style(r#"{"transform":"none"}"#), &lengths()));
+    }
+
+    #[test]
+    fn scale_factors_are_numbers_or_percentages() {
+        assert_eq!(style(r#"{"motionScale":"1.5","scaleX":"50%","scaleY":2}"#).scale_x, Some(0.5));
+        assert_eq!(style(r#"{"motionScale":"1.5"}"#).motion_scale, Some(1.5));
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"motionScale":"2px"}"#).is_err());
     }
 
     #[test]

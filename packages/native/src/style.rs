@@ -112,6 +112,17 @@ fn deserialize_angle<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Optio
         .transpose()
 }
 
+/// A number, or a string of one number or percentage, as the factor of `scale`.
+fn deserialize_scale_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+    Option::<NumberOrText>::deserialize(deserializer)?
+        .map(|value| match value {
+            NumberOrText::Number(factor) => Ok(factor),
+            NumberOrText::Text(text) => crate::css::transform::parse_factor(&text)
+                .ok_or_else(|| serde::de::Error::custom(format!("invalid scale \"{text}\": expected a number or a percentage"))),
+        })
+        .transpose()
+}
+
 fn deserialize_origin<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LinearLength>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
@@ -897,8 +908,11 @@ pub struct StyleDesc {
     pub translate_y: Option<LinearLength>,
     /// Motion's `scale` and `rotate`, under other names so that they do not meet the CSS `scale`
     /// and `rotate` above. The motion components rename the keys of their style.
+    #[serde(default, deserialize_with = "deserialize_scale_factor")]
     pub motion_scale: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_scale_factor")]
     pub scale_x: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_scale_factor")]
     pub scale_y: Option<f64>,
     /// An angle: a number is degrees, a string a CSS angle.
     #[serde(default, deserialize_with = "deserialize_angle")]

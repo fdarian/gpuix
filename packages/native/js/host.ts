@@ -261,7 +261,10 @@ export interface MotionTransformKeys {
 export type MotionValueStyle = Omit<StyleDesc, Exclude<keyof MotionStyle, "flex">> & {
   [Property in Exclude<keyof MotionStyle, "flex" | keyof MotionTransformKeys>]?: StyleDesc[Property] | MotionValue
 } & {
-  [Property in keyof MotionTransformKeys]?: MotionTransformKeys[Property] | MotionValue
+  /** A static `scale` or `rotate` is Motion's, and takes what the CSS property does. */
+  [Property in keyof MotionTransformKeys]?:
+    | (Property extends keyof StyleDesc ? StyleDesc[Property] : MotionTransformKeys[Property])
+    | MotionValue
 }
 
 export type MotionEase =
