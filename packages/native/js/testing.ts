@@ -79,6 +79,7 @@ export interface FrameWorkCounters {
   paintedPrimitives: number
   replayedPrimitives: number
   boundsInserts: number
+  dormantTicks: number
 }
 
 export interface LayoutCounters {
