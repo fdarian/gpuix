@@ -7510,5 +7510,9365 @@
    ]
   },
   "scale": 1
+ },
+ "column auto container in block flex 1 height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0% no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 50% no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    50,
+    700,
+    50
+   ],
+   "ch1": [
+    0,
+    50,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 0 no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    50,
+    700,
+    50
+   ],
+   "ch1": [
+    0,
+    50,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    200
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    100,
+    700,
+    100
+   ],
+   "ch1": [
+    0,
+    100,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    50
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    50,
+    700,
+    50
+   ],
+   "ch1": [
+    0,
+    50,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container in block flex 1 1 auto no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    40
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    20,
+    700,
+    20
+   ],
+   "ch1": [
+    0,
+    20,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0% no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 50% no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 0 no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto no height content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto no height content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto no height content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column container height 300 flex 1 1 auto no height content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;flex-direction:column;height:300px;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 no height content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 no height content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 no height content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 no height content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% no height content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% no height content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% no height content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0% no height content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% no height content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% no height content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% no height content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 50% no height content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 no height content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 no height content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 no height content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 0 no height content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 0;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 0;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto height 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto height 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto no height content 100 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto no height content 100 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:100px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"height:100px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    100
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    100
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto height 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto height 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;height:50px;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto no height content 20 items 1": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "column auto container flex 1 in a 300px column flex 1 1 auto no height content 20 items 2": {
+  "html": "<div style=\"width:700px;height:300px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;flex-direction:column;flex:1 1 0;min-height:0;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"height:20px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"height:20px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    300
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    150
+   ],
+   "ch0": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "it1": [
+    0,
+    150,
+    700,
+    150
+   ],
+   "ch1": [
+    0,
+    150,
+    700,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 0% no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 50% no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row block 700 flex 1 1 auto no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 0% no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 50% no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row width fit-content flex 1 1 auto no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;width:fit-content;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 0% no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 50% no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto no width content 100 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto no width content 100 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto no width content 20 items 1": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row absolute flex 1 1 auto no width content 20 items 2": {
+  "html": "<div style=\"width:700px\"><div id=\"c\" style=\"display:flex;position:absolute;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 0% no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 50% no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row self start in a column flex 1 1 auto no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex;flex-direction:column\"><div id=\"c\" style=\"display:flex;align-self:flex-start;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 0% no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 50% no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row table cell flex 1 1 auto no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:table\"><div style=\"display:table-cell\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    700,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    350,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    350,
+    0,
+    350,
+    10
+   ],
+   "ch1": [
+    350,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 0% no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 0%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 0%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 50% no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 50%;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 50%;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto width 50 content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto width 50 content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto no width content 100 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto no width content 100 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:100px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:100px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    200,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it1": [
+    100,
+    0,
+    100,
+    10
+   ],
+   "ch1": [
+    100,
+    0,
+    100,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto width 50 content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto width 50 content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;width:50px;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    100,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    50,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    50,
+    0,
+    50,
+    10
+   ],
+   "ch1": [
+    50,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto no width content 20 items 1": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
+ },
+ "row flex item of a row flex 1 1 auto no width content 20 items 2": {
+  "html": "<div style=\"width:700px;display:flex\"><div id=\"c\" style=\"display:flex;\"><div id=\"it0\" style=\"flex:1 1 auto;\"><div id=\"ch0\" style=\"width:20px;height:10px\"></div></div><div id=\"it1\" style=\"flex:1 1 auto;\"><div id=\"ch1\" style=\"width:20px;height:10px\"></div></div></div></div>",
+  "boxes": {
+   "c": [
+    0,
+    0,
+    40,
+    10
+   ],
+   "it0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "ch0": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "it1": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "ch1": [
+    20,
+    0,
+    20,
+    10
+   ]
+  },
+  "scale": 1
  }
 }

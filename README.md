@@ -6658,8 +6658,7 @@ written later wins, as in CSS. The ones below take CSS's several-value syntax.
 - **Percentages** in `padding` and `margin` are of the containing block's width on
   every side, as in CSS.
 - **`flex` and the longhands.** `flexGrow`, `flexShrink` and `flexBasis` win over
-  `flex`. In a column whose height is `auto`, `flex: 1` takes an explicit `height` on
-  the item as its basis, where Chrome uses the content.
+  `flex`.
 - **Animation.** The multi-value shorthands animate, each side, axis or corner on
   its own (see [Targets and timing](#targets-and-timing)). `flex` is not a `motion`
   target: animate `flexGrow`, `flexShrink` and `flexBasis`, which `transition: flex`

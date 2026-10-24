@@ -4,7 +4,9 @@
   `id` that headless Chrome lays out for a flex column of automatic height, at device scale 1 and 2. A column container's
   automatic height is the sum of its items' hypothetical main sizes: the flex basis clamped by the min and max height, where
   the content only enters through `min-height: auto`. The card `card` (a column, 1px border, `overflow: hidden`) holds `prev`
-  (padding 64px 0, a column holding `content`, 300x132) and `foot` (43px high), in `outer`. There is no text. Regenerate
+  (padding 64px 0, a column holding `content`, 300x132) and `foot` (43px high), in `outer`. The `column` and `row` cases are a
+  percentage flex basis (`flex: 1`, `1 1 50%`) of an item with a `height` or `width` of 50px, in containers whose main size is
+  or is not known. There is no text. Regenerate
   (`flex-column-size-oracle.json` and `-x2.json`) with
 
     sh dsf-oracle.sh flex-column-size
@@ -57,6 +59,41 @@ for (const outer of Object.keys(OUTER)) {
 cases['two items basis 0 in a column'] = () => `<div style="${OUTER.grid}"><div id="card" style="display:flex;flex-direction:column;overflow:hidden;min-height:0"><div id="prev" style="flex:1 1 0;min-height:0;padding:10px 0"><div id="content" style="height:100px"></div></div><div id="foot" style="flex:1 1 0;min-height:0;padding:5px 0"><div id="inner" style="height:70px"></div></div></div></div>`;
 cases['gap between items basis 0'] = () => `<div style="${OUTER.grid}"><div id="card" style="display:flex;flex-direction:column;gap:11px;overflow:hidden;min-height:0"><div id="prev" style="flex:1 1 0;min-height:0"><div id="content" style="height:100px"></div></div><div id="foot" style="height:43px"></div></div></div>`;
 cases['row card stays by its content'] = () => `<div style="${OUTER.grid}"><div id="card" style="display:flex;flex-direction:row;overflow:hidden;min-width:0"><div id="prev" style="flex:1 1 0;min-width:0"><div id="content" style="width:132px;height:50px"></div></div><div id="foot" style="width:43px;height:20px"></div></div></div>`;
+// A percentage flex basis against a height that is not known is `content` in a column: the item's own `height` is not the
+// basis then, its content is (Blink length_utils.cc ResolveBlockLengthInternal kMain).
+const COLUMN_IN = {
+  'auto container in block': (c) => `<div style="width:700px">${c('')}</div>`,
+  'container height 300': (c) => `<div style="width:700px">${c('height:300px;')}</div>`,
+  'auto container flex 1 in a 300px column': (c) => `<div style="width:700px;height:300px;display:flex;flex-direction:column">${c('flex:1 1 0;min-height:0;')}</div>`,
+};
+for (const [where, wrap] of Object.entries(COLUMN_IN))
+  for (const flex of ['1', '1 1 0%', '1 1 50%', '1 1 0', '1 1 auto'])
+    for (const content of [100, 20])
+      for (const height of ['height:50px;', ''])
+        for (const count of [1, 2])
+          cases[`column ${where} flex ${flex} ${height ? 'height 50' : 'no height'} content ${content} items ${count}`] = () => {
+            const item = (i) => `<div id="it${i}" style="flex:${flex};${height}"><div id="ch${i}" style="height:${content}px"></div></div>`;
+            return wrap((extra) => `<div id="c" style="display:flex;flex-direction:column;${extra}">${Array.from({ length: count }, (_, i) => item(i)).join('')}</div>`);
+          };
+// The same in a row, where the container sized by its items is the sum of the contributions of its items (their `width` or
+// their content), so a percentage basis of an indefinite width changes nothing there.
+const ROW_IN = {
+  'block 700': (c) => `<div style="width:700px">${c('')}</div>`,
+  'width fit-content': (c) => `<div style="width:700px">${c('width:fit-content;')}</div>`,
+  absolute: (c) => `<div style="width:700px">${c('position:absolute;')}</div>`,
+  'self start in a column': (c) => `<div style="width:700px;display:flex;flex-direction:column">${c('align-self:flex-start;')}</div>`,
+  'table cell': (c) => `<div style="width:700px;display:table"><div style="display:table-cell">${c('')}</div></div>`,
+  'flex item of a row': (c) => `<div style="width:700px;display:flex">${c('')}</div>`,
+};
+for (const [where, wrap] of Object.entries(ROW_IN))
+  for (const flex of ['1', '1 1 0%', '1 1 50%', '1 1 auto'])
+    for (const content of [100, 20])
+      for (const width of ['width:50px;', ''])
+        for (const count of [1, 2])
+          cases[`row ${where} flex ${flex} ${width ? 'width 50' : 'no width'} content ${content} items ${count}`] = () => {
+            const item = (i) => `<div id="it${i}" style="flex:${flex};${width}"><div id="ch${i}" style="width:${content}px;height:10px"></div></div>`;
+            return wrap((extra) => `<div id="c" style="display:flex;${extra}">${Array.from({ length: count }, (_, i) => item(i)).join('')}</div>`);
+          };
 const out = {};
 const scene = document.getElementById('scene');
 for (const [name, build] of Object.entries(cases)) {

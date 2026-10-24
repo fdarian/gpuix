@@ -1,6 +1,8 @@
 /// The automatic height of a flex column against headless Chrome, at device scale 1 and 2: the sum of its items'
 /// hypothetical main sizes, the flex basis clamped by the min and max height. The content of an item enters only through
 /// its `min-height: auto`, so `flex: 1 1 0` with `min-height: 0` is as high as its padding, not as its content (gpuix#96).
+/// A percentage flex basis against a size that is not known (`flex: 1`, `flex-basis: 50%` in a column of automatic height) is
+/// the content, not the `height` of the item; the `column` and `row` cases are that.
 /// `fixtures/flex-column-size-oracle.html` is the page, `flex-column-size-oracle.json` (scale 1) and
 /// `flex-column-size-oracle-x2.json` (scale 2) the boxes it lays out (`sh fixtures/dsf-oracle.sh flex-column-size`).
 
