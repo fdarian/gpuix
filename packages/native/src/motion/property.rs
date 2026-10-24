@@ -24,6 +24,11 @@ use crate::css::text_underline_offset::TextUnderlineOffset;
 use crate::css::border_radius::parse_radii;
 use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
 use crate::css::syntax::{expand_sides, split_slash_tokens};
+use crate::css::transform::{
+    format_list, format_origin, format_rotate, format_scale, format_translate, parse_origin, parse_rotate, parse_scale,
+    parse_transform, parse_translate, Origin, Value as TransformValue,
+};
+use gpui::{TransformFunction, TransformLength};
 use crate::layout::aspect_ratio::AspectRatio;
 use crate::style::{
     BorderRadiusValue, BoxShadowValue, BoxShadowValues, CornerRadiusValue, DimensionValue, FontWeightValue, IntrinsicKeyword,
@@ -69,6 +74,16 @@ enum Kind {
     Angle,
     /// `originX` and `originY`: a length, where a number is a fraction of the border box.
     Origin,
+    /// The CSS `transform`: a list of functions, or `none`.
+    Transform,
+    /// The CSS `translate`: `none` or a translation.
+    Translate,
+    /// The CSS `rotate`: `none` or an angle.
+    Rotate,
+    /// The CSS `scale`: `none` or a scaling.
+    Scale,
+    /// The CSS `transform-origin`: two lengths, held as the radii of an ellipse.
+    TransformOrigin,
 }
 
 /// The range the applied value is held to. Physics keeps the unclamped value.
@@ -124,6 +139,8 @@ enum Initial {
     InheritedLineHeight,
     /// `50%`, the middle of the border box.
     Center,
+    /// `none`: a list of no functions, which blends with every list.
+    NoTransform,
 }
 
 #[derive(Clone, Copy)]
@@ -547,6 +564,38 @@ fn thickness_write(slot: &mut Option<String>, value: AnimValue) {
 
 const FROM_FONT: &str = "from-font";
 
+/// A `transform`, `translate`, `rotate` or `scale` held as the text it was written in; `none` is the empty list.
+fn transform_read(slot: &Option<String>, parse: impl FnOnce(&str) -> Option<TransformValue>) -> Option<AnimValue> {
+    Some(AnimValue::Transform(match parse(slot.as_deref()?)? {
+        TransformValue::None => Vec::new(),
+        TransformValue::List(functions) => functions,
+    }))
+}
+
+fn transform_write(slot: &mut Option<String>, value: AnimValue, format: fn(&[TransformFunction]) -> String) {
+    match value {
+        AnimValue::Transform(functions) => *slot = Some(format(&functions)),
+        other => unreachable!("a transform field was given {other:?}"),
+    }
+}
+
+fn origin_value(origin: &Origin) -> AnimValue {
+    let part = |length: &TransformLength| (f64::from(length.px), f64::from(length.fraction));
+    AnimValue::ellipse(part(&origin.0), part(&origin.1))
+}
+
+fn origin_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
+    parse_origin(slot.as_deref()?, cx.lengths).map(|origin| origin_value(&origin))
+}
+
+fn origin_write(slot: &mut Option<String>, value: AnimValue) {
+    let ((x_px, x_fraction), (y_px, y_fraction)) = value
+        .as_ellipse()
+        .unwrap_or_else(|| unreachable!("a transform origin field was given {value:?}"));
+    let part = |px: f64, fraction: f64| TransformLength { px: px as f32, fraction: fraction as f32 };
+    *slot = Some(format_origin(&(part(x_px, x_fraction), part(y_px, y_fraction))));
+}
+
 fn integer_write(slot: &mut Option<f64>, value: AnimValue) {
     match value {
         // Half way between two integers rounds up, as in Chrome.
@@ -568,6 +617,21 @@ macro_rules! read_field {
     (Offset, $slot:expr, $cx:expr) => {
         offset_read(&$slot, $cx)
     };
+    (Transform, $slot:expr, $cx:expr) => {
+        transform_read(&$slot, |text| parse_transform(text, $cx.lengths))
+    };
+    (Translate, $slot:expr, $cx:expr) => {
+        transform_read(&$slot, |text| parse_translate(text, $cx.lengths))
+    };
+    (Rotate, $slot:expr, $cx:expr) => {
+        transform_read(&$slot, parse_rotate)
+    };
+    (Scale, $slot:expr, $cx:expr) => {
+        transform_read(&$slot, parse_scale)
+    };
+    (TransformOrigin, $slot:expr, $cx:expr) => {
+        origin_read(&$slot, $cx)
+    };
     ($kind:ident, $slot:expr, $cx:expr) => {
         Field::read(&$slot, $cx)
     };
@@ -582,6 +646,21 @@ macro_rules! write_field {
     };
     (Thickness, $slot:expr, $value:expr) => {
         thickness_write(&mut $slot, $value)
+    };
+    (Transform, $slot:expr, $value:expr) => {
+        transform_write(&mut $slot, $value, format_list)
+    };
+    (Translate, $slot:expr, $value:expr) => {
+        transform_write(&mut $slot, $value, format_translate)
+    };
+    (Rotate, $slot:expr, $value:expr) => {
+        transform_write(&mut $slot, $value, format_rotate)
+    };
+    (Scale, $slot:expr, $value:expr) => {
+        transform_write(&mut $slot, $value, format_scale)
+    };
+    (TransformOrigin, $slot:expr, $value:expr) => {
+        origin_write(&mut $slot, $value)
     };
     ($kind:ident, $slot:expr, $value:expr) => {
         Field::write(&mut $slot, $value)
@@ -706,7 +785,7 @@ macro_rules! properties {
 
 use Initial::{
     BorderWidth, Center, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
-    InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoShadows, Number,
+    InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoShadows, NoTransform, Number,
     Transparent, Unresolved, Unset,
 };
 
@@ -813,6 +892,12 @@ properties! {
     SkewY "skewY" Angle None Number(0.0), skew_y;
     OriginX "originX" Origin None Center, origin_x;
     OriginY "originY" Origin None Center, origin_y;
+
+    Transform "transform" Transform None NoTransform, transform;
+    Translate "translate" Translate None NoTransform, translate;
+    Rotate "rotate" Rotate None NoTransform, rotate;
+    Scale "scale" Scale None NoTransform, scale;
+    TransformOrigin "transformOrigin" TransformOrigin None Center, transform_origin;
 }
 
 impl AnimProp {
@@ -824,6 +909,7 @@ impl AnimProp {
     /// paints and where it is hit, and no box.
     pub(super) fn paints_only(self) -> bool {
         self.is_motion_only()
+            || self.is_css_transform()
             || matches!(
                 self,
                 Self::Opacity
@@ -862,9 +948,16 @@ impl AnimProp {
         )
     }
 
-    /// Whether a change of this property moves, scales or turns what the element paints.
+    /// The CSS properties of the transform: `transform`, `translate`, `rotate`, `scale` and `transform-origin`.
+    pub(super) fn is_css_transform(self) -> bool {
+        matches!(self, Self::Transform | Self::Translate | Self::Rotate | Self::Scale | Self::TransformOrigin)
+    }
+
+    /// Whether a change of this property moves, scales or turns what the element paints. The origins
+    /// only place a transform, so they are none.
     pub(super) fn is_transform(self) -> bool {
-        self.is_motion_only() && !matches!(self, Self::OriginX | Self::OriginY)
+        (self.is_motion_only() && !matches!(self, Self::OriginX | Self::OriginY))
+            || (self.is_css_transform() && self != Self::TransformOrigin)
     }
 }
 
@@ -1112,7 +1205,8 @@ impl AnimProp {
             "scale" => Some(Self::MotionScale),
             "rotate" => Some(Self::MotionRotate),
             "motionScale" | "motionRotate" => None,
-            _ => Self::lookup(name).filter(|prop| !prop.is_discrete()),
+            // Motion turns and scales with its own keys, and a spring does not blend a list.
+            _ => Self::lookup(name).filter(|prop| !prop.is_discrete() && !prop.is_css_transform()),
         }
     }
 
@@ -1231,6 +1325,7 @@ impl AnimProp {
             Initial::Unresolved => None,
             Initial::Auto => Some(AnimValue::auto_keyword()),
             Initial::Center => Some(AnimValue::Percent(0.5)),
+            Initial::NoTransform => Some(AnimValue::Transform(Vec::new())),
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(
                 f64::from(crate::css::border::resolve_width(&crate::css::border::MEDIUM, &colors.lengths)),
@@ -1344,6 +1439,36 @@ impl AnimProp {
                     self.resolve_length(&length, lengths)?
                 }
             },
+            Kind::Transform => match value.as_str() {
+                Some(text) => transform_value(name, parse_transform(text, lengths), text)?,
+                None => return Err(format!("motion {name} must be a CSS transform list")),
+            },
+            Kind::Translate => match value.as_str() {
+                Some(text) => transform_value(name, parse_translate(text, lengths), text)?,
+                None => return Err(format!("motion {name} must be none or one or two CSS lengths")),
+            },
+            Kind::Rotate => match value {
+                Value::String(text) => transform_value(name, parse_rotate(text), text)?,
+                value => {
+                    let degrees = parse_number(name, value)?;
+                    transform_value(name, parse_rotate(&format!("{degrees}deg")), &degrees.to_string())?
+                }
+            },
+            Kind::Scale => match value {
+                Value::String(text) => transform_value(name, parse_scale(text), text)?,
+                value => {
+                    let factor = parse_number(name, value)?;
+                    transform_value(name, parse_scale(&factor.to_string()), &factor.to_string())?
+                }
+            },
+            Kind::TransformOrigin => {
+                let text = value
+                    .as_str()
+                    .ok_or_else(|| format!("motion {name} must be one or two CSS lengths, percentages or keywords"))?;
+                let origin = parse_origin(text, lengths)
+                    .ok_or_else(|| format!("motion {name} is not a valid transform origin: {text}"))?;
+                origin_value(&origin)
+            }
             Kind::Corner => {
                 let corner: CornerRadiusValue = serde_json::from_value(value.clone())
                     .map_err(|error| format!("motion {name} must be a number or a CSS length: {error}"))?;
@@ -1520,6 +1645,11 @@ impl AnimProp {
                     | (Kind::VerticalAlign, AnimValue::Keyword(Some(_)))
                     | (Kind::Spacing, AnimValue::Number(_))
                     | (Kind::Corner | Kind::Spacing, AnimValue::Ellipse { .. })
+                    | (Kind::Transform | Kind::Translate | Kind::Rotate | Kind::Scale, AnimValue::Transform(_))
+                    | (
+                        Kind::TransformOrigin,
+                        AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Ellipse { .. }
+                    )
                     | (Kind::Color, AnimValue::Color(_))
                     | (Kind::Shadow, AnimValue::Shadows(_))
                     | (Kind::Variations, AnimValue::Variations(_))
@@ -1588,6 +1718,15 @@ pub(super) fn shadow_layers(shadows: Vec<Shadow>) -> BoxShadowValues {
     )
 }
 
+/// A value of a transform property that parsed, or the error for `text`, which did not.
+fn transform_value(name: &str, parsed: Option<TransformValue>, text: &str) -> Result<AnimValue, String> {
+    match parsed {
+        Some(TransformValue::None) => Ok(AnimValue::Transform(Vec::new())),
+        Some(TransformValue::List(functions)) => Ok(AnimValue::Transform(functions)),
+        None => Err(format!("motion {name} is not a valid value: {text}")),
+    }
+}
+
 pub(super) fn check_finite(name: &str, value: f64) -> Result<f64, String> {
     if !value.is_finite() || value.abs() > f32::MAX as f64 {
         return Err(format!("motion {name} must fit a finite 32-bit float"));
@@ -1621,7 +1760,8 @@ mod tests {
         assert_eq!(AnimProp::from_name("rotate"), Some(AnimProp::MotionRotate));
         assert_eq!((AnimProp::MotionScale.name(), AnimProp::MotionRotate.name()), ("scale", "rotate"));
         assert!(AnimProp::from_name("motionScale").is_none() && AnimProp::from_name("motionRotate").is_none());
-        assert!(AnimProp::from_css_name("scale").is_none() && AnimProp::from_css_name("rotate").is_none());
+        assert_eq!(AnimProp::from_css_name("scale"), Some(AnimProp::Scale));
+        assert_eq!(AnimProp::from_css_name("rotate"), Some(AnimProp::Rotate));
         for name in ["z", "translateZ", "rotateX", "rotateY", "transformPerspective"] {
             assert!(AnimProp::from_name(name).is_none() && AnimProp::is_depth_key(name), "{name}");
         }
@@ -1674,6 +1814,80 @@ mod tests {
     }
 
     #[test]
+    fn the_css_transform_properties_are_css_names_and_not_motion_names() {
+        for (name, prop) in [
+            ("transform", AnimProp::Transform),
+            ("translate", AnimProp::Translate),
+            ("rotate", AnimProp::Rotate),
+            ("scale", AnimProp::Scale),
+            ("transformOrigin", AnimProp::TransformOrigin),
+        ] {
+            assert_eq!(AnimProp::from_css_name(name), Some(prop), "{name}");
+            assert!(prop.paints_only() && prop.is_css_transform() && !prop.is_motion_only(), "{name}");
+            assert_eq!(prop.is_transform(), prop != AnimProp::TransformOrigin, "{name}");
+        }
+        // Motion's `animate` has its own keys for these, and a spring does not blend a list.
+        assert_eq!(AnimProp::from_name("rotate"), Some(AnimProp::MotionRotate));
+        assert_eq!(AnimProp::from_name("scale"), Some(AnimProp::MotionScale));
+        for name in ["transform", "translate", "transformOrigin"] {
+            assert_eq!(AnimProp::from_name(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn css_transform_values_parse_write_and_read_back() {
+        let colors = Colors::root();
+        let json = |text: &str| serde_json::json!(text);
+        for (prop, text) in [
+            (AnimProp::Transform, "translate(10px, 25%) rotate(0.5rad) scale(2, 3) skewX(0.1rad) matrix(1, 2, 3, 4, 5, 6)"),
+            (AnimProp::Transform, "translate(calc(10px - 25%), 0px)"),
+            (AnimProp::Translate, "12px 30%"),
+            (AnimProp::Rotate, "1.25rad"),
+            (AnimProp::Scale, "1.5 2"),
+        ] {
+            let parsed = prop.parse(&json(text), &colors).unwrap();
+            let mut style = StyleDesc::default();
+            prop.write(&mut style, parsed.clone());
+            assert_eq!(prop.read(&style, &colors), Some(parsed), "{text}");
+        }
+        let mut style = StyleDesc::default();
+        AnimProp::Transform.write(&mut style, AnimValue::Transform(Vec::new()));
+        assert_eq!(style.transform.as_deref(), Some("none"));
+        assert_eq!(AnimProp::Transform.read(&style, &colors), Some(AnimValue::Transform(Vec::new())));
+        assert!(AnimProp::Transform.parse(&json("rotate(90)"), &colors).is_err());
+        assert!(AnimProp::Rotate.parse(&json("1 0 0 20deg"), &colors).is_err());
+        assert_eq!(AnimProp::Rotate.parse(&serde_json::json!(90), &colors), AnimProp::Rotate.parse(&json("90deg"), &colors));
+        assert_eq!(AnimProp::Scale.parse(&serde_json::json!(2), &colors), AnimProp::Scale.parse(&json("2 2"), &colors));
+    }
+
+    #[test]
+    fn a_list_in_the_middle_of_a_blend_survives_the_text_of_the_style() {
+        let colors = Colors::root();
+        let parse = |text: &str| AnimProp::Transform.parse(&serde_json::json!(text), &colors).unwrap();
+        let pair = super::super::value::pair("transform", &parse("rotate(30deg) translate(10px)"), &parse("scale(2) translate(50%)")).unwrap();
+        for progress in [0.0, 0.3, 1.0, 1.4] {
+            let middle = pair.at(progress);
+            let mut style = StyleDesc::default();
+            AnimProp::Transform.write(&mut style, middle.clone());
+            assert_eq!(AnimProp::Transform.read(&style, &colors), Some(middle), "{progress}");
+        }
+    }
+
+    #[test]
+    fn transform_origin_is_two_lengths() {
+        let colors = Colors::root();
+        let origin = |text: &str| AnimProp::TransformOrigin.parse(&serde_json::json!(text), &colors).unwrap();
+        assert_eq!(origin("left top"), AnimValue::Number(0.0));
+        assert_eq!(origin("0 50%"), AnimValue::ellipse((0.0, 0.0), (0.0, 0.5)));
+        let mut style = StyleDesc::default();
+        let value = origin("10px 25%");
+        AnimProp::TransformOrigin.write(&mut style, value.clone());
+        assert_eq!(AnimProp::TransformOrigin.read(&style, &colors), Some(value));
+        assert_eq!(AnimProp::TransformOrigin.initial(None, &colors), Some(AnimValue::Percent(0.5)));
+        assert!(AnimProp::TransformOrigin.accepts(&origin("1px 2px")));
+    }
+
+    #[test]
     fn every_property_round_trips_its_name() {
         for name in ["opacity", "boxShadow", "borderBottomRightRadius", "scrollbarWidth"] {
             assert_eq!(AnimProp::from_name(name).unwrap().name(), name);
@@ -1706,7 +1920,7 @@ mod tests {
         assert!(!AnimProp::Visibility.is_discrete());
         assert!(AnimProp::from_name("visibility").is_some());
         assert!(!AnimProp::from_css_name("opacity").unwrap().is_discrete());
-        assert!(AnimProp::from_css_name("transform").is_none());
+        assert!(AnimProp::from_css_name("perspective").is_none());
     }
 
     #[test]

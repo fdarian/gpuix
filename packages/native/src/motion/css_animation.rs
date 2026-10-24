@@ -1598,6 +1598,16 @@ impl CssAnimations {
         })
     }
 
+    /// Whether an animation of `id` that is current animates a property that moves, scales or turns the element.
+    pub(crate) fn animates_transform(&self, id: u64) -> bool {
+        self.states.get(&id).is_some_and(|state| {
+            state.runs.iter().any(|run| {
+                run.is_current()
+                    && run.properties.iter().any(|key| matches!(key, PropKey::Style(prop) if prop.is_transform()))
+            })
+        })
+    }
+
     /// `id` is left dormant by the frame being built: its clock is carried on by
     /// `advance_dormant`, and `dormant_wake` says when that is due.
     pub(crate) fn enter_dormant(&mut self, id: u64) {

@@ -27,7 +27,7 @@ use crate::style::StyleDesc;
 enum Matcher {
     All,
     /// The animatable properties a CSS name stands for. Empty for a name that
-    /// is a valid property but not one gpuix animates (`transform`), which
+    /// is a valid property but not one gpuix animates (`perspective`), which
     /// matches nothing, as an unsupported property does in a browser.
     Props(Vec<AnimProp>),
 }
@@ -1295,6 +1295,11 @@ impl CssTransitions {
         self.states.get(&id).is_some_and(|state| state.running.contains_key(&AnimProp::Opacity))
     }
 
+    /// Whether a transition of a property that moves, scales or turns the element is running on `id`.
+    pub(crate) fn animates_transform(&self, id: u64) -> bool {
+        self.states.get(&id).is_some_and(|state| state.running.keys().any(|prop| prop.is_transform()))
+    }
+
     /// Whether every transition running on `id` is on a property that only changes what it paints.
     pub(crate) fn paints_only(&self, id: u64) -> bool {
         self.states.get(&id).is_none_or(|state| state.running.keys().all(|prop| prop.paints_only()))
@@ -1632,7 +1637,7 @@ mod tests {
 
     #[test]
     fn a_valid_property_gpuix_cannot_animate_matches_nothing() {
-        let transitions = list(r#"{ "transition": "transform 1s, display 1s, opacity 1s" }"#);
+        let transitions = list(r#"{ "transition": "perspective 1s, display 1s, opacity 1s" }"#);
         assert_eq!(transitions.0.len(), 3);
         assert!(transitions.matching(AnimProp::Opacity).is_some());
         assert!(transitions.matching(AnimProp::Width).is_none());

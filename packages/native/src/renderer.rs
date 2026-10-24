@@ -9368,7 +9368,7 @@ fn build_element_in(
             scroller: ctx.scroller,
             lift_run: &|| {
                 opacity_runs(known, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now)
-                    || transform_runs(known, ctx.motion_states, ctx.motion_values, ctx.now)
+                    || transform_runs(known, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now)
             },
             costly: known.content.is_some()
                 || !crate::text::inline::is_host_type(&known.element_type)
@@ -9883,7 +9883,14 @@ fn animate_style(
     // style that an animation of its opacity runs on, whatever the clocks of its states say.
     if steps {
         let opacity = opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now);
-        let transform = transform_runs(element, ctx.motion_states, ctx.motion_values, ctx.now);
+        let transform = transform_runs(
+            element,
+            ctx.css_animations,
+            ctx.css_transitions,
+            ctx.motion_states,
+            ctx.motion_values,
+            ctx.now,
+        );
         if opacity || transform {
             // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
             let current = animated
@@ -9929,16 +9936,21 @@ fn opacity_runs(
         || props.get("motionValues").is_some_and(|binding| motion_values.animates_opacity(binding))
 }
 
-/// Whether a `motion` track or a motion value that moves, scales or turns `element` is moving. For as long
-/// as one is, the element has a transform at every value it samples (`StyleDesc::animating_transform`).
+/// Whether a CSS animation or transition, a `motion` track or a motion value that moves, scales or turns
+/// `element` is moving. For as long as one is, the element has a transform at every value it samples
+/// (`StyleDesc::animating_transform`).
 fn transform_runs(
     element: &crate::retained_tree::RetainedElement,
+    animations: &crate::motion::CssAnimations,
+    transitions: &crate::motion::CssTransitions,
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     motion_values: &crate::motion::MotionValueStore,
     now: web_time::Instant,
 ) -> bool {
     let props = element.custom_props();
-    (props.contains_key("motion") && motion_states.get(&element.id).is_some_and(|state| state.animates_transform(now)))
+    animations.animates_transform(element.id)
+        || transitions.animates_transform(element.id)
+        || (props.contains_key("motion") && motion_states.get(&element.id).is_some_and(|state| state.animates_transform(now)))
         || props.get("motionValues").is_some_and(|binding| motion_values.animates_transform(binding))
 }
 

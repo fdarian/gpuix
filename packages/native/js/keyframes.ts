@@ -40,9 +40,24 @@ export interface SvgKeyframeStyle {
  * SVG ones, each with a single value, plus the easing from that keyframe to
  * the next.
  */
-export type KeyframeStyle = MotionStyleTargets & SvgKeyframeStyle & {
-  /** A CSS easing function (`ease-in`, `cubic-bezier()`, `steps()`...). */
-  animationTimingFunction?: string
+export type KeyframeStyle = Omit<MotionStyleTargets, "scale"> &
+  SvgKeyframeStyle &
+  TransformKeyframeStyle & {
+    /** A CSS easing function (`ease-in`, `cubic-bezier()`, `steps()`...). */
+    animationTimingFunction?: string
+  }
+
+/**
+ * The CSS transform properties a keyframe sets. Lists blend function by function while they pair up, and
+ * as 2D matrices from the first function that does not; `none` blends as the identity of the other
+ * list; `translate`, `rotate` and `scale` blend as their own values. `scale` is the CSS property here, a
+ * number or a string, and not Motion's.
+ */
+export interface TransformKeyframeStyle {
+  transform?: string
+  translate?: string
+  scale?: number | string
+  transformOrigin?: string
 }
 
 /**

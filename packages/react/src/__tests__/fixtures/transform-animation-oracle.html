@@ -1,0 +1,119 @@
+<!doctype html>
+<!--
+  Oracle for transform-animation.test.tsx: what headless Chrome shows part of the way through a CSS animation of
+  `transform`, `translate`, `rotate`, `scale` and `transform-origin`. A case is the keyframes of an element of
+  100 x 50 at (200, 200) and a static style; the animation is paused at each of the fractions of its second (a
+  negative delay on a paused animation) and the border box is read with `getBoundingClientRect`, the computed
+  transform as a matrix. Regenerate with
+
+    sh transform-animation-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+html, body { margin: 0; padding: 0; }
+* { box-sizing: border-box; }
+#s { position: absolute; left: 200px; top: 200px; width: 100px; height: 50px; }
+</style></head><body>
+<div id="scene" style="position:absolute;left:0;top:0;width:800px;height:600px"></div>
+<script>
+// [name, property, keyframes as [offset, value][], static css]
+const cases = [
+  ["translate px", "transform", [[0, "translate(10px, 20px)"], [1, "translate(110px, -40px)"]]],
+  ["translate percent", "transform", [[0, "translate(0, 0)"], [1, "translate(100%, 50%)"]]],
+  ["translate px to percent", "transform", [[0, "translate(10px, 5px)"], [1, "translate(50%, 20px)"]]],
+  ["translate calc", "transform", [[0, "translate(calc(10px + 10%), 0)"], [1, "translate(calc(50px + 50%), 10px)"]]],
+  ["translateX to translateY", "transform", [[0, "translateX(40px)"], [1, "translateY(60px)"]]],
+  ["translate to translateX", "transform", [[0, "translate(10px, 30px)"], [1, "translateX(90px)"]]],
+  ["rotate to 270", "transform", [[0, "rotate(0deg)"], [1, "rotate(270deg)"]]],
+  ["rotate across", "transform", [[0, "rotate(90deg)"], [1, "rotate(-90deg)"]]],
+  ["rotate units", "transform", [[0, "rotate(0.1turn)"], [1, "rotate(2rad)"]]],
+  ["scale", "transform", [[0, "scale(1)"], [1, "scale(2.5, 0.5)"]]],
+  ["scaleX to scale", "transform", [[0, "scaleX(2)"], [1, "scale(4, 3)"]]],
+  ["scaleX to scaleY", "transform", [[0, "scaleX(2)"], [1, "scaleY(3)"]]],
+  ["scale and rotate", "transform", [[0, "scale(1) rotate(0deg)"], [1, "scale(2) rotate(90deg)"]]],
+  ["translate and rotate", "transform", [[0, "translate(0, 0) rotate(0deg)"], [1, "translate(100px, 20px) rotate(180deg)"]]],
+  ["rotate then translate against translate then rotate", "transform", [[0, "rotate(45deg) translate(100px)"], [1, "translate(100px) rotate(45deg)"]]],
+  ["rotate against translate", "transform", [[0, "rotate(30deg)"], [1, "translate(100px, 40px)"]]],
+  ["rotate against scale", "transform", [[0, "rotate(30deg)"], [1, "scale(2)"]]],
+  ["translate against skew", "transform", [[0, "translate(50px, 10px)"], [1, "skew(30deg, 10deg)"]]],
+  ["rotate against matrix", "transform", [[0, "rotate(0deg)"], [1, "matrix(1, 0.5, 0, 1, 20, 30)"]]],
+  ["rotate 270 against translate rotate 0", "transform", [[0, "rotate(0deg)"], [1, "translate(50px) rotate(270deg)"]]],
+  ["none to list", "transform", [[0, "none"], [1, "translate(100px, 50px) rotate(90deg)"]]],
+  ["list to none", "transform", [[0, "translate(100px, 50px) rotate(90deg)"], [1, "none"]]],
+  ["none to scale", "transform", [[0, "none"], [1, "scale(3)"]]],
+  ["none to skew", "transform", [[0, "none"], [1, "skewX(40deg)"]]],
+  ["none to matrix", "transform", [[0, "none"], [1, "matrix(2, 0, 0, 3, 10, 20)"]]],
+  ["shorter against longer", "transform", [[0, "translate(10px)"], [1, "translate(110px) rotate(90deg)"]]],
+  ["longer against shorter", "transform", [[0, "translate(10px) scale(2) rotate(45deg)"], [1, "translate(110px)"]]],
+  ["longer shares only the head", "transform", [[0, "translate(10px) rotate(0deg)"], [1, "translate(110px) scale(2) skewX(20deg)"]]],
+  ["mismatch in the second function", "transform", [[0, "translate(10px) rotate(30deg)"], [1, "translate(110px) scale(2)"]]],
+  ["mismatch in the first function", "transform", [[0, "rotate(30deg) translate(10px)"], [1, "scale(2) translate(110px)"]]],
+  ["mismatch in the middle", "transform", [[0, "translate(10px) rotate(30deg) scale(2)"], [1, "translate(110px) skewX(30deg) scale(4)"]]],
+  ["the matching head is blended on its own", "transform", [[0, "scale(1, 3) rotate(30deg)"], [1, "scale(3, 1) translate(40px)"]]],
+  ["the matching head against a longer list", "transform", [[0, "scale(1, 3) rotate(30deg)"], [1, "scale(3, 1) skewX(40deg) translate(40px)"]]],
+  ["a flip against a rotation", "transform", [[0, "matrix(1, 0, 0, -1, 0, 0)"], [1, "rotate(60deg)"]]],
+  ["a flip against a flip", "transform", [[0, "matrix(-1, 0, 0, 1, 0, 0)"], [1, "matrix(0, 1, 1, 0, 10, 10)"]]],
+  ["a flipped skew against a rotation", "transform", [[0, "scale(-1, 1) skewX(20deg)"], [1, "rotate(40deg)"]]],
+  ["a flipped skew against a flipped skew", "transform", [[0, "scale(1, -1) skewY(20deg)"], [1, "scale(-1, 2) rotate(10deg) skewX(30deg)"]]],
+  ["skew", "transform", [[0, "skew(10deg, 20deg)"], [1, "skew(30deg, 0deg)"]]],
+  ["skewX", "transform", [[0, "skewX(10deg)"], [1, "skewX(50deg)"]]],
+  ["skewX to skewY", "transform", [[0, "skewX(10deg)"], [1, "skewY(40deg)"]]],
+  ["skew to skewX", "transform", [[0, "skew(10deg)"], [1, "skewX(40deg)"]]],
+  ["skew to skewY", "transform", [[0, "skew(10deg)"], [1, "skewY(40deg)"]]],
+  ["skew two to skewY", "transform", [[0, "skew(10deg, 30deg)"], [1, "skewY(40deg)"]]],
+  ["skewY", "transform", [[0, "skewY(-10deg)"], [1, "skewY(50deg)"]]],
+  ["matrix", "transform", [[0, "matrix(1, 0, 0, 1, 0, 0)"], [1, "matrix(0, 1, -1, 0, 50, 20)"]]],
+  ["matrix to matrix", "transform", [[0, "matrix(2, 0, 0, 1, 10, 10)"], [1, "matrix(1, 1, -1, 1, 60, 20)"]]],
+  ["matrix to rotate", "transform", [[0, "matrix(1, 0, 0, 1, 0, 0)"], [1, "rotate(90deg)"]]],
+  ["scale with a negative", "transform", [[0, "scale(1, 1)"], [1, "scale(-1, 2)"]]],
+  ["three keyframes of one kind", "transform", [[0, "translate(0, 0)"], [0.3, "translate(100px, 0)"], [1, "translate(100px, 100px)"]]],
+  ["three keyframes with a mismatch", "transform", [[0, "none"], [0.5, "rotate(90deg)"], [1, "translate(100px)"]]],
+  ["keyframes missing the ends", "transform", [[0.4, "translate(100px)"], [0.8, "translate(100px) rotate(90deg)"]]],
+  ["translate property", "translate", [[0, "0px 0px"], [1, "100px 50%"]]],
+  ["translate property one length", "translate", [[0, "10px"], [1, "90px"]]],
+  ["translate property from none", "translate", [[0, "none"], [1, "100px 40px"]]],
+  ["translate property to none", "translate", [[0, "100px 40px"], [1, "none"]]],
+  ["translate property percent", "translate", [[0, "10%"], [1, "50px 100%"]]],
+  ["rotate property", "rotate", [[0, "0deg"], [1, "270deg"]]],
+  ["rotate property from none", "rotate", [[0, "none"], [1, "180deg"]]],
+  ["rotate property to none", "rotate", [[0, "90deg"], [1, "none"]]],
+  ["rotate property turn", "rotate", [[0, "0.25turn"], [1, "1rad"]]],
+  ["scale property", "scale", [[0, "1"], [1, "2 3"]]],
+  ["scale property from none", "scale", [[0, "none"], [1, "2"]]],
+  ["scale property to none", "scale", [[0, "3 2"], [1, "none"]]],
+  ["scale property percent", "scale", [[0, "100%"], [1, "250%"]]],
+  ["individual against transform", "rotate", [[0, "0deg"], [1, "90deg"]], "transform: translate(30px, 10px) scale(1.5);"],
+  ["scale property with a transform", "scale", [[0, "1"], [1, "2"]], "transform: translate(30px, 10px) rotate(20deg);"],
+  ["origin", "transform-origin", [[0, "0 0"], [1, "100% 100%"]], "transform: rotate(45deg);"],
+  ["origin lengths", "transform-origin", [[0, "10px 20px"], [1, "50% 0"]], "transform: rotate(45deg);"],
+  ["origin keywords", "transform-origin", [[0, "left top"], [1, "right bottom"]], "transform: rotate(45deg);"],
+  ["origin one value", "transform-origin", [[0, "left"], [1, "100px"]], "transform: scale(2);"],
+  ["origin and transform", "transform", [[0, "rotate(0deg)"], [1, "rotate(90deg)"]], "transform-origin: 0 0;"],
+  ["origin and transform together", "all", [[0, "transform: rotate(0deg); transform-origin: 0 0"], [1, "transform: rotate(90deg); transform-origin: 100% 100%"]]],
+];
+const TIMES = [0, 0.25, 0.37, 0.5, 0.81, 1];
+const style = document.createElement("style");
+document.head.appendChild(style);
+const scene = document.getElementById("scene");
+const out = {};
+cases.forEach(([name, property, frames, extra = ""], index) => {
+  const rule = frames
+    .map(([offset, value]) => `${offset * 100}% { ${property === "all" ? value : `${property}: ${value}`} }`)
+    .join(" ");
+  style.textContent = `@keyframes k${index} { ${rule} }`;
+  const result = { property, frames, extra, boxes: {}, matrices: {}, origins: {} };
+  for (const time of TIMES) {
+    const el = document.createElement("div");
+    el.id = "s";
+    el.style.cssText = `${extra} animation: k${index} 1s linear paused both; animation-delay: -${time}s;`;
+    scene.appendChild(el);
+    const rect = el.getBoundingClientRect();
+    result.boxes[time] = [rect.x, rect.y, rect.width, rect.height];
+    result.matrices[time] = getComputedStyle(el).transform;
+    result.origins[time] = getComputedStyle(el).transformOrigin;
+    el.remove();
+  }
+  out[name] = result;
+});
+document.body.setAttribute("data-oracle", JSON.stringify(out));
+</script>
+</body></html>

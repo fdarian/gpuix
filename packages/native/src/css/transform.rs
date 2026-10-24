@@ -35,7 +35,7 @@ impl Value {
     }
 }
 
-type Origin = (TransformLength, TransformLength);
+pub(crate) type Origin = (TransformLength, TransformLength);
 
 thread_local! {
     static TRANSFORM: Cache<Option<Value>> = Cache::new();
@@ -153,8 +153,8 @@ fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Vec<Transfo
     functions.extend(style.motion_rotate.map(|degrees| TransformFunction::Rotate(degrees.to_radians() as f32)));
     functions.extend(style.rotate_z.map(|degrees| TransformFunction::Rotate(degrees.to_radians() as f32)));
     functions.extend(style.skew.map(|degrees| TransformFunction::Skew(degrees.to_radians() as f32, 0.0)));
-    functions.extend(style.skew_x.map(|degrees| TransformFunction::Skew(degrees.to_radians() as f32, 0.0)));
-    functions.extend(style.skew_y.map(|degrees| TransformFunction::Skew(0.0, degrees.to_radians() as f32)));
+    functions.extend(style.skew_x.map(|degrees| TransformFunction::SkewX(degrees.to_radians() as f32)));
+    functions.extend(style.skew_y.map(|degrees| TransformFunction::SkewY(degrees.to_radians() as f32)));
     (!functions.is_empty()).then_some(functions)
 }
 
@@ -280,8 +280,13 @@ fn parse_function(token: &str, lengths: &LengthContext, out: &mut Vec<TransformF
         ("rotate" | "rotatez", [angle]) => out.push(TransformFunction::Rotate(parse_angle(angle)?)),
         ("skew", [x]) => out.push(TransformFunction::Skew(parse_angle(x)?, 0.0)),
         ("skew", [x, y]) => out.push(TransformFunction::Skew(parse_angle(x)?, parse_angle(y)?)),
-        ("skewx", [x]) => out.push(TransformFunction::Skew(parse_angle(x)?, 0.0)),
-        ("skewy", [y]) => out.push(TransformFunction::Skew(0.0, parse_angle(y)?)),
+        ("skewx", [x]) => out.push(TransformFunction::SkewX(parse_angle(x)?)),
+        ("skewy", [y]) => out.push(TransformFunction::SkewY(parse_angle(y)?)),
+        (INTERPOLATED, [progress, from, to]) => out.push(TransformFunction::Interpolated {
+            from: parse_transform_uncached(from, lengths)?.functions().to_vec(),
+            to: parse_transform_uncached(to, lengths)?.functions().to_vec(),
+            progress: finite_number(progress)? as f32,
+        }),
         ("matrix", [a, b, c, d, e, f]) => {
             let mut values = [0.0f32; 6];
             for (slot, arg) in values.iter_mut().zip([a, b, c, d, e, f]) {
@@ -293,6 +298,11 @@ fn parse_function(token: &str, lengths: &LengthContext, out: &mut Vec<TransformF
     }
     Some(())
 }
+
+/// How [`format_list`] writes `TransformFunction::Interpolated`, which no CSS function stands for: an
+/// animation hands its style to the renderer as text, and the list in the middle of a blend between lists
+/// that do not pair up has to survive that. `-gpuix-interpolated(<progress>, <from list>, <to list>)`.
+const INTERPOLATED: &str = "-gpuix-interpolated";
 
 fn translate_length(token: &str, lengths: &LengthContext) -> Option<TransformLength> {
     Some(match parse_length_percentage(token, lengths)? {
@@ -396,6 +406,74 @@ fn parse_scale_uncached(value: &str) -> Option<Value> {
         _ => return None,
     };
     Some(Value::List(vec![function]))
+}
+
+/// The `transform` text that [`parse_transform`] reads back as `functions`.
+pub(crate) fn format_list(functions: &[TransformFunction]) -> String {
+    if functions.is_empty() {
+        return "none".to_string();
+    }
+    functions.iter().map(format_function).collect::<Vec<_>>().join(" ")
+}
+
+fn format_function(function: &TransformFunction) -> String {
+    match function {
+        TransformFunction::Translate(x, y) => format!("translate({}, {})", format_length(x), format_length(y)),
+        TransformFunction::Scale(x, y) => format!("scale({x}, {y})"),
+        TransformFunction::Rotate(angle) => format!("rotate({angle}rad)"),
+        TransformFunction::Skew(x, y) => format!("skew({x}rad, {y}rad)"),
+        TransformFunction::SkewX(x) => format!("skewX({x}rad)"),
+        TransformFunction::SkewY(y) => format!("skewY({y}rad)"),
+        TransformFunction::Matrix([a, b, c, d, e, f]) => format!("matrix({a}, {b}, {c}, {d}, {e}, {f})"),
+        TransformFunction::Interpolated { from, to, progress } => {
+            format!("{INTERPOLATED}({progress}, {}, {})", format_list(from), format_list(to))
+        }
+    }
+}
+
+fn format_length(length: &TransformLength) -> String {
+    let percent = f64::from(length.fraction) * 100.0;
+    if length.fraction == 0.0 {
+        format!("{}px", length.px)
+    } else if length.px == 0.0 {
+        format!("{percent}%")
+    } else if percent < 0.0 {
+        format!("calc({}px - {}%)", length.px, -percent)
+    } else {
+        format!("calc({}px + {percent}%)", length.px)
+    }
+}
+
+/// The `translate` text that [`parse_translate`] reads back as one translation, or `none`.
+pub(crate) fn format_translate(functions: &[TransformFunction]) -> String {
+    match functions {
+        [] => "none".to_string(),
+        [TransformFunction::Translate(x, y)] => format!("{} {}", format_length(x), format_length(y)),
+        other => unreachable!("translate was given {other:?}"),
+    }
+}
+
+/// The `rotate` text that [`parse_rotate`] reads back as one rotation, or `none`.
+pub(crate) fn format_rotate(functions: &[TransformFunction]) -> String {
+    match functions {
+        [] => "none".to_string(),
+        [TransformFunction::Rotate(angle)] => format!("{angle}rad"),
+        other => unreachable!("rotate was given {other:?}"),
+    }
+}
+
+/// The `scale` text that [`parse_scale`] reads back as one scaling, or `none`.
+pub(crate) fn format_scale(functions: &[TransformFunction]) -> String {
+    match functions {
+        [] => "none".to_string(),
+        [TransformFunction::Scale(x, y)] => format!("{x} {y}"),
+        other => unreachable!("scale was given {other:?}"),
+    }
+}
+
+/// The `transform-origin` text that [`parse_origin`] reads back as `origin`.
+pub(crate) fn format_origin(origin: &Origin) -> String {
+    format!("{} {}", format_length(&origin.0), format_length(&origin.1))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -569,8 +647,8 @@ mod tests {
             [
                 TransformFunction::Skew(std::f32::consts::FRAC_PI_4, 0.0),
                 TransformFunction::Skew(0.0, std::f32::consts::FRAC_PI_4),
-                TransformFunction::Skew(10f32.to_radians(), 0.0),
-                TransformFunction::Skew(0.0, 10f32.to_radians()),
+                TransformFunction::SkewX(10f32.to_radians()),
+                TransformFunction::SkewY(10f32.to_radians()),
             ]
         );
         assert_eq!(
@@ -698,7 +776,7 @@ mod tests {
                 TransformFunction::Translate(px(5.0), TransformLength::default()),
                 TransformFunction::Rotate(10f32.to_radians()),
                 TransformFunction::Scale(2.0, 2.0),
-                TransformFunction::Skew(1f32.to_radians(), 0.0),
+                TransformFunction::SkewX(1f32.to_radians()),
             ]
         );
         assert_eq!(transform.origin, (px(0.0), px(0.0)));
@@ -742,8 +820,8 @@ mod tests {
                 TransformFunction::Rotate(20f32.to_radians()),
                 TransformFunction::Rotate(10f32.to_radians()),
                 TransformFunction::Skew(5f32.to_radians(), 0.0),
-                TransformFunction::Skew(3f32.to_radians(), 0.0),
-                TransformFunction::Skew(0.0, 4f32.to_radians()),
+                TransformFunction::SkewX(3f32.to_radians()),
+                TransformFunction::SkewY(4f32.to_radians()),
             ]
         );
     }

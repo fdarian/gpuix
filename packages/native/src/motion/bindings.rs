@@ -956,7 +956,7 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
         AnimValue::Variations(axes) => {
             Ok(Value::String(VariationSettings::from_axes(axes).into()))
         }
-        AnimValue::Ellipse { .. } | AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) => {
+        AnimValue::Ellipse { .. } | AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) | AnimValue::Transform(_) => {
             Err(format!("a {NAME} cannot hold {value:?}"))
         }
     }

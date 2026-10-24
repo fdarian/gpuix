@@ -17,6 +17,7 @@ pub(crate) mod measure;
 mod property;
 mod svg_attr;
 mod track;
+mod transform_value;
 mod value;
 mod values;
 pub(crate) mod web_animation;

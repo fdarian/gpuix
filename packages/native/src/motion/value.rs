@@ -5,7 +5,7 @@
 //! vector, and [`Layout::decode`] turns sampled channels back into a value.
 
 use super::list::ListValue;
-use gpui::FontVariations;
+use gpui::{FontVariations, TransformFunction};
 
 use crate::custom_elements::svg_path::PathData;
 
@@ -419,6 +419,8 @@ pub(super) enum AnimValue {
     /// A multi-value CSS string such as `"0.5em 0.75em"` or `"red blue"`. Only a
     /// motion value holds one: a style property takes the components one by one.
     List(ListValue),
+    /// A `transform` list, or the one function of `translate`, `rotate` or `scale`. Empty is `none`.
+    Transform(Vec<TransformFunction>),
 }
 
 impl AnimValue {
@@ -527,6 +529,7 @@ impl AnimValue {
             Self::Auto => "auto",
             Self::Keyword(_) => "a keyword",
             Self::List(_) => "a list of values",
+            Self::Transform(_) => "a transform",
         }
     }
 }
@@ -584,6 +587,10 @@ pub(super) enum Layout {
     /// Values that cannot blend part by part (lists of different shapes): one
     /// channel runs from option to option and the value flips at the halfway point.
     DiscreteList(Vec<AnimValue>),
+    /// Transform lists, which pair up function by function or not depending on the two lists
+    /// (`transform_value::blend`): the keyframes' lists without repeats, and a keyframe is the
+    /// channel `[index]`. A position between two is `[from index, to index, progress]`.
+    Transform(Vec<Vec<TransformFunction>>),
 }
 
 /// How a keyword property interpolates between its two values, CSS Transitions
@@ -679,6 +686,12 @@ impl Layout {
                 AnimValue::List(ListValue { items, slash: *slash })
             }
             Self::DiscreteList(options) => options[option_index(channels[0], options.len())].clone(),
+            Self::Transform(lists) => AnimValue::Transform(match *channels {
+                [at] => lists[at as usize].clone(),
+                [from, to, _] if from == to => lists[from as usize].clone(),
+                [from, to, progress] => super::transform_value::blend(&lists[from as usize], &lists[to as usize], progress),
+                _ => unreachable!("a transform position has one or three channels"),
+            }),
         }
     }
 
@@ -765,6 +778,9 @@ impl Layout {
     /// which is not linear in the stored Oklab channels. Progress outside 0..=1
     /// extrapolates, which is how an overshooting easing is applied.
     pub(super) fn blend(&self, segment: usize, from: &[f64], to: &[f64], progress: f64) -> Vec<f64> {
+        if let Self::Transform(_) = self {
+            return vec![from[0], to[0], progress];
+        }
         if let Self::List { parts, .. } = self {
             let mut start = 0;
             let mut channels = Vec::with_capacity(from.len());
@@ -872,6 +888,9 @@ pub(super) fn align_in(
     if values.iter().any(|value| matches!(value, AnimValue::List(_))) {
         return super::list::align(name, values, interpolation);
     }
+    if values.iter().all(|value| matches!(value, AnimValue::Transform(_))) {
+        return Ok(align_transforms(values));
+    }
     // A keyword that is no length (`auto`, `from-font`, the `vertical-align` keywords) against a length: one
     // channel runs from option to option, and the value flips at the halfway point.
     let keyword = |value: &AnimValue| matches!(value, AnimValue::Keyword(Some(_)));
@@ -932,6 +951,7 @@ pub(super) fn align_in(
         AnimValue::Relative { .. } => unreachable!("a relative length was aligned above"),
         AnimValue::Ellipse { .. } => unreachable!("an ellipse was aligned above"),
         AnimValue::List(_) => unreachable!("a list was aligned above"),
+        AnimValue::Transform(_) => unreachable!("transforms were aligned above"),
         AnimValue::Color(_) => {
             let colors = unwrap_each(values, |value| match value {
                 AnimValue::Color(color) => color,
@@ -991,6 +1011,24 @@ pub(super) fn align_in(
             values[values.len() - 1].describe()
         )),
     }
+}
+
+fn align_transforms(values: &[&AnimValue]) -> Aligned {
+    let mut lists: Vec<Vec<TransformFunction>> = Vec::new();
+    let frames = values
+        .iter()
+        .map(|value| {
+            let AnimValue::Transform(list) = value else {
+                unreachable!("kinds were checked");
+            };
+            let index = lists.iter().position(|known| known == list).unwrap_or_else(|| {
+                lists.push(list.clone());
+                lists.len() - 1
+            });
+            vec![index as f64]
+        })
+        .collect();
+    Aligned { layout: Layout::Transform(lists), frames }
 }
 
 /// Lengths that are all px or all percentages keep their one channel. Any other
@@ -1704,5 +1742,40 @@ mod tests {
         let same = [axes(&[("wght", 100.0)]), axes(&[("wght", 500.0)]), axes(&[("wght", 300.0)])];
         let refs: Vec<&AnimValue> = same.iter().collect();
         assert!(matches!(align("fontVariationSettings", &refs).unwrap().layout, Layout::Variations(_)));
+    }
+    fn transform(text: &str) -> AnimValue {
+        match crate::css::transform::parse_transform(text, &LengthContext::for_tests()) {
+            Some(crate::css::transform::Value::List(functions)) => AnimValue::Transform(functions),
+            Some(crate::css::transform::Value::None) => AnimValue::Transform(Vec::new()),
+            None => panic!("{text}"),
+        }
+    }
+
+    #[test]
+    fn transform_keyframes_are_positions_among_their_lists() {
+        let values = [transform("none"), transform("translate(100px)"), transform("translate(100px) rotate(90deg)"), transform("none")];
+        let refs: Vec<&AnimValue> = values.iter().collect();
+        let aligned = align("transform", &refs).unwrap();
+        // The last keyframe is the first again, and shares its position.
+        assert_eq!(aligned.frames, [vec![0.0], vec![1.0], vec![2.0], vec![0.0]]);
+        for (index, value) in values.iter().enumerate() {
+            assert_eq!(&aligned.layout.decode(&aligned.frames[index]), value);
+        }
+        let halfway = aligned.layout.blend(1, &aligned.frames[1], &aligned.frames[2], 0.5);
+        assert_eq!(aligned.layout.decode(&halfway), transform("translate(100px) rotate(45deg)"));
+        // A keyframe run backwards blends from the later list to the earlier one.
+        let backwards = aligned.layout.blend(1, &aligned.frames[2], &aligned.frames[1], 0.25);
+        assert_eq!(aligned.layout.decode(&backwards), transform("translate(100px) rotate(67.5deg)"));
+    }
+
+    #[test]
+    fn a_transform_against_another_kind_is_an_error() {
+        assert!(pair("transform", &transform("none"), &AnimValue::Number(1.0)).is_err());
+    }
+
+    #[test]
+    fn equal_transforms_are_a_still_track() {
+        let aligned = align("transform", &[&transform("scale(2)"), &transform("scale(2)")]).unwrap();
+        assert_eq!(aligned.frames[0], aligned.frames[1]);
     }
 }
