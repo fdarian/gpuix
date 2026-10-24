@@ -17,6 +17,7 @@ use gpui::{
 use crate::css::length::LengthContext;
 use crate::css::line_height::LineHeight;
 use crate::retained_tree::RetainedTree;
+use crate::scroll::Axes;
 use crate::style::{DimensionValue, StyleDesc};
 
 /// What the paragraph lays out around the box instead of the box itself.
@@ -161,8 +162,25 @@ pub fn line_height(line_height: Option<&LineHeight>, lengths: &LengthContext) ->
 
 struct Frame {
     texts: Vec<(u64, TextLayout)>,
+    scroll_blocks: Vec<ScrollBlock>,
     /// Open `out_of_flow` calls.
     out_of_flow: usize,
+}
+
+/// A block child of the box that scrolls: how many texts the box had built when it was done,
+/// and its layout node.
+pub struct ScrollBlock {
+    texts_after: usize,
+    state: Rc<ProbeState>,
+}
+
+/// What was built inside a box, in document order.
+#[derive(Default)]
+pub struct Collected {
+    /// The texts, with the element that holds each.
+    pub texts: Vec<(u64, TextLayout)>,
+    /// The blocks of the box that scroll, the innermost of nested ones first.
+    pub scroll_blocks: Vec<ScrollBlock>,
 }
 
 thread_local! {
@@ -172,10 +190,11 @@ thread_local! {
 /// Runs `build`, and returns the texts that were built inside it as in-flow
 /// content of the box it builds, in document order, with the element that holds
 /// each. A box nested in it has a frame of its own.
-pub fn collecting<R>(build: impl FnOnce() -> R) -> (R, Vec<(u64, TextLayout)>) {
+pub fn collecting<R>(build: impl FnOnce() -> R) -> (R, Collected) {
     FRAMES.with(|frames| {
         frames.borrow_mut().push(Frame {
             texts: Vec::new(),
+            scroll_blocks: Vec::new(),
             out_of_flow: 0,
         })
     });
@@ -183,7 +202,13 @@ pub fn collecting<R>(build: impl FnOnce() -> R) -> (R, Vec<(u64, TextLayout)>) {
     let frame = FRAMES
         .with(|frames| frames.borrow_mut().pop())
         .expect("the frame pushed above");
-    (built, frame.texts)
+    (
+        built,
+        Collected {
+            texts: frame.texts,
+            scroll_blocks: frame.scroll_blocks,
+        },
+    )
 }
 
 /// Whether a box is collecting the texts built inside it, which a build that is not run would not
@@ -201,6 +226,40 @@ pub fn note(container: u64, layout: &TextLayout) {
             }
         }
     });
+}
+
+/// Whether `child` is a block of the block `parent` that scrolls vertically: a child laid out as a block
+/// in a parent that lays its children out as blocks.
+pub fn is_scroll_block(tree: &RetainedTree, parent: &crate::retained_tree::RetainedElement, child: &crate::retained_tree::RetainedElement) -> bool {
+    let lays_out_blocks = |element: &crate::retained_tree::RetainedElement| {
+        let (contents, items) = tree.display_of(element);
+        !contents
+            && !items
+            && matches!(
+                crate::layout::display::inner(element.display().as_deref()),
+                None | Some("block" | "flow-root" | "list-item")
+            )
+    };
+    lays_out_blocks(parent) && lays_out_blocks(child) && tree.overflow_of(child).y.has_offset()
+}
+
+/// `block`, a block child of a block, is a scroll container: in an `inline-block`, the last baseline of the
+/// parent is then the bottom margin edge of the child, whatever is in it (Blink's
+/// `BlockLayoutAlgorithm::PropagateBaselineFromChild`). Called when the block is built, so that the texts it
+/// holds are in the box being collected.
+pub fn scroll_block(block: AnyElement) -> AnyElement {
+    let state = Rc::<ProbeState>::default();
+    FRAMES.with(|frames| {
+        if let Some(frame) = frames.borrow_mut().last_mut() {
+            if frame.out_of_flow == 0 {
+                frame.scroll_blocks.push(ScrollBlock {
+                    texts_after: frame.texts.len(),
+                    state: state.clone(),
+                });
+            }
+        }
+    });
+    Watched { state, child: block }.into_any_element()
 }
 
 /// Runs `build` for content that is out of the flow of the box being collected:
@@ -357,8 +416,9 @@ impl Element for Watched {
 pub enum Kind {
     /// An `inline-block`: the last line box of its in-flow content.
     LastLine,
-    /// An `inline-flex` or `inline-grid`: the first baseline of the container.
-    FirstItem,
+    /// An `inline-flex` or `inline-grid`: the first baseline of the container, kept in its border box when it
+    /// scrolls (`scrolls`).
+    FirstItem { scrolls: bool },
     /// An `inline-table`: the first baseline of the table, which its layout knows.
     TableFirstRow,
     /// A box with no baseline of its own: an `inline-block` whose `overflow`
@@ -371,7 +431,7 @@ pub enum Kind {
 pub fn kind(display: Option<&str>, style: Option<&StyleDesc>) -> Kind {
     let Some(style) = style else { return Kind::LastLine };
     match display {
-        Some("inline-flex" | "inline-grid") => Kind::FirstItem,
+        Some("inline-flex" | "inline-grid") => Kind::FirstItem { scrolls: Axes::of(style).scrolls() },
         Some("inline-table") => Kind::TableFirstRow,
         _ => {
             // `clip` is not a scroll container, and Chrome keeps the baseline of the text in it.
@@ -403,9 +463,10 @@ fn is_within(tree: &RetainedTree, element: u64, ancestor: u64) -> bool {
 pub fn baseline(
     tree: &RetainedTree,
     kind: Kind,
-    texts: &[(u64, TextLayout)],
+    collected: &Collected,
     probe: Option<&Probe>,
 ) -> AtomicBaseline {
+    let texts = &collected.texts;
     let from_text = |layout: &TextLayout, last: bool| {
         let layout = layout.clone();
         AtomicBaseline::Measured(Box::new(move |window, root, _| {
@@ -414,19 +475,47 @@ pub fn baseline(
             Some(top + if last { layout.last_baseline()? } else { layout.first_baseline()? })
         }))
     };
+    let item_scrolls = |item: u64| {
+        tree.elements
+            .get(&item)
+            .and_then(|element| element.style.as_deref())
+            .is_some_and(|style| Axes::of(style).scrolls())
+    };
+    // The first line of the text of an item that scrolls is kept in the item's own box.
+    let in_scrolling_item = |layout: &TextLayout, item: Rc<ProbeState>| {
+        let layout = layout.clone();
+        AtomicBaseline::Measured(Box::new(move |window, root, _| {
+            let item = window.layout_unsnapped_bounds(item.layout_id.get()?);
+            let text_top = window.layout_unsnapped_bounds(layout.layout_id()?).origin.y;
+            let in_item = (text_top - item.origin.y + layout.first_baseline()?).min(item.size.height).max(Pixels::ZERO);
+            Some(item.origin.y - window.layout_unsnapped_bounds(root).origin.y + in_item)
+        }))
+    };
     match kind {
         Kind::BottomMarginEdge => AtomicBaseline::BottomMarginEdge,
         Kind::TableFirstRow => AtomicBaseline::Measured(Box::new(|window, root, _| window.layout_table_first_baseline(root))),
-        Kind::LastLine => match texts.last() {
-            Some((_, layout)) => from_text(layout, true),
-            None => AtomicBaseline::BottomMarginEdge,
-        },
-        Kind::FirstItem => {
+        Kind::LastLine => {
+            // A block that scrolls and ends the content has the last baseline, whatever it holds.
+            let last_block = collected.scroll_blocks.iter().rev().find(|block| block.texts_after == texts.len());
+            match (last_block, texts.last()) {
+                (Some(block), _) => {
+                    let state = block.state.clone();
+                    AtomicBaseline::Measured(Box::new(move |window, root, _| {
+                        let block = window.layout_unsnapped_bounds(state.layout_id.get()?);
+                        let top = block.origin.y - window.layout_unsnapped_bounds(root).origin.y;
+                        Some(top + block.size.height + window.layout_margin_bottom(state.layout_id.get()?))
+                    }))
+                }
+                (None, Some((_, layout))) => from_text(layout, true),
+                (None, None) => AtomicBaseline::BottomMarginEdge,
+            }
+        }
+        Kind::FirstItem { scrolls } => {
             let Some(probe) = probe else {
                 return AtomicBaseline::BottomMarginEdge;
             };
             let first = texts.first();
-            match probe.state.item.get() {
+            let baseline = match probe.state.item.get() {
                 None => AtomicBaseline::BottomMarginEdge,
                 Some(Item::Text) => match first {
                     Some((_, layout)) => from_text(layout, false),
@@ -434,7 +523,11 @@ pub fn baseline(
                 },
                 Some(Item::Element(item)) => match first {
                     Some((container, layout)) if is_within(tree, *container, item) => {
-                        from_text(layout, false)
+                        if item_scrolls(item) {
+                            in_scrolling_item(layout, probe.state.clone())
+                        } else {
+                            from_text(layout, false)
+                        }
                     }
                     // An item with no line of text has its border box's bottom edge.
                     _ => {
@@ -445,8 +538,24 @@ pub fn baseline(
                         }))
                     }
                 },
+            };
+            if scrolls {
+                kept_in_box(baseline)
+            } else {
+                baseline
             }
         }
+    }
+}
+
+/// `baseline` kept between the top and the bottom of the border box, as Blink keeps the baseline a scroll
+/// container gives its parent (`LogicalBoxFragment::FirstBaseline`).
+fn kept_in_box(baseline: AtomicBaseline) -> AtomicBaseline {
+    match baseline {
+        AtomicBaseline::Measured(measure) => AtomicBaseline::Measured(Box::new(move |window, root, border_box| {
+            measure(window, root, border_box).map(|from_top| from_top.min(border_box.height).max(Pixels::ZERO))
+        })),
+        AtomicBaseline::BottomMarginEdge => AtomicBaseline::BottomMarginEdge,
     }
 }
 
@@ -536,9 +645,18 @@ mod tests {
         assert_eq!(kind_of(serde_json::json!({"display": "inline-block"})), Kind::LastLine);
         assert_eq!(kind(None, None), Kind::LastLine);
         let block = style(serde_json::json!({"display": "block"}));
-        assert_eq!(kind(Some("inline-flex"), Some(&block)), Kind::FirstItem, "the display a container block gave");
-        assert_eq!(kind_of(serde_json::json!({"display": "inline-flex"})), Kind::FirstItem);
-        assert_eq!(kind_of(serde_json::json!({"display": "inline-grid"})), Kind::FirstItem);
+        assert_eq!(kind(Some("inline-flex"), Some(&block)), Kind::FirstItem { scrolls: false }, "the display a container block gave");
+        assert_eq!(kind_of(serde_json::json!({"display": "inline-flex"})), Kind::FirstItem { scrolls: false });
+        assert_eq!(kind_of(serde_json::json!({"display": "inline-grid"})), Kind::FirstItem { scrolls: false });
+        assert_eq!(
+            kind_of(serde_json::json!({"display": "inline-flex", "overflowY": "hidden"})),
+            Kind::FirstItem { scrolls: true }
+        );
+        assert_eq!(
+            kind_of(serde_json::json!({"display": "inline-grid", "overflow": "clip"})),
+            Kind::FirstItem { scrolls: false },
+            "clip is not a scroll container"
+        );
         assert_eq!(kind_of(serde_json::json!({"display": "inline-table"})), Kind::TableFirstRow);
         for overflow in [
             serde_json::json!({"overflow": "hidden"}),
@@ -562,17 +680,17 @@ mod tests {
     #[test]
     fn texts_are_collected_for_the_box_being_built_and_not_the_ones_nested_or_out_of_flow() {
         // `note` needs a layout, so this checks the frames with none.
-        let (_, texts) = collecting(|| {
+        let (_, collected) = collecting(|| {
             let (_, inner) = collecting(|| out_of_flow(|| ()));
-            assert!(inner.is_empty());
+            assert!(inner.texts.is_empty());
         });
-        assert!(texts.is_empty());
+        assert!(collected.texts.is_empty());
         // Outside any frame a note is dropped.
         note(1, &TextLayout::default());
-        let (_, texts) = collecting(|| {
+        let (_, collected) = collecting(|| {
             out_of_flow(|| note(1, &TextLayout::default()));
             note(2, &TextLayout::default());
         });
-        assert_eq!(texts.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(collected.texts.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![2]);
     }
 }

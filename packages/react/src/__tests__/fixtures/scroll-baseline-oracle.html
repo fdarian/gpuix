@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  Oracle for scroll-baseline.test.tsx: the boxes (`[x, y, width, height]` relative to the 300px case box) of every
+  element with an `id` that headless Chrome lays out when a box with an `overflow` of visible, clip, hidden, auto or
+  scroll is what its parent takes a baseline from: a cell beside a cell of text, an inline-table, a flex row or grid
+  that aligns by baseline, a block, a flex container or a grid around the box, an inline-block, inline-flex or
+  inline-grid on a line of text. A scroll container gives a baseline clamped to its own border box
+  (LogicalBoxFragment::FirstBaseline, logical_box_fragment.h), and an inline-block takes the bottom margin edge of
+  a block child that scrolls for its last baseline (BlockLayoutAlgorithm::PropagateBaselineFromChild). The text is
+  GpuixTestSquare (20px, whole em ascent, no descent, see text-baseline-oracle.html). Regenerate
+  (`scroll-baseline-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh scroll-baseline
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+#case{position:absolute;left:0;top:0;width:300px;font:20px/20px GpuixTestSquare;color:#000}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const BASE = 'vertical-align:baseline;';
+const BIG = 'font-size:40px;line-height:40px;';
+const td = (id, style, inner = '') => `<td id="${id}" style="${BASE}${style}">${inner}</td>`;
+const tr = (id, inner) => `<tr id="${id}">${inner}</tr>`;
+const tbl = (inner) => `<table id="t" style="border-spacing:0;border-collapse:separate;">${inner}</table>`;
+const text = (id, style = '') => `<span id="${id}" style="${style}">A</span>`;
+const PAD = 'padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;';
+
+// What the box holds, and how tall it is. The text is a line of 20px with its baseline 20 down.
+const CONTENTS = {
+  'text in a short box': ['height:10px;', 'A'],
+  'text in a tall box': ['height:50px;', 'A'],
+  'text below the box': ['height:30px;', '<div style="height:50px"></div>A'],
+  'text above the box': ['height:10px;', '<div style="margin-top:-30px">A</div>'],
+  'padding and border': [`height:20px;${PAD}`, 'A'],
+  'two lines': ['height:30px;', '<div>A</div><div>A</div>'],
+  'no content': ['height:30px;', ''],
+};
+// `hidden` gets every content, the others the two that tell a clamp from none.
+const OVERFLOWS = ['visible', 'clip', 'hidden', 'auto', 'scroll'];
+const contentsOf = (overflow) => Object.entries(CONTENTS).filter(([name]) =>
+  overflow === 'hidden' || name === 'text in a short box' || name === 'text above the box');
+const box = (overflow, [style, inner], extra = '') =>
+  `<div id="x" style="overflow:${overflow};scrollbar-width:none;${style}${extra}">${inner}</div>`;
+
+const cases = {};
+const add = (name, build) => { if (cases[name]) throw new Error('duplicate ' + name); cases[name] = build; };
+
+// The box, wherever a parent takes a baseline from it.
+const HOSTS = {
+  'cell next to text': (b) => tbl(tr('r', td('a', '', text('as')) + td('v', '', b))),
+  'cell next to big text': (b) => tbl(tr('r', td('a', BIG, text('as')) + td('v', '', b))),
+  'cell after text': (b) => tbl(tr('r', td('v', '', b) + td('a', '', text('as')))),
+  'inline-table': (b) => `<div id="line"><span id="p">AA</span><table id="t" style="display:inline-table;border-spacing:0">${tr('r', td('v', '', b))}</table><span id="q">AA</span></div>`,
+  'table in a flex row': (b) => `<div id="line" style="display:flex;align-items:baseline"><div id="p">A</div>${tbl(tr('r', td('v', '', b)))}</div>`,
+  'flex row': (b) => `<div id="line" style="display:flex;align-items:baseline"><div id="p" style="${BIG}">A</div>${b}</div>`,
+  'block in a flex row': (b) => `<div id="line" style="display:flex;align-items:baseline"><div id="p" style="${BIG}">A</div><div id="w">${b}</div></div>`,
+  'flex row in a flex row': (b) => `<div id="line" style="display:flex;align-items:baseline"><div id="p" style="${BIG}">A</div><div id="w" style="display:flex;align-items:baseline">${b}</div></div>`,
+  'flex column in a flex row': (b) => `<div id="line" style="display:flex;align-items:baseline"><div id="p" style="${BIG}">A</div><div id="w" style="display:flex;flex-direction:column">${b}</div></div>`,
+  'grid': (b) => `<div id="line" style="display:grid;grid-template-columns:50px 50px;align-items:baseline"><div id="p" style="${BIG}">A</div>${b}</div>`,
+  'block in a grid': (b) => `<div id="line" style="display:grid;grid-template-columns:50px 50px;align-items:baseline"><div id="p" style="${BIG}">A</div><div id="w">${b}</div></div>`,
+  'inline-block': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-block">${b}</span><span id="q">AA</span></div>`,
+  'inline-block, text before the box': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-block"><div id="t0">A</div>${b}</span><span id="q">AA</span></div>`,
+  'inline-block, text after the box': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-block">${b}<div id="t0">A</div></span><span id="q">AA</span></div>`,
+  'inline-block, box with a margin': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-block">${b.replace('id="x" style="', 'id="x" style="margin-bottom:5px;')}</span><span id="q">AA</span></div>`,
+  'inline-block, box in a block': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-block"><div id="w">${b}</div></span><span id="q">AA</span></div>`,
+  'inline-flex, box in a flex row': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-flex;align-items:baseline">${text('f', BIG)}${b}</span><span id="q">AA</span></div>`,
+  'inline-flex, box first': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-flex;align-items:baseline">${b}${text('f', BIG)}</span><span id="q">AA</span></div>`,
+  'inline-grid, box first': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-grid;grid-template-columns:50px 50px;align-items:baseline">${b}${text('f', BIG)}</span><span id="q">AA</span></div>`,
+  'inline-grid, box in a grid': (b) => `<div id="line"><span id="p">AA</span><span id="ib" style="display:inline-grid;grid-template-columns:50px 50px;align-items:baseline">${text('f', BIG)}${b}</span><span id="q">AA</span></div>`,
+};
+for (const [host, build] of Object.entries(HOSTS)) {
+  for (const overflow of OVERFLOWS) {
+    for (const [content, parts] of contentsOf(overflow)) {
+      add(`${host}, overflow ${overflow}, ${content}`, () => build(box(overflow, parts)));
+    }
+  }
+}
+
+// The box is the inline-level box itself.
+const SELF = {
+  'inline-block': 'inline-block',
+  'inline-flex': 'inline-flex',
+  'inline-grid': 'inline-grid',
+};
+for (const [kind, display] of Object.entries(SELF)) {
+  for (const overflow of OVERFLOWS) {
+    for (const [content, [style, inner]] of contentsOf(overflow)) {
+      add(`${kind} with overflow ${overflow}, ${content}`, () =>
+        `<div id="line"><span id="p">AA</span><span id="x" style="display:${display};overflow:${overflow};scrollbar-width:none;${style}">${inner}</span><span id="q">AA</span></div>`);
+    }
+  }
+}
+
+document.fonts.load('20px GpuixTestSquare').then(() => {
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, build] of Object.entries(cases)) {
+  const html = build();
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+});
+</script></body></html>

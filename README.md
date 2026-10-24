@@ -3945,9 +3945,13 @@ paragraph it is in lays it out, and everything else about it is the element's ow
   percentage of one that is, a flex item the container sizes) and `auto` otherwise, as in a browser.
 - **Baseline.** An `inline-block` sits on the baseline of the last line box of its
   in-flow content, or on its bottom margin edge when it has none or its `overflow` is
-  `hidden`, `scroll` or `auto` (`clip` keeps the baseline). An `inline-flex` or `inline-grid` sits on the first
+  `hidden`, `scroll` or `auto` (`clip` keeps the baseline); a block child with such an `overflow` that ends its
+  content gives the bottom of its margin box, not the line in it. An `inline-flex` or `inline-grid` sits on the first
   baseline of its container: the first item's (in `order`), the first line of its text
-  or, for an item with no text, the bottom of its border box; with no items, the bottom margin edge. An `inline-table`
+  or, for an item with no text, the bottom of its border box; with no items, the bottom margin edge. A box that
+  scrolls (`overflow` other than `visible` and `clip`) gives the baseline of its content kept between the top and the
+  bottom of its border box, to a table cell, a flex or grid row, a block or an `inline-flex` around it, so a 10px box
+  with a 20px line in it has the baseline 10. An `inline-table`
   sits on the first baseline of its table: that of its first row (below the captions above it, the border, the padding and the
   spacing), or, when none of its cells is on the baseline, as far above the bottom of that row as the least padding and
   border below the content of its cells (the top of a row without cells). Absolutely positioned

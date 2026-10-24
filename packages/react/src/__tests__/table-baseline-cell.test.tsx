@@ -28,27 +28,11 @@ const ORACLES = [
 ]
 
 /**
- * Rows gpuix lays out differently, each `it.fails` so that fixing one fails the test and takes it off the list.
- *  - A block with `overflow: hidden` (any scroll container) has its first baseline clamped to its own box when a
- *    parent reads it (Blink's `LogicalBoxFragment::FirstBaseline`, logical_box_fragment.h): a 10px block holding a
- *    20px line has the baseline 10, so the row is as tall as the block and the text cell is shifted 10px. Here the
- *    cell takes the baseline of the text, 20.
- *  - An empty `<span></span>` is a child of the cell in Chrome (its cell is on the baseline, with the bottom of its
- *    content for the baseline); gpuix builds no box for it, so the cell has nothing in it.
+ * Rows gpuix lays out differently, each `it.fails` so that fixing one fails the test and takes it off the list. An empty
+ * `<span></span>` is a child of the cell in Chrome (its cell is on the baseline, with the bottom of its content for the
+ * baseline); gpuix builds no box for it, so the cell has nothing in it.
  */
 const KNOWN_GAPS = new Set([
-  "overflow hidden block with text: alone",
-  "overflow hidden block with text: next to text",
-  "overflow hidden block with text: next to big text",
-  "overflow hidden block with text: after text",
-  "overflow hidden block with text: next to a cell with a height",
-  "overflow hidden block with text: spanning two rows",
-  "overflow hidden block with text: inline-table",
-  "overflow hidden block with text: flex row",
-  "overflow hidden block with text: next to text, inline-table",
-  "overflow hidden block with text with padding and border: next to text",
-  "overflow hidden block with text with padding and border: inline-table",
-  "overflow hidden block with text with padding and border: flex row",
   "empty span with padding and border: next to text",
   "no baseline, a cell with an empty span and a cell aligned to the top: inline-table",
   "no baseline, a cell with an empty span and a cell aligned to the top: flex row",

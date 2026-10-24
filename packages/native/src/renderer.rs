@@ -11386,6 +11386,14 @@ fn build_plan(
                 if ctx.retain.take_exited_absent() {
                     ctx.retain.absent_child(content_elements.len());
                 }
+                let built = if !out_of_flow
+                    && crate::text::atomic::is_collecting()
+                    && child_element.is_some_and(|child| crate::text::atomic::is_scroll_block(ctx.tree, element, child))
+                {
+                    crate::text::atomic::scroll_block(built)
+                } else {
+                    built
+                };
                 content_elements.push(match probe {
                     Some(probe) if !out_of_flow && probe.is_open() => probe.watch(child_id, built),
                     _ => built,
@@ -11801,7 +11809,7 @@ fn build_atomics(
             atomic_element.and_then(|element| element.display()).as_deref(),
             atomic_element.and_then(|element| element.style.as_deref()),
         );
-        let probe = (kind == crate::text::atomic::Kind::FirstItem)
+        let probe = matches!(kind, crate::text::atomic::Kind::FirstItem { .. })
             .then(|| crate::text::atomic::Probe::new(id));
         let outer = (
             std::mem::replace(&mut ctx.inherited, around.inherited),
@@ -11817,7 +11825,7 @@ fn build_atomics(
         let hosts = ctx.doc_path().host(paragraph.index, piece.range.start);
         let outer_hosts = std::mem::replace(&mut ctx.doc_hosts, hosts);
         ctx.inline_line = line.cloned();
-        let (built, texts) = crate::text::atomic::collecting(|| build_element(id, ctx, window, cx));
+        let (built, collected) = crate::text::atomic::collecting(|| build_element(id, ctx, window, cx));
         ctx.inline_line = None;
         ctx.doc_hosts = outer_hosts;
         ctx.inherited = outer.0;
@@ -11844,7 +11852,7 @@ fn build_atomics(
             .iter()
             .rev()
             .find_map(|box_id| listed.iter().position(|listed| listed.id == *box_id));
-        inline.baseline = crate::text::atomic::baseline(tree, kind, &texts, probe.as_ref());
+        inline.baseline = crate::text::atomic::baseline(tree, kind, &collected, probe.as_ref());
         atomics.push(inline);
     }
     (listed, atomics)
