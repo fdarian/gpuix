@@ -52,6 +52,9 @@ const NOT_CALLABLE_FROM_A_HANDLER = new Set([
   "nativeSimulateMouseMove",
   "nativeSimulateMouseUp",
   "nativeSimulateScrollWheel",
+  // Both enter the test state, which the handler's own native call holds: they throw "cannot run inside an event handler".
+  "postNativeEvent",
+  "tick",
 ])
 
 function calls(r, ids) {
@@ -145,6 +148,7 @@ function calls(r, ids) {
     releasePointerCapture: () => r.releasePointerCapture(ids.box, 1),
     requestPointerLock: () => r.requestPointerLock(ids.box),
     requestSubmit: () => r.requestSubmit(ids.form),
+    requiresTick: () => r.requiresTick(),
     resetBuildCounters: () => r.resetBuildCounters(),
     resetDebugFrameOverlayStats: () => r.resetDebugFrameOverlayStats(),
     scrollByKey: () => r.scrollByKey("down", false),
@@ -158,6 +162,7 @@ function calls(r, ids) {
     setAnimationPlaybackRate: () => r.setAnimationPlaybackRate(r.getAnimations(ids.box)[0].id, 2),
     setAppearance: () => r.setAppearance("dark"),
     setDebugFrameOverlay: () => r.setDebugFrameOverlay("hidden"),
+    setFrameWakeCallback: () => r.setFrameWakeCallback(null),
     setImage: () => r.setImage(ids.img, PNG_1X1),
     setImagePixels: () => r.setImagePixels(ids.img, 1, 1, Buffer.from([255, 0, 0, 255])),
     setMediaFeatures: () => r.setMediaFeatures({}),
