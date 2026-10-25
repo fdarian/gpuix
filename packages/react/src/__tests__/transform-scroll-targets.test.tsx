@@ -74,7 +74,7 @@ describeNative("a selection dragged to the edge of a transformed list", () => {
     const { renderer, scrollTop, unmount } = mount(<ScaledList factor={0.5} />)
     try {
       // The list is drawn 100 x 80, and y = 75 is 150 in it, inside the edge zone that starts at 133.
-      drag(renderer, [8, 20], [30, 75])
+      drag(renderer, [4, 10], [30, 75])
       expect(scrollTop("list")).toBeGreaterThan(40)
       renderer.nativeSimulateMouseUp(30, 75)
     } finally {
@@ -86,7 +86,7 @@ describeNative("a selection dragged to the edge of a transformed list", () => {
     const { renderer, scrollTop, unmount } = mount(<ScaledList factor={0.5} />)
     try {
       // y = 50 is 100 in the list.
-      drag(renderer, [8, 20], [30, 50])
+      drag(renderer, [4, 10], [30, 50])
       expect(scrollTop("list")).toBe(0)
       renderer.nativeSimulateMouseUp(30, 50)
     } finally {
