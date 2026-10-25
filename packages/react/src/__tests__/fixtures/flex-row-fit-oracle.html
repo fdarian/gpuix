@@ -1,0 +1,130 @@
+<!doctype html>
+<!--
+  Oracle for flex-row-fit.test.tsx: the boxes (`[x, y, width, height]` relative to the case box) of every element with an `id`
+  that headless Chrome lays out for a flex row whose width is not given but fitted to its items, at device scale 1 and 2. The
+  width of such a row is `min(max-content, max(min-content, available))`, and the max-content and min-content widths are
+  the sums of the contributions of the items: the `width` of an item or its content, between its `min-width` and
+  `max-width`. The flex basis and the factors of an item do not enter, but for an item that cannot move (it would have to
+  grow with `flex-grow: 0` or shrink with `flex-shrink: 0` to its contribution, and its basis is a length), which
+  contributes its flex base size clamped by its automatic minimum size. So `flex: 1 1 0` around a 100px box is 100px wide.
+  The container `k` is fitted by the context in its name: `abs` (absolutely positioned), `inlineflex`, `fitcontent`
+  / `maxcontent` / `mincontent` (a width keyword), `columnstart` (an item of a column that aligns it at the start) and
+  `gridauto` (the item of a `max-content` grid column, which the grid sizes by the max-content contribution of the row).
+  The items `i` and `j` hold a box `c` of 100 x 20 (`j`: 60px wide), or text in GpuixTestSquare (20px wide letters, broken anywhere) in the `text` cases, which are laid out in a wrapper `p` of the width the name gives. Regenerate
+  (`flex-row-fit-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh flex-row-fit
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:GpuixTestSquare;src:url(gpuix-test-square.ttf)}
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+body{font:16px/1 sans-serif}
+#case{position:absolute;left:0;top:0;width:700px;font:20px/20px GpuixTestSquare;word-break:break-all}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const BOX = 'width:100px;height:20px;flex-shrink:0';
+const box = (extra = '', id = '') => `<div ${id ? `id="${id}" ` : ''}style="${BOX};${extra}"></div>`;
+const CONTEXTS = {
+  abs: 'position:absolute;left:0;top:0;display:flex',
+  inlineflex: 'display:inline-flex',
+  fitcontent: 'display:flex;width:fit-content',
+  maxcontent: 'display:flex;width:max-content',
+  mincontent: 'display:flex;width:min-content',
+  columnstart: 'display:flex',
+  gridauto: 'display:flex',
+};
+// A context may put the container in a parent.
+const PARENTS = {
+  columnstart: (inner) => `<div style="display:flex;flex-direction:column;align-items:flex-start">${inner}</div>`,
+  gridauto: (inner) => `<div style="display:grid;grid-template-columns:max-content">${inner}</div>`,
+};
+const place = (context, inner) => (PARENTS[context] ?? ((x) => x))(inner);
+
+const ITEMS = {
+  '1': 'flex:1', '1 1 0': 'flex:1 1 0', '1 0 0': 'flex:1 0 0', '0 1 0': 'flex:0 1 0', '0 0 0': 'flex:0 0 0',
+  '1 1 0%': 'flex:1 1 0%', '1 1 0px': 'flex:1 1 0px', '1 1 auto': 'flex:1 1 auto', '0 0 auto': 'flex:0 0 auto',
+  '2 1 0': 'flex:2 1 0', '1 1 0 minw0': 'flex:1 1 0;min-width:0', '0 1 0 minw0': 'flex:0 1 0;min-width:0',
+  '1 1 0 minw50': 'flex:1 1 0;min-width:50px', '1 1 0 maxw60': 'flex:1 1 0;max-width:60px',
+  '1 1 0 pad10': 'flex:1 1 0;padding:0 10px', '1 1 0 w50': 'flex:1 1 0;width:50px',
+  '1 1 10px': 'flex:1 1 10px', '0 0 10px': 'flex:0 0 10px', '1 1 150px': 'flex:1 1 150px', '0 1 150px': 'flex:0 1 150px',
+  '1 0 150px': 'flex:1 0 150px', '0 0 150px': 'flex:0 0 150px', '1 1 50%': 'flex:1 1 50%',
+  '1 1 150px minw0': 'flex:1 1 150px;min-width:0', '0 1 150px minw0': 'flex:0 1 150px;min-width:0',
+};
+const cases = {};
+for (const [context, style] of Object.entries(CONTEXTS))
+  for (const [name, item] of Object.entries(ITEMS))
+    cases[`${context} | ${name}`] = place(context, `<div id="k" style="${style}"><div id="i" style="${item}">${box('', 'c')}</div></div>`);
+
+// Several items, wrapping, columns, nested rows, and the boxes around the items.
+for (const context of ['abs', 'inlineflex', 'fitcontent', 'columnstart', 'gridauto']) {
+  const k = (extra, inner) => place(context, `<div id="k" style="${CONTEXTS[context]};${extra}">${inner}</div>`);
+  const zero = `<div id="i" style="flex:1 1 0">${box('', 'c')}</div>`;
+  const sixty = (flex = 'flex:1 1 0', id = 'j') => `<div id="${id}" style="${flex}">${box('width:60px')}</div>`;
+  cases[`${context} | two 1 1 0`] = k('', zero + sixty());
+  cases[`${context} | 1 1 0 + 0 0 auto`] = k('', zero + sixty('flex:0 0 auto'));
+  cases[`${context} | 1 1 0 + 0 0 30px`] = k('', zero + `<div id="j" style="flex:0 0 30px"></div>`);
+  cases[`${context} | 1 1 0 + gap 10`] = k('gap:10px', zero + sixty());
+  cases[`${context} | two 1 1 150px`] = k('', `<div id="i" style="flex:1 1 150px">${box()}</div>` + sixty('flex:1 1 150px'));
+  cases[`${context} | wrap two 1 1 0`] = k('flex-wrap:wrap', zero + sixty());
+  cases[`${context} | wrap one 1 1 0`] = k('flex-wrap:wrap', zero);
+  cases[`${context} | wrap gap 10 two 1 1 0`] = k('flex-wrap:wrap;gap:10px', zero + sixty());
+  cases[`${context} | column 1 1 0`] = k('flex-direction:column', `<div id="i" style="flex:1 1 0">${box()}</div>`);
+  cases[`${context} | nested row 1 1 0 in 1 1 0`] = k('', `<div id="i" style="flex:1 1 0;display:flex"><div id="j" style="flex:1 1 0">${box('', 'c')}</div></div>`);
+  cases[`${context} | nested row 1 1 0 in 0 0 auto`] = k('', `<div id="i" style="flex:0 0 auto;display:flex"><div id="j" style="flex:1 1 0">${box('', 'c')}</div></div>`);
+  cases[`${context} | nested block 1 1 0`] = k('', `<div id="i" style="flex:1 1 0"><div id="j">${box('width:80px')}</div></div>`);
+  cases[`${context} | container padding 5 border 3`] = k('padding:5px;border:3px solid transparent', zero);
+  cases[`${context} | container max-width 60`] = k('max-width:60px', zero);
+  cases[`${context} | container min-width 150`] = k('min-width:150px', zero);
+  cases[`${context} | item overflow hidden`] = k('', `<div id="i" style="flex:1 1 0;overflow:hidden">${box('', 'c')}</div>`);
+  cases[`${context} | item margin 7`] = k('', `<div id="i" style="flex:1 1 0;margin:0 7px">${box('', 'c')}</div>`);
+  cases[`${context} | inline-block content`] = k('', `<div id="i" style="flex:1 1 0"><span style="display:inline-block;width:100px;height:20px"></span></div>`);
+  cases[`${context} | percent basis 50% + width 50`] = k('', `<div id="i" style="flex:1 1 50%;width:50px">${box('', 'c')}</div>`);
+  cases[`${context} | percent basis 0% + width 50`] = k('', `<div id="i" style="flex:1 1 0%;width:50px">${box('', 'c')}</div>`);
+  cases[`${context} | basis auto + width 50`] = k('', `<div id="i" style="flex:1 1 auto;width:50px">${box('', 'c')}</div>`);
+  cases[`${context} | basis 0 + width 50`] = k('', `<div id="i" style="flex:1 1 0;width:50px">${box('', 'c')}</div>`);
+  cases[`${context} | two 1 1 0% + width 50`] = k('', `<div id="i" style="flex:1 1 0%;width:50px">${box('', 'c')}</div><div id="j" style="flex:1 1 0%;width:50px">${box('width:30px')}</div>`);
+  cases[`${context} | three 1 1 100px content 10`] = k('flex-wrap:wrap', ['i', 'j', 'k2'].map((id) => `<div id="${id}" style="flex:1 1 100px">${box('width:10px')}</div>`).join(''));
+}
+
+// Text in less room than it wants (`AAAAAAAA` with `word-break: break-all`: 20px at the narrowest, 160px on one line), in a wrapper of 300, 120, 100 or
+// 60px: the container is fitted to the room, and the text wraps into it.
+const TEXT = 'AAAAAAAA';
+const TEXT_ITEMS = { 'auto': 'flex:1 1 auto', '1 1 0': 'flex:1 1 0', '0 0 auto': 'flex:0 0 auto', '1 0 0': 'flex:1 0 0', '0 1 0': 'flex:0 1 0', '1 1 0 minw0': 'flex:1 1 0;min-width:0', '0 0 100px': 'flex:0 0 100px' };
+for (const room of [300, 120, 100, 60])
+  for (const context of ['abs', 'inlineflex', 'columnstart', 'fitcontent'])
+    for (const [name, item] of Object.entries(TEXT_ITEMS)) {
+      const style = CONTEXTS[context] + (context === 'abs' ? ';position:absolute' : '');
+      const inner = place(context, `<div id="k" style="${style}"><div id="i" style="${item}">${TEXT}</div></div>`);
+      cases[`text ${context} room ${room} | ${name}`] = `<div id="p" style="width:${room}px;position:relative">${inner}</div>`;
+    }
+for (const room of [300, 120, 60]) {
+  const items = `<div id="i" style="flex:1 1 auto">${TEXT}</div><div id="j" style="flex:1 1 auto">${TEXT}</div>`;
+  cases[`text two inlineflex room ${room} | 1 1 auto`] = `<div id="p" style="width:${room}px"><div id="k" style="display:inline-flex">${items}</div></div>`;
+  cases[`text two inlineflex wrap room ${room} | 1 1 auto`] = `<div id="p" style="width:${room}px"><div id="k" style="display:inline-flex;flex-wrap:wrap">${items}</div></div>`;
+}
+cases['text min-content | 1 1 auto'] = `<div id="k" style="display:flex;width:min-content"><div id="i" style="flex:1 1 auto">${TEXT}</div></div>`;
+cases['text min-content | 1 1 0'] = `<div id="k" style="display:flex;width:min-content"><div id="i" style="flex:1 1 0">${TEXT}</div></div>`;
+
+// Wrapping against a room.
+for (const room of [150, 200, 700]) {
+  const zero = `<div id="i" style="flex:1 1 0">${box()}</div>`;
+  const sixty = `<div id="j" style="flex:1 1 0">${box('width:60px')}</div>`;
+  cases[`wrap room ${room} | inline-flex 1 1 0 x2`] = `<div id="p" style="width:${room}px"><div id="k" style="display:inline-flex;flex-wrap:wrap">${zero}${sixty}</div></div>`;
+  cases[`nowrap room ${room} | inline-flex 1 1 0 x2`] = `<div id="p" style="width:${room}px"><div id="k" style="display:inline-flex">${zero}${sixty}</div></div>`;
+  cases[`nowrap room ${room} | inline-flex 1 1 0 x2 min-width 0`] = `<div id="p" style="width:${room}px"><div id="k" style="display:inline-flex"><div id="i" style="flex:1 1 0;min-width:0">${box()}</div><div id="j" style="flex:1 1 0;min-width:0">${box('width:60px')}</div></div></div>`;
+  cases[`nowrap room ${room} | inline-flex 1 1 auto x2 min-width 0`] = `<div id="p" style="width:${room}px"><div id="k" style="display:inline-flex"><div id="i" style="flex:1 1 auto;min-width:0">${box()}</div><div id="j" style="flex:1 1 auto;min-width:0">${box('width:60px')}</div></div></div>`;
+}
+
+document.fonts.load('20px GpuixTestSquare', 'A').then(() => {
+  const out = {};
+  const scene = document.getElementById('scene');
+  for (const [name, html] of Object.entries(cases)) {
+    const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+    const boxes = {}; const cr = c.getBoundingClientRect();
+    for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+    out[name] = { html, boxes, scale: window.devicePixelRatio }; scene.removeChild(c);
+  }
+  const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+});
+</script></body></html>

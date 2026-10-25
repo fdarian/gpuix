@@ -1,0 +1,10586 @@
+{
+ "abs | 1": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 0 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 0 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0%": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 auto": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 0 auto": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 2 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 minw50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 maxw60": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 pad10": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 w50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 10px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 0 10px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 150px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 1 150px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 0 150px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 0 150px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 50%": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 0 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 0 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 0 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0%": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 auto": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 2 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 minw50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 maxw60": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 pad10": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 w50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 10px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 0 10px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 150px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 1 150px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 0 150px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 0 150px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 50%": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 0 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 0 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 0 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0%": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 2 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 minw50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 maxw60": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 pad10": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 w50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 10px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 0 10px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 0 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 0 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 50%": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 0 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 0 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 0 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0%": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 2 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0 minw50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0 maxw60": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0 pad10": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 0 w50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 10px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 0 10px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 0 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 0 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 50%": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 1 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "maxcontent | 0 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:max-content\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 0 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 0 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0%": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 2 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 1 0 minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0 minw50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0 maxw60": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0 pad10": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 0 w50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 10px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 0 10px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 0 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 0 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 50%": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 1 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "mincontent | 0 1 150px minw0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 0 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 0 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0%": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 auto": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 0 auto": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 2 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 minw0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 1 0 minw0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 minw50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 maxw60": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 pad10": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 w50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 10px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 0 10px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 150px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 1 150px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 0 150px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 0 150px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 50%": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 150px minw0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 0 1 150px minw0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 0 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 0 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0%": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 auto": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 0 auto": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 auto\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 2 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:2 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 minw0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 1 0 minw0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 minw50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 maxw60": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;max-width:60px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 pad10": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;padding:0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "c": [
+    10,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 w50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 10px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 0 10px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 10px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 150px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 1 150px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 0 150px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 0 150px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 150px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 50%": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 50%\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 150px minw0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 0 1 150px minw0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 150px;min-width:0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | two 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 + 0 0 auto": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 auto\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 + 0 0 30px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 30px\"></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    130,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | 1 1 0 + gap 10": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | two 1 1 150px": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | wrap two 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | wrap one 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | wrap gap 10 two 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;flex-wrap:wrap;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | column 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;flex-direction:column\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | nested row 1 1 0 in 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | nested row 1 1 0 in 0 0 auto": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:0 0 auto;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | nested block 1 1 0": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"j\"><div style=\"width:100px;height:20px;flex-shrink:0;width:80px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | container padding 5 border 3": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;padding:5px;border:3px solid transparent\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    116,
+    36
+   ],
+   "i": [
+    8,
+    8,
+    100,
+    20
+   ],
+   "c": [
+    8,
+    8,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | container max-width 60": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;max-width:60px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | container min-width 150": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;min-width:150px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | item overflow hidden": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0;overflow:hidden\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | item margin 7": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0;margin:0 7px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    114,
+    20
+   ],
+   "i": [
+    7,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    7,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | inline-block content": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><span style=\"display:inline-block;width:100px;height:20px\"></span></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | percent basis 50% + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | percent basis 0% + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | basis auto + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 auto;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | basis 0 + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | two 1 1 0% + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    50,
+    0,
+    50,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "abs | three 1 1 100px content 10": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"j\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"k2\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    30,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    30,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    30,
+    20
+   ],
+   "k2": [
+    0,
+    40,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | two 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 + 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 auto\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 + 0 0 30px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 30px\"></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    130,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | 1 1 0 + gap 10": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | two 1 1 150px": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | wrap two 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | wrap one 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | wrap gap 10 two 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | column 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;flex-direction:column\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | nested row 1 1 0 in 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | nested row 1 1 0 in 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:0 0 auto;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | nested block 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"j\"><div style=\"width:100px;height:20px;flex-shrink:0;width:80px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | container padding 5 border 3": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;padding:5px;border:3px solid transparent\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    116,
+    36
+   ],
+   "i": [
+    8,
+    8,
+    100,
+    20
+   ],
+   "c": [
+    8,
+    8,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | container max-width 60": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;max-width:60px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | container min-width 150": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;min-width:150px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | item overflow hidden": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0;overflow:hidden\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | item margin 7": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0;margin:0 7px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    114,
+    20
+   ],
+   "i": [
+    7,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    7,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | inline-block content": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0\"><span style=\"display:inline-block;width:100px;height:20px\"></span></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | percent basis 50% + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | percent basis 0% + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | basis auto + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 auto;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | basis 0 + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | two 1 1 0% + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    50,
+    0,
+    50,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "inlineflex | three 1 1 100px content 10": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"j\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"k2\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    30,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    30,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    30,
+    20
+   ],
+   "k2": [
+    0,
+    40,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | two 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 + 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 auto\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 + 0 0 30px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 30px\"></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    130,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | 1 1 0 + gap 10": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | two 1 1 150px": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | wrap two 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | wrap one 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | wrap gap 10 two 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;flex-wrap:wrap;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | column 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;flex-direction:column\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | nested row 1 1 0 in 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | nested row 1 1 0 in 0 0 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:0 0 auto;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | nested block 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"j\"><div style=\"width:100px;height:20px;flex-shrink:0;width:80px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | container padding 5 border 3": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;padding:5px;border:3px solid transparent\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    116,
+    36
+   ],
+   "i": [
+    8,
+    8,
+    100,
+    20
+   ],
+   "c": [
+    8,
+    8,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | container max-width 60": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;max-width:60px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | container min-width 150": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;min-width:150px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | item overflow hidden": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0;overflow:hidden\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | item margin 7": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0;margin:0 7px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    114,
+    20
+   ],
+   "i": [
+    7,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    7,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | inline-block content": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0\"><span style=\"display:inline-block;width:100px;height:20px\"></span></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | percent basis 50% + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | percent basis 0% + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | basis auto + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 auto;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | basis 0 + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | two 1 1 0% + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    50,
+    0,
+    50,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "fitcontent | three 1 1 100px content 10": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"j\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"k2\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    30,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    30,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    30,
+    20
+   ],
+   "k2": [
+    0,
+    40,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | two 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 + 0 0 auto": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 auto\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 + 0 0 30px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 30px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    130,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | 1 1 0 + gap 10": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | two 1 1 150px": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | wrap two 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | wrap one 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | wrap gap 10 two 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | column 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;flex-direction:column\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | nested row 1 1 0 in 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | nested row 1 1 0 in 0 0 auto": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:0 0 auto;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | nested block 1 1 0": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"j\"><div style=\"width:100px;height:20px;flex-shrink:0;width:80px\"></div></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | container padding 5 border 3": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;padding:5px;border:3px solid transparent\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    116,
+    36
+   ],
+   "i": [
+    8,
+    8,
+    100,
+    20
+   ],
+   "c": [
+    8,
+    8,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | container max-width 60": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;max-width:60px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | container min-width 150": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;min-width:150px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | item overflow hidden": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;overflow:hidden\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | item margin 7": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;margin:0 7px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    114,
+    20
+   ],
+   "i": [
+    7,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    7,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | inline-block content": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><span style=\"display:inline-block;width:100px;height:20px\"></span></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | percent basis 50% + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | percent basis 0% + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | basis auto + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 auto;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | basis 0 + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | two 1 1 0% + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    50,
+    0,
+    50,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "columnstart | three 1 1 100px content 10": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"j\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"k2\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    30,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    30,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    30,
+    20
+   ],
+   "k2": [
+    0,
+    40,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | two 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 + 0 0 auto": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 auto\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 + 0 0 30px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:0 0 30px\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    130,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | 1 1 0 + gap 10": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | two 1 1 150px": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 150px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | wrap two 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | wrap one 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | wrap gap 10 two 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap;gap:10px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    110,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | column 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;flex-direction:column\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | nested row 1 1 0 in 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | nested row 1 1 0 in 0 0 auto": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:0 0 auto;display:flex\"><div id=\"j\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | nested block 1 1 0": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"j\"><div style=\"width:100px;height:20px;flex-shrink:0;width:80px\"></div></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    0,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | container padding 5 border 3": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;padding:5px;border:3px solid transparent\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    116,
+    36
+   ],
+   "i": [
+    8,
+    8,
+    100,
+    20
+   ],
+   "c": [
+    8,
+    8,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | container max-width 60": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;max-width:60px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | container min-width 150": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;min-width:150px\"><div id=\"i\" style=\"flex:1 1 0\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | item overflow hidden": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;overflow:hidden\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | item margin 7": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;margin:0 7px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    114,
+    20
+   ],
+   "i": [
+    7,
+    0,
+    100,
+    20
+   ],
+   "c": [
+    7,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | inline-block content": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0\"><span style=\"display:inline-block;width:100px;height:20px\"></span></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | percent basis 50% + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | percent basis 0% + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | basis auto + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 auto;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | basis 0 + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | two 1 1 0% + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    50,
+    0,
+    50,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "gridauto | three 1 1 100px content 10": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"j\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div><div id=\"k2\" style=\"flex:1 1 100px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:10px\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    30,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    30,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    30,
+    20
+   ],
+   "k2": [
+    0,
+    40,
+    30,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 300 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 300 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 300 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 300 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:300px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 120 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 120 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 120 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 120 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:120px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 100 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 100 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 100 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 100 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:100px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text abs room 60 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;position:absolute\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    0
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text inlineflex room 60 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text columnstart room 60 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | 1 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | 0 0 auto": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    160,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | 1 0 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 0 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | 0 1 0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 1 0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | 1 1 0 minw0": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text fitcontent room 60 | 0 0 100px": {
+  "html": "<div id=\"p\" style=\"width:60px;position:relative\"><div id=\"k\" style=\"display:flex;width:fit-content\"><div id=\"i\" style=\"flex:0 0 100px\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text two inlineflex room 300 | 1 1 auto": {
+  "html": "<div id=\"p\" style=\"width:300px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div><div id=\"j\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "j": [
+    150,
+    0,
+    150,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text two inlineflex wrap room 300 | 1 1 auto": {
+  "html": "<div id=\"p\" style=\"width:300px\"><div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div><div id=\"j\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    300,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "text two inlineflex room 120 | 1 1 auto": {
+  "html": "<div id=\"p\" style=\"width:120px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div><div id=\"j\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    60
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    60
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "j": [
+    60,
+    0,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text two inlineflex wrap room 120 | 1 1 auto": {
+  "html": "<div id=\"p\" style=\"width:120px\"><div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div><div id=\"j\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    120,
+    80
+   ],
+   "k": [
+    0,
+    0,
+    120,
+    80
+   ],
+   "i": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "j": [
+    0,
+    40,
+    120,
+    40
+   ]
+  },
+  "scale": 2
+ },
+ "text two inlineflex room 60 | 1 1 auto": {
+  "html": "<div id=\"p\" style=\"width:60px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div><div id=\"j\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    160
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    30,
+    160
+   ],
+   "j": [
+    30,
+    0,
+    30,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text two inlineflex wrap room 60 | 1 1 auto": {
+  "html": "<div id=\"p\" style=\"width:60px\"><div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div><div id=\"j\" style=\"flex:1 1 auto\">AAAAAAAA</div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    60,
+    120
+   ],
+   "k": [
+    0,
+    0,
+    60,
+    120
+   ],
+   "i": [
+    0,
+    0,
+    60,
+    60
+   ],
+   "j": [
+    0,
+    60,
+    60,
+    60
+   ]
+  },
+  "scale": 2
+ },
+ "text min-content | 1 1 auto": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 auto\">AAAAAAAA</div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "text min-content | 1 1 0": {
+  "html": "<div id=\"k\" style=\"display:flex;width:min-content\"><div id=\"i\" style=\"flex:1 1 0\">AAAAAAAA</div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    20,
+    160
+   ],
+   "i": [
+    0,
+    0,
+    20,
+    160
+   ]
+  },
+  "scale": 2
+ },
+ "wrap room 150 | inline-flex 1 1 0 x2": {
+  "html": "<div id=\"p\" style=\"width:150px\"><div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "k": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "j": [
+    0,
+    20,
+    150,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 150 | inline-flex 1 1 0 x2": {
+  "html": "<div id=\"p\" style=\"width:150px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 150 | inline-flex 1 1 0 x2 min-width 0": {
+  "html": "<div id=\"p\" style=\"width:150px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    80,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 150 | inline-flex 1 1 auto x2 min-width 0": {
+  "html": "<div id=\"p\" style=\"width:150px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 auto;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "wrap room 200 | inline-flex 1 1 0 x2": {
+  "html": "<div id=\"p\" style=\"width:200px\"><div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 200 | inline-flex 1 1 0 x2": {
+  "html": "<div id=\"p\" style=\"width:200px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 200 | inline-flex 1 1 0 x2 min-width 0": {
+  "html": "<div id=\"p\" style=\"width:200px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    80,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 200 | inline-flex 1 1 auto x2 min-width 0": {
+  "html": "<div id=\"p\" style=\"width:200px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 auto;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    200,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "wrap room 700 | inline-flex 1 1 0 x2": {
+  "html": "<div id=\"p\" style=\"width:700px\"><div id=\"k\" style=\"display:inline-flex;flex-wrap:wrap\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 700 | inline-flex 1 1 0 x2": {
+  "html": "<div id=\"p\" style=\"width:700px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 700 | inline-flex 1 1 0 x2 min-width 0": {
+  "html": "<div id=\"p\" style=\"width:700px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 0;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "j": [
+    80,
+    0,
+    80,
+    20
+   ]
+  },
+  "scale": 2
+ },
+ "nowrap room 700 | inline-flex 1 1 auto x2 min-width 0": {
+  "html": "<div id=\"p\" style=\"width:700px\"><div id=\"k\" style=\"display:inline-flex\"><div id=\"i\" style=\"flex:1 1 auto;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 auto;min-width:0\"><div style=\"width:100px;height:20px;flex-shrink:0;width:60px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    700,
+    20
+   ],
+   "k": [
+    0,
+    0,
+    160,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "j": [
+    100,
+    0,
+    60,
+    20
+   ]
+  },
+  "scale": 2
+ }
+}
