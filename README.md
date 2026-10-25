@@ -3233,9 +3233,16 @@ and the extent changes as they are built.
   `getElementBounds`, `getScrollMetrics`) lays the subtree out for real and returns true
   boxes; the subtree stays skipped. The read costs one layout pass, also when it comes
   straight after a change inside the subtree (a write, or a style that turned an ancestor
-  `hidden`); reads that follow share it while nothing that can move a box happens to the
-  window (a style write, a scroll write, a resize or a painted frame ends the share; a
-  change of colour or opacity does not). The layout the read built is kept while the
+  `hidden`); reads that follow share it while nothing that can move the subtree's boxes
+  happens to the window (a style write, a scroll write, a resize, a frame that moves the
+  box of the skipped element or one above it, or a write to a transform on the path of the
+  read ends the share; a change of colour or opacity, a painted frame that moves no box and
+  a layout animation elsewhere on the page do not). A read after a write to a `transform`,
+  inside the subtree or out of it, answers with the transform written, and costs one pass.
+  The animations and motions of the subtree show in the boxes a read answers at the
+  instant of the read, as they do in Chrome, and stay asleep: a read paints no frame and
+  fires no event. Reads in one task beside a running animation share one pass; a frame
+  between two reads makes the second another pass. The layout the read built is kept while the
   frames skip the subtree again, so the next read after a frame lays out the elements
   that changed and not the whole subtree. A scroller inside the subtree reports its true
   `scrollHeight`.
@@ -3250,9 +3257,9 @@ and the extent changes as they are built.
   when it shows, from the start, and so does the animation of content that was skipped
   from its first frame. `getAnimations()` of an animation that was running when the
   content began to skip reads the live time (`currentTime` follows the clock) and dispatches
-  nothing; of content never built it lists nothing, where Chrome's read would style the element
-  and create the animation (and then tell `animationstart` and `animationend` at the
-  reveal). The `motion` and motion values of skipped content show the instant they are
+  nothing; of content never built it lists nothing until a geometry read of it has laid it
+  out, where Chrome's `getAnimations()` would style the element and create the animation (and
+  then tell `animationstart` and `animationend` at the reveal). The `motion` and motion values of skipped content show the instant they are
   shown at.
 
 </details>
@@ -8988,7 +8995,9 @@ Counters you read off the renderer:
 - `getBuildCounters()` (`resetBuildCounters()` to start over): elements built
   and skipped, the style and inherited-state copies the build made, the
   subtrees built whole as units of an animation (`unitsBuilt`, `unitsOversized`
-  for those over 256 elements), and the motions a sync read (`motionsSynced`) and the
+  for those over 256 elements), and the motions a sync read (`motionsSynced`: in a frame built
+  whole the ones it builds and the ones a hover or focus reached, not those in skipped
+  content or under `display: none`; in a patched tick those that move) and the
   motion values sampled for the elements that bind them (`motionValuesSampled`): all of
   them in a frame built whole, only those that move or were written in a patched tick.
 - `getLayoutCounters()`: layout nodes made, found again and freed, styles and
