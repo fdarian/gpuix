@@ -95,7 +95,7 @@ const HOVER_GROW: Duration = Duration::from_millis(150);
 const CLASSIC_GUTTER: f32 = 15.0;
 const CLASSIC_GUTTER_THIN: f32 = 11.0;
 /// How many times in a row an `overflow: auto` scroller may add or drop its gutter, so content
-/// that only fits with the gutter dropped (and overflows with it) cannot flip for ever.
+/// that cannot settle cannot flip for ever.
 const MAX_GUTTER_FLIPS: u8 = 4;
 
 /// The macOS "Show scroll bars" setting.
@@ -294,7 +294,8 @@ impl Grow {
 }
 
 /// Whether a classic scroller reserves a gutter on an axis. `overflow: auto` does once something
-/// scrolls, which `needed` says it did when last laid out.
+/// scrolls, which `needed` says it did in the build before this one: a draw builds again when
+/// that changed the gutter, so the frame it presents has it.
 fn wants_gutter(overflow: Overflow, needed: bool) -> bool {
     match overflow {
         Overflow::Scroll => true,
@@ -424,13 +425,20 @@ pub(crate) struct State {
     alpha: f32,
     seen: u64,
     /// Per axis, whether the content scrolled when last laid out. An `overflow: auto` scroller
-    /// reserves its gutter from it, one frame later.
+    /// reserves its gutter from it.
     needed: [bool; 2],
     /// Per axis, whether the scroller was built with a gutter.
     reserved: [bool; 2],
     /// Per axis, whether the gutter follows `needed`.
     follows_need: [bool; 2],
     flips: u8,
+    /// The draw `reserve` last ran in, and the gutter it began with.
+    draw: u64,
+    draw_start: [bool; 2],
+    /// Per axis, the draw (`DRAW`) in which the gutter was added. It stays for the rest of that
+    /// draw, as Blink keeps a bar that appeared during a layout, so a gutter that shrinks the
+    /// content until it fits cannot make the passes of one draw take it away again.
+    frozen: [Option<u64>; 2],
     /// The last paint asked for another frame: the bar fades, grows or settles its gutter.
     animating: bool,
 }
@@ -438,15 +446,20 @@ pub(crate) struct State {
 thread_local! {
     static STATES: RefCell<HashMap<u64, Rc<RefCell<State>>>> = RefCell::new(HashMap::new());
     static FRAME: Cell<u64> = const { Cell::new(0) };
+    static DRAW: Cell<u64> = const { Cell::new(0) };
     static NOW: Cell<Option<Instant>> = const { Cell::new(None) };
     static SCROLLER: Cell<ScrollerStyle> = const { Cell::new(ScrollerStyle::Overlay) };
 }
 
-/// Call before building a frame, with the time its animations run on and the style the bars
-/// take. Drops the bars of scrollers that were not built last frame.
-pub(crate) fn begin_frame(now: Instant, scroller: ScrollerStyle) {
+/// Call before building a frame, with the time its animations run on, the style the bars take
+/// and the pass of the draw it is (1 for the first build). Drops the bars of scrollers that were
+/// not built last frame.
+pub(crate) fn begin_frame(now: Instant, scroller: ScrollerStyle, pass: usize) {
     NOW.set(Some(now));
     SCROLLER.set(scroller);
+    if pass <= 1 {
+        DRAW.set(DRAW.get() + 1);
+    }
     let frame = FRAME.get() + 1;
     FRAME.set(frame);
     STATES.with(|states| {
@@ -534,11 +547,29 @@ fn reserve<E: gpui::Styled + gpui::StatefulInteractiveElement>(
         st.follows_need = [false; 2];
         return el;
     }
-    let wanted = [0, 1].map(|axis| wants_gutter(overflow[axis], st.needed[axis]));
+    let draw = DRAW.get();
+    if st.draw != draw {
+        // A draw that dropped the gutter and took it back (content that scrolls without it and
+        // fits with it) ended where it began, which is no oscillation to stop.
+        if st.reserved == st.draw_start {
+            st.flips = 0;
+        }
+        st.draw = draw;
+        st.draw_start = st.reserved;
+    }
+    let wanted = [0, 1].map(|axis| {
+        wants_gutter(overflow[axis], st.needed[axis])
+            || (st.reserved[axis] && st.frozen[axis] == Some(draw))
+    });
     if wanted == st.reserved {
         st.flips = 0;
     } else if st.flips < MAX_GUTTER_FLIPS {
         st.flips += 1;
+        for axis in 0..2 {
+            if wanted[axis] && !st.reserved[axis] {
+                st.frozen[axis] = Some(draw);
+            }
+        }
         st.reserved = wanted;
     }
     st.follows_need = [0, 1].map(|axis| overflow[axis] == Overflow::Auto);
@@ -686,10 +717,23 @@ fn prepaint(
         st.grow[index].aim(if thickened { 1.0 } else { 0.0 }, now);
     }
     let growing = st.grow.iter().any(|grow| grow.animating(now));
-    // An `overflow: auto` gutter follows the layout it caused, so it takes one more frame to settle.
+    // An `overflow: auto` gutter follows the layout it caused: this build laid out without (or
+    // with) a gutter the content did (or did not) call for, so the draw builds again before it
+    // presents. A gutter frozen on in this draw stays however little it scrolls.
+    let draw = DRAW.get();
     let settling = st.flips < MAX_GUTTER_FLIPS
-        && (0..2).any(|axis| st.follows_need[axis] && st.needed[axis] != st.reserved[axis]);
-    st.animating = (alpha > 0.0 && !classic) || growing || settling;
+        && (0..2).any(|axis| {
+            st.follows_need[axis]
+                && st.needed[axis] != st.reserved[axis]
+                && !(st.reserved[axis] && st.frozen[axis] == Some(draw))
+        });
+    if settling {
+        window.request_redraw_before_present();
+    }
+    // The draw ran out of passes: what it presents has the old gutter, and the next frame builds
+    // with the new one.
+    let unsettled = settling && crate::layout::container::last_pass(window);
+    st.animating = (alpha > 0.0 && !classic) || growing || unsettled;
     if st.animating {
         window.request_animation_frame();
     }

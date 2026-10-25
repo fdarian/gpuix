@@ -1,0 +1,74 @@
+<!doctype html>
+<!--
+  Oracle for the classic scrollbar gutter of an `overflow: auto` scroller (gpuix round 26, item 9): what headless Chrome
+  gives back, in the layout that follows one change, when the change makes content scroll. Blink decides the bar in the
+  layout that overflowed (block_node.cc relayout loop), so a read straight after the change already has the gutter, and a
+  bar that appeared in that layout is frozen on for the rest of it.
+
+  `::-webkit-scrollbar` makes the bars classic, 15px. Every scroller is 200x100 (content box). Each case builds the
+  page, changes it and reads once: clientWidth/Height, scrollWidth/Height and the border box of every element with an id.
+  Regenerate with
+
+    sh scrollbar-gutter-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:content-box}
+body{margin:0;background:#fff}
+::-webkit-scrollbar{width:15px;height:15px}
+.s{overflow:auto;width:200px;height:100px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const cases = {
+  // The content grows tall in one change.
+  grow: {
+    html: '<div id="s" class="s"><div id="c" style="width:100%;height:50px"></div></div>',
+    change: () => { c.style.height = '300px' },
+  },
+  // Wide content takes the horizontal bar's height.
+  grow_wide: {
+    html: '<div id="s" class="s"><div id="c" style="width:100px;height:50px"></div></div>',
+    change: () => { c.style.width = '300px' },
+  },
+  // Both axes.
+  grow_both: {
+    html: '<div id="s" class="s"><div id="c" style="width:100px;height:50px"></div></div>',
+    change: () => { c.style.width = '300px'; c.style.height = '300px' },
+  },
+  // 200 wide gives a 101 tall child, which scrolls; the bar makes it 185 wide and 92.5 tall, which would not. The bar stays.
+  fits_only_with_bar: {
+    html: '<div id="s" class="s"><div id="c" style="width:100%;height:50px"></div></div>',
+    change: () => { c.style.height = ''; c.style.aspectRatio = '200 / 101' },
+  },
+  // A scroller below the fold of a clip grows the same.
+  below_clip: {
+    html: '<div style="overflow:hidden;width:300px;height:100px"><div style="height:140px"></div><div id="s" class="s"><div id="c" style="width:100%;height:50px"></div></div></div>',
+    change: () => { c.style.height = '300px' },
+  },
+  // The inner scroller makes the outer one scroll.
+  nested: {
+    html: '<div id="o" class="s"><div id="s" style="overflow:auto;width:100%;height:50px"><div id="c" style="width:100%;height:50px"></div></div></div>',
+    change: () => { s.style.height = '300px'; c.style.height = '500px' },
+  },
+};
+const out = {};
+const read = () => {
+  const boxes = {};
+  for (const el of scene.querySelectorAll('[id]')) {
+    const r = el.getBoundingClientRect();
+    boxes[el.id] = { rect: [r.x, r.y, r.width, r.height], client: [el.clientWidth, el.clientHeight], scroll: [el.scrollWidth, el.scrollHeight] };
+  }
+  return boxes;
+};
+for (const [name, spec] of Object.entries(cases)) {
+  scene.innerHTML = spec.html;
+  scene.offsetWidth;
+  spec.change();
+  const boxes = read();
+  // A second layout of the scroller (the target gets a min-height): the bar that appeared is the one the layout after it keeps.
+  document.getElementById('c').style.minHeight = '1px';
+  out[name + ' again'] = read();
+  out[name] = boxes;
+}
+document.body.setAttribute('data-oracle', JSON.stringify(out));
+</script></body></html>

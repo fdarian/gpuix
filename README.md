@@ -4220,7 +4220,8 @@ own box, as in a browser. `clientWidth` and `clientHeight`, the content box that
 all shrink by the gutter, while `getBoundingClientRect` still reports the border box. The vertical
 bar takes width and the horizontal bar takes height, and the corner is filled when both show.
 `overflow: "scroll"` always reserves its gutter and shows an empty track when nothing scrolls;
-`overflow: "auto"` reserves it once the content scrolls, which takes one more frame to settle.
+`overflow: "auto"` reserves it once the content scrolls, in the frame the content starts to scroll
+(the frame is built again with the gutter before it is shown, as a browser lays out again when a bar appears).
 `scrollbarWidth: "none"` takes no room. A `<virtual-list>` cannot give up room: its classic bar is
 always visible but sits over its rows. The setting is read when the window is built and again when
 it changes. Under test the window starts with overlay bars regardless of the machine, and

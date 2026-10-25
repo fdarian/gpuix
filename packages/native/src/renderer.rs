@@ -9193,6 +9193,7 @@ impl gpui::Render for GpuixView {
             now,
             self.scroller_style
                 .unwrap_or_else(|| crate::scrollbar::ScrollerStyle::of_system(cx)),
+            window.draw_pass(),
         );
         let scroll_animating = crate::scroll::advance_animations(now);
         // Before the motion sync reads them, so an element that stopped being

@@ -623,6 +623,12 @@ pub(crate) fn allow_redraw_passes(window: &mut gpui::Window) {
     window.set_max_draw_passes(MAX_PASSES);
 }
 
+/// Whether the pass being built is the last the draw may make, so a request to build again is
+/// answered with the following frame instead.
+pub(crate) fn last_pass(window: &gpui::Window) -> bool {
+    window.draw_pass() >= MAX_PASSES
+}
+
 /// The content box of a container laid out in `bounds`, snapped to sixty-fourths of a px
 /// as layout units are.
 pub(crate) fn content_box(

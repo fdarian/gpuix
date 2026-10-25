@@ -459,17 +459,6 @@ function play(scene: Scene): Logged[] {
   }
 }
 
-/** Where gpuix is known to differ from Chrome and the scene says so: the oracle's log as gpuix is to give it. */
-const DEVIATIONS: Record<string, { why: string; expected: (oracle: Logged[]) => Logged[] }> = {
-  io8b2_root_classic_scrollbar: {
-    why: "an overflow: auto scroller reserves its classic gutter one frame after its content starts to scroll (FORK.md, Deviations), so the root is 15px wider in the first frame, where Chrome's already has the bar",
-    expected: (oracle) =>
-      oracle.map((entry) =>
-        "io" in entry && entry.frame === 1 ? { ...entry, root: [entry.root[0]!, entry.root[1]!, entry.root[2]! + 15, entry.root[3]!] } : entry
-      ),
-  },
-}
-
 describeNative("observers of a target inside content-visibility skipped content", () => {
   it("has a scene for each of the oracle's", () => {
     expect(Object.keys(SCENES).sort()).toEqual(Object.keys(ORACLE).sort())
@@ -478,7 +467,7 @@ describeNative("observers of a target inside content-visibility skipped content"
   for (const name of Object.keys(SCENES)) {
     it(`delivers what Chrome delivers: ${name}`, () => {
       const played = play(SCENES[name]!)
-      const oracle = DEVIATIONS[name]?.expected(ORACLE[name]!) ?? ORACLE[name]!
+      const oracle = ORACLE[name]!
       // The state changes of `content-visibility: auto` are told ahead of the observers' callbacks here and after the
       // resize observations in Chrome, so what each says is compared and not the order between them.
       const told = (log: Logged[]) => log.filter((entry) => !("skipped" in entry)).map((entry) => JSON.stringify(entry))
