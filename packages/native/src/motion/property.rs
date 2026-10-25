@@ -2704,7 +2704,7 @@ mod tests {
     fn inheriting(parent: &str, own: &str) -> Colors {
         let parent: StyleDesc = serde_json::from_str(parent).unwrap();
         let own: StyleDesc = serde_json::from_str(own).unwrap();
-        let font = super::super::value::ParentFont::initial().descend(Some(&parent));
+        let font = super::super::value::ParentValues::initial().descend(Some(&parent));
         Colors::inheriting(&ColorContext::root(Scheme::Light), &font, Some(&own))
     }
 
@@ -2748,7 +2748,7 @@ mod tests {
 
     #[test]
     fn a_descendant_inherits_through_an_element_that_declares_nothing_and_stops_at_one_that_does() {
-        let font = super::super::value::ParentFont::initial();
+        let font = super::super::value::ParentValues::initial();
         let parent: StyleDesc = serde_json::from_str(r#"{ "textUnderlineOffset": "1em", "fontSize": 20, "lineHeight": "30px" }"#).unwrap();
         let middle = font.descend(Some(&parent)).descend(None);
         let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &middle, None);

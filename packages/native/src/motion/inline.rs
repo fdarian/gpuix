@@ -21,7 +21,7 @@ use web_time::Instant;
 
 use super::{
     resolve_declared_style, CssAnimations, CssTransitions, InterpolateSize, KeyframesRegistry,
-    MotionState, MotionValueStore, ParentFont, Scope, Subject,
+    MotionState, MotionValueStore, ParentValues, Scope, Subject,
 };
 use crate::color::ColorContext;
 use crate::events::state_styles::{folded, PointerStates};
@@ -90,7 +90,7 @@ impl InlineStyles {
         tree: &RetainedTree,
         paragraph: &Paragraph,
         colors: &ColorContext,
-        font: &ParentFont,
+        font: &ParentValues,
         states: &dyn Fn(u64, &StyleDesc) -> PointerStates,
         timeline: Timeline,
     ) -> Self {
@@ -152,7 +152,7 @@ fn step(
     pointer: PointerStates,
     (transitions_wanted, animations_wanted): (bool, bool),
     (motion, binding, values): (Option<&MotionState>, Option<&serde_json::Value>, &MotionValueStore),
-    (colors, font): (&ColorContext, &ParentFont),
+    (colors, font): (&ColorContext, &ParentValues),
     transitions: &mut CssTransitions,
     animations: &mut CssAnimations,
     keyframes: &KeyframesRegistry,
@@ -322,7 +322,7 @@ mod tests {
                 &self.tree,
                 &paragraph,
                 &ColorContext::root(Scheme::Light),
-                &ParentFont::initial(),
+                &ParentValues::initial(),
                 &|_, _| PointerStates::default(),
                 Timeline {
                     values: &self.values,

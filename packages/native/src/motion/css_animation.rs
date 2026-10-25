@@ -28,7 +28,7 @@ use super::measure::Measurement;
 use super::property::{AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
 use super::track::{Goal, Track};
-use super::value::{AnimValue, Colors, Interpolation, ParentFont};
+use super::value::{AnimValue, Colors, Interpolation, ParentValues};
 use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback};
 use super::{needs_layout, resolve_keyframes, InterpolateSize, PropKey};
 use crate::color::ColorContext;
@@ -1145,7 +1145,7 @@ impl Run {
         progress: f64,
         subject: &Subject,
         parent_colors: &ColorContext,
-        parent_font: &ParentFont,
+        parent_font: &ParentValues,
         measurement: Option<&Measurement>,
         allow_keywords: bool,
         now: Instant,
@@ -1560,7 +1560,7 @@ impl CssAnimations {
         declared: &StyleDesc,
         subject: &Subject,
         parent_colors: &ColorContext,
-        parent_font: &ParentFont,
+        parent_font: &ParentValues,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
         scope: Scope,
@@ -1804,7 +1804,7 @@ impl CssAnimations {
         registry: &KeyframesRegistry,
         subject: &Subject,
         parent_colors: &ColorContext,
-        parent_font: &ParentFont,
+        parent_font: &ParentValues,
         now: Instant,
     ) -> Option<AnimationStyle> {
         self.advance(id, declared, registry, Scope::Element, now);
@@ -2164,7 +2164,7 @@ mod tests {
         registry: KeyframesRegistry,
         inherited: InterpolateSize,
         parent_colors: ColorContext,
-        parent_font: ParentFont,
+        parent_font: ParentValues,
     }
 
     type Seen = Vec<(AnimationEventKind, String, f64)>;
@@ -2177,7 +2177,7 @@ mod tests {
                 registry: KeyframesRegistry::default(),
                 inherited: InterpolateSize::default(),
                 parent_colors: ColorContext::root(crate::color::Scheme::Light),
-                parent_font: ParentFont::initial(),
+                parent_font: ParentValues::initial(),
             }
         }
 
@@ -3129,7 +3129,7 @@ mod tests {
     #[test]
     fn a_missing_font_size_endpoint_is_the_inherited_size() {
         let mut frames = Frames::new();
-        frames.parent_font = ParentFont {
+        frames.parent_font = ParentValues {
             lengths: crate::css::length::LengthContext::initial(800.0, 600.0)
                 .descend(Some(&crate::css::length::LinearLength::px(20.0)), true),
             above_root: false,

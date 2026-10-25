@@ -39,7 +39,7 @@ use super::svg_path::{
 };
 use crate::color::ColorContext;
 use crate::motion::{
-    CssAnimations, KeyframesRegistry, MotionState, ParentFont, Subject, SvgMotion, SvgSource,
+    CssAnimations, KeyframesRegistry, MotionState, ParentValues, Subject, SvgMotion, SvgSource,
 };
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
@@ -136,7 +136,7 @@ pub(crate) struct Frame<'a> {
     pub keyframes: &'a KeyframesRegistry,
     /// The `<svg>`'s own colours and font, which its shapes inherit.
     pub colors: &'a ColorContext,
-    pub font: &'a ParentFont,
+    pub font: &'a ParentValues,
     /// What the animations of the `<svg>` itself write on the root, where every
     /// shape below inherits it.
     pub host: Vec<(&'static str, String)>,
@@ -146,7 +146,7 @@ pub(crate) struct Frame<'a> {
 /// What the shapes above a node pass down.
 struct Above<'a> {
     colors: ColorContext,
-    font: ParentFont,
+    font: ParentValues,
     /// Their props, the nearest last.
     props: Vec<&'a HashMap<String, Value>>,
 }
@@ -1315,7 +1315,7 @@ mod tests {
         /// The markup with `host` written on the root, as the `<svg>`'s own animations do.
         fn markup_with(&mut self, tree: &RetainedTree, host: Vec<(&'static str, String)>) -> String {
             let colors = ColorContext::root(Scheme::Light);
-            let font = ParentFont::initial();
+            let font = ParentValues::initial();
             let motion = HashMap::new();
             self.trees
                 .markup(

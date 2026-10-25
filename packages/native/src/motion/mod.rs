@@ -50,7 +50,7 @@ use property::AnimProp;
 pub(crate) use property::Scope;
 use svg_attr::SvgAttr;
 use track::{Goal, Track};
-pub(crate) use value::{Colors, Inheritable, ParentFont, INITIAL_FONT_WEIGHT};
+pub(crate) use value::{Colors, Inheritable, ParentValues, INITIAL_FONT_WEIGHT};
 use value::{AnimValue, Interpolation};
 
 /// The animated properties' current values, ready to lay over a style.
@@ -1137,7 +1137,7 @@ pub(crate) fn resolve_declared_style(
     animations: Option<(&mut CssAnimations, &KeyframesRegistry)>,
     before: Option<&StyleDesc>,
     parent_colors: &crate::color::ColorContext,
-    parent_font: &ParentFont,
+    parent_font: &ParentValues,
     pointer: crate::events::state_styles::PointerStates,
     motion: Option<&MotionState>,
     id: u64,
@@ -1183,7 +1183,7 @@ pub(crate) struct DeclaredStyle {
 /// element computes to. Transitions and animations compare and blend computed values, so they are
 /// given the style after this: a `--p` that changes is a change of the transform, from the value
 /// the last style computed to the one this does.
-fn with_vars(style: StyleDesc, parent_font: &ParentFont) -> StyleDesc {
+fn with_vars(style: StyleDesc, parent_font: &ParentValues) -> StyleDesc {
     if !crate::css::transform::reads_vars(&style) {
         return style;
     }
@@ -5547,7 +5547,7 @@ mod tests {
                 "animate": { "fontSize": 40, "fontWeight": 300 },
                 "transition": { "duration": 1.0, "ease": "linear" }
             });
-            let parent_font = ParentFont {
+            let parent_font = ParentValues {
                 lengths: crate::css::length::LengthContext::initial(800.0, 600.0)
                     .descend(Some(&crate::css::length::LinearLength::px(20.0)), true),
                 above_root: false,
@@ -5698,9 +5698,9 @@ mod tests {
                 "animate": { "fontVariationSettings": [null, "'wght' 900", "'wght' 100"] },
                 "transition": { "duration": 2.0, "ease": "linear" }
             });
-            let parent_font = ParentFont {
+            let parent_font = ParentValues {
                 variations: gpui::FontVariations::new([(u32::from_be_bytes(*b"wght"), 300.0)]),
-                ..ParentFont::initial()
+                ..ParentValues::initial()
             };
             let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, None);
             let state = MotionState::new(&description, None, colors, None, 0, started).unwrap();
@@ -5729,11 +5729,11 @@ mod tests {
             serde_json::from_str(json).expect("a style")
         }
 
-        fn parent(custom: &[(&str, &str)]) -> ParentFont {
+        fn parent(custom: &[(&str, &str)]) -> ParentValues {
             let declared = CustomProperties::declared(custom.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())));
-            ParentFont {
+            ParentValues {
                 custom: declared.map_or_else(CustomProperties::default, |declared| CustomProperties::default().descend(&declared)),
-                ..ParentFont::initial()
+                ..ParentValues::initial()
             }
         }
 

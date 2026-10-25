@@ -302,7 +302,7 @@ mod tests {
                 None,
                 element.style_before_transition(),
                 &self.window,
-                &crate::motion::ParentFont::initial(),
+                &crate::motion::ParentValues::initial(),
                 Default::default(),
                 None,
                 id,

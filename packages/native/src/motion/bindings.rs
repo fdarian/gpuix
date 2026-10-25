@@ -18,7 +18,7 @@ use super::list::ListValue;
 use super::property::{
     check_finite, expand_shorthand, parse_shadow_list, shadow_layers, split_list, AnimProp, Scope,
 };
-use super::value::{AnimValue, Color, ParentFont};
+use super::value::{AnimValue, Color, ParentValues};
 use super::values::{MotionValues, PlaybackInfo, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
@@ -700,13 +700,13 @@ impl MotionValueStore {
     /// element whose parent has the font `parent`. A multi-value string bound to a
     /// shorthand gives each longhand its own component. `em` and `rem` resolve here,
     /// against this element, so one value bound to two elements can be two sizes.
-    pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentFont) {
+    pub(crate) fn apply(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentValues) {
         self.apply_in(binding, style, parent, Scope::Element);
     }
 
     /// [`Self::apply`] for the style of something that is not an element: a property
     /// `scope` cannot move is left out, as JS refuses to bind one there.
-    pub(crate) fn apply_in(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentFont, scope: Scope) {
+    pub(crate) fn apply_in(&self, binding: &Value, style: &mut StyleDesc, parent: &ParentValues, scope: Scope) {
         let Ok(mut bound) = parse_binding(binding) else {
             return;
         };
@@ -1636,7 +1636,7 @@ mod tests {
         store.frame([&binding], &[], clock.at(0));
 
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!(style.opacity, Some(0.5));
         assert!(style.background_color.as_deref().unwrap().starts_with("rgba("));
         assert_eq!(style.padding_top, Some(LinearLength::px(8.0)));
@@ -1654,11 +1654,11 @@ mod tests {
         store.frame([&binding, &mismatch], &[], clock.at(0));
 
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!(style.opacity, Some(1.0));
 
         let mut style = StyleDesc::default();
-        store.apply(&mismatch, &mut style, &ParentFont::initial());
+        store.apply(&mismatch, &mut style, &ParentValues::initial());
         assert_eq!(style.opacity, None);
     }
 
@@ -1680,14 +1680,14 @@ mod tests {
         let binding = json!({ "rotate": 1, "skewX": 2, "rotateZ": 3, "skewY": 4, "x": 6, "opacity": 6 });
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!((style.motion_rotate, style.skew_x, style.rotate_z, style.skew_y), (Some(45.0), Some(180.0), Some(9.0), Some(-90.0)));
         assert!(style.x.is_none() && style.opacity.is_none(), "an angle is no length and no opacity");
 
         let number = json!({ "rotate": 5 });
         store.frame([&number], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&number, &mut style, &ParentFont::initial());
+        store.apply(&number, &mut style, &ParentValues::initial());
         assert_eq!(style.motion_rotate, Some(1.0));
     }
 
@@ -1700,7 +1700,7 @@ mod tests {
         let binding = json!({ "rotate": 1 });
         store.frame([&binding], &[], clock.at(500));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!(style.motion_rotate, Some(180.0));
         assert_eq!(store.get(1.0, clock.at(500)).unwrap(), json!("180deg"));
 
@@ -1723,7 +1723,7 @@ mod tests {
         let binding = json!({ "transform": 1, "opacity": 2 });
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         let text = style.motion_transform.as_deref().expect("the transform is written");
         assert_eq!(crate::css::transform::parse_transform(text, &LengthContext::initial(0.0, 0.0)), crate::css::transform::parse_transform("translateX(10px) rotate(45deg)", &LengthContext::initial(0.0, 0.0)));
         assert!(style.transform.is_none() && style.opacity.is_none());
@@ -1731,7 +1731,7 @@ mod tests {
         store.animate(1.0, &json!("translateX(110px) rotate(135deg)"), Some(&linear(1.0)), clock.at(0)).unwrap();
         store.frame([&binding], &[], clock.at(500));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         let lengths = LengthContext::initial(0.0, 0.0);
         let at = crate::css::transform::parse_transform(style.motion_transform.as_deref().unwrap(), &lengths).unwrap();
         match at.functions() {
@@ -1754,14 +1754,14 @@ mod tests {
         store.create_source(2.0, &json!(0.75)).unwrap();
         let row = json!({ "opacity": 2 });
         let mut style = StyleDesc::default();
-        store.apply(&row, &mut style, &ParentFont::initial());
+        store.apply(&row, &mut style, &ParentValues::initial());
         assert_eq!(style.opacity, None, "the frame never sampled it");
 
         store.set(1.0, &json!(0.5), clock.at(10)).unwrap();
         store.sample_unsampled([&root, &row], &[], clock.at(10));
-        store.apply(&row, &mut style, &ParentFont::initial());
+        store.apply(&row, &mut style, &ParentValues::initial());
         assert_eq!(style.opacity, Some(0.75));
-        store.apply(&root, &mut style, &ParentFont::initial());
+        store.apply(&root, &mut style, &ParentValues::initial());
         assert_eq!(style.opacity, Some(0.25), "the frame's own sample is kept");
     }
 
@@ -1825,10 +1825,10 @@ mod tests {
     }
 
     /// The font of an element whose parent has `parent` px text and a root of `root` px.
-    fn font_of(parent: f64, root: f64) -> ParentFont {
+    fn font_of(parent: f64, root: f64) -> ParentValues {
         let mut lengths = LengthContext::initial(800.0, 600.0);
         lengths = lengths.descend(Some(&LinearLength::px(root)), true);
-        let mut font = ParentFont::initial().descend(None);
+        let mut font = ParentValues::initial().descend(None);
         font.lengths = lengths.descend(Some(&LinearLength::px(parent)), false);
         font.above_root = false;
         font
@@ -1900,7 +1900,7 @@ mod tests {
         assert!(parse_binding(&binding).is_err());
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!(style.flex_grow, None);
     }
 
@@ -1951,7 +1951,7 @@ mod tests {
         let binding = json!({ "width": 1, "marginLeft": 1 });
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         let calc = LinearLength { px: -20.0, percent: 1.0, ..Default::default() };
         assert_eq!(style.width, Some(crate::style::DimensionValue::Calc(calc)));
         assert_eq!(style.margin_left, Some(crate::style::DimensionValue::Calc(calc)));
@@ -1959,7 +1959,7 @@ mod tests {
         store.set(1.0, &json!("calc(-100% - 20px)"), clock.at(10)).unwrap();
         store.frame([&binding], &[], clock.at(10));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!(style.width, Some(crate::style::DimensionValue::Pixels(0.0)));
     }
 
@@ -2127,7 +2127,7 @@ mod tests {
     fn applied(store: &mut MotionValueStore, clock: &Clock, binding: Value) -> StyleDesc {
         store.frame([&binding], &[], clock.at(0));
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         style
     }
 
@@ -2259,7 +2259,7 @@ mod tests {
         store.animate(2.0, &json!("1em 1.5em"), Some(&linear(1.0)), clock.at(0)).unwrap();
         assert!(store.frame([&binding], &[], clock.at(500)).active);
         let mut style = StyleDesc::default();
-        store.apply(&binding, &mut style, &ParentFont::initial());
+        store.apply(&binding, &mut style, &ParentValues::initial());
         assert_eq!(style.padding_top, Some(LinearLength::px(12.0)));
         assert_eq!(style.padding_left, Some(LinearLength::px(18.0)));
     }

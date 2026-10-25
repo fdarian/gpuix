@@ -13,7 +13,7 @@ use web_time::Instant;
 use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
 use super::property::{expand_shorthand, AnimProp, Scope};
-use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentFont};
+use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentValues};
 use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback, Status};
 use super::MotionState;
 use crate::color::ColorContext;
@@ -869,7 +869,7 @@ impl ElementState {
         id: u64,
         after: &StyleDesc,
         parent_colors: &ColorContext,
-        parent_font: &ParentFont,
+        parent_font: &ParentValues,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
@@ -1271,7 +1271,7 @@ impl CssTransitions {
     /// declared a transition. The transitions of a change come from the style
     /// after it, so a change that also adds the declaration must not be the
     /// first style the element is seen with.
-    pub(crate) fn seed(&mut self, id: u64, before: &StyleDesc, parent_colors: &ColorContext, parent_font: &ParentFont) {
+    pub(crate) fn seed(&mut self, id: u64, before: &StyleDesc, parent_colors: &ColorContext, parent_font: &ParentValues) {
         if let std::collections::hash_map::Entry::Vacant(slot) = self.states.entry(id) {
             let colors = Colors::inheriting(parent_colors, parent_font, Some(before));
             slot.insert(ElementState::new(id, before, colors));
@@ -1287,7 +1287,7 @@ impl CssTransitions {
         id: u64,
         after: &StyleDesc,
         parent_colors: &ColorContext,
-        parent_font: &ParentFont,
+        parent_font: &ParentValues,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
@@ -1798,7 +1798,7 @@ mod tests {
         /// The `interpolateSize` an ancestor gives the element.
         inherited: InterpolateSize,
         parent_colors: ColorContext,
-        parent_font: ParentFont,
+        parent_font: ParentValues,
     }
 
     impl Clock {
@@ -1808,7 +1808,7 @@ mod tests {
                 transitions: CssTransitions::default(),
                 inherited: InterpolateSize::default(),
                 parent_colors: ColorContext::root(crate::color::Scheme::Light),
-                parent_font: ParentFont::initial(),
+                parent_font: ParentValues::initial(),
             }
         }
 
@@ -3802,7 +3802,7 @@ mod tests {
 
         /// A parent whose computed font is 20px at weight 700, in a window of 800 by 600.
         fn inside_a_large_bold_parent(clock: &mut Clock) {
-            clock.parent_font = ParentFont {
+            clock.parent_font = ParentValues {
                 lengths: crate::css::length::LengthContext::initial(800.0, 600.0)
                     .descend(Some(&LinearLength::px(20.0)), true),
                 above_root: false,

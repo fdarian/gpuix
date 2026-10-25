@@ -5870,9 +5870,9 @@ pub(crate) fn emit_motion_value_events(
 fn parent_inherited(
     tree: &crate::retained_tree::RetainedTree,
     id: u64,
-    root: &(crate::color::ColorContext, crate::motion::ParentFont),
-    known: &mut HashMap<u64, (crate::color::ColorContext, crate::motion::ParentFont)>,
-) -> (crate::color::ColorContext, crate::motion::ParentFont) {
+    root: &(crate::color::ColorContext, crate::motion::ParentValues),
+    known: &mut HashMap<u64, (crate::color::ColorContext, crate::motion::ParentValues)>,
+) -> (crate::color::ColorContext, crate::motion::ParentValues) {
     let Some(parent) = tree.elements.get(&id).and_then(|element| element.parent) else {
         return root.clone();
     };
@@ -5955,7 +5955,7 @@ fn sync_motions(
     now: web_time::Instant,
 ) -> (Vec<u64>, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
-    let mut root_font = crate::motion::ParentFont::initial();
+    let mut root_font = crate::motion::ParentValues::initial();
     root_font.lengths = LengthContext::initial(
         f64::from(f32::from(viewport.width)),
         f64::from(f32::from(viewport.height)),
@@ -7369,8 +7369,8 @@ pub(crate) struct GroupState {
 
 impl Inherited {
     /// The font the element being built inherits.
-    fn parent_font(&self) -> crate::motion::ParentFont {
-        crate::motion::ParentFont {
+    fn parent_font(&self) -> crate::motion::ParentValues {
+        crate::motion::ParentValues {
             lengths: self.lengths,
             above_root: self.above_root,
             weight: self.font_weight,
@@ -18024,7 +18024,7 @@ mod running_motion_tests {
         });
         let colors = crate::motion::Colors::inheriting(
             &crate::color::ColorContext::root(color_scheme_of(gpui::WindowAppearance::Light)),
-            &crate::motion::ParentFont::initial(),
+            &crate::motion::ParentValues::initial(),
             None,
         );
         crate::motion::MotionState::new(&description, None, colors, None, 0, now).expect("a motion")
