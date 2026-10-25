@@ -1,6 +1,7 @@
 > **This is fdarian's proof-of-concept fork of [remorses/gpuix](https://github.com/remorses/gpuix).**
 > It lowers scroll and input latency (a guard so `test-support` builds do not draw inline, a display-link frame pump), adds spring transitions, and makes events, focus, layout, scrolling, paint and motion follow DOM/CSS semantics.
 > It is rebased on upstream regularly and is not published. See [FORK.md](./FORK.md).
+> Differences from Chrome and the DOM are listed in [docs/fork/deviations.md](./docs/fork/deviations.md).
 
 # GPUIX
 
@@ -1237,7 +1238,7 @@ GPUI aborts the process on a font without the names, and silently drops a font
 without the glyph, so `registerFont()` throws for both and for bytes that are
 not a font. Fonts load into the process and last until it exits.
 
-WOFF and WOFF2 are not supported; convert them to TrueType first. The browser
+WOFF and WOFF2 are not supported ([deviations](./docs/fork/deviations.md#text)); convert them to TrueType first. The browser
 renderer does not have this method, use `FontFace` there.
 
 ### Let an agent drive the app
@@ -1979,7 +1980,8 @@ defineKeyframes('draw', { from: { strokeDashoffset: 180 }, to: { strokeDashoffse
   paths blend when their commands match and swap halfway otherwise
 
 Not built: CSS transitions of SVG properties (a changed prop jumps; use `motion`
-or an animation), and the attributes that are not CSS properties above.
+or an animation), and the attributes that are not CSS properties above
+([deviations](./docs/fork/deviations.md#motion)).
 
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
 image every frame. The `<svg>` keeps the image it last painted and drops it from
@@ -2047,7 +2049,7 @@ gesture props, and answers to them natively, with no render per hover or press.
   gesture. A component that writes a name of its own, or `inherit={false}`, breaks
   the chain; a name in an object (`animate={{ ... }}`) does not. Framer's
   `staggerChildren`, `delayChildren` and `when` are not built: every child animates
-  at once.
+  at once ([deviations](./docs/fork/deviations.md#motion)).
 - **SVG shapes** take `variants` and the names handed down to them, so an icon
   moves when the button around it is hovered. A shape takes no pointer or focus
   event of its own (the `<svg>` is one image), so its own `whileHover`,
@@ -2116,8 +2118,8 @@ is nothing to animate.)
   are `layout`, `layoutId`, `layoutDependency`, `onLayoutAnimation*`, `whileDrag` and
   Framer's `drag*` props: a layout animation and a drag move a box with a transform,
   which a span cannot show, so no layout animation runs and none of its callbacks is
-  called. (`draggable` and the DOM `onDrag*` events are the ordinary ones.) A
-  `Reorder.Item` rendered `as` a span renders and does not reorder.
+  called ([deviations](./docs/fork/deviations.md#motion)). (`draggable` and the DOM `onDrag*` events are the
+  ordinary ones.) A `Reorder.Item` rendered `as` a span renders and does not reorder.
 - A span that is a flex or grid item, or has `display: block`, is laid out as an
   element and paints its colours the same way, but still takes only the keys above.
 
@@ -2390,14 +2392,10 @@ needs it, then gives it back. A value drives one window at a time.
     starts; only `duration` and `iterationDuration` throw, as they are not known
     until then.
 
-  Where it differs from Motion: the `time` setter reads back as set, where Motion
-  counts the delay in the time it is given; a `speed` other than 0 after 0 runs
-  the animation again without `play()`; `isAnimating()` is false after `stop()`
-  and `cancel()` of the controls (Motion leaves it true) and true while a seeked
-  or replayed animation runs; `time` stops at the end of the last repeat. A
-  paused animation holds its value's node, so stop it when its component goes
-  (`useEffect(() => () => controls.stop(), [])`). `startTime` and
-  `attachTimeline` are not built.
+  It differs from Motion in the edges of `time`, `speed`, `isAnimating()` and `finished`, and
+  `startTime` and `attachTimeline` are not built ([deviations](./docs/fork/deviations.md#motion)). A paused
+  animation holds its value's node, so stop it when its component goes
+  (`useEffect(() => () => controls.stop(), [])`).
 - **Lengths.** A motion value reads `"20px"`, `"50%"`, `"2em"`, `"calc(100% - 20px)"`
   and the other [length](#lengths) syntaxes as a px part and a percentage part, and
   animates between any two lengths as the mix of the parts: `"20px"` to `"50%"` is
@@ -2472,7 +2470,7 @@ animation runs finishes the jumping properties at once.
 through `style` of a `motion.*` component under the config, to `width`,
 `height`, `top`, `right`, `bottom` or `left`: the value jumps and `finished`
 resolves. Motion for React does not reduce a bare `animate(value)`; gpuix does,
-so a bound size follows the setting. A value bound to padding or opacity, bound
+so a bound size follows the setting ([deviations](./docs/fork/deviations.md#motion)). A value bound to padding or opacity, bound
 to a plain `div`, or not bound to any element animates normally.
 
 CSS `transition` is not affected, as in the DOM. `useReducedMotionConfig()`
@@ -2550,7 +2548,7 @@ Differences from Motion for React:
   does not scale a box with a transform and correct its children, as Motion's
   FLIP does, while re-laying out every frame would flash. `layout="size"`
   therefore does nothing on its own; with a `layoutId` it still moves the box.
-  `"preserve-aspect"` is not supported.
+  `"preserve-aspect"` is not supported ([deviations](./docs/fork/deviations.md#motion)).
 - The element that held a `layoutId` is not hidden when another takes the id.
   If both stay mounted the newcomer glides from the old one, and the old one
   stays where it is. Unmount it or set its `opacity` yourself, as in the tabs
@@ -2666,7 +2664,7 @@ The wheel goes to the innermost scroller under the pointer that can still scroll
 
 A trackpad gesture stays on the scroller that took its first delta, momentum included, so a fling does not jump to the parent when the inner list runs out. A mouse wheel does the same until it pauses for half a second or the pointer moves. `onWheel` listeners on every element under the pointer still run, whichever scroller moved.
 
-`wheel` is one DOM event per wheel input, aimed at the element under the pointer and run along its path: `onWheelCapture` from the outermost ancestor down, then `onWheel` from the target up, and `stopPropagation()` works. Pointer capture does not redirect it, as in a browser; a pointer lock does. It runs before any scroller takes the delta, so `scrollTop` read in a handler is the position before this input. Calling `preventDefault()` in either phase cancels the scroll that input would cause, in every scroller and text input. Two deviations from the DOM:
+`wheel` is one DOM event per wheel input, aimed at the element under the pointer and run along its path: `onWheelCapture` from the outermost ancestor down, then `onWheel` from the target up, and `stopPropagation()` works. Pointer capture does not redirect it, as in a browser; a pointer lock does. It runs before any scroller takes the delta, so `scrollTop` read in a handler is the position before this input. Calling `preventDefault()` in either phase cancels the scroll that input would cause, in every scroller and text input. Two deviations from the DOM ([deviations](./docs/fork/deviations.md#events-and-input), [other platforms](./docs/fork/deviations.md#other-platforms)):
 
 - It cancels that input only. A browser that sees the first wheel of a gesture cancelled cancels the whole gesture; here the next input scrolls unless its own handler cancels it, so a handler that wants a gesture cancelled calls `preventDefault()` on each input.
 - It needs the handler to run before the scroll, which only holds on macOS and in the test renderer. On Windows and Linux the event reaches JavaScript through a queue after native scrolled, so `preventDefault()` has no effect there.
@@ -2782,7 +2780,7 @@ The scroller picks an **anchor**: the first box of its content, in layout order,
 
 A change the page makes to the anchor itself is its own move and is not compensated: the `top`, `margin`, `padding`, `width`, `height`, `min-`/`max-` size, `position` or `containIntrinsicSize` of the anchor or of any box between it and the scroller, whenever the anchor ends up somewhere else because of it. An explicit scroll (a wheel, a scrollbar, `scrollTop`, `scrollTo`) drops the anchor, and the next one is picked from the layout as it was before the frame's changes, so content that arrives in the frame of a scroll is still compensated. The same goes for an anchor that is removed, hidden, or turned `overflowAnchor: 'none'`: the box after it takes over.
 
-Where gpuix differs from Chrome: a nested scroller inside the scroller is anchored as one box and not looked into, there is no priority for the focused input or a find-in-page match, and `scroll-padding` does not shrink the area an anchor must be in. `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
+Where gpuix differs from Chrome (a nested scroller is anchored as one box, there are no priority candidates, and the events and a relative anchor's `top` differ in corner cases): [deviations](./docs/fork/deviations.md#scroll). `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
 
 ### Sticky positioning
 
@@ -3326,7 +3324,7 @@ and the gaps fitted between them. A pattern starts over with every **text
 fragment**, which is a text node in one inline box on one row: an outer dashed
 underline starts again after a nested box and between two text nodes, and on every
 wrapped row, and the spaces that hang past the end of a row are not drawn under.
-(A paragraph in which no `<span>` restyles anything is one fragment: see FORK.md.) `auto` and `from-font` stay fractional; a
+(A paragraph in which no `<span>` restyles anything is one fragment: see [text.md](./docs/fork/text.md#text-decoration).) `auto` and `from-font` stay fractional; a
 solid or double line floors them to a device pixel (at least one) when it paints,
 and a dotted or dashed one rounds them. A length is rounded to the nearest device
 pixel, a half up, and is at least one, `0px` included, as in Chrome: `1.5px` is two
@@ -3443,14 +3441,9 @@ it covers the one written later wins. `hover`, `active` and the other state styl
   paragraph fills its container. While the paragraph is measured for its content
   (`width: "min-content"`, a flex item without a width) a percentage counts as 0, as
   CSS treats it in intrinsic sizes.
-- Deviations: an `auto` or `anchor-size()` margin counts as 0, as `auto` does on an
-  inline box in CSS, a negative `marginLeft` or `marginRight` pulls the text as in
-  CSS, and a negative padding or border width counts as 0 (a `calc()` of a padding
-  is clamped as a whole). A border side needs a line style, as on a `div`: without
-  one its width is 0. The space of a span that holds no text left
-  after white space processing, or none of whose glyphs are painted, is lost: it
-  has no glyph to attach to. A span cut by `text-overflow` or `lineClamp` at its
-  end loses its space with the cut.
+- Deviations: an `auto` margin and a negative padding or border width count as 0, and a span with no
+  painted glyph, or cut by `text-overflow` or `lineClamp` at its end, loses its inline space
+  ([deviations](./docs/fork/deviations.md#text)).
 
 ### Painting an inline box
 
@@ -3663,7 +3656,7 @@ can set change its run, and `outline` (or `outlineWidth`, `outlineStyle`,
   other focusables dim ([Focus styles](#focus-styles)). A focused span starts that
   dim for the elements, like any control, but a span is not dimmed when another
   control has focus, and `keyboardFocusDim` is not read on one: a dim is an
-  opacity, and a span has no element to set it on.
+  opacity, and a span has no element to set it on ([deviations](./docs/fork/deviations.md#text)).
 
 ### White space
 
@@ -3824,16 +3817,7 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
   edge: its `TextStyle::overflow_wrap` defaults to `BreakWord`, and `Normal` is
   what gpuix sets for all of its text.
 
-Deviations, where GPUI's text layout cannot build the DOM model:
-
-- In `normal` and `pre-line` a space at a soft wrap stays in the text, hanging,
-  where CSS removes it, so selection and copy see it.
-- The Unicode line breaking rules come from ICU4X, Chrome's from ICU, and they agree on
-  everything but a few rare sequences: a closing or opening quote next to a small kana or the
-  prolonged sound mark (`”ぁ`), and the word boundaries of Lao and Khmer, whose dictionaries differ.
-- `hyphens` and `line-break` are not styles: a soft hyphen (U+00AD) is a place to break and
-  draws no hyphen where it does, though the width of the hyphen counts in whether the line fits,
-  so lines break where Chrome's do, and the strictness is Chrome's `auto`.
+A hanging space at a soft wrap stays in the text, ICU4X breaks a few rare sequences differently from Chrome's ICU, and `hyphens` and `line-break` are not styles (a soft hyphen breaks without drawing a hyphen): [deviations](./docs/fork/deviations.md#text).
 
 #### Balanced and pretty lines
 
@@ -4027,7 +4011,7 @@ outline of a span that is raised or lowered move with its text. `verticalAlign` 
 the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see [Tables](#tables)), and an
 `inline-table` is aligned on its line by its own `verticalAlign` like any other atomic inline.
 
-#### Deviations
+#### Fractions of a pixel
 
 - A text is as wide as its advance up to 1/64 of a device pixel (1/128 px at 2x), as in Chrome, and boxes are laid out in
   fractions of a pixel: a length you write keeps its fraction, cut toward zero to 1/64 of a device pixel as
@@ -4047,20 +4031,16 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
   auto margins, a centred absolute child), and a flex container gives the remainder of `space-between`, `space-around`,
   `space-evenly` and a stretched `align-content` to its lines and items one 64th at a time, as Chrome does, where a grid
   drops it.
-- Inside a span with `verticalAlign: top` or `bottom` nothing can be aligned on
-  its own: what it holds goes with it. The `getBoundingClientRect()` of a span that holds nothing but atomic
-  inlines is its line box, since it has no text to take the content area of its font from (a browser
-  reports that content area).
-- An `absolute` descendant of an atomic inline is positioned against the atomic inline (it is a layout root),
-  and the box is its own stacking context. A percentage `height` inside it sees an `auto` height, which CSS
-  does for a shrink-to-fit box too.
-- `textOverflow` and `lineClamp` ignore a paragraph with an atomic inline in it: cutting the text would cut its
-  placeholder, so it overflows.
+
+#### Atomic inlines: selection, queries and deviations
+
+Where atomic inlines differ from Chrome (an absolute descendant is positioned against the box, a percentage `height` inside it is `auto`, `textOverflow` and `lineClamp` ignore a paragraph with one in it, a span holding only atomics reports its line box, a match cannot cross the box): [deviations](./docs/fork/deviations.md#text).
+
 - The text in an atomic inline is a text of its own for [selection](#text-selection) and [search](#text-highlighting-and-search),
   and it falls where the box sits in the paragraph, as in a browser: a drag across the box selects the text
   before it, the box's text and the text after it, in that order; the copied text reads `a b c` for
   `a <box>b</box> c` (the placeholder is left out, and the text of a block in the box starts a line of its own,
-  as the DOM does); and the matches of a `highlight` are numbered in the same order. A match cannot cross the box.
+  as the DOM does); and the matches of a `highlight` are numbered in the same order.
 - An `inline-block`, `inline-flex` or `inline-grid` box is a [query container](#container-queries) like any other box (`containerType` on it works, and an
   `inline-size` one without a `width` is as wide as its padding and border), and the boxes inside it or inside a
   container around its paragraph read `@container` blocks and `cq` units in the frame that lays them out. Hovering
@@ -5230,14 +5210,10 @@ rounded as Chrome rounds them: `clientWidth`, `clientHeight`, `scrollWidth` and
 `scrollHeight` (see [Scrolling](#scrolling)) are the padding box and the scrollable overflow
 rounded half up, `clientLeft` and `clientTop` of `getElementBounds` are the border
 widths, which are whole device pixels, rounded half up,
-and `scrollTop` and `scrollLeft` are as they were. Deviations: a few cases of a
-percentage, a flex share or a text are still a unit off Chrome's (listed under the deviations of
-[inline-block, inline-flex, inline-grid and inline-table](#inline-block-inline-flex-inline-grid-and-inline-table));
-the scroll offset an element is placed
-at is the one it is painted at, which is a whole device pixel, so a box inside a scroller
-that is scrolled by a fraction is where it is painted and not where a browser puts it; and
-a box that is not a scroller reports its padding box as `clientWidth` and the same number as
-`scrollWidth`, so content that overflows it is not counted.
+and `scrollTop` and `scrollLeft` are as they were. A few cases of a
+percentage, a flex share or a text are still a unit off Chrome's, the scroll offset an element is placed
+at is a whole device pixel, and a box that is not a scroller reports its padding box as `clientWidth` and the
+same number as `scrollWidth`: [deviations](./docs/fork/deviations.md#layout).
 
 `renderer.getElementBounds(id)` is the raw read on the live `GpuixRenderer` and
 on the test renderer. It does the same flush and layout, and returns `null`
@@ -5431,7 +5407,8 @@ Base UI:
 
 The default for `initialFocus` differs from Base UI, which picks the first
 tabbable element. GPUI's tab order exists only after the popup has painted,
-so GPUIX focuses the popup and lets the first Tab walk that order.
+so GPUIX focuses the popup and lets the first Tab walk that order
+([deviations](./docs/fork/deviations.md#base-ui)).
 
 A dialog opened from app state, with no `Trigger`, still returns focus: the
 Popup records the focused element before it mounts.
@@ -6354,8 +6331,8 @@ more than 4px (logical pixels, from the press) starts a drag:
 `dragstart` and `drop` and returns `""` in every other event, `dragover` included.
 `setDragImage` is accepted and does nothing: gpuix does not draw a drag image, so
 nothing follows the pointer. The drag stays inside the window: it cannot drop on
-another app, and a drag from another app is a file drag. See FORK.md for what a
-drag image would take.
+another app, and a drag from another app is a file drag. What a drag image would take is in
+[deviations](./docs/fork/deviations.md#events-and-input).
 
 **`onWheel`** reports wheel input: the delta, before any scroller has applied it,
 signed like the DOM (`deltaY` is positive for down). **`onScroll`** reports the
@@ -6662,7 +6639,7 @@ multiple, and a length inherits as pixels.
 
 Limits: a `calc()` that comes out negative clamps to 0 for `fontSize` and for grid
 track sizes. A repeating gradient whose stop position is a `calc()` of a length and
-a `%` skips the special case for a zero-length repeat.
+a `%` skips the special case for a zero-length repeat ([deviations](./docs/fork/deviations.md#layout)).
 
 ### Shorthands
 
@@ -7260,7 +7237,8 @@ uses `csscolorparser` 0.8.3 and accepts:
 
 Standard comma and modern space/slash alpha forms work. Values are converted
 to hard-clipped sRGB before GPUI paints them. Invalid strings are ignored for
-that property; they do not reject the full style object.
+that property; they do not reject the full style object. The relative-colour and wide-gamut limits are in
+[deviations](./docs/fork/deviations.md#paint-and-transforms).
 
 ### Gradients and background layers
 
@@ -7288,13 +7266,10 @@ layers, `position / size`, repeat, origin and clip boxes, and a final colour.
 <div style={{ background: 'repeating-linear-gradient(45deg, #0001 0 8px, transparent 8px 16px) #fff' }} />
 ```
 
-A longhand written after the shorthand wins over it. Limits:
-- `image-set()` is valid but not drawn: that layer is skipped and the others still
-  paint.
-- Interpolation spaces other than `srgb` and `oklab` skip the layer.
-- `backgroundOrigin` and `backgroundClip` move the layers only. The background
-  *colour* fills the border box, or the glyphs under `text` (below).
-- `backgroundAttachment` has no meaning here and is ignored in the shorthand.
+A longhand written after the shorthand wins over it. `image-set()` layers are skipped, an interpolation space other than `srgb` and
+`oklab` skips the layer, `backgroundOrigin` and `backgroundClip` move the layers only (the background colour
+fills the border box, or the glyphs under `text`), and `backgroundAttachment` is ignored in the shorthand:
+[deviations](./docs/fork/deviations.md#paint-and-transforms).
 
 #### Image backgrounds
 
@@ -7333,8 +7308,8 @@ fetched there once per URL, wherever a style, its state styles included, names
 it, and the bytes are handed to native. A revoked URL paints nothing. This needs a
 renderer that has `setStyleImage`: the native one and the test renderer do.
 
-Limits: `image-set()` is not drawn. An inline `<span>` box paints
-`backgroundColor` only. A `url()` in `mask` and `maskImage` loads the same way
+Limits: `image-set()` is not drawn and an inline `<span>` box paints
+`backgroundColor` only ([deviations](./docs/fork/deviations.md#paint-and-transforms)). A `url()` in `mask` and `maskImage` loads the same way
 (see `maskImage`, below).
 
 #### Gradient text
@@ -7622,12 +7597,8 @@ size of each slice instead of being warped with it: a gradient along an axis com
 as Chrome's, but a radial one keeps its circle and an angled one its angle where Chrome
 stretches them with the slice. Past 4096 tiles in one edge nothing is drawn for it.
 
-Limits: `image-set()` is not drawn (that layer is skipped, as in `backgroundImage`).
-The legacy `-webkit-mask-composite` keywords (`source-over`,
-`source-in`, ...) are not supported. `no-clip` and `margin-box` are not supported, so
-a value using them is ignored. `fill-box` is `content-box` and `stroke-box` and
-`view-box` are `border-box`. Masks, like the other effect groups, are drawn only on
-macOS.
+Limits, listed in [deviations](./docs/fork/deviations.md#paint-and-transforms): `image-set()`, the legacy `-webkit-mask-composite`
+keywords, `no-clip` and `margin-box` are not supported, `fill-box`, `stroke-box` and `view-box` map to the content or border box, and masks, like the other effect groups, are drawn only on macOS.
 
 `clipPath` clips the element and everything in it to a basic shape: `inset()`
 (one to four insets and `round` radii, with `/` for the vertical ones), `rect()`
@@ -7664,11 +7635,9 @@ applies to all of them together, so `nonzero` leaves a subpath that winds the sa
 way as the one around it filled, and `evenodd` makes it a hole. A path with no
 subpath that has an area clips everything.
 
-Limits: `url()` is not supported, and neither is a box with no shape, so a value
-using them is ignored. `margin-box` and `stroke-box` and `view-box` are
-`border-box`, and `fill-box` is `content-box`. `inset()`, `rect()` and `xywh()`
-round their corners with circles, so the vertical radii after `/` in `round` are
-dropped. A string in `path()` has no escapes.
+Limits: `url()` is not supported, and a value with a box that has no shape is
+ignored. The other limits (the box keywords, the circular `round` corners, `path()`
+strings) are in [deviations](./docs/fork/deviations.md#paint-and-transforms).
 
 The shape also clips hit testing, as in CSS: a pointer over the clipped-away part
 hits what is underneath instead, and the element's descendants are cut the same
@@ -8475,7 +8444,7 @@ await animation.finished // resolves with the animation
   changes. Commands on a cancelled animation throw an `InvalidStateError`
 - **Not built.** `cancel()`, `finish()`, `reverse()`, `updatePlaybackRate()`,
   `ready`, `effect`, `timeline`, `startTime`, `onfinish` and `oncancel`;
-  `getAnimations({ subtree: true })` and `document.getAnimations()`. Animations of
+  `getAnimations({ subtree: true })` and `document.getAnimations()` ([deviations](./docs/fork/deviations.md#motion)). Animations of
   `motion`, `animate` and motion values are not listed. `Animation`, `CSSAnimation`
   and `CSSTransition` are exported from `@gpuix/react` and `@gpuix/solid`; they
   cannot be constructed by an app
@@ -8537,7 +8506,7 @@ moves a colour in the same change runs it, as a style that does so would.
 </div>
 ```
 
-Costs and limits:
+Costs and limits ([deviations](./docs/fork/deviations.md#paint-and-transforms)):
 
 - A layer with a `transition` makes every element track transitions, which costs
   a little per element per frame. Name the properties as above instead of `all`
