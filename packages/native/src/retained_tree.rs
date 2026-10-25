@@ -1108,6 +1108,11 @@ impl RetainedTree {
             (Some(old), Some(new)) => old.differs_only_in_paint(new),
             _ => false,
         };
+        // A write that moves no box still moves the transform that readers see the boxes of the
+        // element, and of what is inside it, through.
+        if paints_only && element.style.as_deref().zip(style.as_deref()).is_some_and(|(old, new)| old.touches_transform(new)) {
+            self.relevance.note_transform_write(id);
+        }
         let was_declared = element.declared_hidden();
         let was_contents = crate::layout::contents::is_display_contents(element);
         let regrouped =

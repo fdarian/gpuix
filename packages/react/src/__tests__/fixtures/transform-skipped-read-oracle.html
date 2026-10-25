@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>transform skipped read oracle</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
+  @keyframes kf {
+    from { transform: translate(0px, 0px); }
+    to { transform: translate(100px, 50px) rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+<script>
+// What getBoundingClientRect answers for an element inside `content-visibility`-skipped content right after a
+// transform changes, in Chrome. transform-skipped-read-oracle.sh extracts <body data-oracle> as {scene: {...}}
+// (a page error lands in <body data-error>). It needs a browser that renders frames, so the script drives it with
+// playwright rather than --dump-dom, which gives a page one frame.
+//
+// Every scene runs in its own container (an absolute 800x600 box at the window origin), once per mode:
+//   hidden  the host is `content-visibility: hidden`, at top 10
+//   auto    the host is `content-visibility: auto`, at top 3000 (far off screen, so skipped), and a transform of a
+//           few tens of pixels or a quarter turn about its ancestor's centre does not bring it back
+//   visible `content-visibility: visible`, at top 10: the control that is never skipped; visible-far is the same at
+//           top 3000, the control of `auto`
+//
+//   anc     (absolute 100,50 200x100)
+//     host  (absolute 20,<top> 100x60; content-visibility)
+//       mid     (absolute 10,5 80x40)
+//         target  (absolute 5,5 30x20)
+//
+// Three frames pass after the container is added, so an `auto` host has been told it is off screen; `skipped` is
+// !target.checkVisibility({contentVisibilityAuto: true}), and `skippedAfter` is the same at the end of the scene. Rects are [x, y, width, height] rounded to 0.01 px.
+//
+// Scene names: <scene>.<variant>.<mode>. `before` is the read before the write, `after` the read after it (in the
+// same task unless the scene has frames), `late` the read after two more rAFs: if `after` equals `before` where the
+// control's differs, Chrome answered stale, and `late` says whether it caught up.
+//   a   write on anc, read in the same task          d-a, d-b, d-c-target, d-c-mid: a/b/c with two rAFs between the
+//   b   write on host                                 first read and the write, and between the write and the read
+//   c-target / c-mid   write on target / on mid
+//   g, dg  a / b / c-target / c-mid again on an element that already has a transform (translate or rotate), so the write
+//          changes the transform and nothing else (dg: with frames, as d)
+//   h-host, h-mid, h-target  the css animation of f on the host, on mid and on the target instead of on anc
+//   e   the individual properties on anc (translate, rotate, scale, and a transform-origin change with a rotate set);
+//       e-frames the same with frames in between
+//   f   a paused animation on anc at two known times (currentTime 250 then 750 of 1000): waapi (Element.animate),
+//       css (@keyframes), transition; each `sync` (set currentTime, read, in one task) or `frames` (two rAFs after
+//       each currentTime set). `before`, `t1`, `t2`, plus `computed`, getComputedStyle(anc).transform read after
+//       each rect read.
+
+const MODES = {
+  hidden: { cv: "hidden", top: 10 },
+  auto: { cv: "auto", top: 3000 },
+  visible: { cv: "visible", top: 10 },
+  "visible-far": { cv: "visible", top: 3000 },
+};
+
+const round = (v) => Math.round(v * 100) / 100;
+
+const frames = (n = 2) =>
+  new Promise((resolve) => {
+    let seen = 0;
+    const step = () => (++seen >= n ? resolve() : requestAnimationFrame(step));
+    requestAnimationFrame(step);
+  });
+
+const abs = (id, l, t, w, h, css = "", inner = "") =>
+  `<div id="${id}" style="position:absolute;left:${l}px;top:${t}px;width:${w}px;height:${h}px;${css}">${inner}</div>`;
+
+const build = (mode, ancStyle = "", on = "anc") => {
+  const holder = document.createElement("div");
+  holder.style.cssText = "position:absolute;left:0;top:0;width:800px;height:600px";
+  const own = (id) => (id === on ? ancStyle : "");
+  holder.innerHTML = abs(
+    "anc", 100, 50, 200, 100, own("anc"),
+    abs("host", 20, MODES[mode].top, 100, 60, `content-visibility:${MODES[mode].cv};${own("host")}`,
+      abs("mid", 10, 5, 80, 40, own("mid"), abs("target", 5, 5, 30, 20, own("target")))));
+  document.body.appendChild(holder);
+  return holder;
+};
+
+const rects = () => {
+  const out = {};
+  for (const id of ["anc", "host", "mid", "target"]) {
+    const r = document.getElementById(id).getBoundingClientRect();
+    out[id] = [round(r.x), round(r.y), round(r.width), round(r.height)];
+  }
+  return out;
+};
+
+const skipped = () => !document.getElementById("target").checkVisibility({ contentVisibilityAuto: true });
+
+const write = async (def, mode) => {
+  const holder = build(mode);
+  const on = document.getElementById(def.on);
+  for (const [prop, value] of Object.entries(def.init ?? {})) on.style.setProperty(prop, value);
+  await frames(3);
+  const result = { write: def, skipped: skipped(), before: rects() };
+  if (def.frames) await frames();
+  for (const [prop, value] of Object.entries(def.css)) on.style.setProperty(prop, value);
+  if (def.frames) await frames();
+  result.after = rects();
+  await frames();
+  result.late = rects();
+  result.skippedAfter = skipped();
+  holder.remove();
+  return result;
+};
+
+const animate = async (kind, withFrames, mode, on = "anc") => {
+  const holder = build(mode, kind === "css" ? "animation:kf 1000ms linear both paused;" : kind === "transition" ? "transition:transform 1000ms linear;" : "", on);
+  const anc = document.getElementById(on);
+  await frames(3);
+  const result = { write: { kind, frames: withFrames, on }, skipped: skipped(), computed: {} };
+  let anim;
+  if (kind === "waapi") {
+    anim = anc.animate([{ transform: "translate(0px, 0px)" }, { transform: "translate(100px, 50px) rotate(90deg)" }], { duration: 1000, fill: "both" });
+    anim.pause();
+    anim.currentTime = 0;
+  } else if (kind === "css") {
+    anim = anc.getAnimations()[0];
+    anim.currentTime = 0;
+  }
+  result.before = rects();
+  result.computed.before = getComputedStyle(anc).transform;
+  if (kind === "transition") {
+    anc.style.transform = "translate(100px, 50px) rotate(90deg)";
+    anim = anc.getAnimations()[0];
+    anim.pause();
+    anim.currentTime = 0;
+    if (withFrames) await frames();
+  }
+  result.animation = anim.constructor.name;
+  for (const [name, time] of [["t1", 250], ["t2", 750]]) {
+    if (withFrames) await frames();
+    anim.currentTime = time;
+    if (withFrames) await frames();
+    result[name] = rects();
+    result.computed[name] = getComputedStyle(anc).transform;
+  }
+  result.skippedAfter = skipped();
+  holder.remove();
+  return result;
+};
+
+const writes = [];
+// Chrome calls an `auto` host at top 3000 relevant once its ancestor turns 30deg, though it lands far off screen at
+// about (-1344, 2615) (20deg and -30deg leave it skipped; see `skippedAfter`), so both angles are here.
+const kinds = { translate: "translate(40px, 30px)", rotate: "rotate(20deg)", rotate30: "rotate(30deg)" };
+for (const [kind, value] of Object.entries(kinds)) {
+  for (const [scene, on] of [["a", "anc"], ["b", "host"], ["c-target", "target"], ["c-mid", "mid"]]) {
+    writes.push({ name: `${scene}.${kind}`, on, css: { transform: value }, frames: false });
+    writes.push({ name: `d-${scene}.${kind}`, on, css: { transform: value }, frames: true });
+  }
+}
+// The same writes on an element that already has a transform, the ones a layout is not needed for in a window: the element
+// is a containing block before and after, so only its transform changes. `g` reads in the task of the write, `dg` after frames.
+const stays = { translate: [{ transform: "translate(10px, 5px)" }, { transform: "translate(40px, 30px)" }], rotate: [{ transform: "rotate(10deg)" }, { transform: "rotate(20deg)" }] };
+for (const [kind, [init, css]] of Object.entries(stays)) {
+  for (const [scene, on] of [["a", "anc"], ["b", "host"], ["c-target", "target"], ["c-mid", "mid"]]) {
+    writes.push({ name: `g-${scene}.${kind}`, on, css, init, frames: false });
+    writes.push({ name: `dg-${scene}.${kind}`, on, css, init, frames: true });
+  }
+}
+const individual = [
+  ["translate", { translate: "40px 30px" }, {}],
+  ["rotate", { rotate: "20deg" }, {}],
+  ["scale", { scale: "1.5" }, {}],
+  ["origin", { "transform-origin": "0px 0px" }, { transform: "rotate(20deg)" }],
+];
+for (const [kind, css, init] of individual) {
+  writes.push({ name: `e.${kind}`, on: "anc", css, init, frames: false });
+  writes.push({ name: `e-frames.${kind}`, on: "anc", css, init, frames: true });
+}
+
+(async () => {
+  const out = { chrome: navigator.userAgent };
+  for (const def of writes) {
+    for (const mode of Object.keys(MODES)) {
+      const name = def.name;
+      out[`${name}.${mode}`] = await write({ on: def.on, css: def.css, init: def.init, frames: def.frames }, mode);
+    }
+  }
+  for (const kind of ["waapi", "css", "transition"]) {
+    for (const withFrames of [false, true]) {
+      for (const mode of Object.keys(MODES)) {
+        out[`f.${kind}.${withFrames ? "frames" : "sync"}.${mode}`] = await animate(kind, withFrames, mode);
+      }
+    }
+  }
+  for (const on of ["host", "mid", "target"]) {
+    for (const withFrames of [false, true]) {
+      for (const mode of Object.keys(MODES)) {
+        out[`h-${on}.css.${withFrames ? "frames" : "sync"}.${mode}`] = await animate("css", withFrames, mode, on);
+      }
+    }
+  }
+  document.body.setAttribute("data-oracle", JSON.stringify(out));
+})().catch((e) => document.body.setAttribute("data-error", String(e && e.stack)));
+</script>
+</body>
+</html>

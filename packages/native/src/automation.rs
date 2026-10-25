@@ -421,6 +421,33 @@ impl HostBox {
     }
 }
 
+/// Where a host element stands in the window: its layout box ([`HostBox`]) and the transform it was
+/// last reported through, which a frame that animates a transform of the host or above it changes
+/// without moving a box.
+#[derive(Clone, Copy)]
+pub(crate) struct HostPlace {
+    id: u64,
+    layout: HostBox,
+    to_window: Option<TransformationMatrix>,
+}
+
+impl HostPlace {
+    pub(crate) fn of(window: &gpui::Window, id: u64) -> Self {
+        Self { id, layout: HostBox::of(window, id), to_window: Self::reported_to_window(window, id) }
+    }
+
+    /// Whether the host is where and as it was when `self` was taken, given that the window's boxes
+    /// are `same_boxes` as they were then.
+    pub(crate) fn unmoved(self, window: &gpui::Window, same_boxes: bool) -> bool {
+        self.layout.unmoved(window, same_boxes) && self.to_window == Self::reported_to_window(window, self.id)
+    }
+
+    fn reported_to_window(window: &gpui::Window, id: u64) -> Option<TransformationMatrix> {
+        let window_id = window.window_handle().window_id();
+        BOUNDS.with(|cell| Some(cell.borrow().get(&window_id)?.get(id)?.to_window))
+    }
+}
+
 /// Notes the layout node a host was painted (or published) with, if it is the window's own.
 fn note_host_node(window: &gpui::Window, id: u64, node: gpui::LayoutId) {
     let window_id = window.window_handle().window_id();

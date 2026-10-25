@@ -953,6 +953,12 @@ impl AnimProp {
         matches!(self, Self::Transform | Self::Translate | Self::Rotate | Self::Scale | Self::TransformOrigin)
     }
 
+    /// Whether a change of this property changes the transform the element is seen through: its
+    /// origin included, which only places one.
+    pub(super) fn is_transform_key(self) -> bool {
+        self.is_motion_only() || self.is_css_transform()
+    }
+
     /// Whether a change of this property moves, scales or turns what the element paints. The origins
     /// only place a transform, so they are none.
     pub(super) fn is_transform(self) -> bool {

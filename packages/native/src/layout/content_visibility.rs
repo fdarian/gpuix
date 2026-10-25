@@ -33,7 +33,7 @@
 //!
 //! [`containing_block`]: crate::layout::containing_block
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use gpui::{Bounds, Pixels};
@@ -41,7 +41,7 @@ use rustc_hash::FxHashMap;
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::automation::HostBox;
+use crate::automation::HostPlace;
 use crate::css::length::LengthContext;
 use crate::layout::containing_block::Position;
 use crate::retained_tree::{RetainedElement, RetainedTree};
@@ -289,6 +289,11 @@ struct Shared {
     /// How many elements run an animation of the layout of their content, and how many have: see [`LayoutRuns`].
     runs_running: AtomicUsize,
     runs_tracked: AtomicUsize,
+    /// [`TransformWrites::clock`] and [`TransformWrites::captured`], readable without the lock: a read of
+    /// geometry asks whether a transform was written since the boxes were captured, and almost never
+    /// has one.
+    transform_clock: AtomicU64,
+    transform_captured: AtomicU64,
     /// Whether a frame with something in it has been drawn before the one being swept: an element
     /// that is there at the first frame is told differently from one that comes after it.
     drawn: AtomicBool,
@@ -316,6 +321,7 @@ struct Known {
     /// The last forced layout pass of a read, while nothing has happened to the window since.
     forced_read: Option<ForcedRead>,
     layout_runs: LayoutRuns,
+    transform_writes: TransformWrites,
     /// The focused element and its ancestors, which hold the focus.
     focus_within: Arc<[u64]>,
     /// The `auto` elements around the active match of a text search, which find-in-page activates.
@@ -328,9 +334,35 @@ struct Known {
 struct ForcedRead {
     forced: Vec<u64>,
     stamp: gpui::LayoutStamp,
-    hosts: FxHashMap<u64, HostBox>,
+    hosts: FxHashMap<u64, HostPlace>,
     /// [`LayoutRuns::clock`] right after the pass.
     runs_at: u64,
+    /// [`TransformWrites::clock`] right after the pass.
+    transforms_at: u64,
+}
+
+/// When the transform of an element last changed without a layout invalidation, which leaves the
+/// boxes where they are and changes what they are seen through: the boxes a pass captured (each
+/// with the transform that carries it to the window) predate such a change until a pass captures
+/// them again.
+#[derive(Default)]
+struct TransformWrites {
+    /// Moves with every write.
+    clock: u64,
+    /// The clock at the last write to the transform of each element.
+    last: FxHashMap<u64, u64>,
+    /// The clock at the last write that may have reached the transform of any element: a motion value
+    /// that a transform key is bound to.
+    everywhere: u64,
+    /// The clock when the window last built its elements, which captures the boxes of the ones it builds.
+    captured: u64,
+}
+
+impl TransformWrites {
+    /// Whether the transform of an element of `path`, or of any, was written after `clock`.
+    fn since(&self, clock: u64, path: &[u64]) -> bool {
+        self.everywhere > clock || path.iter().any(|id| self.last.get(id).is_some_and(|written| *written > clock))
+    }
 }
 
 /// Which elements run an animation that can change the layout of what is inside them, and when
@@ -619,6 +651,11 @@ impl Relevance {
     ) -> Option<Vec<u64>> {
         let known = self.0.lock();
         let read = known.forced_read.as_ref().filter(|read| read.stamp.same_invalidations(&now))?;
+        // A transform written on the element read or above it moves the boxes the pass captured, with no
+        // box moved: the host's own is seen below, and the ones inside it are not built by the frames.
+        if known.transform_writes.since(read.transforms_at, chain) {
+            return None;
+        }
         let same_boxes = read.stamp.same_boxes(&now);
         let unmoved = if skipped.is_empty() {
             read.stamp == now
@@ -636,10 +673,49 @@ impl Relevance {
     /// Records the pass that forced `forced`, with the stamp of the window after the read made
     /// it skip them again.
     pub(crate) fn remember_forced_read(&self, forced: Vec<u64>, stamp: gpui::LayoutStamp, window: &gpui::Window) {
-        let hosts = forced.iter().map(|id| (*id, HostBox::of(window, *id))).collect();
+        let hosts = forced.iter().map(|id| (*id, HostPlace::of(window, *id))).collect();
         let mut known = self.0.lock();
         let runs_at = known.layout_runs.clock;
-        known.forced_read = Some(ForcedRead { forced, stamp, hosts, runs_at });
+        let transforms_at = known.transform_writes.clock;
+        known.forced_read = Some(ForcedRead { forced, stamp, hosts, runs_at, transforms_at });
+    }
+
+    /// Notes that the transform of the element `id` was written in a way that moves no box.
+    pub(crate) fn note_transform_write(&self, id: u64) {
+        let mut known = self.0.lock();
+        let writes = &mut known.transform_writes;
+        writes.clock += 1;
+        let clock = writes.clock;
+        writes.last.insert(id, clock);
+        self.0.transform_clock.store(clock, Ordering::Relaxed);
+    }
+
+    /// Notes a write that may have changed the transform of any element, see [`TransformWrites::everywhere`].
+    pub(crate) fn note_transform_write_anywhere(&self) {
+        let mut known = self.0.lock();
+        let writes = &mut known.transform_writes;
+        writes.clock += 1;
+        writes.everywhere = writes.clock;
+        self.0.transform_clock.store(writes.clock, Ordering::Relaxed);
+    }
+
+    /// Notes that the window builds its elements now, which captures the transform each is seen
+    /// through as the tree has it.
+    pub(crate) fn note_transforms_captured(&self) {
+        let mut known = self.0.lock();
+        let writes = &mut known.transform_writes;
+        writes.captured = writes.clock;
+        self.0.transform_captured.store(writes.clock, Ordering::Relaxed);
+    }
+
+    /// Whether the boxes of the elements of `path`, an element and what is above it, were captured
+    /// before a transform of one of them was written: another pass is due to read them.
+    pub(crate) fn transforms_stale(&self, path: &[u64]) -> bool {
+        if self.0.transform_clock.load(Ordering::Relaxed) == self.0.transform_captured.load(Ordering::Relaxed) {
+            return false;
+        }
+        let known = self.0.lock();
+        known.transform_writes.since(known.transform_writes.captured, path)
     }
 
     /// Notes that the element being built runs an animation that can change the layout of its
@@ -664,6 +740,9 @@ impl Relevance {
 
     /// Drops what is known of elements the tree no longer has.
     pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
+        if self.0.transform_clock.load(Ordering::Relaxed) != 0 {
+            self.0.lock().transform_writes.last.retain(|id, _| keep(*id));
+        }
         if self.0.runs_tracked.load(Ordering::Relaxed) != 0 {
             let mut known = self.0.lock();
             let runs = &mut known.layout_runs;

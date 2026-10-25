@@ -105,6 +105,7 @@ impl GpuixView {
             for (_, tape) in &captured {
                 tape.borrow().each_bounds(&mut crate::automation::publish_captured_bounds);
             }
+            view.read(app).tree.lock().unwrap().relevance.note_transforms_captured();
             view.update(app, |view, cx| view.continue_after_patch(window, &built.stepped, cx));
             true
         };

@@ -1301,6 +1301,19 @@ impl StyleDesc {
         painted == *other
     }
 
+    /// Whether `other` has another transform, an origin or one of Motion's transform keys included: the
+    /// keys `differs_only_in_paint` lets through for an element that keeps a transform. A change that
+    /// is only of paint moves no box, but it moves what the boxes of the element and of what is
+    /// inside it are seen through.
+    pub(crate) fn touches_transform(&self, other: &Self) -> bool {
+        (&self.transform, &self.translate, &self.rotate, &self.scale, &self.transform_origin)
+            != (&other.transform, &other.translate, &other.rotate, &other.scale, &other.transform_origin)
+            || (&self.x, &self.y, &self.translate_x, &self.translate_y, &self.origin_x, &self.origin_y)
+                != (&other.x, &other.y, &other.translate_x, &other.translate_y, &other.origin_x, &other.origin_y)
+            || (&self.motion_scale, &self.scale_x, &self.scale_y, &self.motion_rotate, &self.rotate_z, &self.skew, &self.skew_x, &self.skew_y)
+                != (&other.motion_scale, &other.scale_x, &other.scale_y, &other.motion_rotate, &other.rotate_z, &other.skew, &other.skew_x, &other.skew_y)
+    }
+
     /// Whether the style depends on the size of a query container: it has `@container` blocks
     /// or names a container unit.
     pub(crate) fn reads_containers(&self) -> bool {
@@ -1714,6 +1727,36 @@ mod tests {
         assert!(!paint_only("{}", r#"{"x":9}"#));
         assert!(!paint_only(r#"{"motionRotate":3}"#, "{}"));
         assert!(paint_only("{}", r#"{"originX":1}"#));
+    }
+
+    #[test]
+    fn every_key_of_the_transform_is_a_change_of_it_and_nothing_else_is() {
+        let touches = |from: &str, to: &str| style(from).touches_transform(&style(to));
+        for (key, from, to) in [
+            ("transform", r#""scale(2)""#, r#""scale(3)""#),
+            ("translate", r#""1px""#, r#""2px""#),
+            ("rotate", r#""1deg""#, r#""2deg""#),
+            ("scale", "2", "3"),
+            ("transformOrigin", r#""0 0""#, r#""1px 1px""#),
+            ("x", "1", "2"),
+            ("y", "1", "2"),
+            ("translateX", "1", "2"),
+            ("translateY", "1", "2"),
+            ("motionScale", "1", "2"),
+            ("scaleX", "1", "2"),
+            ("scaleY", "1", "2"),
+            ("motionRotate", "1", "2"),
+            ("rotateZ", "1", "2"),
+            ("skew", "1", "2"),
+            ("skewX", "1", "2"),
+            ("skewY", "1", "2"),
+            ("originX", "1", "2"),
+            ("originY", "1", "2"),
+        ] {
+            assert!(touches(&format!(r#"{{"{key}":{from}}}"#), &format!(r#"{{"{key}":{to}}}"#)), "{key}");
+            assert!(!touches(&format!(r#"{{"{key}":{from},"opacity":1}}"#), &format!(r#"{{"{key}":{from},"opacity":0.5}}"#)), "{key}");
+        }
+        assert!(!touches(r#"{"opacity":1,"width":3}"#, r#"{"opacity":0.5,"width":4}"#));
     }
 
     #[test]

@@ -559,6 +559,9 @@ pub(crate) fn read_after_layout<R>(
     };
     let mut path = chain.clone();
     path.push(id);
+    // A transform written since the boxes were captured leaves the layout current, and the boxes read
+    // through the old one.
+    let lay_out = if relevance.transforms_stale(&path) { gpui::Window::draw_for_transforms } else { lay_out };
     let shared = relevance.forced_by_last_read(window.layout_stamp(), window, &known, &path);
     let mut forcing = shared.clone().unwrap_or_default();
     // A window nothing happened to since the forced pass has nothing to lay out but the content
@@ -637,6 +640,9 @@ impl Repaint {
         match self {
             Self::None => {}
             Self::MotionWrite(id) if matches!(view.motion_values.writes_paint_only(id), Ok(true)) => {
+                if !matches!(view.motion_values.writes_no_transform(id), Ok(true)) {
+                    view.tree.lock().unwrap().relevance.note_transform_write_anywhere();
+                }
                 if view.patches_ticks() {
                     // The write is a source for a patch, as the clock is for a tick: the elements bound to
                     // the value are built alone and painted again in the frame shown, and a tick that
@@ -9101,6 +9107,8 @@ impl gpui::Render for GpuixView {
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
+        // What this build reports of the elements is read from the tree as it stands.
+        tree.relevance.note_transforms_captured();
 
         // Sync focus handles before building elements.
         self.sync_focus_handles(&tree, window, cx);

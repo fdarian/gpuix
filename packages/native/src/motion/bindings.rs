@@ -108,6 +108,8 @@ pub(crate) struct MotionValueStore {
     /// The values the last frame found bound to something that is not paint-only, or read for
     /// the renderer's own use (a drag's offset), which is not known to be.
     layout_driven: HashSet<ValueId>,
+    /// The values the last frame found bound to a transform key, as `layout_driven` is.
+    transform_driven: HashSet<ValueId>,
     /// The values written, animated or controlled since the last frame sampled: an element bound to
     /// one of them, or to a value computed from it, shows something else at the next frame.
     written: HashSet<ValueId>,
@@ -264,6 +266,13 @@ impl MotionValueStore {
     /// (it invalidates the layout on its own).
     pub(crate) fn writes_paint_only(&self, id: f64) -> Result<bool, String> {
         Ok(!self.graph.feeds_any(value_id(id)?, &self.layout_driven))
+    }
+
+    /// Whether a write to the value, or the animation that starts from it, leaves the transform of
+    /// every element alone, as of the last frame: no element binds it, or a value computed from it, to
+    /// a transform key.
+    pub(crate) fn writes_no_transform(&self, id: f64) -> Result<bool, String> {
+        Ok(!self.graph.feeds_any(value_id(id)?, &self.transform_driven))
     }
 
     /// Notes that a script touched the value `id`, which the elements bound to it show differently
@@ -511,6 +520,7 @@ impl MotionValueStore {
         self.read_ids.clear();
         self.read_moving_ids.clear();
         self.layout_driven.clear();
+        self.transform_driven.clear();
         self.written.clear();
         let mut active = self.sample_unsampled(bindings, read, now);
         active |= self.observe(now);
@@ -594,6 +604,8 @@ impl MotionValueStore {
         for pairs in &parsed {
             self.layout_driven
                 .extend(pairs.iter().filter(|bound| !bound.paints_only()).map(Bound::id));
+            self.transform_driven
+                .extend(pairs.iter().filter(|bound| bound.drives_transform()).map(Bound::id));
         }
         bound.sort_unstable_by_key(|id| id.0);
         bound.dedup();
@@ -1017,6 +1029,13 @@ impl Bound {
         match self {
             Self::Longhand { prop, .. } => prop.paints_only(),
             Self::Shorthand { props, .. } => props.iter().all(|prop| prop.paints_only()),
+        }
+    }
+
+    fn drives_transform(&self) -> bool {
+        match self {
+            Self::Longhand { prop, .. } => prop.is_transform_key(),
+            Self::Shorthand { props, .. } => props.iter().any(|prop| prop.is_transform_key()),
         }
     }
 }
