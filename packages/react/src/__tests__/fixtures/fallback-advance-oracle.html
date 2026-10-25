@@ -1,0 +1,58 @@
+<!doctype html>
+<!--
+  Oracle for fallback-advance.test.tsx: how far headless Chrome sets each grapheme cluster of a text in a font that
+  is not the one asked for (CJK, emoji) and in the fonts that are asked for by name. A case is a family, a size and a
+  text (`family|size|textIx`), set `white-space: pre` on one line; its value is the width of the Range from the start
+  of the text to the end of each grapheme cluster, in CSS px (the Range around one cluster is the difference of a floor
+  and a ceil to 1/64 px and up to 1/32 px off its advance). Device scale 1 and 2 are the two files.
+  Regenerate with
+
+    sh fallback-advance-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{position:relative}
+.case{position:absolute;left:0;top:0;white-space:pre}
+</style></head><body>
+<script>
+  const FAMILIES = ['Helvetica Neue', 'Menlo', 'system-ui', 'PingFang SC', 'Hiragino Sans', 'Apple SD Gothic Neo', 'Apple Color Emoji']
+  const SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24]
+  const TEXTS = [
+    '中文测试',
+    '世界！你好。',
+    '한국어',
+    'こんにちは',
+    '😀😁😂 👨‍👩‍👧 🇺🇸🇯🇵 ❤️ 👍🏽',
+    'Mixed 中文 and 😀 한국어 end',
+    '😀😁😂👨‍👩‍👧🇺🇸🇯🇵❤️👍🏽',
+    'Hello, World! Typography 123',
+  ]
+  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+  addEventListener('load', () => {
+    const rects = {}
+    for (const family of FAMILIES) {
+      for (const size of SIZES) {
+        TEXTS.forEach((text, textIx) => {
+          const probe = document.createElement('div')
+          probe.className = 'case'
+          probe.style.font = family === 'system-ui' ? `${size}px system-ui` : `${size}px "${family}"`
+          const node = document.createTextNode(text)
+          probe.append(node)
+          document.body.append(probe)
+          const out = []
+          for (const grapheme of segmenter.segment(text)) {
+            const range = document.createRange()
+            range.setStart(node, 0)
+            range.setEnd(node, grapheme.index + grapheme.segment.length)
+            out.push(range.getBoundingClientRect().width)
+          }
+          rects[`${family}|${size}|${textIx}`] = out
+          probe.remove()
+        })
+      }
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>
