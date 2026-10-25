@@ -27,6 +27,7 @@ interface Case {
   lines: string[]
   rows: Rect[]
   ends: number[]
+  begins: number[]
   span: Rect
   spanRects: Rect[]
 }
@@ -47,28 +48,32 @@ const TEXTS = [
   `Compu${SOFT_HYPHEN}ter pro${SOFT_HYPHEN}gram${SOFT_HYPHEN}ming is a hard${SOFT_HYPHEN}ly eas${SOFT_HYPHEN}y job`,
   `Extra${SOFT_HYPHEN}ordinary`,
   "Supercalifragilisticexpialidocious abcdefghij klm",
+  "Supercalifragilisticexpialidocious",
 ]
 
 interface Params {
   id: string
   family: string
   size: number
-  align: "left" | "center" | "right"
+  align: "left" | "center" | "right" | "start" | "end"
+  rtl: boolean
   width: number
   text: string
   oracle: Case
 }
 
-function casesOf(oracle: Oracle): Params[] {
+/** The cases of the oracle in a left to right box, or in a right to left one (`rtl|` ids). */
+function casesOf(oracle: Oracle, rtl = false): Params[] {
   const cases: Params[] = []
   for (const [id, entry] of Object.entries(oracle)) {
-    if (id.startsWith("mc|")) continue
-    const [family, size, align, width, textIx] = id.split("|") as [string, string, Params["align"], string, string]
+    if (id.startsWith("mc|") || id.startsWith("rtl|") !== rtl) continue
+    const [family, size, align, width, textIx] = id.replace(/^rtl\|/, "").split("|") as [string, string, Params["align"], string, string]
     cases.push({
       id,
       family,
       size: parseFloat(size),
       align,
+      rtl,
       width: Number(width),
       text: TEXTS[Number(textIx)]!,
       oracle: entry as Case,
@@ -106,7 +111,7 @@ function stack(cases: Params[], withText: (c: Params) => React.ReactNode) {
   return (
     <div style={{ width: 700, backgroundColor: "#ffffff", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, paddingTop: 0 }}>
       {cases.map((c, i) => (
-        <div key={c.id} testId={`box${i}`} style={{ width: c.width, ...fontOf(c) }}>
+        <div key={c.id} testId={`box${i}`} style={{ width: c.width, direction: c.rtl ? "rtl" : "ltr", ...fontOf(c) }}>
           {withText(c)}
         </div>
       ))}
@@ -211,6 +216,52 @@ function hasInk(pixels: Pixels, from: number, to: number, top: number, bottom: n
   }
   return false
 }
+
+describeNative("a row wider than its box starts at the start edge of a right to left box, which is the right one", () => {
+  for (const scale of SCALES) {
+    const oracle: Oracle = JSON.parse(fs.readFileSync(path.join(FIXTURES, scale.file), "utf8"))
+    const cases = casesOf(oracle, true)
+
+    it(`puts the rows of a word wider than the box, with and without a hanging space, where Chrome does at scale ${scale.scaleFactor}`, () => {
+      const root = page(cases, scale.scaleFactor)
+      const mismatches: string[] = []
+      try {
+        root.render(
+          stack(cases, (c) => (
+            <div highlight={{ query: c.text }}>
+              <text testId={`text${cases.indexOf(c)}`} style={{ textAlign: c.align }}>
+                {c.text}
+              </text>
+            </div>
+          ))
+        )
+        const matches = root.renderer.getPaintedHighlights()
+        cases.forEach((c, i) => {
+          const box = root.renderer.getElementBounds(root.renderer.findByTestId(`box${i}`)!.id)!
+          const textId = root.renderer.findByTestId(`text${i}`)!.id
+          const rects = matches.filter((m) => m.elementId === textId).flatMap((m) => m.rects)
+          if (rects.length !== c.oracle.lines.length) {
+            mismatches.push(`${c.id}: ${rects.length} rows, Chrome has ${c.oracle.lines.length}`)
+            return
+          }
+          c.oracle.lines.forEach((line, r) => {
+            const rect = rects[r]!
+            const begin = rect.x - box.x
+            if (Math.abs(begin - c.oracle.begins[r]!) > TOLERANCE) mismatches.push(`${c.id} row ${r}: starts at ${begin}, Chrome ${c.oracle.begins[r]}`)
+            // The wash of a row that ends in a space holds it, Chrome's character rects leave it out.
+            const end = rect.x + rect.width - box.x
+            if (!line.endsWith(" ") && Math.abs(end - c.oracle.ends[r]!) > TOLERANCE) {
+              mismatches.push(`${c.id} row ${r}: ends at ${end}, Chrome ${c.oracle.ends[r]}`)
+            }
+          })
+        })
+      } finally {
+        root.unmount()
+      }
+      expect(mismatches).toEqual([])
+    })
+  }
+})
 
 describeNative("the hyphen of a row that breaks at a soft hyphen is painted", () => {
   for (const scale of SCALES) {

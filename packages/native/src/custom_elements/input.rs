@@ -2490,7 +2490,7 @@ impl gpui::Element for EditorTextElement {
                 line.paint(
                     point(bounds.left() - px(scroll_left), y),
                     line_height,
-                    gpui::TextAlign::Left,
+                    gpui::TextAlignment::ltr(gpui::TextAlign::Left),
                     Some(bounds),
                     window,
                     cx,

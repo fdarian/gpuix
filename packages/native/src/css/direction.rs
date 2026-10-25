@@ -82,6 +82,7 @@ pub(crate) struct Inherited {
     pub direction: Direction,
     pub align: Align,
     parent_resolved: gpui::TextAlign,
+    parent_direction: Direction,
 }
 
 impl Inherited {
@@ -89,11 +90,13 @@ impl Inherited {
         fp.hash(&self.direction);
         fp.hash(&self.align);
         fp.word(self.parent_resolved as u64);
+        fp.hash(&self.parent_direction);
     }
 
     /// What the element's own style makes of what it inherits.
     pub(crate) fn descend(mut self, style: &crate::style::StyleDesc) -> Self {
         self.parent_resolved = self.align.resolve(self.direction);
+        self.parent_direction = self.direction;
         if let Some(direction) = style.direction {
             self.direction = direction;
         }
@@ -104,10 +107,14 @@ impl Inherited {
     }
 
     /// Sets what an element with this context needs beyond its style: its `direction`, and the
-    /// text alignment when it is not the one the parent's text style hands down.
+    /// text alignment and direction when they are not the ones the parent's text style hands down.
+    /// The text style's direction is what tells a row wider than its box which edge it starts at.
     pub(crate) fn apply<E: gpui::Styled>(&self, el: &mut E) {
         if self.direction.is_rtl() {
             el.style().direction = Some(self.direction.to_gpui());
+        }
+        if self.direction != self.parent_direction {
+            el.text_style().direction = Some(self.direction.to_gpui());
         }
         let resolved = self.align.resolve(self.direction);
         if resolved != self.parent_resolved {
@@ -136,6 +143,24 @@ mod tests {
         // A child that goes back to rtl inherits `end` as `end`, which is the left in rtl.
         let back = end.descend(&style(r#"{"direction": "rtl"}"#));
         assert_eq!(back.align.resolve(back.direction), gpui::TextAlign::Left);
+    }
+
+    #[test]
+    fn the_text_style_gets_a_direction_only_where_it_changes() {
+        use gpui::Styled as _;
+        let direction_of = |inherited: &Inherited| {
+            let mut el = gpui::div();
+            inherited.apply(&mut el);
+            el.text_style().direction
+        };
+        let root = Inherited::default().descend(&style("{}"));
+        assert_eq!(direction_of(&root), None);
+        let rtl = root.descend(&style(r#"{"direction": "rtl"}"#));
+        assert_eq!(direction_of(&rtl), Some(gpui::Direction::Rtl));
+        let rtl_child = rtl.descend(&style("{}"));
+        assert_eq!(direction_of(&rtl_child), None);
+        let ltr = rtl_child.descend(&style(r#"{"direction": "ltr"}"#));
+        assert_eq!(direction_of(&ltr), Some(gpui::Direction::Ltr));
     }
 
     #[test]

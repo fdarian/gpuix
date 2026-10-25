@@ -13,10 +13,15 @@
     rows      the rects of a Range over the text node: one for each row, and a rect after it for the hyphen of a
               hyphenated row (Chrome reports the generated hyphen as a rect of the Range)
     ends      for each row, the right edge of its last character that is not a soft hyphen or a space
+    begins    for each row, the left edge of its first such character
     span      the bounding rect of the <span> around the text, and spanRects the rect of each row of it
   A `mc|` case is the width of a box of `width: min-content`.
-  The text without a soft hyphen (2), in Menlo at 90 px, has a word wider than the box, which a centred or right aligned row
-  starts at the left edge of (CSS Text 3 7.1), and a word that fits only without the space that hangs after it.
+  The texts without a soft hyphen (2 and 3), in Menlo at 90 px, have a word wider than the box, which a centred or right
+  aligned row starts at the left edge of (CSS Text 3 7.1), and (2) a word that fits only without the space that hangs after
+  it. 3 is the long word alone, an overflowing row with no space after it, in `rtl|` cases only. An `rtl|` case is the same in a box with
+  `direction: rtl` and `text-align` start, end, left, right and center: an overflowing row starts at the start edge, which
+  is the right one, whatever the alignment, so it sticks out on the left. `begins` is the left edge of the first character
+  of each row that is not a soft hyphen or a space.
   Every number is relative to the box (the `data-case` element).
 -->
 <html>
@@ -40,14 +45,17 @@
     'Compu­ter pro­gram­ming is a hard­ly eas­y job',
     'Extra­ordinary',
     'Supercalifragilisticexpialidocious abcdefghij klm',
+    'Supercalifragilisticexpialidocious',
   ]
   const WIDTHS = [60, 80, 100, 120, 150, 400]
   // The text with no soft hyphen is tried in one font and one width: the page of all the cases must fit a texture
   // (16384 device pixels) at scale 2.
   const OVERFLOW_TEXT = 2
+  const RTL_ONLY_TEXT = 3
   const OVERFLOW_FAMILIES = ['Menlo']
   const OVERFLOW_WIDTHS = [90]
   const ALIGNS = ['left', 'center', 'right']
+  const RTL_ALIGNS = ['start', 'end', 'left', 'right', 'center']
 
   const relative = (rect, origin) => [rect.x - origin.x, rect.y - origin.y, rect.width, rect.height]
 
@@ -62,6 +70,7 @@
     // The row of each character is where its rect is; a soft hyphen and a collapsed space may have none.
     const lines = ['']
     const ends = []
+    const begins = []
     let top = null
     for (let i = 0; i < text.length; i++) {
       const char = range.cloneRange()
@@ -76,6 +85,7 @@
         }
         top = rect.top
         ends[lines.length - 1] = rect.right - origin.x
+        begins[lines.length - 1] ??= rect.left - origin.x
       }
       lines[lines.length - 1] += text[i]
     }
@@ -84,6 +94,7 @@
       lines,
       rows,
       ends,
+      begins,
       span: relative(span.getBoundingClientRect(), origin),
       spanRects: Array.from(span.getClientRects()).map((rect) => relative(rect, origin)),
     }
@@ -94,23 +105,32 @@
     for (const [family, size] of FAMILIES) {
       const quoted = family.includes(' ') ? `'${family}'` : family
       for (const [textIx, text] of TEXTS.entries()) {
-        if (textIx === OVERFLOW_TEXT && !OVERFLOW_FAMILIES.includes(family)) continue
-        for (const width of textIx === OVERFLOW_TEXT ? OVERFLOW_WIDTHS : WIDTHS) {
-          for (const align of ALIGNS) {
-            const id = `${family}|${size}|${align}|${width}|${textIx}`
-            const box = document.createElement('div')
-            box.className = 'case'
-            box.dataset.case = ''
-            box.dataset.id = id
-            box.style.cssText = `width: ${width}px; text-align: ${align}; font: ${size}/24px ${quoted}`
-            const span = document.createElement('span')
-            span.textContent = text
-            box.append(span)
-            document.body.append(box)
-            rects[id] = measure(box, id, text)
+        const overflow = textIx >= OVERFLOW_TEXT
+        if (overflow && !OVERFLOW_FAMILIES.includes(family)) continue
+        const addCase = (id, width, align, direction) => {
+          const box = document.createElement('div')
+          box.className = 'case'
+          box.dataset.case = ''
+          box.dataset.id = id
+          box.style.cssText = `width: ${width}px; direction: ${direction}; text-align: ${align}; font: ${size}/24px ${quoted}`
+          const span = document.createElement('span')
+          span.textContent = text
+          box.append(span)
+          document.body.append(box)
+          rects[id] = measure(box, id, text)
+        }
+        for (const width of overflow ? OVERFLOW_WIDTHS : WIDTHS) {
+          // The page of all the cases must fit a texture at scale 2, and the long word alone is the rtl cases' own.
+          for (const align of textIx === RTL_ONLY_TEXT ? [] : ALIGNS) {
+            addCase(`${family}|${size}|${align}|${width}|${textIx}`, width, align, 'ltr')
+          }
+          if (overflow) {
+            for (const align of RTL_ALIGNS) {
+              addCase(`rtl|${family}|${size}|${align}|${width}|${textIx}`, width, align, 'rtl')
+            }
           }
         }
-        if (textIx === OVERFLOW_TEXT) continue
+        if (overflow) continue
         const id = `mc|${family}|${size}|${textIx}`
         const box = document.createElement('div')
         box.className = 'case'
