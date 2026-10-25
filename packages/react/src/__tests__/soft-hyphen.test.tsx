@@ -46,6 +46,7 @@ const TOLERANCE = 0.07
 const TEXTS = [
   `Compu${SOFT_HYPHEN}ter pro${SOFT_HYPHEN}gram${SOFT_HYPHEN}ming is a hard${SOFT_HYPHEN}ly eas${SOFT_HYPHEN}y job`,
   `Extra${SOFT_HYPHEN}ordinary`,
+  "Supercalifragilisticexpialidocious abcdefghij klm",
 ]
 
 interface Params {
@@ -145,18 +146,16 @@ describeNative("a row that breaks at a soft hyphen is laid out with its hyphen a
           rows.forEach((row, r) => {
             const rect = rects[r]!
             const x = rect.x - box.x
-            // A row wider than its box starts at its left edge in Chrome, where gpuix centres or right aligns it.
-            const overflows = row.text[2] + (row.hyphen?.[2] ?? 0) > c.width
-            if (!overflows && Math.abs(x - row.text[0]) > TOLERANCE) mismatches.push(`${c.id} row ${r}: x ${x}, Chrome ${row.text[0]}`)
+            if (Math.abs(x - row.text[0]) > TOLERANCE) mismatches.push(`${c.id} row ${r}: x ${x}, Chrome ${row.text[0]}`)
             // A row that ends in spaces holds them in its wash where Chrome's rect leaves them out.
             if ((row.hyphen !== null || r === rows.length - 1) && Math.abs(rect.width - row.text[2]) > TOLERANCE) {
               mismatches.push(`${c.id} row ${r}: width ${rect.width}, Chrome ${row.text[2]}`)
             }
           })
           // The box of the span holds the hyphens: its left and right are those of Chrome's. A space that hangs at the
-          // end of a row is part of it in gpuix and not in Chrome, and so is a row that overflows.
+          // end of a row is part of it in gpuix and not in Chrome.
           const hangs = c.oracle.lines.slice(0, -1).some((line) => line.endsWith(" "))
-          if (hangs || rows.some((row) => row.text[2] + (row.hyphen?.[2] ?? 0) > c.width)) return
+          if (hangs) return
           const span = root.renderer.getElementBounds(root.renderer.findByTestId(`span-${c.id}`)!.id)
           if (span === null) {
             mismatches.push(`${c.id}: the span has no bounds`)
