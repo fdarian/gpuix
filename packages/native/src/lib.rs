@@ -99,6 +99,30 @@ pub fn validate_keyframes(name: String, frames_json: String) -> napi::Result<()>
     motion::validate_keyframes(&name, &frames_json).map_err(napi::Error::from_reason)
 }
 
+/// How long an animation of a motion value lasts, found without a renderer from the transition
+/// and keyframes the renderer would run, so the controls can say before the value is bound.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[napi(object)]
+pub struct MotionAnimationLength {
+    /// One iteration, without the delay or the repeats.
+    pub duration: f64,
+    /// `duration` plus the delay.
+    pub iteration_duration: f64,
+}
+
+/// `animateMotionValue` of a value that holds `from`, measured. Throws what it would.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[napi]
+pub fn measure_motion_animation(
+    from: serde_json::Value,
+    target: serde_json::Value,
+    transition: Option<serde_json::Value>,
+) -> napi::Result<MotionAnimationLength> {
+    let (duration, iteration_duration) = motion::measure_motion_animation(&from, &target, transition.as_ref())
+        .map_err(napi::Error::from_reason)?;
+    Ok(MotionAnimationLength { duration, iteration_duration })
+}
+
 #[cfg(all(
     not(all(target_arch = "wasm32", target_os = "unknown")),
     not(all(

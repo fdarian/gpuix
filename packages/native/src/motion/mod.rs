@@ -42,7 +42,19 @@ pub(crate) use css_transition::{
     TransitionStyle,
 };
 pub(crate) use bindings::{BindingIndex, Demand, MotionValueEvent, MotionValueFrame, MotionValueStore};
-pub(crate) use values::PlaybackInfo;
+pub(crate) use values::{PlaybackInfo, StartTime};
+
+/// The duration and the iteration duration, in seconds, of an animation of a value that holds
+/// `from`, found without a renderer.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) fn measure_motion_animation(
+    from: &serde_json::Value,
+    target: &serde_json::Value,
+    transition: Option<&serde_json::Value>,
+) -> Result<(f64, f64), String> {
+    let info = bindings::measure_animation(from, target, transition)?;
+    Ok((info.duration, info.iteration_duration))
+}
 use css_transition::transitions_width;
 use curve::Transition;
 use measure::Measurement;

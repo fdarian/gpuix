@@ -25,7 +25,6 @@ use web_time::Instant;
 use super::curve::{ease, ease_slope, validate_ease, Curve, Ease, RepeatCount, Transition};
 use super::track::{Goal, Span, Track};
 use super::value::{pair, AnimValue, Interpolation, Layout, Pair};
-use super::web_animation::{Command, Playback, Status};
 use crate::dormant_wake::Wake;
 
 const NAME: &str = "motion value";
@@ -243,7 +242,10 @@ impl MotionValues {
             None => None,
         };
         match (self.node_mut(id)?, upstream) {
-            (Node::Source(source), None) => source.sample(now),
+            (Node::Source(source), None) => {
+                source.notice(now);
+                source.sample(now)
+            }
             (Node::Transform(transform), Some(input)) => transform.sample(&input),
             (Node::Spring(follower), upstream) => follower.sample(upstream, now),
             _ => unreachable!("a node's input is sampled exactly when it has one"),
@@ -281,7 +283,7 @@ impl MotionValues {
             Some(Node::Source(source)) => source
                 .run
                 .as_ref()
-                .is_some_and(|run| run.sample(now).phase == Phase::Running && run.playback.rate() != 0.0),
+                .is_some_and(|run| run.sample(now).moving),
             Some(Node::Transform(transform)) => self.moves(transform.input, now),
             Some(Node::Spring(follower)) => {
                 follower.track.sample(now).active || follower.source.is_some_and(|source| self.moves(source, now))
@@ -317,6 +319,15 @@ impl MotionValues {
         self.with_run(id, now, |run| run.set_speed(speed, now))
     }
 
+    /// Takes the frames away from the clock of the animation of `id`: it holds the time it
+    /// has until the controls set another.
+    pub(super) fn detach(&mut self, id: ValueId, now: Instant) -> Result<(), String> {
+        self.with_run(id, now, |run| {
+            run.detach(now);
+            Ok(())
+        })
+    }
+
     /// Jumps the animation of `id` to its end and finishes it.
     pub(super) fn complete(&mut self, id: ValueId, now: Instant) -> Result<(), String> {
         self.with_run(id, now, |run| {
@@ -328,8 +339,11 @@ impl MotionValues {
     /// What the animation of `id` reads as, or `None` for a value with none.
     pub(super) fn playback(&mut self, id: ValueId, now: Instant) -> Result<Option<PlaybackInfo>, String> {
         self.catch_up(now);
-        match self.node(id)? {
-            Node::Source(source) => Ok(source.run.as_ref().map(|run| run.info(now))),
+        match self.node_mut(id)? {
+            Node::Source(source) => {
+                source.notice(now);
+                Ok(source.run.as_ref().map(|run| run.info(now)))
+            }
             Node::Spring(_) | Node::Transform(_) => Ok(None),
         }
     }
@@ -546,6 +560,14 @@ impl Source {
         }
     }
 
+    /// Latches the end of an animation that has reached it, with the time of the first instant
+    /// anyone looked at it, as Motion's `time` keeps the time of the frame that found it done.
+    fn notice(&mut self, now: Instant) {
+        if let Some(run) = &mut self.run {
+            run.freeze(now);
+        }
+    }
+
     /// Whether an animation is in effect, running or held.
     fn running(&self, now: Instant) -> bool {
         self.run
@@ -591,7 +613,7 @@ impl Source {
                     value,
                     velocity: sample.velocity,
                     active: true,
-                    moving: sample.phase == Phase::Running && run.playback.rate() != 0.0,
+                    moving: sample.moving,
                 });
             }
         }
@@ -725,20 +747,55 @@ impl Phase {
 /// What the controls of an animation read, in seconds.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PlaybackInfo {
-    /// Since the delay ended, up to the end of the last repeat.
+    /// Since the delay ended, as Motion's `time` reads: it is not held at the end of the last
+    /// repeat, an animation that finished keeps the time of the frame that found it done.
     pub(crate) time: f64,
     pub(crate) speed: f64,
     /// One iteration, without the delay or the repeats.
     pub(crate) duration: f64,
     pub(crate) iteration_duration: f64,
     pub(crate) phase: Phase,
+    /// Motion's `startTime`: none before the animation starts and once it has finished.
+    pub(crate) start: Option<StartTime>,
 }
 
-/// One animation of a source: its track on a clock the controls move.
+/// Where an animation's clock started, as Motion's `startTime` says.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum StartTime {
+    /// Milliseconds from the instant the animation was read at, negative when before it.
+    From(f64),
+    /// 0 on the renderer's clock: Motion sets it where it seeks an animation that had finished.
+    Origin,
+}
+
+/// Motion's `startTime`, which is not an instant but where the clock puts time 0.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Start {
+    Unset,
+    /// Seconds after the run began.
+    At(f64),
+    Origin,
+}
+
+/// One animation of a source: its track on the clock of Motion's `JSAnimation`, evaluated at the
+/// instant it is asked about. Its fields are that clock's (`startTime`, `holdTime`, `speed`,
+/// `state`) so that the controls move it the way Motion's do; `Playback` is the Web Animations
+/// clock, whose rate and hold mean something else, and is not used here.
 struct Run {
     track: Track,
-    playback: Playback,
     span: Span,
+    began: Instant,
+    start: Start,
+    /// Motion's `holdTime`: the time, delay included, the clock is held at. A pause holds it, and
+    /// so does a speed of 0 (the animation stays "running"); only `play()` lets it go.
+    hold: Option<f64>,
+    /// What an unheld clock whose frames were taken away (`attachTimeline`) reads.
+    frozen: f64,
+    speed: f64,
+    /// Motion's `state === "paused"`.
+    paused: bool,
+    /// The frame loop no longer drives the clock: something else sets its time.
+    detached: bool,
     /// What a finished run shows and keeps showing. A command that meets a run
     /// at its end latches it, so a change of speed does not take the run off
     /// its end; `play` and `seek` start it again.
@@ -756,6 +813,8 @@ struct RunSample {
     /// Per second, at the pace the run goes at; none while it is held.
     velocity: Vec<f64>,
     phase: Phase,
+    /// Whether the clock moves the value by itself, so another frame is due.
+    moving: bool,
     /// Seconds from the start of the delay.
     time: f64,
 }
@@ -765,8 +824,79 @@ impl Run {
         Self {
             span: track.span(),
             track,
-            playback: Playback::start(now, true),
+            began: now,
+            start: Start::At(0.0),
+            hold: None,
+            frozen: 0.0,
+            speed: 1.0,
+            paused: false,
+            detached: false,
             settled: None,
+        }
+    }
+
+    fn since(&self, now: Instant) -> f64 {
+        now.saturating_duration_since(self.began).as_secs_f64()
+    }
+
+    /// What Motion's `updateTime` computes: the clock's time, whether or not frames drive it.
+    fn clocked(&self, now: Instant) -> f64 {
+        if let Some(hold) = self.hold {
+            return hold;
+        }
+        match self.start {
+            // Motion pulls `startTime` back at every tick so that time stays within the track: a
+            // clock set to start in the future runs from 0, and a backwards one from its end.
+            Start::At(start) => {
+                let time = (self.since(now) - start) * self.speed + 0.0;
+                if self.speed > 0.0 {
+                    time.max(0.0)
+                } else if self.speed < 0.0 {
+                    time.min(self.span.end)
+                } else {
+                    time
+                }
+            }
+            Start::Unset | Start::Origin => self.frozen,
+        }
+    }
+
+    /// The time the run shows at `now`, delay included.
+    fn time(&self, now: Instant) -> f64 {
+        if self.detached && self.hold.is_none() {
+            self.frozen
+        } else {
+            self.clocked(now)
+        }
+    }
+
+    fn held(&self) -> bool {
+        self.paused || self.hold.is_some()
+    }
+
+    /// `start` pulled back as Motion does at each tick: not after the instant it is read at going
+    /// forward, and not later than a backwards clock needs to get to the end of the track.
+    fn pulled(&self, start: f64, now: Instant) -> Start {
+        let since = self.since(now);
+        if self.speed > 0.0 {
+            Start::At(start.min(since))
+        } else if self.speed < 0.0 {
+            Start::At(start.min(since - self.span.end / self.speed))
+        } else {
+            Start::At(start)
+        }
+    }
+
+    /// Whether the clock has taken an unheld run to its end, which for a reversed one is its start.
+    fn reached_end(&self, now: Instant) -> bool {
+        if self.held() {
+            return false;
+        }
+        let time = self.time(now);
+        if self.speed >= 0.0 {
+            time >= self.span.end
+        } else {
+            time <= 0.0
         }
     }
 
@@ -776,26 +906,31 @@ impl Run {
                 velocity: vec![0.0; settled.position.len()],
                 position: settled.position.clone(),
                 phase: Phase::Finished,
+                moving: false,
                 time: settled.time,
             };
         }
         let end = self.span.end;
-        let time = self.playback.current(now, end);
+        let time = self.time(now);
         let sample = self.track.sample_at(elapsed_at(time));
-        let rate = self.playback.rate();
-        let phase = match self.playback.status(now, end) {
-            Status::Paused => Phase::Paused,
-            Status::Finished => Phase::Finished,
-            // A spring is at rest a little before the 60 Hz scan that gave its end says.
-            _ if rate > 0.0 && !sample.active => Phase::Finished,
-            _ => Phase::Running,
+        let phase = if self.paused {
+            Phase::Paused
+        } else if self.reached_end(now) {
+            Phase::Finished
+        // A spring is at rest a little before the 60 Hz scan that gave its end says.
+        } else if !self.held() && self.speed > 0.0 && !sample.active {
+            Phase::Finished
+        } else {
+            Phase::Running
         };
-        let velocity = match phase {
-            Phase::Running => sample.velocity.iter().map(|velocity| velocity * rate).collect(),
-            Phase::Paused | Phase::Finished => vec![0.0; sample.velocity.len()],
+        let moving = phase == Phase::Running && !self.held() && !self.detached && self.speed != 0.0;
+        let velocity = if moving {
+            sample.velocity.iter().map(|velocity| velocity * self.speed).collect()
+        } else {
+            vec![0.0; sample.velocity.len()]
         };
         let time = match phase {
-            Phase::Finished if rate > 0.0 => end,
+            Phase::Finished if self.speed >= 0.0 => time.max(end),
             Phase::Finished => 0.0,
             Phase::Running | Phase::Paused => time,
         };
@@ -803,6 +938,7 @@ impl Run {
             position: sample.position,
             velocity,
             phase,
+            moving,
             time,
         }
     }
@@ -811,9 +947,24 @@ impl Run {
         self.track.value(&self.sample(now).position)
     }
 
+    /// When the clock reaches `time`, which a clock that runs backwards does not say.
+    fn wake_at(&self, time: f64, now: Instant) -> Wake {
+        if self.speed < 0.0 {
+            return Wake::NextFrame;
+        }
+        let wait = (time - self.time(now)) / self.speed;
+        if wait <= 0.0 {
+            return Wake::At(now);
+        }
+        Duration::try_from_secs_f64(wait)
+            .ok()
+            .and_then(|wait| now.checked_add(wait))
+            .map_or(Wake::Never, Wake::At)
+    }
+
     /// See `MotionValues::wake`.
     fn wake(&self, now: Instant) -> Wake {
-        if self.sample(now).phase != Phase::Running {
+        if self.sample(now).phase != Phase::Running || self.held() || self.detached || self.speed == 0.0 {
             return Wake::Never;
         }
         let transition = self.track.transition();
@@ -821,7 +972,7 @@ impl Run {
             return Wake::Never;
         }
         if self.span.rests.is_finite() {
-            return self.playback.wake_at(self.span.rests, now);
+            return self.wake_at(self.span.rests, now);
         }
         match transition.curve {
             Curve::Tween { .. } => Wake::Never,
@@ -832,12 +983,19 @@ impl Run {
     fn info(&self, now: Instant) -> PlaybackInfo {
         let sample = self.sample(now);
         let delay = self.track.transition().delay;
+        let start = match self.start {
+            _ if sample.phase == Phase::Finished => None,
+            Start::Unset => None,
+            Start::At(start) => Some(StartTime::From((start - self.since(now)) * 1000.0)),
+            Start::Origin => Some(StartTime::Origin),
+        };
         PlaybackInfo {
-            time: (sample.time - delay).clamp(0.0, self.span.end - delay),
-            speed: self.playback.rate(),
+            time: (sample.time - delay).max(0.0) + 0.0,
+            speed: self.speed,
             duration: self.span.iteration,
             iteration_duration: self.span.iteration + delay,
             phase: sample.phase,
+            start,
         }
     }
 
@@ -860,68 +1018,90 @@ impl Run {
         if self.settled.is_some() {
             return Ok(());
         }
-        self.playback.apply(Command::Pause, now, self.span.end)
+        self.hold = Some(self.clocked(now));
+        self.paused = true;
+        Ok(())
     }
 
     fn play(&mut self, now: Instant) -> Result<(), String> {
-        match self.sample(now).phase {
-            Phase::Finished => {
-                let backwards = self.playback.rate() < 0.0;
-                if backwards && self.span.end.is_infinite() {
-                    return Err("cannot play an animation of infinite length backwards from its end".to_string());
-                }
-                self.playback = self.fresh(now)?;
-                if backwards {
-                    self.playback
-                        .apply(Command::SetCurrentTime(self.span.end * 1000.0), now, self.span.end)?;
-                }
-                self.settled = None;
-            }
-            Phase::Paused => {
-                // Not the clock's own `play`, which starts a held clock at its end from the
-                // start, as the Web Animations API does; a held animation here goes on from
-                // wherever it is held, and finishes at once if that is past its end.
-                let held = self.playback.current(now, self.span.end);
-                self.playback = self.fresh(now)?;
-                self.playback
-                    .apply(Command::SetCurrentTime(held * 1000.0), now, self.span.end)?;
-            }
-            Phase::Running => {}
+        let since = self.since(now);
+        if self.sample(now).phase == Phase::Finished {
+            // A run that had gone backwards starts from its end.
+            self.start = Start::At(if self.speed < 0.0 { since + self.span.iteration } else { since });
+            self.settled = None;
+        } else if let Some(hold) = self.hold {
+            let pace = if self.speed == 0.0 { 1.0 } else { self.speed };
+            self.start = self.pulled(since - hold / pace, now);
+        } else if self.start == Start::Unset {
+            self.start = Start::At(since);
         }
+        self.hold = None;
+        self.paused = false;
+        self.detached = false;
         Ok(())
+    }
+
+    /// Motion's `time` setter, which `speed` runs too: a held clock keeps holding, at the new time.
+    fn set_time(&mut self, time: f64, now: Instant) {
+        if self.start == Start::Unset || self.hold.is_some() || self.speed == 0.0 {
+            self.hold = Some(time);
+        } else {
+            self.start = self.pulled(self.since(now) - time / self.speed, now);
+        }
+        self.frozen = time;
     }
 
     fn seek(&mut self, seconds: f64, now: Instant) -> Result<(), String> {
         if !seconds.is_finite() {
             return Err(format!("time must be finite, got {seconds}"));
         }
-        let end = self.span.end;
+        let time = seconds.max(0.0);
         if self.sample(now).phase == Phase::Finished {
-            self.playback = self.fresh(now)?;
+            // Motion has no clock left for a finished animation: it holds the time, paused,
+            // with a start of 0.
             self.settled = None;
-            self.playback.apply(Command::Pause, now, end)?;
+            self.start = Start::Origin;
+            self.hold = Some(time);
+            self.paused = true;
+            self.detached = false;
+            return Ok(());
         }
-        let at = self.track.transition().delay + seconds.max(0.0);
-        self.playback.apply(Command::SetCurrentTime(at * 1000.0), now, end)
+        self.set_time(time, now);
+        Ok(())
     }
 
     fn set_speed(&mut self, speed: f64, now: Instant) -> Result<(), String> {
+        if !speed.is_finite() {
+            return Err(format!("speed must be finite, got {speed}"));
+        }
         self.freeze(now);
-        self.playback.apply(Command::SetPlaybackRate(speed), now, self.span.end)
+        // A finished animation has no clock left to move, so its speed is only kept.
+        let time = self.clocked(now);
+        let changed = self.settled.is_none() && speed != self.speed;
+        self.speed = speed;
+        if changed {
+            self.set_time(time, now);
+        }
+        Ok(())
+    }
+
+    /// `attachTimeline`: the frame loop stops driving the clock.
+    fn detach(&mut self, now: Instant) {
+        self.freeze(now);
+        if self.settled.is_some() {
+            return;
+        }
+        self.frozen = self.clocked(now);
+        self.detached = true;
     }
 
     fn complete(&mut self) {
         self.settled = Some(Settled {
-            position: self.track.final_position(self.playback.rate() < 0.0),
+            position: self.track.final_position(self.speed < 0.0),
             time: self.span.end,
         });
-    }
-
-    /// A clock at the start of the track that goes at the pace of the one it replaces.
-    fn fresh(&self, now: Instant) -> Result<Playback, String> {
-        let mut playback = Playback::start(now, true);
-        playback.apply(Command::SetPlaybackRate(self.playback.rate()), now, self.span.end)?;
-        Ok(playback)
+        self.hold = None;
+        self.paused = false;
     }
 }
 
@@ -1315,8 +1495,8 @@ mod tests {
         values
             .animate(id, color("#ffffff"), tween(1.0), clock.at(0))
             .unwrap();
-        assert_eq!(values.get(id, clock.at(1000)).unwrap(), color("#ffffff"));
         assert_ne!(values.get(id, clock.at(500)).unwrap(), color("#ffffff"));
+        assert_eq!(values.get(id, clock.at(1000)).unwrap(), color("#ffffff"));
     }
 
     #[test]
@@ -2074,7 +2254,11 @@ mod tests {
                 clock.at(0),
             )
             .unwrap();
+        // The time counts the delay, as Motion's does, and reads back without it.
         values.seek(id, 1.25, clock.at(10)).unwrap();
+        close(info(&mut values, id, clock.at(10)).time, 0.75);
+        close(read(&mut values, id, clock.at(10)), 75.0);
+        values.seek(id, 1.75, clock.at(10)).unwrap();
         close(info(&mut values, id, clock.at(10)).time, 1.25);
         close(read(&mut values, id, clock.at(10)), 25.0);
         values.seek(id, 0.0, clock.at(10)).unwrap();
@@ -2093,7 +2277,7 @@ mod tests {
         assert!(!values.is_animating(id, clock.at(100)).unwrap());
         let finished = info(&mut values, id, clock.at(100));
         assert_eq!(finished.phase, Phase::Finished);
-        assert_eq!(finished.time, 1.0);
+        assert_eq!(finished.time, 5.0, "a seek past the end reads back as set");
     }
 
     #[test]
@@ -2141,7 +2325,7 @@ mod tests {
     }
 
     #[test]
-    fn speed_zero_holds_the_value_in_effect_and_nonzero_resumes() {
+    fn speed_zero_holds_the_value_in_effect_until_play() {
         let clock = Clock::new();
         let mut values = MotionValues::default();
         let id = linear_run(&mut values, &clock);
@@ -2153,8 +2337,13 @@ mod tests {
         assert_eq!(held.velocity, vec![0.0]);
         assert_eq!(info(&mut values, id, clock.at(5000)).phase, Phase::Running);
 
+        // The hold lasts until play(), whatever the speed is set to.
         values.set_speed(id, 1.0, clock.at(6000)).unwrap();
-        close(read(&mut values, id, clock.at(6300)), 70.0);
+        close(read(&mut values, id, clock.at(6300)), 40.0);
+        assert_eq!(info(&mut values, id, clock.at(6300)).phase, Phase::Running);
+        assert!(!values.sample(id, clock.at(6300)).unwrap().moving);
+        values.play(id, clock.at(6300)).unwrap();
+        close(read(&mut values, id, clock.at(6600)), 70.0);
     }
 
     #[test]
@@ -2269,9 +2458,9 @@ mod tests {
             .unwrap();
         let delayed_info = info(&mut values, delayed, clock.at(0));
         assert_eq!((delayed_info.duration, delayed_info.iteration_duration), (2.0, 2.5));
-        // The time runs to the end of the last repeat, and no further.
+        // The time is not held at the end of the last repeat, and it counts the delay.
         values.seek(delayed, 100.0, clock.at(0)).unwrap();
-        assert_eq!(info(&mut values, delayed, clock.at(0)).time, 4.0 * 2.0 + 3.0 * 0.25);
+        assert_eq!(info(&mut values, delayed, clock.at(0)).time, 99.5);
 
         let frames = values.new_source(number(0.0)).unwrap();
         values
@@ -2305,6 +2494,52 @@ mod tests {
             .animate(stiff, number(100.0), curve(json!({ "type": "spring", "stiffness": 1000, "damping": 10, "mass": 1000 })), clock.at(0))
             .unwrap();
         assert_eq!(info(&mut values, stiff, clock.at(0)).duration, f64::INFINITY);
+    }
+
+    #[test]
+    fn the_start_time_moves_where_motions_does() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        let start = |values: &mut MotionValues, at: u64| info(values, id, clock.at(at)).start;
+        assert_eq!(start(&mut values, 100), Some(StartTime::From(-100.0)));
+        values.pause(id, clock.at(300)).unwrap();
+        assert_eq!(start(&mut values, 500), Some(StartTime::From(-500.0)), "a pause leaves it");
+        values.play(id, clock.at(500)).unwrap();
+        assert_eq!(start(&mut values, 500), Some(StartTime::From(-300.0)));
+        values.seek(id, 0.8, clock.at(500)).unwrap();
+        assert_eq!(start(&mut values, 500), Some(StartTime::From(-800.0)));
+        values.set_speed(id, 2.0, clock.at(500)).unwrap();
+        assert_eq!(start(&mut values, 500), Some(StartTime::From(-400.0)));
+        assert_eq!(start(&mut values, 900), None, "none once it finished");
+    }
+
+    #[test]
+    fn a_detached_clock_holds_its_time_until_it_is_set_or_played() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.detach(id, clock.at(200)).unwrap();
+        close(read(&mut values, id, clock.at(900)), 20.0);
+        let held = values.sample(id, clock.at(900)).unwrap();
+        assert!(held.active && !held.moving);
+        assert_eq!(info(&mut values, id, clock.at(900)).phase, Phase::Running);
+        values.seek(id, 0.6, clock.at(900)).unwrap();
+        close(read(&mut values, id, clock.at(1000)), 60.0);
+        // Play lets the clock go on from the start it set: 0.3 s before the time was set.
+        values.play(id, clock.at(1000)).unwrap();
+        close(read(&mut values, id, clock.at(1100)), 80.0);
+    }
+
+    #[test]
+    fn time_set_past_the_end_while_reversed_runs_from_the_end() {
+        let clock = Clock::new();
+        let mut values = MotionValues::default();
+        let id = linear_run(&mut values, &clock);
+        values.set_speed(id, -1.0, clock.at(200)).unwrap();
+        values.seek(id, 5.0, clock.at(300)).unwrap();
+        close(read(&mut values, id, clock.at(300)), 100.0);
+        close(read(&mut values, id, clock.at(400)), 90.0);
     }
 
     #[test]

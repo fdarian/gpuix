@@ -2670,6 +2670,7 @@ export type MotionValueHost = Pick<
   | "seekMotionValue"
   | "setMotionValueSpeed"
   | "completeMotionValue"
+  | "detachMotionValueClock"
   | "getMotionValuePlayback"
   | "setMotionValueListener"
 >

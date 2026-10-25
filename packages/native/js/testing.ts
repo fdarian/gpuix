@@ -12,6 +12,7 @@
 import {
   hasTestGpuixRenderer,
   TestGpuixRenderer,
+  measureMotionAnimation,
   validateKeyframes,
   type EventPayload,
   type MediaFeatures,
@@ -44,6 +45,7 @@ import {
   registerKeyframesValidator,
   type KeyframesHost,
 } from "./keyframes.js"
+import { registerAnimationMeasurer } from "./motion-value.js"
 import { createRendererState, reportSyncErrors, type SyncDispatchResult } from "./renderer-state.js"
 export {
   applyMacCpuThrottleFromEnv,
@@ -379,6 +381,10 @@ const NativeTestRenderer: NativeTestRendererConstructor | null =
 export const hasNativeTestRenderer = NativeTestRenderer != null
 
 registerKeyframesValidator(validateKeyframes)
+registerAnimationMeasurer((from, target, transition) => {
+  const length = measureMotionAnimation(from, target, transition ?? null)
+  return { duration: length.duration, iterationDuration: length.iterationDuration }
+})
 
 // ── Test element tree ────────────────────────────────────────────────
 
@@ -1274,6 +1280,10 @@ export class TestRenderer implements NativeRenderer {
 
   completeMotionValue(id: number): void {
     this.native.completeMotionValue(id)
+  }
+
+  detachMotionValueClock(id: number): void {
+    this.native.detachMotionValueClock(id)
   }
 
   getMotionValuePlayback(id: number): MotionValuePlayback | null {

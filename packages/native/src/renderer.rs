@@ -3241,8 +3241,10 @@ impl GpuixRenderer {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.play(id, now))
     }
 
-    /// Moves the value's animation to `seconds` after its delay ended. A
-    /// finished animation is held there; one seeked past its end finishes.
+    /// Sets the time of the value's animation, Motion's `time`: it counts the
+    /// delay, so a time inside the delay shows the first keyframe. A finished
+    /// animation is held there; one seeked past its end finishes, and its time
+    /// reads back as set.
     #[napi]
     pub fn seek_motion_value(&self, id: f64, seconds: f64) -> Result<()> {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
@@ -3252,7 +3254,8 @@ impl GpuixRenderer {
 
     /// Sets the pace of the value's animation: 2 is twice as fast, a negative
     /// speed runs it backwards to its first keyframe, 0 holds it while it stays
-    /// in effect.
+    /// in effect. As in Motion, a hold lasts until `play`, whatever the speed
+    /// is set to after.
     #[napi]
     pub fn set_motion_value_speed(&self, id: f64, speed: f64) -> Result<()> {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
@@ -3271,9 +3274,19 @@ impl GpuixRenderer {
     /// it was never animated, or was stopped or jumped.
     #[napi]
     pub fn get_motion_value_playback(&self, id: f64) -> Result<Option<MotionValuePlayback>> {
-        self.with_motion_values(Repaint::None, move |values, now| {
-            values.playback(id, now).map(|info| info.map(MotionValuePlayback::from))
+        self.with_motion_state(Repaint::None, move |view, now| {
+            let now_ms = view.clock.now_ms();
+            view.motion_values
+                .playback(id, now)
+                .map(|info| info.map(|info| MotionValuePlayback::at(info, now_ms)))
         })
+    }
+
+    /// Takes the frames away from the clock of the value's animation, as Motion's
+    /// `attachTimeline` does: it holds the time it has until something sets another.
+    #[napi]
+    pub fn detach_motion_value_clock(&self, id: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.detach(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.
@@ -13386,7 +13399,8 @@ pub struct WebAnimationInfo {
 #[derive(Debug, Clone)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct MotionValuePlayback {
-    /// Since the delay ended, up to the end of the last repeat.
+    /// Since the delay ended. Not held at the end of the last repeat: Motion's `time` goes on
+    /// counting, and a seek past the end reads back as set.
     pub time: f64,
     /// The pace: 1 is real time, negative runs backwards.
     pub speed: f64,
@@ -13397,16 +13411,25 @@ pub struct MotionValuePlayback {
     pub iteration_duration: f64,
     /// `"running"`, `"paused"` or `"finished"`.
     pub state: String,
+    /// Motion's `startTime`: milliseconds on the renderer's clock since its origin, `null` before
+    /// the animation starts and once it has finished.
+    pub start_time: Option<f64>,
 }
 
-impl From<crate::motion::PlaybackInfo> for MotionValuePlayback {
-    fn from(info: crate::motion::PlaybackInfo) -> Self {
+impl MotionValuePlayback {
+    /// `now_ms` is the renderer's clock at the instant the info was read at.
+    pub(crate) fn at(info: crate::motion::PlaybackInfo, now_ms: f64) -> Self {
+        use crate::motion::StartTime;
         Self {
             time: info.time,
             speed: info.speed,
             duration: info.duration,
             iteration_duration: info.iteration_duration,
             state: info.phase.name().to_string(),
+            start_time: info.start.map(|start| match start {
+                StartTime::From(offset) => now_ms + offset,
+                StartTime::Origin => 0.0,
+            }),
         }
     }
 }

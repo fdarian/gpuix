@@ -11,8 +11,9 @@ import { TestRenderer, hasNativeTestRenderer } from "../testing.js"
  */
 
 type Op =
-  | ["pause" | "play" | "stop" | "cancel" | "complete"]
-  | ["seek" | "speed", number]
+  | ["pause" | "play" | "stop" | "cancel" | "complete" | "valueStop" | "detach"]
+  | ["seek" | "speed" | "progress" | "valueJump", number]
+  | ["attach", "pausing" | "plain"]
   | ["animate", unknown, Record<string, unknown>]
   | ["controls", number, "pause" | "play" | "stop" | "cancel" | "complete"]
 
@@ -26,8 +27,11 @@ type Observation = {
     duration: number | "Infinity"
     iterationDuration: number | "Infinity"
     state: string
+    /** Milliseconds after the animation was started, `"origin"` for 0 on the clock, `null` for none. */
+    startTime: number | "origin" | null
     finished: boolean
   }>
+  timelines?: Array<{ observed: number; cleaned: number }>
 }
 
 type Row = {
@@ -35,6 +39,7 @@ type Row = {
   to: number | number[]
   transition: Record<string, unknown>
   steps: Array<{ at: number; ops?: Op[] }>
+  early?: { duration: number | "Infinity"; iterationDuration: number | "Infinity" }
   observations: Observation[]
 }
 
@@ -47,35 +52,34 @@ const number = (value: number | "Infinity"): number => (value === "Infinity" ? I
 const curve = (transition: Record<string, unknown>): MotionCurve =>
   ({ ...transition, ...(transition.repeat === "Infinity" ? { repeat: Infinity } : {}) }) as MotionCurve
 
-/** Seconds from the end of the delay to the end of the last repeat. */
-const totalOf = (transition: Record<string, unknown>): number => {
-  if (transition.repeat === "Infinity") return Infinity
-  const duration = (transition.duration as number | undefined) ?? 0.3
-  const repeat = (transition.repeat as number | undefined) ?? 0
-  return duration * (repeat + 1) + ((transition.repeatDelay as number | undefined) ?? 0) * repeat
-}
-
 const settle = () => new Promise<void>((done) => setTimeout(done, 0))
 
 /** What a sequence of controls reads on the addon, in the shape of the oracle's observations. */
-async function runNative(row: Row): Promise<Observation[]> {
+async function runNative(row: Row): Promise<{ early?: Row["early"]; observations: Observation[] }> {
   const renderer = new TestRenderer({ width: 400, height: 300 })
   renderer.clockPause()
+  // Far from the clock's origin, which a start time of 0 means.
+  const started = renderer.clockSet(5000)
   renderer.flush()
   const value = motionValue(row.from)
   value.bind(renderer)
   const controls: AnimationPlaybackControlsWithThen[] = []
   const finished: boolean[] = []
+  const timelines: Array<{ observed: number; cleaned: number; animation?: AnimationPlaybackControlsWithThen }> = []
+  const detachers: Array<() => void> = []
   const start = (to: unknown, transition: Record<string, unknown>) => {
     const index = controls.length
-    const started = value.animate(to as number, curve(transition))
-    controls.push(started)
+    const created = value.animate(to as number, curve(transition))
+    controls.push(created)
     finished.push(false)
-    void started.finished.then(() => {
+    void created.finished.then(() => {
       finished[index] = true
     })
   }
   start(row.to, row.transition)
+  const early = row.early
+    ? { duration: controls[0].duration, iterationDuration: controls[0].iterationDuration }
+    : undefined
 
   const observations: Observation[] = []
   let now = 0
@@ -104,6 +108,38 @@ async function runNative(row: Row): Promise<Observation[]> {
         case "controls":
           controls[op[1]][op[2]]()
           break
+        case "valueStop":
+          value.stop()
+          break
+        case "valueJump":
+          value.jump(op[1])
+          break
+        case "attach": {
+          const line: (typeof timelines)[number] = { observed: 0, cleaned: 0 }
+          timelines.push(line)
+          detachers.push(
+            current.attachTimeline({
+              observe(animation) {
+                line.observed += 1
+                line.animation = animation
+                if (op[1] === "pausing") animation.pause()
+                return () => {
+                  line.cleaned += 1
+                }
+              },
+            })
+          )
+          break
+        }
+        case "progress": {
+          const animation = timelines[timelines.length - 1].animation
+          if (!animation) throw new Error("no timeline observed an animation")
+          animation.time = animation.iterationDuration * op[1]
+          break
+        }
+        case "detach":
+          detachers[detachers.length - 1]()
+          break
       }
     }
     renderer.flush()
@@ -119,145 +155,59 @@ async function runNative(row: Row): Promise<Observation[]> {
         duration: control.duration,
         iterationDuration: control.iterationDuration,
         state: control.state,
+        startTime: control.startTime === null ? null : control.startTime === 0 ? "origin" : control.startTime - started,
         finished: finished[index],
       })),
+      ...(timelines.length > 0
+        ? { timelines: timelines.map((line) => ({ observed: line.observed, cleaned: line.cleaned })) }
+        : {}),
     })
   }
   value.destroy()
-  return observations
-}
-
-/**
- * Rows where Motion's `isAnimating()` goes stale: it is set when the value starts animating and cleared when an
- * animation finishes or the value's own `stop()` runs, so it stays true after the controls' `stop()` and
- * `cancel()` and stays false while an animation that finished is seeked or played again. The addon reads whether
- * the current animation is in effect, running or held. Checked as that, and Motion must really differ.
- */
-const STALE_IS_ANIMATING = new Set([
-  "stop while running",
-  "stop while paused",
-  "cancel while running",
-  "cancel then play at speed 2",
-  "cancel after the finish then play",
-  "cancel keyframes",
-  "seek while finished",
-  "play after the finish",
-  "play after the finish of a repeat",
-  "complete while running",
-  "speed -1 after a finish and play",
-])
-
-/**
- * Where the addon deliberately reads differently, by row: the step, the field, and what the addon reads.
- * Every entry is checked from both sides: the addon must read exactly this, and Motion must read
- * something else.
- */
-const DEVIATIONS: Record<string, { why: string; differs: Array<[step: number, field: string, native: unknown]> }> = {
-  "seek in a delayed animation": {
-    why: "The time setter reads back as set. Motion counts the delay in the time it is given, so seeking to 0.4 of a 0.5 delay is still inside the delay and `time` reads 0; here it is 0.4 into the animation.",
-    differs: [
-      [2, "value", 40],
-      [2, "c0.time", 0.4],
-      [3, "value", 50],
-      [3, "c0.time", 0.5],
-      [4, "value", 90],
-      [4, "c0.time", 0.9],
-      [5, "value", 100],
-      [5, "c0.time", 1],
-      [5, "c0.state", "finished"],
-      [5, "c0.finished", true],
-      [5, "animating", false],
-    ],
-  },
-  "speed 0 then 1": {
-    why: "A speed other than 0 after 0 runs the animation again. Motion needs `play()` as well: its clock was held with the speed.",
-    differs: [
-      [5, "value", 50],
-      [5, "c0.time", 0.5],
-      [6, "value", 70],
-      [6, "c0.time", 0.7],
-      [7, "value", 100],
-      [7, "c0.time", 1],
-      [7, "c0.state", "finished"],
-      [7, "c0.finished", true],
-      [7, "animating", false],
-      [8, "value", 100],
-      [8, "c0.time", 1],
-      [8, "c0.state", "finished"],
-      [8, "c0.finished", true],
-      [8, "animating", false],
-    ],
-  },
+  return { early, observations }
 }
 
 describe.skipIf(!hasNativeTestRenderer)("playback controls against Motion", () => {
   for (const [name, row] of Object.entries(oracle)) {
     it(name, async () => {
       const native = await runNative(row)
-      const totals = [row.transition, ...row.steps.flatMap((step) => (step.ops ?? []).flatMap((op) => (op[0] === "animate" ? [op[2]] : [])))].map(totalOf)
-      const declared = DEVIATIONS[name]
       // Motion solves a cubic bezier with 12 bisections, which is good to about 2e-4 of the range.
       const tolerance = row.transition.ease === "linear" ? 1e-3 : 0.1
-      const seen: Array<[number, string, unknown]> = []
+      const spring = name.includes("spring") ? 0.06 : 1e-9
 
-      const same = (field: string, step: number, actual: unknown, wanted: unknown, tolerance = 0) => {
-        const equal =
-          typeof actual === "number" && typeof wanted === "number"
-            ? Math.abs(actual - wanted) <= tolerance || actual === wanted
-            : actual === wanted
-        if (equal) return
-        const deviation = declared?.differs.find(([at, where]) => at === step && where === field)
-        if (deviation) {
-          seen.push([step, field, actual])
-          const message = `${name} @${step} ${field} (deviates: ${declared.why})`
-          if (typeof actual === "number" && typeof deviation[2] === "number") {
-            expect(actual, message).toBeCloseTo(deviation[2], 9)
-          } else {
-            expect(actual, message).toEqual(deviation[2])
-          }
-          return
-        }
-        expect(actual, `${name} @${row.steps[step].at}ms (step ${step}) ${field}`).toEqual(wanted)
+      if (row.early) {
+        expect(native.early?.duration, `${name} duration before a frame`).toBeCloseTo(number(row.early.duration), spring === 1e-9 ? 9 : 1)
+        expect(native.early?.iterationDuration, `${name} iterationDuration before a frame`).toBeCloseTo(
+          number(row.early.iterationDuration),
+          spring === 1e-9 ? 9 : 1
+        )
       }
 
       row.observations.forEach((want, step) => {
-        const got = native[step]
-        same("value", step, got.value, want.value, tolerance)
-        if (STALE_IS_ANIMATING.has(name)) {
-          const states = got.controls[got.controls.length - 1].state
-          same("animating", step, got.animating, states === "running" || states === "paused")
-        } else {
-          same("animating", step, got.animating, want.animating)
-        }
+        const got = native.observations[step]
+        const where = (field: string) => `${name} @${row.steps[step].at}ms (step ${step}) ${field}`
+        expect(Math.abs(got.value - want.value), where("value")).toBeLessThanOrEqual(tolerance)
+        expect(got.animating, where("animating")).toBe(want.animating)
         want.controls.forEach((control, index) => {
           const read = got.controls[index]
-          const where = `c${index}`
-          // Motion's time keeps counting past the end by the frame it noticed it on, and a seek
-          // past the end leaves it there; the addon stops at the end of the last repeat.
-          same(`${where}.time`, step, read.time, Math.min(number(control.time), totals[index]), 1e-9)
-          same(`${where}.speed`, step, read.speed, control.speed)
-          same(`${where}.duration`, step, read.duration, number(control.duration), name === "the duration of a spring" ? 0.06 : 1e-9)
-          same(`${where}.iterationDuration`, step, read.iterationDuration, number(control.iterationDuration), name === "the duration of a spring" ? 0.06 : 1e-9)
-          same(`${where}.state`, step, read.state, control.state)
-          same(`${where}.finished`, step, read.finished, control.finished)
+          const field = (key: string) => where(`c${index}.${key}`)
+          expect(read.time, field("time")).toBeCloseTo(number(control.time), 9)
+          expect(read.speed, field("speed")).toBe(control.speed)
+          expect(read.duration, field("duration")).toBeCloseTo(number(control.duration), spring === 1e-9 ? 9 : 1)
+          expect(read.iterationDuration, field("iterationDuration")).toBeCloseTo(
+            number(control.iterationDuration),
+            spring === 1e-9 ? 9 : 1
+          )
+          expect(read.state, field("state")).toBe(control.state)
+          expect(read.finished, field("finished")).toBe(control.finished)
+          if (typeof control.startTime === "number" && typeof read.startTime === "number") {
+            expect(read.startTime, field("startTime")).toBeCloseTo(control.startTime, 6)
+          } else {
+            expect(read.startTime, field("startTime")).toBe(control.startTime)
+          }
         })
+        expect(got.timelines, where("timelines")).toEqual(want.timelines)
       })
-
-      if (STALE_IS_ANIMATING.has(name)) {
-        const differs = row.observations.some((want) => {
-          const state = want.controls[want.controls.length - 1].state
-          return want.animating !== (state === "running" || state === "paused")
-        })
-        expect(differs, `${name}: Motion's isAnimating() is not stale here`).toBe(true)
-      }
-
-      // A deviation that no longer happens is a stale entry.
-      for (const [step, field] of declared?.differs ?? []) {
-        expect(
-          seen.some(([at, where]) => at === step && where === field),
-          `${name}: the entry for step ${step} ${field} no longer deviates`
-        ).toBe(true)
-      }
     })
   }
 })
@@ -309,7 +259,8 @@ describe.skipIf(!hasNativeTestRenderer)("playback controls on the addon", () => 
     expect(controls.state).toBe("paused")
     expect(controls.speed).toBe(2)
     expect(controls.time).toBe(0.25)
-    expect(() => controls.duration).toThrow(/not known/)
+    expect(controls.duration).toBe(1)
+    expect(controls.startTime).toBeNull()
     x.bind(renderer)
     expect(x.get()).toBeCloseTo(25, 5)
     frame(renderer, 5000)

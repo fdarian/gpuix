@@ -82,25 +82,34 @@ export type AnimationPlaybackState = "idle" | "running" | "paused" | "finished"
  */
 export interface AnimationPlaybackControls {
   /**
-   * Seconds since the delay ended, up to the end of the last repeat. Assigning it seeks, and it
-   * reads back as assigned: Motion counts the delay in the assigned time, so there a delayed
-   * animation reads back less. A running animation goes on from there, a held one stays, a
-   * finished one is held there and is not finished again.
+   * Seconds since the animation began, the delay not counted in what it reads: it is 0 during the
+   * delay. Assigning it seeks, and the assigned time counts the delay, so seeking to 0.4 in an
+   * animation delayed by 0.5 is still inside the delay. It is not held at the end: an animation
+   * that finished keeps the time of the frame that found it done, and a seek past the end reads
+   * back as set. A running animation goes on from there, a held one stays, a finished one is
+   * held there and is not finished again.
    */
   time: number
   /**
-   * The pace: 2 is twice as fast, negative runs backwards to the first keyframe, 0 holds the
-   * animation while it stays in effect. A value other than 0 after 0 runs it again; Motion
-   * needs `play()`.
+   * The pace: 2 is twice as fast, negative runs backwards to the first keyframe. 0 holds the
+   * animation, which stays `"running"`, and it stays held at any other speed until `play()`.
    */
   speed: number
   /**
    * One iteration, without the delay or the repeats. A spring lasts until it is at rest,
-   * `Infinity` if that takes more than 20 seconds. Read once the value is bound to a renderer.
+   * `Infinity` if that takes more than 20 seconds.
    */
   readonly duration: number
   /** `duration` and the delay. */
   readonly iterationDuration: number
+  /**
+   * Where the animation's clock started, in milliseconds on the renderer's clock since its origin
+   * (the `nowMs` of the test renderer's `clock*` calls): Motion's absolute base is
+   * `performance.now()`, so only differences between two times are comparable. It moves where
+   * Motion moves it: `play()`, a `time` set while running, a change of `speed`. `null` before the
+   * value is bound, once the animation finished, and after `stop()` and `cancel()`.
+   */
+  readonly startTime: number | null
   /**
    * `"running"` from the start, the delay included and at speed 0; `"paused"` after `pause()`;
    * `"finished"` at the end and after `complete()`; `"idle"` after `stop()` and `cancel()`, and
@@ -124,6 +133,20 @@ export interface AnimationPlaybackControls {
   play(): void
   /** Holds the value and the time. The value keeps `isAnimating()` and its velocity is 0. */
   pause(): void
+  /**
+   * Hands the animation's clock to a timeline, as Motion's `scroll()` does: the frame loop stops
+   * driving the animation (it stays `"running"` unless the timeline pauses it), and
+   * `timeline.observe(controls)` gets the controls to set `time` on. What `observe` returns is
+   * called when the animation is stopped, or the value is stopped, jumped or animated again.
+   * Attached before the value is bound, it is observed when the animation starts. `play()` gives
+   * the clock back. Returns a function that stops the animation.
+   */
+  attachTimeline(timeline: AnimationTimeline): () => void
+}
+
+/** What `attachTimeline` takes: Motion's `{ observe }`. */
+export interface AnimationTimeline {
+  observe(animation: AnimationPlaybackControlsWithThen): () => void
 }
 
 export interface AnimationPlaybackControlsWithThen extends AnimationPlaybackControls, PromiseLike<void> {
@@ -168,6 +191,7 @@ const HOST_METHODS = [
   "seekMotionValue",
   "setMotionValueSpeed",
   "completeMotionValue",
+  "detachMotionValueClock",
   "getMotionValuePlayback",
   "setMotionValueListener",
 ] as const satisfies readonly (keyof MotionValueHost)[]
@@ -237,6 +261,7 @@ function startOf(target: MotionTarget<MotionData>, from: MotionData): MotionData
 
 /** What the controls read before the animation started: what they were told so far. */
 function pendingPlayback(animation: Animation): Playback {
+  const delay = animation.transition?.delay ?? 0
   let time = 0
   let speed = 1
   let state: AnimationPlaybackState = "running"
@@ -253,15 +278,17 @@ function pendingPlayback(animation: Animation): Playback {
         state = "finished"
         break
       case "seek":
-        time = Math.max(0, command.seconds)
+        time = Math.max(0, command.seconds - delay)
         if (state === "finished") state = "paused"
         break
       case "speed":
         speed = command.speed
         break
+      case "attach":
+        break
     }
   }
-  return { time, speed, duration: undefined, iterationDuration: undefined, state }
+  return { time, speed, duration: undefined, iterationDuration: undefined, state, startTime: null }
 }
 
 /** A cancelled animation is back at its start. */
@@ -269,11 +296,27 @@ function rewound(animation: Animation): void {
   if (animation.ended) animation.ended = { ...animation.ended, time: 0 }
 }
 
-function known(value: number | undefined): number {
-  if (value === undefined) {
+/** Finds how long an animation lasts without a renderer. The native addon's `measureMotionAnimation`. */
+export type AnimationMeasurer = (
+  from: MotionData,
+  target: MotionTarget<MotionData>,
+  transition: MotionCurve | undefined
+) => { duration: number; iterationDuration: number }
+
+const MEASURER_KEY = Symbol.for("@gpuix/native/motion-measurer")
+
+/** Called by the entry points that load the native addon, as `registerKeyframesValidator` is. */
+export function registerAnimationMeasurer(measure: AnimationMeasurer): void {
+  Reflect.set(globalThis, MEASURER_KEY, measure)
+}
+
+/** How long the animation lasts, before the value it animates is bound to a renderer. */
+function measured(animation: Animation): { duration: number; iterationDuration: number } {
+  const measure = Reflect.get(globalThis, MEASURER_KEY) as AnimationMeasurer | undefined
+  if (!measure) {
     throw new Error("The duration of an animation is not known until its value is bound to a renderer")
   }
-  return value
+  return measure(animation.from, animation.target, wireTransition(animation.transition))
 }
 
 type ComputedTrigger = "change" | "animationComplete"
@@ -313,6 +356,7 @@ type PlaybackCommand =
   | { kind: "complete" }
   | { kind: "seek"; seconds: number }
   | { kind: "speed"; speed: number }
+  | { kind: "attach"; timeline: AnimationTimeline }
 
 /** What the controls of an animation read. The durations are not known before it starts. */
 type Playback = {
@@ -321,6 +365,7 @@ type Playback = {
   duration: number | undefined
   iterationDuration: number | undefined
   state: AnimationPlaybackState
+  startTime: number | null
 }
 
 type Deferred = { promise: Promise<void>; resolve: () => void }
@@ -334,6 +379,11 @@ type Animation = {
   readonly pending: PlaybackCommand[]
   /** Holds the renderer's completion events and the node, until the animation finishes or ends. */
   unwatch?: () => void
+  controls?: AnimationPlaybackControlsWithThen
+  /** What the timeline attached to this animation returned. */
+  cleanup?: () => void
+  /** Set while `cancel()` ends the animation: Motion's cancel does not call the timeline's cleanup. */
+  cancelling?: boolean
   /** It reached its end, and has not been played again since. */
   done: boolean
   /** What `finished` is, until `play()` starts a finished animation again. */
@@ -406,6 +456,12 @@ export class MotionValue<Data extends MotionData = MotionData> {
   #reducers = 0
   #destroyed = false
   #animation: Animation | undefined
+  /**
+   * Motion's `value.animation`, which `isAnimating()` reads: set by `animate()`, cleared when the
+   * animation finishes and by the value's own `stop()` and `jump()`, not by the controls' `stop()`
+   * and `cancel()`.
+   */
+  #driving: Animation | undefined
   /** The animation `cancel()` ended last, which `play()` may start again until another one takes the value. */
   #cancelled: Animation | undefined
   readonly #counts: Record<ListenerKind, number> = {
@@ -465,7 +521,10 @@ export class MotionValue<Data extends MotionData = MotionData> {
 
   /** Writes the value, ending any animation and dropping its velocity. */
   jump(value: Data): void {
-    this.#ending(() => this.#write("jump", value), "stopped")
+    // Like Motion's, it stops an animation only while the value has one: a finished one stays finished.
+    if (this.#driving) this.#ending(() => this.#write("jump", value), "stopped")
+    else this.#write("jump", value)
+    this.#driving = undefined
   }
 
   /** Units per second, for a value that holds a number. A value that is not bound has none. */
@@ -479,15 +538,29 @@ export class MotionValue<Data extends MotionData = MotionData> {
     return 0
   }
 
+  /** Whether an animation drives the value: it stays true after the controls' `stop()` and `cancel()`. */
   isAnimating(): boolean {
     this.#assertAlive()
-    if (this.#attachment) return this.#attachment.renderer.isMotionValueAnimating(this.id)
-    return this.#animation !== undefined
+    // A spring and a transform move without an animate(): the renderer says.
+    if (this.#definition.kind !== "source" && this.#attachment) {
+      return this.#attachment.renderer.isMotionValueAnimating(this.id)
+    }
+    const driving = this.#driving
+    if (driving?.started && !driving.done && !driving.ended && this.#attachment) {
+      // The completion event may not have reached JS yet.
+      if (this.#attachment.renderer.getMotionValuePlayback(this.id)?.state === "finished") this.#finish(driving)
+    }
+    return this.#driving !== undefined
   }
 
   /** Ends an animation where it is, keeping the speed for the next one. */
   stop(): void {
     this.#assertAlive()
+    if (this.#driving) this.#endAnimation()
+    this.#driving = undefined
+  }
+
+  #endAnimation(): void {
     this.#ending(() => this.#attachment?.renderer.stopMotionValue(this.id), "stopped")
   }
 
@@ -521,10 +594,13 @@ export class MotionValue<Data extends MotionData = MotionData> {
     // Read before the new animation takes the value's place in the renderer.
     const leaving = previous && this.#snapshot(previous)
     this.#animation = animation
+    const drivingBefore = this.#driving
+    this.#driving = animation
     try {
       if (this.#attachment) this.#start(animation)
     } catch (error) {
       if (this.#animation === undefined) this.#animation = previous
+      this.#driving = drivingBefore
       throw error
     }
     // The new animation holds the node first, so replacing the last one
@@ -550,36 +626,67 @@ export class MotionValue<Data extends MotionData = MotionData> {
         command({ kind: "speed", speed })
       },
       get duration() {
-        return known(playback().duration)
+        return playback().duration ?? measured(animation).duration
       },
       get iterationDuration() {
-        return known(playback().iterationDuration)
+        return playback().iterationDuration ?? measured(animation).iterationDuration
       },
       get state() {
         return playback().state
+      },
+      get startTime() {
+        return playback().startTime
       },
       get finished() {
         return animation.finished.promise
       },
       then: (onFulfilled, onRejected) => animation.finished.promise.then(onFulfilled, onRejected),
       stop: () => {
-        if (!animation.ended) this.stop()
+        if (animation.ended) animation.cleanup?.()
+        else this.#endAnimation()
       },
       cancel: () => {
         if (animation.ended) return
         const finished = playback().state === "finished"
-        this.stop()
+        // Motion's cancel puts the time of a finished animation at its end.
+        if (finished && animation.started) this.#attached().renderer.completeMotionValue(this.id)
+        animation.cancelling = true
+        this.#endAnimation()
         this.#cancelled = animation
         if (finished) return
-        this.jump(startOf(animation.target, animation.from) as Data)
+        this.#write("jump", startOf(animation.target, animation.from) as Data)
         rewound(animation)
       },
       complete: () => command({ kind: "complete" }),
       play: () => command({ kind: "play" }),
       pause: () => command({ kind: "pause" }),
+      attachTimeline: (timeline) => {
+        this.#attachTimeline(animation, controls, timeline)
+        return () => {
+          controls.stop()
+          controls.stop()
+        }
+      },
     }
+    animation.controls = controls
     settlements.set(controls, animation.settled.promise)
     return controls
+  }
+
+  #attachTimeline(
+    animation: Animation,
+    controls: AnimationPlaybackControlsWithThen,
+    timeline: AnimationTimeline
+  ): void {
+    if (!animation.started && !animation.ended) {
+      // Motion keeps one pending timeline.
+      const earlier = animation.pending.findIndex((command) => command.kind === "attach")
+      if (earlier >= 0) animation.pending.splice(earlier, 1)
+      animation.pending.push({ kind: "attach", timeline })
+      return
+    }
+    if (!animation.ended) this.#attached().renderer.detachMotionValueClock(this.id)
+    animation.cleanup = timeline.observe(controls)
   }
 
   #command(animation: Animation, command: PlaybackCommand): void {
@@ -606,8 +713,9 @@ export class MotionValue<Data extends MotionData = MotionData> {
     animation.pending.length = 0
     if (ended.speed !== 1) animation.pending.push({ kind: "speed", speed: ended.speed })
     // A cancel that found the animation finished left the value on its end.
-    this.jump(startOf(animation.target, animation.from) as Data)
+    this.#write("jump", startOf(animation.target, animation.from) as Data)
     this.#animation = animation
+    animation.cancelling = false
     if (this.#attachment) this.#start(animation)
   }
 
@@ -631,7 +739,15 @@ export class MotionValue<Data extends MotionData = MotionData> {
         renderer.completeMotionValue(this.id)
         this.#finish(animation)
         return
+      case "attach":
+        this.#attachTimeline(animation, this.#controlsOf(animation), command.timeline)
+        return
     }
+  }
+
+  #controlsOf(animation: Animation): AnimationPlaybackControlsWithThen {
+    if (!animation.controls) throw new Error(`Motion value ${this.id} has an animation without controls`)
+    return animation.controls
   }
 
   #play(animation: Animation): void {
@@ -657,9 +773,13 @@ export class MotionValue<Data extends MotionData = MotionData> {
     const playback = this.#attached().renderer.getMotionValuePlayback(this.id)
     if (playback === null) {
       // The renderer let go of a finished animation when the value was written.
-      return { ...(animation.last ?? pendingPlayback(animation)), state: animation.done ? "finished" : "idle" }
+      return {
+        ...(animation.last ?? pendingPlayback(animation)),
+        state: animation.done ? "finished" : "idle",
+        startTime: null,
+      }
     }
-    animation.last = { ...playback, state: playback.state as AnimationPlaybackState }
+    animation.last = { ...playback, startTime: playback.startTime ?? null, state: playback.state as AnimationPlaybackState }
     return animation.last
   }
 
@@ -736,6 +856,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
   destroy(): void {
     if (this.#destroyed) return
     this.#ending(() => {}, "released")
+    this.#driving = undefined
     this.#detach(false)
     this.#destroyed = true
     this.#bindings = 0
@@ -953,7 +1074,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
     }
     const playback = renderer.getMotionValuePlayback(this.id)
     if (playback === null) throw new Error(`Motion value ${this.id} has no animation after it was started`)
-    animation.last = { ...playback, state: playback.state as AnimationPlaybackState }
+    animation.last = { ...playback, startTime: playback.startTime ?? null, state: playback.state as AnimationPlaybackState }
     if (playback.state === "finished") this.#finish(animation)
   }
 
@@ -971,6 +1092,7 @@ export class MotionValue<Data extends MotionData = MotionData> {
   /** The animation got to its end, or `complete()` took it there: `finished` resolves. */
   #finish(animation: Animation): void {
     if (animation.done || animation.ended) return
+    if (this.#driving === animation) this.#driving = undefined
     animation.done = true
     animation.finished.resolve()
     animation.settled.resolve()
@@ -986,12 +1108,13 @@ export class MotionValue<Data extends MotionData = MotionData> {
   #end(animation: Animation, leaving: Playback, how: "stopped" | "released"): void {
     if (animation.ended) return
     const finished = how === "released" && (animation.done || leaving.state === "finished")
-    animation.ended = { ...leaving, state: finished ? "finished" : "idle" }
+    animation.ended = { ...leaving, state: finished ? "finished" : "idle", startTime: null }
     if (this.#animation === animation) this.#animation = undefined
     const unwatch = animation.unwatch
     animation.unwatch = undefined
     animation.settled.resolve()
     unwatch?.()
+    if (!animation.cancelling) animation.cleanup?.()
   }
 }
 

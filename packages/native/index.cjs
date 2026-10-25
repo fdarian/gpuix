@@ -785,4 +785,5 @@ module.exports.checkUpdate = nativeBinding.checkUpdate
 module.exports.getAllDisplays = nativeBinding.getAllDisplays
 module.exports.getPrimaryDisplay = nativeBinding.getPrimaryDisplay
 module.exports.hasTestGpuixRenderer = nativeBinding.hasTestGpuixRenderer
+module.exports.measureMotionAnimation = nativeBinding.measureMotionAnimation
 module.exports.validateKeyframes = nativeBinding.validateKeyframes

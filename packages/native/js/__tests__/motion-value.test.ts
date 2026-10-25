@@ -162,11 +162,15 @@ class FakeRenderer {
     node.animating = false
   }
 
+  detachMotionValueClock(id: number) {
+    this.calls.push(`detach ${id}`)
+  }
+
   getMotionValuePlayback(id: number) {
     const node = this.node(id)
     if (!node.run) return null
     const state = node.run.held ? "paused" : node.animating ? "running" : "finished"
-    return { time: node.run.time, speed: node.run.speed, duration: 1, iterationDuration: 1, state }
+    return { time: node.run.time, speed: node.run.speed, duration: 1, iterationDuration: 1, state, startTime: null }
   }
 
   setMotionValueListener(id: number, change: boolean, animation: boolean) {

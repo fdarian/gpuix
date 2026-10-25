@@ -18,6 +18,7 @@ import {
   unregisterKeyframesHost,
 } from "./keyframes.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
+import { registerAnimationMeasurer } from "./motion-value.js"
 import { createRendererState, reportSyncErrors } from "./renderer-state.js"
 
 export type { WindowFontsOption }
@@ -27,6 +28,13 @@ const DEFAULT_FRAME_MS = 8
 // The browser entry has no `validateKeyframes`, so it is read off the namespace.
 if (typeof native.validateKeyframes === "function") {
   registerKeyframesValidator(native.validateKeyframes)
+}
+
+if (typeof native.measureMotionAnimation === "function") {
+  registerAnimationMeasurer((from, target, transition) => {
+    const length = native.measureMotionAnimation(from, target, transition ?? null)
+    return { duration: length.duration, iterationDuration: length.iterationDuration }
+  })
 }
 
 export interface FrameLoop {

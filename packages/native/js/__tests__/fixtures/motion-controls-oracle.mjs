@@ -6,7 +6,12 @@
 // A row is a start (`from`, `to`, `transition`) at time 0 and `steps`. A step sets the clock to `at`
 // milliseconds, applies its `ops` in order, runs one frame and reads. Ops: ["pause"], ["play"], ["stop"],
 // ["cancel"], ["complete"], ["seek", seconds], ["speed", rate], ["animate", to, transition] (another animation of
-// the same value; its controls are appended). "Infinity" stands for Infinity, as JSON has none.
+// the same value; its controls are appended), ["valueStop"] and ["valueJump", to] (the value's own stop() and jump()),
+// ["attach", "pausing" | "plain"] (attachTimeline of a hand-made timeline whose observe() pauses the animation or not
+// and returns a cleanup that is counted), ["progress", p] (what framer-motion's scroll attach-animation does to the
+// observed animation: `anim.time = anim.iterationDuration * p`) and ["detach"] (the function attachTimeline
+// returned). A row with `early` also records what the controls read synchronously after animate(), before any
+// frame. "Infinity" stands for Infinity, as JSON has none.
 import { pathToFileURL } from "node:url"
 import path from "node:path"
 
@@ -354,9 +359,361 @@ const ROWS = {
     transition: { type: "spring", stiffness: 200, damping: 12 },
     steps: at(0, 100),
   },
+  "seek past the delay of a delayed animation": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [...at(0, 100), withOps(100, ["seek", 0.8]), ...at(200, 500, 700, 1500)],
+  },
+  "seek into the delay while running past it": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [...at(0, 800), withOps(800, ["seek", 0.2]), ...at(900, 1000, 1200, 1700, 2000)],
+  },
+  "seek into the delay while paused": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [
+      ...at(0, 100),
+      withOps(100, ["pause"]),
+      withOps(200, ["seek", 0.3]),
+      ...at(300),
+      withOps(400, ["play"]),
+      ...at(500, 800, 1000, 1500),
+    ],
+  },
+  "seek past the delay while paused": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [
+      ...at(0, 100),
+      withOps(100, ["pause"]),
+      withOps(200, ["seek", 0.9]),
+      ...at(300),
+      withOps(400, ["play"]),
+      ...at(500, 800, 1000, 1500),
+    ],
+  },
+  "seek to the end of the delay": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [...at(0, 100), withOps(100, ["seek", 0.5]), ...at(200, 500, 1000)],
+  },
+  "seek into the delay of a finished animation": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [...at(0, 1800), withOps(2000, ["seek", 0.2]), ...at(2100, 2600, 3000, 3500)],
+  },
+  "seek past the end of the repeats": {
+    from: 0,
+    to: [0, 100],
+    transition: { duration: 1, ease: "linear", repeat: 2, repeatDelay: 0.5 },
+    steps: [...at(0, 200), withOps(200, ["seek", 10]), ...at(300, 1000), withOps(1000, ["play"]), ...at(1100, 2000)],
+  },
+  "seek past the end of a delayed animation": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [...at(0, 100), withOps(100, ["seek", 7]), ...at(200, 1000), withOps(1000, ["speed", -1]), ...at(1100, 1500, 3000)],
+  },
+  "seek past the end then play": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 200), withOps(200, ["pause"]), withOps(300, ["seek", 5]), ...at(400), withOps(500, ["play"]), ...at(600, 700)],
+  },
+  "seek past the end while reversed": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 200), withOps(200, ["speed", -1]), withOps(300, ["seek", 5]), ...at(400, 700, 1500, 2000)],
+  },
+  "speed 0 before the first frame": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [withOps(0, ["speed", 0]), ...at(0, 500), withOps(500, ["speed", 1]), ...at(600), withOps(700, ["play"]), ...at(800, 1200, 1700)],
+  },
+  "speed 0 then 2 then play": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["speed", 0]), ...at(1000), withOps(1000, ["speed", 2]), ...at(1100), withOps(1200, ["play"]), ...at(1300, 1500, 1700)],
+  },
+  "speed 0 then pause then speed 1": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [
+      ...at(0, 400),
+      withOps(400, ["speed", 0]),
+      withOps(500, ["pause"]),
+      withOps(600, ["speed", 1]),
+      ...at(700),
+      withOps(800, ["play"]),
+      ...at(900, 1200, 1500),
+    ],
+  },
+  "speed 0 then seek then speed 1": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["speed", 0]), withOps(500, ["seek", 0.7]), ...at(600), withOps(700, ["speed", 1]), ...at(800, 1000), withOps(1000, ["play"]), ...at(1100, 1300, 1600)],
+  },
+  "speed 0 then play without a speed": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["speed", 0]), ...at(1000), withOps(1000, ["play"]), ...at(1100, 2000)],
+  },
+  "speed 0 then -1 then play": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 600), withOps(600, ["speed", 0]), ...at(900), withOps(900, ["speed", -1]), ...at(1000), withOps(1100, ["play"]), ...at(1200, 1500, 1800)],
+  },
+  "speed 0 in a delayed animation": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [...at(0, 200), withOps(200, ["speed", 0]), ...at(900), withOps(900, ["speed", 1]), ...at(1000), withOps(1000, ["play"]), ...at(1100, 1400, 1700, 2000)],
+  },
+  "value stop while running": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["valueStop"]), ...at(500, 2000), withOps(2000, ["play"]), ...at(2100, 2600)],
+  },
+  "value stop while paused": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["pause"]), withOps(500, ["valueStop"]), ...at(600, 2000)],
+  },
+  "value stop after the finish": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 1200), withOps(1500, ["valueStop"]), ...at(1600)],
+  },
+  "value jump while running": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["valueJump", 7]), ...at(500, 2000), withOps(2000, ["play"]), ...at(2100)],
+  },
+  "value jump while paused": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["pause"]), withOps(500, ["valueJump", 7]), ...at(600, 2000)],
+  },
+  "controls stop then a new animation": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["stop"]), ...at(500), withOps(500, ["animate", 0, { duration: 1, ease: "linear" }]), ...at(600, 1600)],
+  },
+  "controls stop then value stop": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["stop"]), ...at(500), withOps(600, ["valueStop"]), ...at(700)],
+  },
+  "controls cancel then value jump": {
+    from: 10,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["cancel"]), ...at(500), withOps(600, ["valueJump", 3]), ...at(700, 800)],
+  },
+  "complete then play": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 400), withOps(400, ["complete"]), ...at(500), withOps(600, ["play"]), ...at(700, 1000)],
+  },
+  "the duration of a tween read before a frame": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: at(0, 1500),
+  },
+  "the duration of a delayed, repeated animation read before a frame": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: { duration: 2, ease: "linear", delay: 0.5, repeat: 3, repeatDelay: 0.25 },
+    steps: at(0, 600),
+  },
+  "the duration of keyframes with times read before a frame": {
+    early: true,
+    from: 5,
+    to: [5, 80, 20],
+    transition: { duration: 3, times: [0, 0.4, 1], ease: "easeInOut", delay: 1 },
+    steps: at(0, 1500),
+  },
+  "the duration of the default tween read before a frame": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: {},
+    steps: at(0, 400),
+  },
+  "the duration of a spring read before a frame": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: { type: "spring", stiffness: 200, damping: 12 },
+    steps: at(0, 100),
+  },
+  "the duration of a spring with a delay read before a frame": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: { type: "spring", stiffness: 300, damping: 30, mass: 2, delay: 0.25 },
+    steps: at(0, 100),
+  },
+  "the duration of an infinite loop read before a frame": {
+    early: true,
+    from: 2,
+    to: [2, 210, 2],
+    transition: { duration: 1.5, ease: "linear", repeat: "Infinity" },
+    steps: at(0, 100),
+  },
+  "the duration of a mirrored repeat read before a frame": {
+    early: true,
+    from: 0,
+    to: [0, 100],
+    transition: { duration: 0.5, ease: "linear", repeat: 2, repeatType: "mirror" },
+    steps: at(0, 100),
+  },
+  "a timeline scrubs a paused animation": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [
+      ...at(0),
+      withOps(0, ["attach", "pausing"]),
+      ...at(100),
+      withOps(200, ["progress", 0.5]),
+      withOps(1000, ["progress", 0.25]),
+      withOps(1100, ["progress", 1]),
+      ...at(1200),
+      withOps(1300, ["progress", 0]),
+      ...at(1400, 3000),
+    ],
+  },
+  "a timeline scrubs a delayed animation": {
+    from: 0,
+    to: 100,
+    transition: { ...LINEAR, delay: 0.5 },
+    steps: [
+      withOps(0, ["attach", "pausing"], ["progress", 0.2]),
+      ...at(100),
+      withOps(300, ["progress", 0.5]),
+      withOps(400, ["progress", 1]),
+      withOps(500, ["progress", 0.75]),
+      ...at(600, 2000),
+    ],
+  },
+  "a timeline scrubs repeats": {
+    from: 0,
+    to: [0, 100],
+    transition: { duration: 1, ease: "linear", repeat: 2, repeatType: "reverse" },
+    steps: [
+      ...at(0),
+      withOps(0, ["attach", "pausing"]),
+      withOps(100, ["progress", 0.5]),
+      withOps(200, ["progress", 1]),
+      withOps(300, ["progress", 0.1]),
+      ...at(400, 2000),
+    ],
+  },
+  "a timeline attached before the first frame": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [withOps(0, ["attach", "pausing"], ["progress", 0.3]), ...at(200, 1500), withOps(1500, ["progress", 0.8]), ...at(1600)],
+  },
+  "a timeline that does not pause stops the clock": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0, 200), withOps(200, ["attach", "plain"]), ...at(300, 800), withOps(900, ["progress", 0.4]), ...at(1000, 2500)],
+  },
+  "play after a timeline gives the clock back": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [
+      ...at(0),
+      withOps(0, ["attach", "pausing"]),
+      withOps(100, ["progress", 0.2]),
+      ...at(200),
+      withOps(300, ["play"]),
+      ...at(400, 700, 1200, 1500),
+    ],
+  },
+  "stop after a timeline cleans it up": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [
+      ...at(0),
+      withOps(0, ["attach", "pausing"]),
+      withOps(100, ["progress", 0.4]),
+      ...at(200),
+      withOps(300, ["stop"]),
+      ...at(400, 1500),
+    ],
+  },
+  "the returned function of a timeline stops the animation": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [
+      ...at(0),
+      withOps(0, ["attach", "pausing"]),
+      withOps(100, ["progress", 0.4]),
+      ...at(200),
+      withOps(300, ["detach"]),
+      ...at(400, 1500),
+    ],
+  },
+  "cancel after a timeline": {
+    from: 10,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0), withOps(0, ["attach", "pausing"]), withOps(100, ["progress", 0.6]), ...at(200), withOps(300, ["cancel"]), ...at(400, 1500)],
+  },
+  "complete after a timeline": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [...at(0), withOps(0, ["attach", "pausing"]), withOps(100, ["progress", 0.6]), ...at(200), withOps(300, ["complete"]), ...at(400, 1500)],
+  },
+  "a timeline on a replaced animation": {
+    from: 0,
+    to: 100,
+    transition: LINEAR,
+    steps: [
+      ...at(0),
+      withOps(0, ["attach", "pausing"]),
+      withOps(100, ["progress", 0.5]),
+      ...at(200),
+      withOps(300, ["animate", 0, { duration: 1, ease: "linear" }]),
+      ...at(400, 900, 1500),
+    ],
+  },
 }
 
-const read = async (controls, flags, mv) => {
+const read = async (controls, flags, mv, timelines) => {
   await settle()
   const observed = controls.map((control, index) => ({
     time: encode(control.time),
@@ -364,9 +721,13 @@ const read = async (controls, flags, mv) => {
     duration: encode(control.duration),
     iterationDuration: encode(control.iterationDuration),
     state: control.state,
+    // 0 is Motion's absolute zero, which it sets where it seeks an animation that finished.
+    startTime: control.startTime === null ? null : control.startTime === 0 ? "origin" : control.startTime - base,
     finished: flags[index],
   }))
-  return { value: mv.get(), animating: mv.isAnimating(), controls: observed }
+  const out = { value: mv.get(), animating: mv.isAnimating(), controls: observed }
+  if (timelines.length > 0) out.timelines = timelines.map((line) => ({ observed: line.observed, cleaned: line.cleaned }))
+  return out
 }
 
 const frame = async () => {
@@ -386,6 +747,8 @@ const run = async (row) => {
   const mv = motionValue(row.from)
   const controls = []
   const flags = []
+  const timelines = []
+  const detachers = []
   const start = (to, transition) => {
     const control = animate(mv, to, options(transition))
     const index = controls.length
@@ -397,6 +760,9 @@ const run = async (row) => {
   }
   await settle()
   start(row.to, row.transition)
+  const early = row.early
+    ? { duration: encode(controls[0].duration), iterationDuration: encode(controls[0].iterationDuration) }
+    : undefined
   const observations = []
   for (const step of row.steps) {
     clock = base + step.at
@@ -423,21 +789,53 @@ const run = async (row) => {
         case "controls":
           controls[op[1]][op[2]]()
           break
+        case "valueStop":
+          mv.stop()
+          break
+        case "valueJump":
+          mv.jump(op[1])
+          break
+        case "attach": {
+          const line = { observed: 0, cleaned: 0, animation: undefined }
+          timelines.push(line)
+          detachers.push(
+            control.attachTimeline({
+              observe(animation) {
+                line.observed += 1
+                line.animation = animation
+                if (op[1] === "pausing") animation.pause()
+                return () => {
+                  line.cleaned += 1
+                }
+              },
+            })
+          )
+          break
+        }
+        case "progress": {
+          const animation = timelines.at(-1).animation
+          animation.time = animation.iterationDuration * op[1]
+          break
+        }
+        case "detach":
+          detachers.at(-1)()
+          break
         default:
           throw new Error(`unknown op ${op[0]}`)
       }
     }
     await frame()
-    observations.push({ at: step.at, ...(await read(controls, flags, mv)) })
+    observations.push({ at: step.at, ...(await read(controls, flags, mv, timelines)) })
   }
   // Let the frame loop wind down before the next row.
   for (const control of controls) control.stop()
   for (let round = 0; round < 5 && frames.length > 0; round++) await frame()
-  return observations
+  return { early, observations }
 }
 
 const out = {}
 for (const [name, row] of Object.entries(ROWS)) {
-  out[name] = { from: row.from, to: row.to, transition: row.transition, steps: row.steps, observations: await run(row) }
+  const result = await run(row)
+  out[name] = { from: row.from, to: row.to, transition: row.transition, steps: row.steps, early: result.early, observations: result.observations }
 }
 console.log(JSON.stringify(out, null, 1).replace(/\[[^\[\]{}]*\]/g, (list) => list.replace(/\s+/g, " ")))

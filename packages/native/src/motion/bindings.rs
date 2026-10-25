@@ -453,6 +453,10 @@ impl MotionValueStore {
         self.command(id, now, |graph, id| graph.complete(id, now))
     }
 
+    pub(crate) fn detach(&mut self, id: f64, now: Instant) -> Result<(), String> {
+        self.command(id, now, |graph, id| graph.detach(id, now))
+    }
+
     /// A control on the animation of a value. The events up to `now` are found first: a finish
     /// that no frame saw would otherwise be undone by `play` or `seek` before anyone heard of it.
     fn command(
@@ -826,6 +830,22 @@ impl MotionValueStore {
             log::warn!("{message}");
         }
     }
+}
+
+/// How long `animate` of a value that holds `from` would last, without a renderer.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) fn measure_animation(
+    from: &Value,
+    target: &Value,
+    transition: Option<&Value>,
+) -> Result<PlaybackInfo, String> {
+    let now = Instant::now();
+    let mut store = MotionValueStore::default();
+    store.create_source(0.0, from)?;
+    store.animate(0.0, target, transition, now)?;
+    store
+        .playback(0.0, now)?
+        .ok_or_else(|| "an animation of a motion value has no length".to_string())
 }
 
 fn value_id(id: f64) -> Result<ValueId, String> {

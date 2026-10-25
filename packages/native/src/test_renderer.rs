@@ -2604,8 +2604,10 @@ impl TestGpuixRenderer {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.play(id, now))
     }
 
-    /// Moves the value's animation to `seconds` after its delay ended. A
-    /// finished animation is held there; one seeked past its end finishes.
+    /// Sets the time of the value's animation, Motion's `time`: it counts the
+    /// delay, so a time inside the delay shows the first keyframe. A finished
+    /// animation is held there; one seeked past its end finishes, and its time
+    /// reads back as set.
     #[napi]
     pub fn seek_motion_value(&self, id: f64, seconds: f64) -> Result<()> {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
@@ -2615,7 +2617,8 @@ impl TestGpuixRenderer {
 
     /// Sets the pace of the value's animation: 2 is twice as fast, a negative
     /// speed runs it backwards to its first keyframe, 0 holds it while it stays
-    /// in effect.
+    /// in effect. As in Motion, a hold lasts until `play`, whatever the speed
+    /// is set to after.
     #[napi]
     pub fn set_motion_value_speed(&self, id: f64, speed: f64) -> Result<()> {
         self.with_motion_values(Repaint::MotionWrite(id), move |values, now| {
@@ -2634,9 +2637,19 @@ impl TestGpuixRenderer {
     /// it was never animated, or was stopped or jumped.
     #[napi]
     pub fn get_motion_value_playback(&self, id: f64) -> Result<Option<crate::renderer::MotionValuePlayback>> {
-        self.with_motion_values(Repaint::None, move |values, now| {
-            values.playback(id, now).map(|info| info.map(crate::renderer::MotionValuePlayback::from))
+        self.with_motion_state(Repaint::None, move |view, now| {
+            let now_ms = view.clock.now_ms();
+            view.motion_values
+                .playback(id, now)
+                .map(|info| info.map(|info| crate::renderer::MotionValuePlayback::at(info, now_ms)))
         })
+    }
+
+    /// Takes the frames away from the clock of the value's animation. See
+    /// `GpuixRenderer.detachMotionValueClock`.
+    #[napi]
+    pub fn detach_motion_value_clock(&self, id: f64) -> Result<()> {
+        self.with_motion_values(Repaint::MotionWrite(id), move |values, now| values.detach(id, now))
     }
 
     /// Chooses which events the value delivers. Neither removes the listener.

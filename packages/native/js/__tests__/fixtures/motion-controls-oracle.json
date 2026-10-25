@@ -67,6 +67,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -82,6 +83,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -97,6 +99,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -112,6 +115,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -127,6 +131,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -142,6 +147,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -157,6 +163,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -172,6 +179,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -187,6 +195,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -202,6 +211,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -217,6 +227,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -232,6 +243,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -247,6 +259,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 5500,
       "finished": false
      }
     ]
@@ -303,6 +316,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -318,6 +332,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -333,6 +348,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -348,6 +364,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 1000,
       "finished": false
      }
     ]
@@ -363,6 +380,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 1000,
       "finished": false
      }
     ]
@@ -378,6 +396,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 1000,
       "finished": false
      }
     ]
@@ -393,6 +412,7 @@
       "duration": 6.199999999999999,
       "iterationDuration": 6.199999999999999,
       "state": "running",
+      "startTime": 1000,
       "finished": false
      }
     ]
@@ -477,6 +497,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -492,6 +513,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -507,6 +529,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -522,6 +545,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -537,6 +561,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 500,
       "finished": false
      }
     ]
@@ -552,6 +577,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 500,
       "finished": false
      }
     ]
@@ -567,6 +593,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 500,
       "finished": false
      }
     ]
@@ -582,6 +609,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 500,
       "finished": false
      }
     ]
@@ -597,6 +625,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1100,
       "finished": false
      }
     ]
@@ -612,6 +641,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1100,
       "finished": false
      }
     ]
@@ -627,6 +657,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1100,
       "finished": false
      }
     ]
@@ -642,6 +673,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1100,
       "finished": false
      }
     ]
@@ -657,6 +689,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -721,6 +754,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -736,6 +770,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -751,6 +786,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -766,6 +802,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -781,6 +818,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 800,
       "finished": false
      }
     ]
@@ -796,6 +834,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 800,
       "finished": false
      }
     ]
@@ -811,6 +850,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 800,
       "finished": false
      }
     ]
@@ -826,6 +866,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 800,
       "finished": false
      }
     ]
@@ -841,6 +882,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 800,
       "finished": false
      }
     ]
@@ -856,6 +898,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 800,
       "finished": false
      }
     ]
@@ -914,6 +957,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -929,6 +973,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -944,6 +989,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -959,6 +1005,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -974,6 +1021,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -989,6 +1037,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -1004,6 +1053,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -1019,6 +1069,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1070,6 +1121,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1085,6 +1137,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1100,6 +1153,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": -500,
       "finished": false
      }
     ]
@@ -1115,6 +1169,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": -500,
       "finished": false
      }
     ]
@@ -1130,6 +1185,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1145,6 +1201,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1160,6 +1217,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1232,6 +1290,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1247,6 +1306,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1262,6 +1322,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1277,6 +1338,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1292,6 +1354,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1307,6 +1370,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1322,6 +1386,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1337,6 +1402,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 700,
       "finished": false
      }
     ]
@@ -1352,6 +1418,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 700,
       "finished": false
      }
     ]
@@ -1367,6 +1434,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 700,
       "finished": false
      }
     ]
@@ -1382,6 +1450,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1442,6 +1511,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1457,6 +1527,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1472,6 +1543,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": "origin",
       "finished": true
      }
     ]
@@ -1487,6 +1559,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": "origin",
       "finished": true
      }
     ]
@@ -1502,6 +1575,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": "origin",
       "finished": true
      }
     ]
@@ -1517,6 +1591,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2100,
       "finished": true
      }
     ]
@@ -1532,6 +1607,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2100,
       "finished": true
      }
     ]
@@ -1547,6 +1623,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1562,6 +1639,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1607,6 +1685,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1622,6 +1701,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1637,6 +1717,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1652,6 +1733,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1667,6 +1749,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1727,6 +1810,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1742,6 +1826,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1757,6 +1842,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1772,6 +1858,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1787,6 +1874,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1802,6 +1890,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1817,6 +1906,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1832,6 +1922,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -1898,6 +1989,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1913,6 +2005,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -1928,6 +2021,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": -3000,
       "finished": false
      }
     ]
@@ -1943,6 +2037,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": -3000,
       "finished": false
      }
     ]
@@ -1958,6 +2053,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": -3000,
       "finished": false
      }
     ]
@@ -1973,6 +2069,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": -3000,
       "finished": false
      }
     ]
@@ -1988,6 +2085,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": -3400,
       "finished": false
      }
     ]
@@ -2003,6 +2101,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2018,6 +2117,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2033,6 +2133,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2078,6 +2179,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2093,6 +2195,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2108,6 +2211,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 600,
       "finished": false
      }
     ]
@@ -2123,6 +2227,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 600,
       "finished": false
      }
     ]
@@ -2138,6 +2243,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 600,
       "finished": false
      }
     ]
@@ -2193,6 +2299,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2208,6 +2315,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2223,6 +2331,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": -300,
       "finished": false
      }
     ]
@@ -2238,6 +2347,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": -300,
       "finished": false
      }
     ]
@@ -2253,6 +2363,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": -300,
       "finished": false
      }
     ]
@@ -2268,6 +2379,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": -300,
       "finished": false
      }
     ]
@@ -2283,6 +2395,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2298,6 +2411,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2349,6 +2463,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2364,6 +2479,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2379,6 +2495,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2394,6 +2511,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2409,6 +2527,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2424,6 +2543,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2439,6 +2559,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2490,6 +2611,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2505,6 +2627,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2520,6 +2643,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 125,
       "finished": false
      }
     ]
@@ -2535,6 +2659,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 125,
       "finished": false
      }
     ]
@@ -2550,6 +2675,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 125,
       "finished": false
      }
     ]
@@ -2565,6 +2691,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 125,
       "finished": false
      }
     ]
@@ -2580,6 +2707,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2631,6 +2759,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2646,6 +2775,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2661,6 +2791,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2676,6 +2807,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2691,6 +2823,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2706,6 +2839,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2721,6 +2855,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -2766,6 +2901,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2781,6 +2917,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2796,6 +2933,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2811,6 +2949,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2826,6 +2965,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2886,6 +3026,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2901,6 +3042,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2916,6 +3058,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2931,6 +3074,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2946,6 +3090,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2961,6 +3106,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2976,6 +3122,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -2991,6 +3138,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3006,6 +3154,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3067,6 +3216,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3082,6 +3232,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3097,6 +3248,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3112,6 +3264,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3127,6 +3280,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1600,
       "finished": false
      }
     ]
@@ -3142,6 +3296,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1600,
       "finished": false
      }
     ]
@@ -3157,6 +3312,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1600,
       "finished": false
      }
     ]
@@ -3172,6 +3328,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3187,6 +3344,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3247,6 +3405,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3262,6 +3421,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3277,6 +3437,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -3292,6 +3453,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -3307,6 +3469,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -3322,6 +3485,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -3337,6 +3501,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -3352,6 +3517,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3367,6 +3533,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3382,6 +3549,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3440,6 +3608,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3455,6 +3624,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3470,6 +3640,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 5000,
       "finished": false
      }
     ]
@@ -3485,6 +3656,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 5000,
       "finished": false
      }
     ]
@@ -3500,6 +3672,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 5000,
       "finished": false
      }
     ]
@@ -3515,6 +3688,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 5000,
       "finished": false
      }
     ]
@@ -3530,6 +3704,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 5000,
       "finished": false
      }
     ]
@@ -3545,6 +3720,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3560,6 +3736,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3623,6 +3800,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3638,6 +3816,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3653,6 +3832,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3668,6 +3848,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3683,6 +3864,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2700,
       "finished": true
      }
     ]
@@ -3698,6 +3880,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2700,
       "finished": true
      }
     ]
@@ -3713,6 +3896,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2700,
       "finished": true
      }
     ]
@@ -3728,6 +3912,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2700,
       "finished": true
      }
     ]
@@ -3743,6 +3928,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3758,6 +3944,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3821,6 +4008,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3836,6 +4024,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3851,6 +4040,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3866,6 +4056,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3881,6 +4072,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -3896,6 +4088,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -3911,6 +4104,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -3926,6 +4120,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -3941,6 +4136,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -3995,6 +4191,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4010,6 +4207,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4025,6 +4223,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4040,6 +4239,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4055,6 +4255,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4070,6 +4271,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4085,6 +4287,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4136,6 +4339,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4151,6 +4355,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4166,6 +4371,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4181,6 +4387,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4196,6 +4403,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4211,6 +4419,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4253,6 +4462,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4268,6 +4478,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4283,6 +4494,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4298,6 +4510,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4352,6 +4565,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4367,6 +4581,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4382,6 +4597,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4397,6 +4613,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4412,6 +4629,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4427,6 +4645,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2000,
       "finished": false
      }
     ]
@@ -4442,6 +4661,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2000,
       "finished": false
      }
     ]
@@ -4502,6 +4722,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4517,6 +4738,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4532,6 +4754,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4547,6 +4770,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4562,6 +4786,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 300,
       "finished": false
      }
     ]
@@ -4577,6 +4802,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 300,
       "finished": false
      }
     ]
@@ -4592,6 +4818,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 300,
       "finished": false
      }
     ]
@@ -4607,6 +4834,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4658,6 +4886,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4673,6 +4902,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4688,6 +4918,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4703,6 +4934,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1600,
       "finished": true
      }
     ]
@@ -4718,6 +4950,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1600,
       "finished": true
      }
     ]
@@ -4733,6 +4966,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1600,
       "finished": true
      }
     ]
@@ -4778,6 +5012,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4793,6 +5028,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4808,6 +5044,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4823,6 +5060,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4838,6 +5076,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      }
     ]
@@ -4883,6 +5122,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -4898,6 +5138,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4913,6 +5154,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4928,6 +5170,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -4943,6 +5186,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5003,6 +5247,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5018,6 +5263,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5033,6 +5279,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5048,6 +5295,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5063,6 +5311,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5078,6 +5327,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2000,
       "finished": true
      }
     ]
@@ -5093,6 +5343,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2000,
       "finished": true
      }
     ]
@@ -5108,6 +5359,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2000,
       "finished": true
      }
     ]
@@ -5123,6 +5375,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5174,6 +5427,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5189,6 +5443,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5204,6 +5459,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5219,6 +5475,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5234,6 +5491,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5249,6 +5507,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5295,6 +5554,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5310,6 +5570,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5325,6 +5586,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5340,6 +5602,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5355,6 +5618,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5406,6 +5670,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5421,6 +5686,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5436,6 +5702,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1200,
       "finished": false
      }
     ]
@@ -5451,6 +5718,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5466,6 +5734,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5481,6 +5750,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5523,6 +5793,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5538,6 +5809,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5553,6 +5825,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5568,6 +5841,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5629,6 +5903,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5644,6 +5919,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5659,6 +5935,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5667,6 +5944,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -5682,6 +5960,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5690,6 +5969,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -5705,6 +5985,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5713,6 +5994,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -5728,6 +6010,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5736,6 +6019,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "running",
+      "startTime": 400,
       "finished": false
      }
     ]
@@ -5751,6 +6035,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5759,6 +6044,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5774,6 +6060,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5782,6 +6069,7 @@
       "duration": 2,
       "iterationDuration": 2,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5852,6 +6140,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5867,6 +6156,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5882,6 +6172,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "paused",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -5897,6 +6188,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5905,6 +6197,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 900,
       "finished": false
      }
     ]
@@ -5920,6 +6213,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5928,6 +6222,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 900,
       "finished": false
      }
     ]
@@ -5943,6 +6238,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5951,6 +6247,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 900,
       "finished": false
      }
     ]
@@ -5966,6 +6263,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5974,6 +6272,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -5989,6 +6288,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -5997,6 +6297,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6012,6 +6313,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "idle",
+      "startTime": null,
       "finished": false
      },
      {
@@ -6020,6 +6322,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6072,6 +6375,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6087,6 +6391,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6102,6 +6407,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      },
      {
@@ -6110,6 +6416,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1500,
       "finished": false
      }
     ]
@@ -6125,6 +6432,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      },
      {
@@ -6133,6 +6441,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1500,
       "finished": false
      }
     ]
@@ -6148,6 +6457,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      },
      {
@@ -6156,6 +6466,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6207,6 +6518,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6222,6 +6534,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6237,6 +6550,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1500,
       "finished": true
      }
     ]
@@ -6252,6 +6566,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1500,
       "finished": true
      }
     ]
@@ -6267,6 +6582,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 1500,
       "finished": true
      }
     ]
@@ -6282,6 +6598,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6297,6 +6614,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6350,6 +6668,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6365,6 +6684,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6380,6 +6700,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2500,
       "finished": true
      }
     ]
@@ -6395,6 +6716,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2500,
       "finished": true
      }
     ]
@@ -6410,6 +6732,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 2500,
       "finished": true
      }
     ]
@@ -6425,6 +6748,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6440,6 +6764,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6488,6 +6813,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6503,6 +6829,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6518,6 +6845,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6533,6 +6861,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6548,6 +6877,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6563,6 +6893,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6611,6 +6942,7 @@
       "duration": 2,
       "iterationDuration": 2.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6626,6 +6958,7 @@
       "duration": 2,
       "iterationDuration": 2.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6641,6 +6974,7 @@
       "duration": 2,
       "iterationDuration": 2.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6656,6 +6990,7 @@
       "duration": 2,
       "iterationDuration": 2.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6671,6 +7006,7 @@
       "duration": 2,
       "iterationDuration": 2.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6726,6 +7062,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6741,6 +7078,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6756,6 +7094,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6771,6 +7110,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6786,6 +7126,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6801,6 +7142,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6816,6 +7158,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6831,6 +7174,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6846,6 +7190,7 @@
       "duration": 1,
       "iterationDuration": 1.5,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -6908,6 +7253,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6923,6 +7269,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6938,6 +7285,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6953,6 +7301,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6968,6 +7317,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6983,6 +7333,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -6998,6 +7349,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -7013,6 +7365,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -7028,6 +7381,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -7043,6 +7397,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -7058,6 +7413,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "finished",
+      "startTime": null,
       "finished": true
      }
     ]
@@ -7092,6 +7448,7 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
      }
     ]
@@ -7107,7 +7464,7206 @@
       "duration": 1,
       "iterationDuration": 1,
       "state": "running",
+      "startTime": 0,
       "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the delay of a delayed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "seek", 0.8 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek into the delay while running past it": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 800,
+    "ops": [
+     [ "seek", 0.2 ]
+    ]
+   },
+   {
+    "at": 900
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1700
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "seek into the delay while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "seek", 0.3 ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the delay while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "seek", 0.9 ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -500,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -500,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -500,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek to the end of the delay": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "seek", 0.5 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": -400,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "seek into the delay of a finished animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1800
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "seek", 0.2 ]
+    ]
+   },
+   {
+    "at": 2100
+   },
+   {
+    "at": 2600
+   },
+   {
+    "at": 3000
+   },
+   {
+    "at": 3500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1800,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": "origin",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": "origin",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": "origin",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": "origin",
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": "origin",
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the end of the repeats": {
+  "from": 0,
+  "to": [ 0, 100 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "repeat": 2,
+   "repeatDelay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "seek", 10 ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 10,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 10,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 10,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1000,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 10,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1000,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1000,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the end of a delayed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "seek", 7 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 6.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the end then play": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "seek", 5 ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 700
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "seek past the end while reversed": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "seek", 5 ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1300,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 90,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.9,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1300,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1300,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 before the first frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 0
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "speed", 1 ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 700,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1700
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then 2 then play": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "speed", 2 ]
+    ]
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 1200,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1300
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1700
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1000,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1300,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1000,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 2,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then pause then speed 1": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "speed", 1 ]
+    ]
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 800,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 900
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 400,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then seek then speed 1": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "seek", 0.7 ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 700,
+    "ops": [
+     [ "speed", 1 ]
+    ]
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 1300
+   },
+   {
+    "at": 1600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 300,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 300,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1300,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then play without a speed": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 600,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 then -1 then play": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 900
+   },
+   {
+    "at": 900,
+    "ops": [
+     [ "speed", -1 ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1100,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1800
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 1700,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1800,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": -1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "speed 0 in a delayed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "speed", 0 ]
+    ]
+   },
+   {
+    "at": 900
+   },
+   {
+    "at": 900,
+    "ops": [
+     [ "speed", 1 ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 1100
+   },
+   {
+    "at": 1400
+   },
+   {
+    "at": 1700
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 0,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 800,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 800,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1400,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 800,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1700,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 800,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 70,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.7,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 800,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "value stop while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "valueStop" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2100
+   },
+   {
+    "at": 2600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2600,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "value stop while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "valueStop" ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "value stop after the finish": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "valueStop" ]
+    ]
+   },
+   {
+    "at": 1600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "value jump while running": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "valueJump", 7 ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 2000
+   },
+   {
+    "at": 2000,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 2100
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2100,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "value jump while paused": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "pause" ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "valueJump", 7 ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 7,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "controls stop then a new animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "stop" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 500,
+    "ops": [
+     [
+      "animate",
+      0,
+      {
+       "duration": 1,
+       "ease": "linear"
+      }
+     ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 1600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 500,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 36,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 500,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "controls stop then value stop": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "stop" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "valueStop" ]
+    ]
+   },
+   {
+    "at": 700
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "controls cancel then value jump": {
+  "from": 10,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "valueJump", 3 ]
+    ]
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 800
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 46,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 3,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 3,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 3,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "complete then play": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 600,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 10,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 600,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 600,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of a tween read before a frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "early": {
+   "duration": 1,
+   "iterationDuration": 1
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of a delayed, repeated animation read before a frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 2,
+   "ease": "linear",
+   "delay": 0.5,
+   "repeat": 3,
+   "repeatDelay": 0.25
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 600
+   }
+  ],
+  "early": {
+   "duration": 2,
+   "iterationDuration": 2.5
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 5,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 2,
+      "iterationDuration": 2.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of keyframes with times read before a frame": {
+  "from": 5,
+  "to": [ 5, 80, 20 ],
+  "transition": {
+   "duration": 3,
+   "times": [ 0, 0.4, 1 ],
+   "ease": "easeInOut",
+   "delay": 1
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "early": {
+   "duration": 3,
+   "iterationDuration": 4
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 5,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 3,
+      "iterationDuration": 4,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 31.89134357860894,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 3,
+      "iterationDuration": 4,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of the default tween read before a frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {},
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 400
+   }
+  ],
+  "early": {
+   "duration": 0.3,
+   "iterationDuration": 0.3
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of a spring read before a frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "type": "spring",
+   "stiffness": 200,
+   "damping": 12
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   }
+  ],
+  "early": {
+   "duration": 1,
+   "iterationDuration": 1
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 59.659534176063204,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of a spring with a delay read before a frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "type": "spring",
+   "stiffness": 300,
+   "damping": 30,
+   "mass": 2,
+   "delay": 0.25
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   }
+  ],
+  "early": {
+   "duration": 0.9,
+   "iterationDuration": 1.15
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.9,
+      "iterationDuration": 1.15,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.9,
+      "iterationDuration": 1.15,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of an infinite loop read before a frame": {
+  "from": 2,
+  "to": [ 2, 210, 2 ],
+  "transition": {
+   "duration": 1.5,
+   "ease": "linear",
+   "repeat": "Infinity"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   }
+  ],
+  "early": {
+   "duration": 1.5,
+   "iterationDuration": 1.5
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 2,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1.5,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 29.733333333333334,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1.5,
+      "iterationDuration": 1.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "the duration of a mirrored repeat read before a frame": {
+  "from": 0,
+  "to": [ 0, 100 ],
+  "transition": {
+   "duration": 0.5,
+   "ease": "linear",
+   "repeat": 2,
+   "repeatType": "mirror"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   }
+  ],
+  "early": {
+   "duration": 0.5,
+   "iterationDuration": 0.5
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.5,
+      "iterationDuration": 0.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 0.5,
+      "iterationDuration": 0.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   }
+  ]
+ },
+ "a timeline scrubs a paused animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "progress", 0.5 ]
+    ]
+   },
+   {
+    "at": 1000,
+    "ops": [
+     [ "progress", 0.25 ]
+    ]
+   },
+   {
+    "at": 1100,
+    "ops": [
+     [ "progress", 1 ]
+    ]
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1300,
+    "ops": [
+     [ "progress", 0 ]
+    ]
+   },
+   {
+    "at": 1400
+   },
+   {
+    "at": 3000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 25,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1100,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1300,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1400,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 3000,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "a timeline scrubs a delayed animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "delay": 0.5
+  },
+  "steps": [
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ],
+     [ "progress", 0.2 ]
+    ]
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "progress", 0.5 ]
+    ]
+   },
+   {
+    "at": 400,
+    "ops": [
+     [ "progress", 1 ]
+    ]
+   },
+   {
+    "at": 500,
+    "ops": [
+     [ "progress", 0.75 ]
+    ]
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 25,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 62.5,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.625,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 62.5,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.625,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 62.5,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.625,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1.5,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "a timeline scrubs repeats": {
+  "from": 0,
+  "to": [ 0, 100 ],
+  "transition": {
+   "duration": 1,
+   "ease": "linear",
+   "repeat": 2,
+   "repeatType": "reverse"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.5 ]
+    ]
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "progress", 1 ]
+    ]
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "progress", 0.1 ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 2000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 2000,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "a timeline attached before the first frame": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ],
+     [ "progress", 0.3 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 1500
+   },
+   {
+    "at": 1500,
+    "ops": [
+     [ "progress", 0.8 ]
+    ]
+   },
+   {
+    "at": 1600
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1600,
+    "value": 80,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "a timeline that does not pause stops the clock": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 200,
+    "ops": [
+     [ "attach", "plain" ]
+    ]
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 900,
+    "ops": [
+     [ "progress", 0.4 ]
+    ]
+   },
+   {
+    "at": 1000
+   },
+   {
+    "at": 2500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 500,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 500,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 2500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 500,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "play after a timeline gives the clock back": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.2 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "play" ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 700
+   },
+   {
+    "at": 1200
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 30,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 100,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1200,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "stop after a timeline cleans it up": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.4 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "stop" ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
+     }
+    ]
+   }
+  ]
+ },
+ "the returned function of a timeline stops the animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.4 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "detach" ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 2
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 2
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 40,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 2
+     }
+    ]
+   }
+  ]
+ },
+ "cancel after a timeline": {
+  "from": 10,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.6 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "cancel" ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 64,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 64,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 10,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "complete after a timeline": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.6 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 300,
+    "ops": [
+     [ "complete" ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 60,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   }
+  ]
+ },
+ "a timeline on a replaced animation": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "duration": 1,
+   "ease": "linear"
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 0,
+    "ops": [
+     [ "attach", "pausing" ]
+    ]
+   },
+   {
+    "at": 100,
+    "ops": [
+     [ "progress", 0.5 ]
+    ]
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 300,
+    "ops": [
+     [
+      "animate",
+      0,
+      {
+       "duration": 1,
+       "ease": "linear"
+      }
+     ]
+    ]
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 900
+   },
+   {
+    "at": 1500
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "paused",
+      "startTime": 0,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 0
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 50,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 300,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 45,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 300,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
+     }
+    ]
+   },
+   {
+    "at": 900,
+    "value": 20,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "running",
+      "startTime": 300,
+      "finished": false
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
+     }
+    ]
+   },
+   {
+    "at": 1500,
+    "value": 0,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.5,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "idle",
+      "startTime": null,
+      "finished": false
+     },
+     {
+      "time": 1.2,
+      "speed": 1,
+      "duration": 1,
+      "iterationDuration": 1,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ],
+    "timelines": [
+     {
+      "observed": 1,
+      "cleaned": 1
      }
     ]
    }

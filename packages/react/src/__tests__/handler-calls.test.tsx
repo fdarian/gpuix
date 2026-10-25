@@ -77,6 +77,7 @@ function calls(r, ids) {
     createMotionTransform: () => r.createMotionTransform(914, 910, [0, 10], [0, 100]),
     createMotionValue: () => r.createMotionValue(915, 1),
     cycleDebugFrameOverlay: () => r.cycleDebugFrameOverlay(),
+    detachMotionValueClock: () => r.detachMotionValueClock(910),
     disposeMotionValue: () => r.disposeMotionValue(913),
     drainEvents: () => r.drainEvents(),
     drawFrame: () => r.drawFrame(),

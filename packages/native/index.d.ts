@@ -228,14 +228,17 @@ export declare class GpuixRenderer {
    */
   playMotionValue(id: number): void
   /**
-   * Moves the value's animation to `seconds` after its delay ended. A
-   * finished animation is held there; one seeked past its end finishes.
+   * Sets the time of the value's animation, Motion's `time`: it counts the
+   * delay, so a time inside the delay shows the first keyframe. A finished
+   * animation is held there; one seeked past its end finishes, and its time
+   * reads back as set.
    */
   seekMotionValue(id: number, seconds: number): void
   /**
    * Sets the pace of the value's animation: 2 is twice as fast, a negative
    * speed runs it backwards to its first keyframe, 0 holds it while it stays
-   * in effect.
+   * in effect. As in Motion, a hold lasts until `play`, whatever the speed
+   * is set to after.
    */
   setMotionValueSpeed(id: number, speed: number): void
   /**
@@ -248,6 +251,11 @@ export declare class GpuixRenderer {
    * it was never animated, or was stopped or jumped.
    */
   getMotionValuePlayback(id: number): MotionValuePlayback | null
+  /**
+   * Takes the frames away from the clock of the value's animation, as Motion's
+   * `attachTimeline` does: it holds the time it has until something sets another.
+   */
+  detachMotionValueClock(id: number): void
   /** Chooses which events the value delivers. Neither removes the listener. */
   setMotionValueListener(id: number, change: boolean, animation: boolean): void
   /**
@@ -1110,14 +1118,17 @@ export declare class TestGpuixRenderer {
    */
   playMotionValue(id: number): void
   /**
-   * Moves the value's animation to `seconds` after its delay ended. A
-   * finished animation is held there; one seeked past its end finishes.
+   * Sets the time of the value's animation, Motion's `time`: it counts the
+   * delay, so a time inside the delay shows the first keyframe. A finished
+   * animation is held there; one seeked past its end finishes, and its time
+   * reads back as set.
    */
   seekMotionValue(id: number, seconds: number): void
   /**
    * Sets the pace of the value's animation: 2 is twice as fast, a negative
    * speed runs it backwards to its first keyframe, 0 holds it while it stays
-   * in effect.
+   * in effect. As in Motion, a hold lasts until `play`, whatever the speed
+   * is set to after.
    */
   setMotionValueSpeed(id: number, speed: number): void
   /**
@@ -1130,6 +1141,11 @@ export declare class TestGpuixRenderer {
    * it was never animated, or was stopped or jumped.
    */
   getMotionValuePlayback(id: number): MotionValuePlayback | null
+  /**
+   * Takes the frames away from the clock of the value's animation. See
+   * `GpuixRenderer.detachMotionValueClock`.
+   */
+  detachMotionValueClock(id: number): void
   /** Chooses which events the value delivers. Neither removes the listener. */
   setMotionValueListener(id: number, change: boolean, animation: boolean): void
   /**
@@ -1836,6 +1852,9 @@ export interface LayoutCounters {
   unsnappedOverflowWalks: number
 }
 
+/** `animateMotionValue` of a value that holds `from`, measured. Throws what it would. */
+export declare function measureMotionAnimation(from: any, target: any, transition?: any | undefined | null): MotionAnimationLength
+
 /** The OS accessibility preferences that media queries expose. */
 export interface MediaFeatures {
   /** `prefers-reduced-motion: reduce`. */
@@ -1846,9 +1865,23 @@ export interface MediaFeatures {
   forcedColors: boolean
 }
 
+/**
+ * How long an animation of a motion value lasts, found without a renderer from the transition
+ * and keyframes the renderer would run, so the controls can say before the value is bound.
+ */
+export interface MotionAnimationLength {
+  /** One iteration, without the delay or the repeats. */
+  duration: number
+  /** `duration` plus the delay. */
+  iterationDuration: number
+}
+
 /** What the controls of a motion value's animation read, in seconds. */
 export interface MotionValuePlayback {
-  /** Since the delay ended, up to the end of the last repeat. */
+  /**
+   * Since the delay ended. Not held at the end of the last repeat: Motion's `time` goes on
+   * counting, and a seek past the end reads back as set.
+   */
   time: number
   /** The pace: 1 is real time, negative runs backwards. */
   speed: number
@@ -1861,6 +1894,11 @@ export interface MotionValuePlayback {
   iterationDuration: number
   /** `"running"`, `"paused"` or `"finished"`. */
   state: string
+  /**
+   * Motion's `startTime`: milliseconds on the renderer's clock since its origin, `null` before
+   * the animation starts and once it has finished.
+   */
+  startTime?: number
 }
 
 /**
