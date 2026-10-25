@@ -126,6 +126,7 @@ impl Parts {
         Some(ElementTransform {
             functions: values.into_iter().flatten().flat_map(|value| value.functions().iter().cloned()).collect(),
             origin: self.origin.unwrap_or(DEFAULT_ORIGIN),
+            origin_z: 0.0,
             animating: false,
         })
     }
@@ -429,6 +430,16 @@ fn format_function(function: &TransformFunction) -> String {
         TransformFunction::SkewX(x) => format!("skewX({x}rad)"),
         TransformFunction::SkewY(y) => format!("skewY({y}rad)"),
         TransformFunction::Matrix([a, b, c, d, e, f]) => format!("matrix({a}, {b}, {c}, {d}, {e}, {f})"),
+        TransformFunction::Translate3d(x, y, z) => {
+            format!("translate3d({}, {}, {z}px)", format_length(x), format_length(y))
+        }
+        TransformFunction::Scale3d(x, y, z) => format!("scale3d({x}, {y}, {z})"),
+        TransformFunction::Rotate3d(x, y, z, angle) => format!("rotate3d({x}, {y}, {z}, {angle}rad)"),
+        TransformFunction::Perspective(Some(distance)) => format!("perspective({distance}px)"),
+        TransformFunction::Perspective(None) => "perspective(none)".to_string(),
+        TransformFunction::Matrix3d(values) => {
+            format!("matrix3d({})", values.iter().map(f32::to_string).collect::<Vec<_>>().join(", "))
+        }
         TransformFunction::Interpolated { from, to, progress } => {
             format!("{INTERPOLATED}({progress}, {}, {})", format_list(from), format_list(to))
         }

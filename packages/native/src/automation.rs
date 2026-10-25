@@ -635,10 +635,7 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
         };
         // Prepaint runs outside the element's own transform, which layout holds: the listener
         // sees the ambient one of its parent.
-        let to_window = match window.layout_own_transform(layout_id, border_box) {
-            Some(own) => window.transform().compose(own),
-            None => window.transform(),
-        };
+        let to_window = window.layout_to_window(layout_id, border_box);
         let laid_out = LaidOut {
             border_box,
             content,

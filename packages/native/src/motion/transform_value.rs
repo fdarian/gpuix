@@ -65,6 +65,11 @@ fn identity(function: &TransformFunction) -> TransformFunction {
         Skew(..) => Skew(0.0, 0.0),
         SkewX(_) => SkewX(0.0),
         SkewY(_) => SkewY(0.0),
+        Translate3d(..) => Translate3d(TransformLength::default(), TransformLength::default(), 0.0),
+        Scale3d(..) => Scale3d(1.0, 1.0, 1.0),
+        Rotate3d(x, y, z, _) => Rotate3d(*x, *y, *z, 0.0),
+        Perspective(_) => Perspective(None),
+        Matrix3d(_) => Matrix([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]),
         Matrix(_) | Interpolated { .. } => Matrix([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]),
     }
 }
