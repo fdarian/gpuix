@@ -604,6 +604,14 @@ fn integer_write(slot: &mut Option<f64>, value: AnimValue) {
     }
 }
 
+/// A key of Motion that turns, in degrees: a motion value may hold it as an angle.
+fn angle_write(slot: &mut Option<f64>, value: AnimValue) {
+    match value.as_degrees() {
+        Some(degrees) => *slot = Some(degrees),
+        None => unreachable!("an angle field was given {value:?}"),
+    }
+}
+
 macro_rules! read_field {
     (Keyword, $slot:expr, $cx:expr) => {
         keyword_read(&$slot)
@@ -643,6 +651,9 @@ macro_rules! write_field {
     };
     (Integer, $slot:expr, $value:expr) => {
         integer_write(&mut $slot, $value)
+    };
+    (Angle, $slot:expr, $value:expr) => {
+        angle_write(&mut $slot, $value)
     };
     (Thickness, $slot:expr, $value:expr) => {
         thickness_write(&mut $slot, $value)
@@ -752,6 +763,13 @@ macro_rules! properties {
             /// shorthand the renderer would apply beneath it. A longhand that is
             /// set but has no number (a percentage radius) does not fall through.
             pub(super) fn read(self, style: &StyleDesc, colors: &Colors) -> Option<AnimValue> {
+                // Motion reads a `transform` it has not animated from the element's, which is what its keys
+                // or the style's `transform` made.
+                if self == Self::MotionTransform && style.motion_transform.is_none() {
+                    return crate::css::transform::list_of(style, &colors.lengths).map(|list| {
+                        AnimValue::Transform(list.functions().to_vec())
+                    });
+                }
                 let cx = &Reading { colors: self.colors(colors), lengths: &colors.lengths };
                 let value = match self {
                     $(Self::$variant => {
@@ -893,6 +911,10 @@ properties! {
     OriginX "originX" Origin None Center, origin_x;
     OriginY "originY" Origin None Center, origin_y;
 
+    // Motion's `transform`, which is the animated value of its own and replaces the keys above
+    // (`motionTransform` on the wire, like `motionScale`; `AnimProp::from_name` maps `transform`).
+    MotionTransform "motionTransform" Transform None NoTransform, motion_transform;
+
     Transform "transform" Transform None NoTransform, transform;
     Translate "translate" Translate None NoTransform, translate;
     Rotate "rotate" Rotate None NoTransform, rotate;
@@ -945,6 +967,7 @@ impl AnimProp {
                 | Self::SkewY
                 | Self::OriginX
                 | Self::OriginY
+                | Self::MotionTransform
         )
     }
 
@@ -1204,14 +1227,15 @@ pub(crate) enum Axis {
 
 impl AnimProp {
     /// The property a motion description (`animate`, a transition, a motion value) names: not a
-    /// discrete one. `scale` and `rotate` are Motion's, which turn about the element, and not the
-    /// CSS properties of those names.
+    /// discrete one. `scale`, `rotate` and `transform` are Motion's, and not the CSS properties of
+    /// those names: Motion's `transform` is a list that replaces its other transform keys.
     pub(super) fn from_name(name: &str) -> Option<Self> {
         match name {
             "scale" => Some(Self::MotionScale),
             "rotate" => Some(Self::MotionRotate),
-            "motionScale" | "motionRotate" => None,
-            // Motion turns and scales with its own keys, and a spring does not blend a list.
+            "transform" => Some(Self::MotionTransform),
+            "motionScale" | "motionRotate" | "motionTransform" => None,
+            // The other CSS transform properties are not keys of Motion.
             _ => Self::lookup(name).filter(|prop| !prop.is_discrete() && !prop.is_css_transform()),
         }
     }
@@ -1238,6 +1262,7 @@ impl AnimProp {
         match self {
             Self::MotionScale => "scale",
             Self::MotionRotate => "rotate",
+            Self::MotionTransform => "transform",
             prop => prop.wire_name(),
         }
     }
@@ -1637,6 +1662,7 @@ impl AnimProp {
             || matches!(
                 (self.kind(), value),
                 (Kind::Number | Kind::Integer | Kind::FontWeight | Kind::FontSize | Kind::Angle, AnimValue::Number(_))
+                    | (Kind::Angle, AnimValue::Angle(_))
                     | (
                         Kind::Dimension
                             | Kind::Offset
@@ -1835,8 +1861,54 @@ mod tests {
         // Motion's `animate` has its own keys for these, and a spring does not blend a list.
         assert_eq!(AnimProp::from_name("rotate"), Some(AnimProp::MotionRotate));
         assert_eq!(AnimProp::from_name("scale"), Some(AnimProp::MotionScale));
-        for name in ["transform", "translate", "transformOrigin"] {
+        for name in ["translate", "transformOrigin"] {
             assert_eq!(AnimProp::from_name(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn motions_transform_is_a_key_of_its_own_beside_the_css_property() {
+        let colors = Colors::root();
+        assert_eq!(AnimProp::from_name("transform"), Some(AnimProp::MotionTransform));
+        assert_eq!(AnimProp::MotionTransform.name(), "transform");
+        assert!(AnimProp::from_name("motionTransform").is_none());
+        assert_eq!(AnimProp::from_css_name("transform"), Some(AnimProp::Transform));
+        assert!(AnimProp::from_css_name("motionTransform").is_none());
+        let prop = AnimProp::MotionTransform;
+        assert!(prop.paints_only() && prop.is_motion_only() && prop.is_transform() && !prop.is_css_transform());
+
+        let parsed = prop.parse(&serde_json::json!("translateX(100px) rotate(45deg)"), &colors).unwrap();
+        assert!(prop.accepts(&parsed) && !AnimProp::X.accepts(&parsed));
+        let mut style = StyleDesc::default();
+        prop.write(&mut style, parsed.clone());
+        assert!(style.transform.is_none(), "the CSS property is not written");
+        assert_eq!(prop.read(&style, &colors), Some(parsed));
+        assert_eq!(prop.initial(None, &colors), Some(AnimValue::Transform(Vec::new())));
+    }
+
+    #[test]
+    fn an_unanimated_motion_transform_starts_from_what_the_style_builds() {
+        let colors = Colors::root();
+        let read = |json: &str| AnimProp::MotionTransform.read(&serde_json::from_str(json).unwrap(), &colors);
+        assert_eq!(read("{}"), None);
+        let transform = |text: &str| AnimProp::Transform.parse(&serde_json::json!(text), &colors).ok();
+        assert_eq!(read(r#"{"transform":"scale(2)"}"#), transform("scale(2)"));
+        // Motion's keys replace the `transform` of the style.
+        assert_eq!(read(r#"{"transform":"scale(2)","x":10}"#), transform("translate(10px)"));
+        assert_eq!(read(r#"{"x":10,"motionTransform":"rotate(1deg)"}"#), transform("rotate(1deg)"));
+    }
+
+    #[test]
+    fn an_angle_key_takes_an_angle_and_no_other_key_does() {
+        let colors = Colors::root();
+        for prop in [AnimProp::MotionRotate, AnimProp::RotateZ, AnimProp::Skew, AnimProp::SkewX, AnimProp::SkewY] {
+            assert!(prop.accepts(&AnimValue::Angle(90.0)) && prop.accepts(&AnimValue::Number(90.0)), "{}", prop.name());
+            let mut style = StyleDesc::default();
+            prop.write(&mut style, AnimValue::Angle(90.0));
+            assert_eq!(prop.read(&style, &colors), Some(AnimValue::Number(90.0)), "{}", prop.name());
+        }
+        for prop in [AnimProp::X, AnimProp::MotionScale, AnimProp::Opacity, AnimProp::Rotate, AnimProp::MotionTransform] {
+            assert!(!prop.accepts(&AnimValue::Angle(90.0)), "{}", prop.name());
         }
     }
 

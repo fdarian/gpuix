@@ -421,9 +421,20 @@ pub(super) enum AnimValue {
     List(ListValue),
     /// A `transform` list, or the one function of `translate`, `rotate` or `scale`. Empty is `none`.
     Transform(Vec<TransformFunction>),
+    /// An angle in degrees that a motion value was given as a CSS angle (`"0.25turn"`). It mixes with a
+    /// number, which is degrees too, and only an angle key of Motion takes it.
+    Angle(f64),
 }
 
 impl AnimValue {
+    /// The degrees of a number or an angle, the two things an angle key of Motion is driven by.
+    pub(super) fn as_degrees(&self) -> Option<f64> {
+        match self {
+            Self::Number(degrees) | Self::Angle(degrees) => Some(*degrees),
+            _ => None,
+        }
+    }
+
     /// `auto` for a margin, an inset or `flex-basis`: a keyword that is no length, so it
     /// blends with none and a pair of it with a length flips at the halfway point.
     pub(super) fn auto_keyword() -> Self {
@@ -530,6 +541,7 @@ impl AnimValue {
             Self::Keyword(_) => "a keyword",
             Self::List(_) => "a list of values",
             Self::Transform(_) => "a transform",
+            Self::Angle(_) => "an angle",
         }
     }
 }
@@ -591,6 +603,8 @@ pub(super) enum Layout {
     /// (`transform_value::blend`): the keyframes' lists without repeats, and a keyframe is the
     /// channel `[index]`. A position between two is `[from index, to index, progress]`.
     Transform(Vec<Vec<TransformFunction>>),
+    /// `[degrees]`: a number and an angle, or angles, which mix in degrees.
+    Angle,
 }
 
 /// How a keyword property interpolates between its two values, CSS Transitions
@@ -692,6 +706,7 @@ impl Layout {
                 [from, to, progress] => super::transform_value::blend(&lists[from as usize], &lists[to as usize], progress),
                 _ => unreachable!("a transform position has one or three channels"),
             }),
+            Self::Angle => AnimValue::Angle(channels[0]),
         }
     }
 
@@ -739,6 +754,9 @@ impl Layout {
             | (Self::Relative, Self::Relative)
             | (Self::Ellipse, Self::Ellipse)
             | (Self::Color(_), Self::Color(_))
+            | (Self::Angle, Self::Angle)
+            | (Self::Number, Self::Angle)
+            | (Self::Angle, Self::Number)
             | (Self::Numbers, Self::Numbers) => true,
             (Self::Shadows { insets: a, .. }, Self::Shadows { insets: b, .. }) => a.len() == b.len(),
             (Self::Variations(a), Self::Variations(b)) => a == b,
@@ -921,6 +939,13 @@ pub(super) fn align_in(
             });
         }
     }
+    // Motion itself has no number against an angle string (it mixes `0` and `"1turn"` to NaN); here
+    // a number is degrees, so they mix in degrees.
+    if values.iter().any(|value| matches!(value, AnimValue::Angle(_)))
+        && values.iter().all(|value| value.as_degrees().is_some())
+    {
+        return Ok(simple(Layout::Angle, values, |value| vec![value.as_degrees().expect("kinds were checked")]));
+    }
     if values.iter().any(|value| matches!(value, AnimValue::Relative { .. }))
         && values.iter().all(|value| value.as_terms().is_some())
     {
@@ -952,6 +977,7 @@ pub(super) fn align_in(
         AnimValue::Ellipse { .. } => unreachable!("an ellipse was aligned above"),
         AnimValue::List(_) => unreachable!("a list was aligned above"),
         AnimValue::Transform(_) => unreachable!("transforms were aligned above"),
+        AnimValue::Angle(_) => unreachable!("an angle was aligned above"),
         AnimValue::Color(_) => {
             let colors = unwrap_each(values, |value| match value {
                 AnimValue::Color(color) => color,

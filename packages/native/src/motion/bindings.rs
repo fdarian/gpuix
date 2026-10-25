@@ -22,6 +22,7 @@ use super::value::{AnimValue, Color, ParentFont};
 use super::values::{MotionValues, PlaybackInfo, TransformOptions, ValueId};
 use crate::color::{ColorContext, Scheme};
 use crate::css::dimension::parse_linear_length;
+use crate::css::transform::{format_list, parse_degrees, parse_transform, Value as TransformValue};
 use crate::css::length::{LengthContext, LinearLength};
 use crate::css::font_variations::VariationSettings;
 use crate::css::syntax::split_slash_tokens;
@@ -839,7 +840,8 @@ struct ValueContext {
     lengths: LengthContext,
 }
 
-/// A number, a CSS length, colour or `fontVariationSettings` string, a
+/// A number, a CSS length, colour, angle (`"0.25turn"`, kept in degrees), CSS transform list
+/// or `fontVariationSettings` string, a
 /// multi-value string of those (`0.5em 0.75em`, `10px / 20px`, `red blue`), a list
 /// of numbers, or a `boxShadow` layer or list. A length string (`20px`, `50%`, `2em`,
 /// `calc(100% - 20px)`) is its px and its share of the percentage basis, as in a
@@ -857,11 +859,22 @@ fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, Strin
             if let Some(value) = parse_component(text, context)? {
                 return Ok(value);
             }
+            if let Some(degrees) = parse_degrees(text) {
+                return Ok(AnimValue::Angle(check_finite(NAME, degrees)?));
+            }
             if let Ok(settings) = VariationSettings::try_from(text.clone()) {
                 return Ok(AnimValue::Variations(settings.axes()));
             }
+            // Last, so that a colour or a length that looks like a function is not read as one.
+            match parse_transform(text, &context.lengths) {
+                Some(TransformValue::None) => return Ok(AnimValue::Transform(Vec::new())),
+                Some(TransformValue::List(functions)) => return Ok(AnimValue::Transform(functions)),
+                None => {}
+            }
             if split_slash_tokens(text).len() < 2 {
-                return Err(format!("a {NAME} string must be a colour or a CSS length: {text}"));
+                return Err(format!(
+                    "a {NAME} string must be a colour, a CSS length, a CSS angle or a CSS transform: {text}"
+                ));
             }
             ListValue::parse(text, |token| parse_component(token, context))
                 .map(AnimValue::List)
@@ -968,7 +981,9 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
         AnimValue::Variations(axes) => {
             Ok(Value::String(VariationSettings::from_axes(axes).into()))
         }
-        AnimValue::Ellipse { .. } | AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) | AnimValue::Transform(_) => {
+        AnimValue::Angle(degrees) => Ok(Value::String(format!("{degrees}deg"))),
+        AnimValue::Transform(functions) => Ok(Value::String(format_list(functions))),
+        AnimValue::Ellipse { .. } | AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) => {
             Err(format!("a {NAME} cannot hold {value:?}"))
         }
     }
@@ -1644,6 +1659,86 @@ mod tests {
         let mut style = StyleDesc::default();
         store.apply(&mismatch, &mut style, &ParentFont::initial());
         assert_eq!(style.opacity, None);
+    }
+
+    #[test]
+    fn an_angle_string_is_degrees_for_the_angle_keys_and_no_value_of_another_key() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        for (id, text) in [(1.0, "45deg"), (2.0, "0.5turn"), (3.0, "10grad"), (4.0, "-0.25turn")] {
+            store.create_source(id, &json!(text)).unwrap();
+        }
+        store.create_source(5.0, &json!(1)).unwrap();
+        store.create_source(6.0, &json!("1rad")).unwrap();
+        assert_eq!(store.get(1.0, clock.at(0)).unwrap(), json!("45deg"));
+        assert_eq!(store.get(2.0, clock.at(0)).unwrap(), json!("180deg"));
+        assert_eq!(store.get(3.0, clock.at(0)).unwrap(), json!("9deg"));
+        assert!(store.create_source(7.0, &json!("45 deg")).is_err());
+        assert!(store.create_source(7.0, &json!("45px")).is_ok(), "a length is still a length");
+
+        let binding = json!({ "rotate": 1, "skewX": 2, "rotateZ": 3, "skewY": 4, "x": 6, "opacity": 6 });
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &ParentFont::initial());
+        assert_eq!((style.motion_rotate, style.skew_x, style.rotate_z, style.skew_y), (Some(45.0), Some(180.0), Some(9.0), Some(-90.0)));
+        assert!(style.x.is_none() && style.opacity.is_none(), "an angle is no length and no opacity");
+
+        let number = json!({ "rotate": 5 });
+        store.frame([&number], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&number, &mut style, &ParentFont::initial());
+        assert_eq!(style.motion_rotate, Some(1.0));
+    }
+
+    #[test]
+    fn a_number_and_an_angle_mix_in_degrees() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!(0)).unwrap();
+        store.animate(1.0, &json!("1turn"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        let binding = json!({ "rotate": 1 });
+        store.frame([&binding], &[], clock.at(500));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &ParentFont::initial());
+        assert_eq!(style.motion_rotate, Some(180.0));
+        assert_eq!(store.get(1.0, clock.at(500)).unwrap(), json!("180deg"));
+
+        store.create_source(2.0, &json!("90deg")).unwrap();
+        store.animate(2.0, &json!(270), Some(&linear(1.0)), clock.at(0)).unwrap();
+        assert_eq!(store.get(2.0, clock.at(500)).unwrap(), json!("180deg"));
+        store.create_source(3.0, &json!("1turn")).unwrap();
+        assert!(store.animate(3.0, &json!("red"), Some(&linear(1.0)), clock.at(0)).is_err());
+    }
+
+    #[test]
+    fn a_transform_string_is_a_value_that_drives_motions_transform() {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(1.0, &json!("translateX(10px) rotate(45deg)")).unwrap();
+        store.create_source(2.0, &json!("none")).unwrap();
+        assert_eq!(store.get(2.0, clock.at(0)).unwrap(), json!("none"));
+        assert!(store.create_source(3.0, &json!("translateX(10px")).is_err());
+
+        let binding = json!({ "transform": 1, "opacity": 2 });
+        store.frame([&binding], &[], clock.at(0));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &ParentFont::initial());
+        let text = style.motion_transform.as_deref().expect("the transform is written");
+        assert_eq!(crate::css::transform::parse_transform(text, &LengthContext::initial(0.0, 0.0)), crate::css::transform::parse_transform("translateX(10px) rotate(45deg)", &LengthContext::initial(0.0, 0.0)));
+        assert!(style.transform.is_none() && style.opacity.is_none());
+
+        store.animate(1.0, &json!("translateX(110px) rotate(135deg)"), Some(&linear(1.0)), clock.at(0)).unwrap();
+        store.frame([&binding], &[], clock.at(500));
+        let mut style = StyleDesc::default();
+        store.apply(&binding, &mut style, &ParentFont::initial());
+        let lengths = LengthContext::initial(0.0, 0.0);
+        let at = crate::css::transform::parse_transform(style.motion_transform.as_deref().unwrap(), &lengths).unwrap();
+        match at.functions() {
+            [gpui::TransformFunction::Translate(x, _), gpui::TransformFunction::Rotate(angle)] => {
+                assert!((x.px - 60.0).abs() < 1e-3 && (angle - std::f32::consts::FRAC_PI_2).abs() < 1e-3, "{at:?}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

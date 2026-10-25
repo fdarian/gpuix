@@ -931,6 +931,10 @@ pub struct StyleDesc {
     pub origin_x: Option<LinearLength>,
     #[serde(default, deserialize_with = "deserialize_origin")]
     pub origin_y: Option<LinearLength>,
+    /// Motion's `transform`, a CSS transform list that an `animate`, `initial`, variant or motion value
+    /// sets. Set, it is the list and Motion's keys above are ignored, as Motion builds no transform from
+    /// them when `transform` is set. `none` is set.
+    pub motion_transform: Option<String>,
     /// CSS `border-style`: one to four of `none`, `hidden`, `dotted`, `dashed`, `solid`,
     /// `double`, `groove`, `ridge`, `inset` and `outset`, for the sides like `border-color`.
     /// `none` and `hidden` leave the side without a width. An invalid string is ignored.
@@ -1305,6 +1309,7 @@ impl StyleDesc {
             painted.skew_y = other.skew_y;
             painted.origin_x = other.origin_x;
             painted.origin_y = other.origin_y;
+            painted.motion_transform = other.motion_transform.clone();
         }
         painted == *other
     }

@@ -59,6 +59,7 @@ export type MotionSpanKey = (typeof MOTION_SPAN_KEYS)[number]
  * they are accepted, as Framer accepts them on any element, and have no effect.
  */
 const IGNORED_STYLE_KEYS = [
+  "transform",
   "x",
   "y",
   "z",

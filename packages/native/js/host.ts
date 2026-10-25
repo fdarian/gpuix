@@ -227,6 +227,10 @@ export type MotionLength = DimensionValue
  * absolute and fixed descendants whenever one is set. On a `motion.*` component `scale` and `rotate`
  * are these and not the CSS properties of the same names. They animate with tweens, springs and
  * keyframes, and a motion value can drive each. Layout is not affected.
+ *
+ * `transform` is not one of the keys: as a target (`animate`, `initial`, variants, keyframes, `exit`,
+ * the gestures) it is the list the element is drawn with, and the keys beside it are ignored, as in
+ * Motion. A static `style.transform` is replaced by the keys instead.
  */
 export interface MotionTransformKeys {
   /** A number is px; a string is a CSS length, and `%` is of the element's own border box. */
@@ -252,6 +256,12 @@ export interface MotionTransformKeys {
   rotateX?: number | string
   rotateY?: number | string
   transformPerspective?: number
+  /**
+   * A CSS transform list or `none`. Animating it blends the two lists as a CSS transition does
+   * (function by function while they pair up, as matrices from the first that does not), and a
+   * list that is not `none` is a stacking context and a containing block even if it moves nothing.
+   */
+  transform?: string
 }
 
 /**

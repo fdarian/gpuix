@@ -27,7 +27,7 @@ pub(crate) enum Value {
 }
 
 impl Value {
-    fn functions(&self) -> &[TransformFunction] {
+    pub(crate) fn functions(&self) -> &[TransformFunction] {
         match self {
             Self::None => &[],
             Self::List(functions) => functions,
@@ -95,9 +95,7 @@ impl Parts {
             translate: style.translate.as_deref().and_then(|value| parse_translate(value, lengths)),
             rotate: style.rotate.as_deref().and_then(parse_rotate),
             scale: style.scale.as_deref().and_then(parse_scale),
-            // Motion writes its keys into `transform`, so they replace it.
-            list: motion_list(style, lengths)
-                .or_else(|| style.transform.as_deref().and_then(|value| parse_transform(value, lengths))),
+            list: list_of(style, lengths),
             origin: motion_origin(style, lengths, style.transform_origin.as_deref().and_then(|value| parse_origin(value, lengths))),
         }
     }
@@ -134,6 +132,17 @@ impl Parts {
 fn transform_length(length: &LinearLength, lengths: &LengthContext) -> TransformLength {
     let (px, fraction) = lengths.split(length);
     TransformLength { px: px as f32, fraction: fraction as f32 }
+}
+
+/// The `transform` list of a style. Motion's `transform`, when set, is the list and its keys are
+/// ignored, as `buildHTMLStyles` builds no transform from them then (`none` is set: the string is
+/// truthy). Otherwise Motion writes its keys into `transform`, so they replace it.
+pub(crate) fn list_of(style: &StyleDesc, lengths: &LengthContext) -> Option<Value> {
+    if let Some(text) = &style.motion_transform {
+        return parse_transform(text, lengths);
+    }
+    motion_list(style, lengths)
+        .or_else(|| style.transform.as_deref().and_then(|value| parse_transform(value, lengths)))
 }
 
 /// What Motion's `buildTransform` writes for the keys of the style, in its order; `None` when the
@@ -224,6 +233,7 @@ pub(crate) fn is_active(style: &StyleDesc, lengths: &LengthContext) -> bool {
 
 fn declares(style: &StyleDesc) -> bool {
     style.transform.is_some()
+        || style.motion_transform.is_some()
         || style.translate.is_some()
         || style.rotate.is_some()
         || style.scale.is_some()
@@ -882,6 +892,52 @@ mod tests {
         assert!(!is_active(&replaced, &lengths()));
         assert_eq!(of(&replaced, &lengths()).unwrap().functions, []);
         assert_eq!(is_active_if_declared(&replaced, &lengths()), Some(false));
+    }
+
+    #[test]
+    fn motions_transform_is_the_list_and_its_keys_are_ignored() {
+        let transform = of(&style(r#"{"motionTransform":"translateX(7px)","x":5,"motionScale":2,"transform":"scale(9)","translate":"1px"}"#), &lengths()).unwrap();
+        assert_eq!(
+            transform.functions,
+            [
+                TransformFunction::Translate(px(1.0), TransformLength::default()),
+                TransformFunction::Translate(px(7.0), TransformLength::default()),
+            ]
+        );
+        // Without it the keys, then the style's `transform`, as before.
+        assert_eq!(
+            of(&style(r#"{"x":5,"transform":"scale(9)"}"#), &lengths()).unwrap().functions,
+            [TransformFunction::Translate(px(5.0), TransformLength::default())]
+        );
+        assert_eq!(
+            of(&style(r#"{"transform":"scale(9)"}"#), &lengths()).unwrap().functions,
+            [TransformFunction::Scale(9.0, 9.0)]
+        );
+    }
+
+    #[test]
+    fn motions_transform_none_is_set_and_an_identity_list_is_a_transform() {
+        // Motion's `latestValues.transform = "none"` is truthy: it stands in for the keys and the style.
+        let none = style(r#"{"motionTransform":"none","x":5,"transform":"scale(9)"}"#);
+        assert_eq!(of(&none, &lengths()).unwrap().functions, []);
+        assert!(!is_active(&none, &lengths()));
+        assert_eq!(is_active_if_declared(&none, &lengths()), Some(false));
+        // A list is a stacking context and a containing block even when it moves nothing.
+        for json in [r#"{"motionTransform":"translateX(0)"}"#, r#"{"motionTransform":"rotate(0deg)","transform":"none"}"#] {
+            assert!(is_active(&style(json), &lengths()), "{json}");
+            assert_eq!(is_active_if_declared(&style(json), &lengths()), Some(true), "{json}");
+        }
+        // One that does not parse is set and draws nothing: Motion's keys do not stand in for it.
+        let invalid = style(r#"{"motionTransform":"bogus(1)","x":5}"#);
+        assert!(!is_active(&invalid, &lengths()));
+        assert!(of(&invalid, &lengths()).is_none());
+    }
+
+    #[test]
+    fn motions_transform_keeps_its_origin_and_the_individual_properties() {
+        let transform = of(&style(r#"{"motionTransform":"scale(2)","originX":0,"rotate":"10deg"}"#), &lengths()).unwrap();
+        assert_eq!(transform.functions, [TransformFunction::Rotate(10f32.to_radians()), TransformFunction::Scale(2.0, 2.0)]);
+        assert_eq!(transform.origin, (fraction(0.0), fraction(0.5)));
     }
 
     #[test]

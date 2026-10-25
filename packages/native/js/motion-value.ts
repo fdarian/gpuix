@@ -31,11 +31,18 @@ export type MotionValueRenderer = NativeRenderer & MotionValueHost
  * What a motion value can hold: a number, a colour string, a CSS length string
  * (`"50%"`, `"2em"`, `"calc(100% - 20px)"`), a multi-value string of those
  * (`"0.5em 0.75em"`, `"10px / 20px"`, `"red blue"`), a list of numbers, a
- * `fontVariationSettings` string, or box shadows. Lengths of different units animate as the two parts of a `calc()`, and
- * a multi-value string animates component by component. Bound to a shorthand
+ * `fontVariationSettings` string, a CSS angle (`"45deg"`, `"0.25turn"`, `"1rad"`, `"100grad"`), a CSS transform list
+ * (`"translateX(10px) rotate(45deg)"`, `"none"`), or box shadows. Lengths of different units animate as the two parts of
+ * a `calc()`, and a multi-value string animates component by component. Bound to a shorthand
  * (`padding`, `margin`, `inset`, `gap`, `borderWidth`, `borderColor`,
  * `borderRadius`) it gives each side, axis or corner its own component, and
  * `get()` reads it back as px, percentages and `calc()`s, colours as `rgba()`.
+ *
+ * An angle drives the angle keys (`rotate`, `rotateZ`, `skew`, `skewX`, `skewY`) like a number of degrees and is held in
+ * degrees: `"0.5turn"` reads back as `"180deg"`. A number and an angle mix in degrees, so `0` animated to `"1turn"`
+ * passes `"180deg"` halfway (Motion mixes them to `NaN`). Bound to another key, an angle is skipped. A transform list
+ * bound to `transform` is the list of a motion component, and Motion's other transform keys beside it are ignored; two
+ * lists blend as a CSS transition does.
  */
 export type MotionData = number | string | number[] | BoxShadow | BoxShadow[]
 
