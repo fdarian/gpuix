@@ -270,7 +270,7 @@ export declare class GpuixRenderer {
   /**
    * The CSS transitions, then the CSS animations, of an element that are
    * running, paused or in effect through a fill, in the order of the DOM's
-   * `getAnimations()`. Animations of the motion engine are not listed.
+   * `getAnimations()`, then the animations of a `motion` element that Motion hands to the browser.
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
   /**

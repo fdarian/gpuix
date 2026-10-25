@@ -574,7 +574,9 @@ export class KeyframeEffect {
  * events follow Chrome's order.
  *
  * Not built: `replaceState`, `persist()`, `commitStyles()`,
- * `onremove`, and setting `effect`. An animation of the motion engine can be read and not controlled yet.
+ * `onremove`, and setting `effect`. Every command works on an animation of the motion engine as it does on the one Motion
+ * makes with the browser: the motion shows what the animation does, `finish()` completes it, `cancel()` takes it back to
+ * where it started without a completion (Motion never hears of a cancel), and a cancelled one cannot be played again.
  */
 export class Animation extends GpuixEventTarget {
   /** Empty for what `getAnimations()` lists: the animations of CSS and of Motion have no id. */

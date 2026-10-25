@@ -9,9 +9,9 @@ use web_time::Instant;
 use crate::dormant_wake::Wake;
 
 use super::curve::{
-    ease, ease_slope, seconds, Curve, RepeatCount, RepeatType, Spring, Transition,
+    ease, ease_slope, seconds, Curve, Ease, RepeatCount, RepeatType, Spring, Transition,
 };
-use super::script::Script;
+use super::script::{Pose, Script};
 use super::value::{align, align_in, pair, AnimValue, Interpolation, Layout};
 use super::PropKey;
 
@@ -93,6 +93,9 @@ pub(super) struct Track {
     script: Option<Script>,
     /// Nobody has asked yet whether Motion would make an animation of the track.
     unscreened: bool,
+    /// Where the track stands for good once its animation is over: what Motion committed when the animation
+    /// finished, or the value it never left when the animation was cancelled.
+    held: Option<Vec<f64>>,
     /// Seconds a repeating spring takes to settle, which is the length of one
     /// of its iterations. Zero for everything else.
     pub(super) settle: f64,
@@ -236,6 +239,7 @@ impl Track {
             started: now,
             script: None,
             unscreened: true,
+            held: None,
             settle: 0.0,
             rest: OnceLock::new(),
         };
@@ -262,12 +266,21 @@ impl Track {
         self.script.as_mut()
     }
 
-    /// Takes the animation off the track, which goes on by the clock of its own from where the
-    /// animation had it.
-    pub(super) fn release_animation(&mut self, now: Instant) -> Option<Script> {
-        let script = self.script.take()?;
-        self.started = script.started_at(now);
-        Some(script)
+    /// Takes the animation off the track, which stays where it is.
+    pub(super) fn take_animation(&mut self) -> Option<Script> {
+        self.script.take()
+    }
+
+    /// The animation finished and Motion committed the final keyframe, or the first when it ran backwards.
+    pub(super) fn finish_animation(&mut self, backwards: bool) -> Option<Script> {
+        self.held = Some(self.final_position(backwards));
+        self.script.take()
+    }
+
+    /// The animation was cancelled: Motion never hears of that, so the value it had is the one the track started from.
+    pub(super) fn cancel_animation(&mut self) {
+        self.held = Some(self.frames[0].clone());
+        self.script = None;
     }
 
     /// The rate of change of the first channel per second at the start, which a spring takes from the motion it interrupted.
@@ -460,13 +473,28 @@ impl Track {
     }
 
     pub(super) fn sample(&self, now: Instant) -> Sample {
+        if let Some(position) = &self.held {
+            return Sample { position: position.clone(), velocity: vec![0.0; position.len()], active: false };
+        }
         let Some(script) = &self.script else {
             return self.sample_at(now.saturating_duration_since(self.started));
         };
-        let mut sample = self.sample_at(script.elapsed(now));
+        let mut sample = match script.pose(now) {
+            Pose::At(elapsed) => self.sample_at(elapsed),
+            Pose::Eased(progress) => Sample {
+                position: self.keyframes_at(progress.unwrap_or(0.0), false, true).0,
+                velocity: vec![0.0; self.frames[0].len()],
+                active: false,
+            },
+        };
         // The animation outlives the value when Motion's length of a spring is the longer.
         sample.active |= script.running(now);
         sample
+    }
+
+    /// Whether the track needs a frame to move on: its value is changing, not just waiting for a command.
+    pub(super) fn moves_at(&self, now: Instant) -> bool {
+        self.sample(now).active && self.script.as_ref().is_none_or(|script| script.wants_frame(now))
     }
 
     /// [`Self::sample`] at `elapsed` since the track started, for a clock that
@@ -540,7 +568,7 @@ impl Track {
     /// independent of the track's own clock. CSS animations own their timeline
     /// and ask the track only how its keyframes interpolate.
     pub(super) fn value_at(&self, fraction: f64) -> AnimValue {
-        self.layout.decode(&self.keyframes_at(fraction, false).0)
+        self.layout.decode(&self.keyframes_at(fraction, false, false).0)
     }
 
     fn sample_tween(&self, elapsed: Duration, delay: Duration, duration: f64) -> Sample {
@@ -552,7 +580,7 @@ impl Track {
         } else {
             progress.fraction
         };
-        let (position, rate) = self.keyframes_at(along, direction == Direction::Mirrored);
+        let (position, rate) = self.keyframes_at(along, direction == Direction::Mirrored, false);
         if progress.done {
             return Sample {
                 position,
@@ -575,22 +603,35 @@ impl Track {
 
     /// The channels `along` of the way through one iteration, and how fast
     /// they change per unit of `along`.
-    fn keyframes_at(&self, along: f64, mirrored: bool) -> (Vec<f64>, Vec<f64>) {
+    ///
+    /// `through_effect` leaves out the easing of the transition when it is one for the whole iteration: an
+    /// effect that eases the progress itself has applied it.
+    fn keyframes_at(&self, along: f64, mirrored: bool, through_effect: bool) -> (Vec<f64>, Vec<f64>) {
         let count = self.frames.len();
         let frame = |index: usize| &self.frames[if mirrored { count - 1 - index } else { index }];
         let zeros = || vec![0.0; frame(0).len()];
         let times = self.transition.keyframe_times(count);
-        if along <= times[0] {
+        // An effect's easing can take the progress past either end, which runs on along the first or last segment.
+        let overshoots = through_effect
+            && self.transition.segment_eases.is_none()
+            && ((along < 0.0 && times[0] == 0.0) || (along > 1.0 && times[count - 1] == 1.0));
+        if !overshoots && along <= times[0] {
             return (frame(0).clone(), zeros());
         }
-        if along >= times[count - 1] {
+        if !overshoots && along >= times[count - 1] {
             return (frame(count - 1).clone(), zeros());
         }
-        let segment = times.partition_point(|time| *time <= along) - 1;
+        let segment = if overshoots && along > 1.0 { count - 2 } else { times.partition_point(|time| *time <= along).saturating_sub(1) };
         let span = times[segment + 1] - times[segment];
         let local = (along - times[segment]) / span;
-        let easing = self.transition.segment_ease(segment);
-        let progress = ease(local.clamp(0.0, 1.0), easing);
+        let linear;
+        let easing = if through_effect && self.transition.segment_eases.is_none() {
+            linear = Ease::Name("linear".to_string());
+            &linear
+        } else {
+            self.transition.segment_ease(segment)
+        };
+        let progress = if overshoots { local } else { ease(local.clamp(0.0, 1.0), easing) };
         let progress_rate = ease_slope(local, easing) / span;
         let (from, to) = (frame(segment), frame(segment + 1));
         // The layout knows segments in the keyframes' own order.
@@ -763,10 +804,12 @@ impl Track {
             return self.timed_wake();
         };
         match self.transition.curve {
-            // The animation ends the track's timed span, on a clock of its own, which also moves
-            // where a spring rests, so a spring under one is sampled in every frame.
+            // The animation ends the track's timed span, on a clock of its own, and keeps the track
+            // active until it does: a spring under one is done where the animation is, a little after
+            // it comes to rest. One that never rests is sampled in every frame.
             Curve::Tween { .. } => script.wake(now),
             Curve::Spring(_) if self.transition.repeat.count == RepeatCount::Infinite => script.wake(now),
+            Curve::Spring(_) if !script.wants_frame(now) || self.span().rests.is_finite() => script.wake(now),
             Curve::Spring(_) => Wake::NextFrame,
         }
     }

@@ -3312,7 +3312,7 @@ impl GpuixRenderer {
 
     /// The CSS transitions, then the CSS animations, of an element that are
     /// running, paused or in effect through a fill, in the order of the DOM's
-    /// `getAnimations()`. Animations of the motion engine are not listed.
+    /// `getAnimations()`, then the animations of a `motion` element that Motion hands to the browser.
     #[napi]
     pub fn get_animations(&self, element_id: f64) -> Result<Vec<WebAnimationInfo>> {
         let id = to_element_id(element_id)?;
@@ -5721,6 +5721,8 @@ pub(crate) struct GpuixView {
     pub(crate) retired_animations: crate::motion::web_animation::Retired,
     /// What the animations Motion would hand to the browser told since the events were last emitted.
     script_events: Vec<crate::motion::web_animation::ApiEvent>,
+    /// The motion elements a command reached since a frame built them, which that frame has to build again.
+    script_commanded: Vec<u64>,
     /// The pass being built is a frame that is drawn and not a layout a read forced (`note_pass`).
     drawing: bool,
     /// What the `display: contents` elements handed down in the frame being built, see `splice_overlay`.
@@ -6145,8 +6147,9 @@ fn sync_motions(
         if let Err(error) = gesturing {
             log::warn!("Invalid motion gesture for element {id}: {error}");
         }
-        let frame = state.frame(now);
+        // What a frame does for the animations goes first: what they leave on the tracks is what it samples.
         state.advance_scripts(id, now, scripts.drawing, scripts.events);
+        let frame = state.frame(now);
         if frame.active {
             animating.push(id);
         }
@@ -6532,8 +6535,12 @@ impl GpuixView {
     ) -> std::result::Result<(), String> {
         let update = update.into_update()?;
         let at = self.api_instant(self.element_of_web_animation(id), now).ok_or_else(|| unknown_web_animation(id))?;
-        if self.script_state(id).is_some() {
-            return Err(SCRIPT_NOT_BUILT.to_string());
+        if let Some((element, _)) = self.script_state(id) {
+            let state = self.motion_states.get_mut(&element).expect("the state of an animation that was just found");
+            state.script_update_timing(element, id, &update, at, &mut self.script_events);
+            self.script_commanded.push(element);
+            self.motion_synced = None;
+            return Ok(());
         }
         self.css_transitions
             .update_timing(id, &update, at)
@@ -6560,8 +6567,16 @@ impl GpuixView {
         command: crate::motion::web_animation::Command,
         now: web_time::Instant,
     ) -> std::result::Result<(), String> {
-        if self.script_state(id).is_some() {
-            return Err(SCRIPT_NOT_BUILT.to_string());
+        if let Some((element, _)) = self.script_state(id) {
+            let at = self.api_instant(Some(element), now).ok_or_else(|| unknown_web_animation(id))?;
+            let state = self.motion_states.get_mut(&element).expect("the state of an animation that was just found");
+            let outcome = state
+                .script_command(element, id, command, at, &mut self.script_events)
+                .unwrap_or_else(|| Err(unknown_web_animation(id)));
+            self.script_commanded.push(element);
+            // A held animation is not stepped by the frames, and a command can set it going.
+            self.motion_synced = None;
+            return outcome;
         }
         let outcome = self.api_instant(self.element_of_web_animation(id), now).and_then(|now| {
             self.css_transitions
@@ -6670,6 +6685,7 @@ impl GpuixView {
             css_animations: Default::default(),
             retired_animations: Default::default(),
             script_events: Vec::new(),
+            script_commanded: Vec::new(),
             drawing: true,
             contents_styles: Default::default(),
             measurements: Default::default(),
@@ -9021,6 +9037,7 @@ impl GpuixView {
             .peek_commanded()
             .iter()
             .chain(self.css_animations.peek_commanded())
+            .chain(&self.script_commanded)
             .copied()
             .collect();
         let value_bindings = self.bindings_of(self.motion_value_key(&tree, window));
@@ -9567,6 +9584,7 @@ impl gpui::Render for GpuixView {
             .take_commanded()
             .into_iter()
             .chain(self.css_animations.take_commanded())
+            .chain(std::mem::take(&mut self.script_commanded))
             .collect();
         let dormancy = Dormancy {
             tree: &tree,
@@ -13684,9 +13702,6 @@ pub struct ElementWebAnimationInfo {
     pub element_id: f64,
     pub info: WebAnimationInfo,
 }
-
-/// What a command on an animation of the motion engine refuses with: they can be read, and nothing more yet.
-const SCRIPT_NOT_BUILT: &str = "NotSupportedError: the animations of the motion engine cannot be controlled yet";
 
 fn unknown_web_animation(id: u64) -> String {
     format!("No running CSS animation or transition has the id {id}")

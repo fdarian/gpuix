@@ -545,20 +545,18 @@ C("ctl-spring-stop", "controls", "spring: stop() at 300", ["opacity"], async (c)
   await c.plan([[340, "t340"], [1000, "t1000"], [3000, "t3000"]]);
 });
 C("ctl-bg-stop", "controls", "backgroundColor: stop() at 300", ["backgroundColor"], async (c) => {
-  c.el.style.backgroundColor = "#ff0000";
   c.ctrl = animate(c.el, { backgroundColor: "#0000ff" }, { duration: 1, ease: "linear" }); c.watchDone(c.ctrl);
   await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
   await c.at(300); c.ctl("stop"); c.sample("sync-after-stop()");
   await c.plan([[340, "t340"], [1300, "t1300"]]);
-});
+}, { style: "background-color: #ff0000" });
 C("ctl-multi-pause", "controls", "opacity+bg: pause at 300 / play at 600 (group)", ["opacity", "backgroundColor"], async (c) => {
-  c.el.style.backgroundColor = "#ff0000";
   c.ctrl = animate(c.el, { opacity: 0, backgroundColor: "#0000ff" }, { duration: 1, ease: "linear" }); c.watchDone(c.ctrl);
   await c.sampleAt(100, "t100");
   await c.at(300); c.ctl("pause"); c.sample("sync-after-pause()");
   await c.at(600); c.ctl("play"); c.sample("sync-after-play()");
-  await c.plan([[700, "t700"], [1300, "t1300"], [1800, "t1800"]]);
-});
+  await c.plan([[700, "t700"], [1250, "t1250"], [1800, "t1800"]]);
+}, { style: "background-color: #ff0000" });
 C("ctl-repeat-complete", "controls", "repeat 2 reverse: complete() at 150", ["opacity"], async (c) => {
   c.ctrl = animate(c.el, { opacity: 0.2 }, { duration: 0.5, repeat: 2, repeatType: "reverse", ease: "linear" }); c.watchDone(c.ctrl);
   await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
@@ -653,7 +651,7 @@ W("wa-currentTime-delay", "delay .5: currentTime = 700 at 200", { opacity: 0 }, 
 });
 W("wa-currentTime-negative", "currentTime = -200 at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "currentTime", -200);
-  await c.plan([[340, "t340"], [500, "t500"], [700, "t700"], [1500, "t1500"], [2300, "t2300"]]);
+  await c.plan([[340, "t340"], [500, "t500"], [700, "t700"], [1450, "t1450"], [2300, "t2300"]]);
 });
 W("wa-currentTime-paused", "pause at 300, currentTime = 200 at 400, play at 700", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "pause");
@@ -694,11 +692,11 @@ W("wa-rate-zero", "playbackRate = 0 at 300, 1 at 900", { opacity: 0 }, LIN, asyn
   await cmdAt(c, 300, "playbackRate", 0);
   await c.plan([[500, "t500"], [850, "t850"]]);
   await cmdAt(c, 900, "playbackRate", 1);
-  await c.plan([[1000, "t1000"], [1600, "t1600"], [2200, "t2200"]]);
+  await c.plan([[1000, "t1000"], [1550, "t1550"], [2200, "t2200"]]);
 });
 W("wa-rate-delay", "delay .5: playbackRate = 2 at 200", { opacity: 0 }, { duration: 0.5, delay: 0.5, ease: "linear" }, async (c) => {
   await cmdAt(c, 200, "playbackRate", 2);
-  await c.plan([[260, "t260"], [400, "t400"], [600, "t600"], [1000, "t1000"]]);
+  await c.plan([[260, "t260"], [400, "t400"], [550, "t550"], [1000, "t1000"]]);
 });
 W("wa-rate-spring", "spring: playbackRate = 2 at 200", { opacity: 0 }, SPRING, async (c) => {
   await cmdAt(c, 200, "playbackRate", 2);
@@ -721,7 +719,7 @@ W("wa-updateRate-zero", "updatePlaybackRate(0) at 300, (1) at 900", { opacity: 0
   await cmdAt(c, 300, "updatePlaybackRate", 0);
   await c.plan([[500, "t500"], [850, "t850"]]);
   await cmdAt(c, 900, "updatePlaybackRate", 1);
-  await c.plan([[1000, "t1000"], [1600, "t1600"], [2200, "t2200"]]);
+  await c.plan([[1000, "t1000"], [1550, "t1550"], [2200, "t2200"]]);
 });
 W("wa-updateRate-paused", "pause at 300, updatePlaybackRate(2) at 500, play at 700", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "pause");
@@ -744,7 +742,7 @@ W("wa-reverse-paused", "pause at 300, reverse at 500, play at 700", { opacity: 0
 W("wa-reverse-twice", "reverse() at 300 and again at 500", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "reverse");
   await cmdAt(c, 500, "reverse");
-  await c.plan([[560, "t560"], [900, "t900"], [1400, "t1400"], [2000, "t2000"]]);
+  await c.plan([[560, "t560"], [900, "t900"], [1350, "t1350"], [2000, "t2000"]]);
 });
 W("wa-reverse-spring", "spring: reverse() at 300", { opacity: 0 }, SPRING, async (c) => {
   await cmdAt(c, 300, "reverse");
@@ -885,7 +883,7 @@ W("wa-startTime-spring", "spring: startTime moved 300 ms earlier at 200", { opac
 
 W("wa-updateTiming-duration", "updateTiming duration 2000 at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { duration: 2000 });
-  await c.plan([[340, "t340"], [600, "t600"], [1000, "t1000"], [2000, "t2000"], [2600, "t2600"]]);
+  await c.plan([[340, "t340"], [600, "t600"], [1000, "t1000"], [1950, "t1950"], [2600, "t2600"]]);
 });
 W("wa-updateTiming-duration-shorter", "updateTiming duration 500 at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { duration: 500 });
@@ -901,7 +899,7 @@ W("wa-updateTiming-delay", "updateTiming delay 600 at 300", { opacity: 0 }, LIN,
 });
 W("wa-updateTiming-delay-less", "delay .5: updateTiming delay 0 at 200", { opacity: 0 }, { duration: 0.5, delay: 0.5, ease: "linear" }, async (c) => {
   await cmdAt(c, 200, "updateTiming", { delay: 0 });
-  await c.plan([[240, "t240"], [500, "t500"], [800, "t800"], [1300, "t1300"]]);
+  await c.plan([[240, "t240"], [450, "t450"], [800, "t800"], [1300, "t1300"]]);
 });
 W("wa-updateTiming-endDelay", "updateTiming endDelay 500 at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { endDelay: 500 });
@@ -917,11 +915,11 @@ W("wa-updateTiming-iterations-alternate", "updateTiming iterations 2, alternate 
 });
 W("wa-updateTiming-direction", "updateTiming direction reverse at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { direction: "reverse" });
-  await c.plan([[340, "t340"], [700, "t700"], [1000, "t1000"], [1500, "t1500"]]);
+  await c.plan([[340, "t340"], [700, "t700"], [950, "t950"], [1500, "t1500"]]);
 });
 W("wa-updateTiming-easing", "updateTiming easing ease-in at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { easing: "ease-in" });
-  await c.plan([[340, "t340"], [700, "t700"], [1000, "t1000"], [1500, "t1500"]]);
+  await c.plan([[340, "t340"], [700, "t700"], [950, "t950"], [1500, "t1500"]]);
 });
 W("wa-updateTiming-iterationStart", "updateTiming iterationStart 0.5 at 300", { opacity: 0 }, LIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { iterationStart: 0.5 });
@@ -943,6 +941,7 @@ W("wa-updateTiming-keyframes-ease", "opacity [1, 0.2, 0.8] ease [easeIn, easeOut
   await cmdAt(c, 300, "updateTiming", { duration: 2000 });
   await c.plan([[340, "t340"], [900, "t900"], [1500, "t1500"], [2500, "t2500"]]);
 });
+
 
 W("wa-events-natural", "finish and cancel events and the promises of an animation left alone", { opacity: 0 }, { duration: 0.4, ease: "linear" }, async (c) => {
   await c.plan([[200, "t200"], [440, "t440"], [700, "t700"]]);
@@ -1014,7 +1013,7 @@ WR("wr-cancel-same-rerender", "motion.div: cancel() at 300, then a render with t
 });
 WR("wr-updateTiming-duration", "motion.div: updateTiming duration 2000 at 300", ["opacity"], RLIN, async (c) => {
   await cmdAt(c, 300, "updateTiming", { duration: 2000 });
-  await c.plan([[340, "t340"], [600, "t600"], [1000, "t1000"], [2000, "t2000"], [2600, "t2600"]]);
+  await c.plan([[340, "t340"], [600, "t600"], [1000, "t1000"], [1950, "t1950"], [2600, "t2600"]]);
 });
 WR("wr-startTime", "motion.div: startTime moved 400 ms earlier at 300", ["opacity"], RLIN, async (c) => {
   await cmdAt(c, 300, "startTime", (a) => a.startTime - 400);

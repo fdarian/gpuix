@@ -479,6 +479,11 @@ impl Playback {
         self.task.is_some() || (self.ticking() && self.rate != 0.0 && !self.is_finished(now, end))
     }
 
+    /// Forgets that a pending task ran: the animation was never waiting for a frame as far as its promises go.
+    pub(super) fn forget_ready(&mut self) {
+        self.notes.retain(|note| *note != Note::Ready);
+    }
+
     /// What the clock did since the last call, in order.
     pub(super) fn take_notes(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.notes)

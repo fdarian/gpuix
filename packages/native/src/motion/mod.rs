@@ -541,6 +541,9 @@ pub(crate) struct MotionState {
     resting_transition: Option<Transitions>,
     /// The animations of tracks that were replaced or removed, until `advance_scripts` has cancelled them.
     cancelled: Vec<Script>,
+    /// An animation Motion handed to the browser was cancelled there, which Motion never hears: the animations of
+    /// the call it belongs to never complete, until the next one replaces them.
+    silenced: bool,
 }
 
 impl MotionState {
@@ -608,6 +611,7 @@ impl MotionState {
             gestures: description.gestures,
             active: GestureStates::default(),
             cancelled: Vec::new(),
+            silenced: false,
         })
     }
 
@@ -625,6 +629,7 @@ impl MotionState {
             gestures: Vec::new(),
             active: GestureStates::default(),
             cancelled: Vec::new(),
+            silenced: false,
         }
     }
 
@@ -743,6 +748,8 @@ impl MotionState {
 
         self.needs_settle =
             description.is_exit || description.generation != previous_generation || moving;
+        // A new animation has a completion of its own, which the cancelled one does not take away.
+        self.silenced &= !self.needs_settle;
         self.install(tracks, source, now);
         self.pending = pending;
         self.source = source.clone();
@@ -791,6 +798,7 @@ impl MotionState {
         };
         let (tracks, pending, moving) = self.retarget_tracks(&description, base, measurement, painted, now)?;
         self.needs_settle |= moving;
+        self.silenced &= !moving;
         let source = self.source.clone();
         self.install(tracks, &source, now);
         self.pending = pending;
@@ -805,7 +813,7 @@ impl MotionState {
         let kept: Vec<u64> = tracks.values().filter_map(|track| track.animation().map(Script::id)).collect();
         for track in self.tracks.values_mut() {
             if track.animation().is_some_and(|script| !kept.contains(&script.id())) {
-                self.cancelled.extend(track.release_animation(now));
+                self.cancelled.extend(track.take_animation());
             }
         }
         self.tracks = tracks;
@@ -1060,9 +1068,10 @@ impl MotionState {
             })
     }
 
-    /// Whether a track is still moving at `now`: what it shows differs from one frame to the next.
+    /// Whether a track is still moving at `now`: what it shows differs from one frame to the next. An animation
+    /// that is held, with a pause or a rate of 0, shows the same until a command moves it.
     pub(crate) fn is_animating(&self, now: Instant) -> bool {
-        self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active))
+        self.valid && (!self.pending.is_empty() || self.tracks.values().any(|track| track.moves_at(now)))
     }
 
     /// When the motion next needs a sample for something other than the picture of it: its
@@ -1072,34 +1081,36 @@ impl MotionState {
         if !self.valid {
             return Wake::Never;
         }
-        if !self.pending.is_empty() {
+        if !self.pending.is_empty() || !self.cancelled.is_empty() {
             return Wake::NextFrame;
         }
         Wake::merged(self.tracks.values().map(|track| track.wake(now)))
     }
 
     pub(crate) fn frame(&mut self, now: Instant) -> MotionFrame {
-        let active = self.valid
+        let unsettled = self.valid
             && (!self.pending.is_empty() || self.tracks.values().any(|track| track.sample(now).active));
-        if active {
+        // A finished animation is cancelled by the next frame, which is asked for here.
+        let active = self.is_animating(now) || !self.cancelled.is_empty();
+        if unsettled {
             self.needs_settle = true;
         }
-        let just_settled = self.needs_settle && !active;
+        let just_settled = self.needs_settle && !unsettled;
         if just_settled {
             self.needs_settle = false;
         }
         MotionFrame {
             active,
-            just_settled,
+            just_settled: just_settled && !self.silenced,
             generation: self.generation,
         }
     }
 }
 
 impl MotionState {
-    /// What a frame does for the animations Motion would hand to the browser: a frame that is
-    /// drawn starts them, the ones that ended are cancelled as Motion cancels them, and the ones of
-    /// tracks that were replaced are cancelled. What JS has to hear of goes to `events`.
+    /// What a frame does for the animations Motion would hand to the browser: a frame that is drawn starts them
+    /// and runs the plays and pauses that wait for it, the ones that ended are finished as Motion finishes them,
+    /// and the ones of tracks that were replaced are cancelled. What JS has to hear of goes to `events`.
     pub(crate) fn advance_scripts(
         &mut self,
         element: u64,
@@ -1114,8 +1125,14 @@ impl MotionState {
             let Some(script) = track.animation_mut() else {
                 continue;
             };
-            if script.advance(element, now, drawing, events) == Advance::Over {
-                track.release_animation(now);
+            match script.advance(element, now, drawing, events) {
+                Advance::Running => {}
+                // Motion's handler cancels the animation, which the browser tells a frame after the finish.
+                Advance::Finished { backwards } => self.cancelled.extend(track.finish_animation(backwards)),
+                Advance::Cancelled => {
+                    track.cancel_animation();
+                    self.silenced = true;
+                }
             }
         }
     }
@@ -1126,10 +1143,38 @@ impl MotionState {
             script.cancel(element, now, events);
         }
         for track in self.tracks.values_mut() {
-            if let Some(mut script) = track.release_animation(now) {
+            if let Some(mut script) = track.take_animation() {
                 script.cancel(element, now, events);
             }
         }
+    }
+
+    /// A command of the Web Animations API on the animation `id`, at the time of the last frame. The next frame
+    /// carries out what it set going.
+    pub(crate) fn script_command(
+        &mut self,
+        element: u64,
+        id: u64,
+        command: web_animation::Command,
+        now: Instant,
+        events: &mut Vec<web_animation::ApiEvent>,
+    ) -> Option<Result<(), String>> {
+        let script = self.tracks.values_mut().filter_map(Track::animation_mut).find(|script| script.id() == id)?;
+        Some(script.command(element, command, now, events))
+    }
+
+    /// `effect.updateTiming(update)` on the animation `id`.
+    pub(crate) fn script_update_timing(
+        &mut self,
+        element: u64,
+        id: u64,
+        update: &effect::TimingUpdate,
+        now: Instant,
+        events: &mut Vec<web_animation::ApiEvent>,
+    ) -> Option<()> {
+        let script = self.tracks.values_mut().filter_map(Track::animation_mut).find(|script| script.id() == id)?;
+        script.update_timing(element, update, now, events);
+        Some(())
     }
 
     fn animations(&self) -> impl Iterator<Item = (PropKey, &Track, &Script)> {
@@ -1142,7 +1187,7 @@ impl MotionState {
             return Vec::new();
         }
         let mut listed: Vec<web_animation::Info> =
-            self.animations().filter(|(_, _, script)| script.listed(now)).map(|(_, _, script)| script.info(now)).collect();
+            self.animations().filter(|(_, _, script)| script.listed()).map(|(_, _, script)| script.info(now)).collect();
         listed.sort_by_key(|info| info.id);
         listed
     }

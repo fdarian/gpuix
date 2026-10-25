@@ -693,6 +693,37 @@ describeNative("a native motion loop that nobody sees", { timeout: TIMEOUT }, ()
     }
   })
 
+  it.skipIf(!retained || verifying)("pauses, plays and finishes the animation of a motion nobody sees", async () => {
+    const done: number[] = []
+    const page = await mountMotion({
+      cards: 12,
+      place: "hidden",
+      card: (index) => <FiniteCard index={index} onComplete={(which) => done.push(which)} />,
+    })
+    try {
+      const renderer = page.renderer
+      const element = renderer.findByTestId("finite-11").id
+      for (let step = 0; step < 5; step++) elapse(renderer)
+      const [listed] = renderer.getAnimations(element)
+      expect(listed.kind).toBe("script")
+      renderer.pauseAnimation(listed.id)
+      for (let step = 0; step < 4; step++) elapse(renderer)
+      const held = renderer.getAnimation(listed.id)
+      expect(held.playState).toBe("paused")
+      expect(held.pending).toBe(false)
+      for (let step = 0; step < 60; step++) elapse(renderer)
+      expect(renderer.getAnimation(listed.id).currentTime, "a pause holds the time").toBe(held.currentTime)
+      expect(done.includes(11), "a paused animation completes nothing").toBe(false)
+
+      renderer.playAnimation(listed.id)
+      for (let step = 0; step < 40; step++) elapse(renderer)
+      expect(done.includes(11), "the rest of the animation plays out").toBe(true)
+      expect(renderer.getAnimations(element)).toEqual([])
+    } finally {
+      page.root.unmount()
+    }
+  })
+
   it.skipIf(!retained)("resumes when scrolled into view, and shows the colour of the current instant", async () => {
     const page = await mountMotion({ cards: 40, place: "auto", card: loop })
     const shot = (name: string) => {

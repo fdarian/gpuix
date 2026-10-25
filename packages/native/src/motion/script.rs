@@ -22,6 +22,7 @@
 //! track's own: what an effect reads here is the shape the browser would have been given.
 
 use std::cell::Cell;
+use std::time::Duration;
 
 use web_time::Instant;
 
@@ -29,13 +30,13 @@ use crate::dormant_wake::Wake;
 
 use super::css_animation::{Direction, FillMode, IterationCount};
 use super::curve::{parse_timing_function, Curve, Ease, RepeatCount, RepeatType, Spring, Transition};
-use super::effect::{EffectInfo, KeyframeInfo, Timing};
+use super::effect::{DurationUpdate, EffectInfo, KeyframeInfo, Timing, TimingUpdate};
 use super::property::AnimProp;
 use super::svg_attr::SvgAttr;
 use super::text::{shortest, Text};
 use super::track::Track;
 use super::value::AnimValue;
-use super::web_animation::{ApiEvent, Info, Kind, Note, Playback, Status};
+use super::web_animation::{ApiEvent, Command, Info, Kind, Playback, Status};
 use super::PropKey;
 
 /// How far `calcGeneratorDuration` looks for the end of a generator, in ms.
@@ -52,7 +53,12 @@ pub(super) struct Script {
     clock: Playback,
     /// The property as the DOM names it.
     name: &'static str,
+    /// The timing of the effect as it is now: `base` with `update` laid over it.
     timing: Timing,
+    /// The timing Motion gave the effect, which the track's own clock is made for.
+    base: Timing,
+    /// What `updateTiming()` set, which the track no longer follows its own clock for.
+    update: TimingUpdate,
     /// The easing of the effect as a function; `linear` where the keyframes carry the easings.
     easing: Ease,
     /// The same as Chrome reads it back from `getTiming()`.
@@ -66,11 +72,20 @@ pub(super) struct Script {
     started: bool,
     /// When the track began, whose clock the track follows until a frame starts this one.
     created: Instant,
-    /// Where the track picks up when the animation is cancelled: the instant its own clock would have started at.
-    resume: Option<Instant>,
+    /// `cancel()` was called on it. Motion's handler hears of a finish and never of this.
+    cancelled: bool,
     /// An `Animation` object was handed to JS for this: only then is there anything to tell of its
     /// finish and cancel.
     observed: Cell<bool>,
+}
+
+/// What a script makes its track show.
+pub(super) enum Pose {
+    /// The track as its own clock has it at this time since it began.
+    At(Duration),
+    /// The track at the progress of the effect, after the effect's easing, for an effect whose timing was
+    /// updated. `None` where the effect has no effect: the track shows where it started.
+    Eased(Option<f64>),
 }
 
 /// Whether Motion gives the browser the value `key` animates through `literal`.
@@ -322,13 +337,15 @@ impl Script {
             clock: Playback::start(now, false, timing.end_time()),
             name: key.name(),
             timing,
+            base: timing,
+            update: TimingUpdate::default(),
             easing: shape.easing,
             easing_text: shape.easing_text,
             frame_easings: shape.frame_easings,
             offsets: transition.times.clone(),
             started: false,
             created: now,
-            resume: None,
+            cancelled: false,
             observed: Cell::new(false),
         })
     }
@@ -343,12 +360,26 @@ impl Script {
 
     /// How far into the effect the track shows the value of: the time of the clock, or the wall time since the track began
     /// while no frame has started the clock.
-    pub(super) fn elapsed(&self, now: Instant) -> std::time::Duration {
+    fn elapsed(&self, now: Instant) -> Duration {
         if !self.started {
             return now.saturating_duration_since(self.created);
         }
         let time = self.clock.time(now).unwrap_or(0.0).max(0.0);
-        std::time::Duration::try_from_secs_f64(time).unwrap_or(std::time::Duration::MAX)
+        Duration::try_from_secs_f64(time).unwrap_or(Duration::MAX)
+    }
+
+    /// What the track shows at `now`.
+    pub(super) fn pose(&self, now: Instant) -> Pose {
+        if self.update == TimingUpdate::default() {
+            return Pose::At(self.elapsed(now));
+        }
+        let time = self.clock.time(now).unwrap_or(0.0);
+        let evaluation = self.timing.evaluate(time, self.clock.rate() < 0.0).eased(Some(self.effect_easing()));
+        Pose::Eased(evaluation.progress)
+    }
+
+    fn effect_easing(&self) -> &Ease {
+        self.update.easing.as_ref().unwrap_or(&self.easing)
     }
 
     /// Whether the animation has not ended yet: the track is still being driven by it.
@@ -364,10 +395,16 @@ impl Script {
         self.clock.is_idle() || self.clock.status(now, self.end()) == Status::Finished
     }
 
-    /// Whether `getAnimations()` lists it: Motion's animation is there from the first frame after
-    /// the value starts to move until it finishes or is cancelled.
-    pub(super) fn listed(&self, now: Instant) -> bool {
-        self.started && !self.over(now)
+    /// Whether the clock has something to wait for or move toward, which asks for a frame. A held animation
+    /// does not: a command moves it.
+    pub(super) fn wants_frame(&self, now: Instant) -> bool {
+        !self.started || self.clock.wants_frame(now, self.end())
+    }
+
+    /// Whether `getAnimations()` lists it: Motion's animation is there from the first frame after the value starts to
+    /// move until the frame that follows its finish, where Motion cancels it, or its cancel.
+    pub(super) fn listed(&self) -> bool {
+        self.started && !self.clock.is_idle()
     }
 
     pub(super) fn info(&self, now: Instant) -> Info {
@@ -377,14 +414,17 @@ impl Script {
 
     pub(super) fn effect_info(&self, now: Instant) -> Result<EffectInfo, String> {
         self.observed.set(true);
+        let duration_auto = self.update.duration == Some(DurationUpdate::Auto);
         let mut info = EffectInfo::of(
             &self.timing,
-            false,
-            Some(&self.easing),
+            duration_auto,
+            Some(self.effect_easing()),
             self.clock.current_time(now, self.end()),
             self.clock.rate() < 0.0,
         )?;
-        info.easing = self.easing_text.clone();
+        if self.update.easing.is_none() {
+            info.easing = self.easing_text.clone();
+        }
         Ok(info)
     }
 
@@ -418,32 +458,63 @@ impl Script {
         self.clock.wake_at(self.end(), now)
     }
 
-    /// What a frame does for the clock: a drawn one starts it, and what it noted is told to JS if
-    /// JS holds the animation. The animation that is over is cancelled, as Motion cancels its
-    /// animation when it finishes, and is not this track's any more.
+    /// What a frame does for the clock: a drawn one starts it and runs the play or pause that waits for it, and
+    /// what it noted is told to JS if JS holds the animation. One that finished is not this track's any more: Motion
+    /// cancels its animation when it finishes, which is [`MotionState::advance_scripts`]'s to do a frame later.
     pub(super) fn advance(&mut self, element: u64, now: Instant, drawing: bool, events: &mut Vec<ApiEvent>) -> Advance {
         let end = self.end();
-        if drawing && !self.started {
+        if drawing {
+            let first = !self.started;
             self.clock.resolve_pending(now, end);
             self.started = true;
+            if first {
+                // The animation was made running, so it has nothing it was waiting to start.
+                self.clock.forget_ready();
+            }
         }
         if self.started {
             self.clock.settle(now, end);
         }
         self.tell(element, now, events);
+        if self.cancelled {
+            return Advance::Cancelled;
+        }
         if !self.over(now) {
             return Advance::Running;
         }
-        // Motion's `onfinish` cancels the animation and commits the final style.
-        self.cancel(element, now, events);
-        Advance::Over
+        // Motion's `onfinish` commits the final style and cancels the animation.
+        Advance::Finished { backwards: self.clock.rate() < 0.0 }
     }
 
     /// The animation is cancelled, and JS hears of it.
     pub(super) fn cancel(&mut self, element: u64, now: Instant, events: &mut Vec<ApiEvent>) {
-        self.resume = Some(self.started_at(now));
         let end = self.end();
-        self.clock.apply(super::web_animation::Command::Cancel, now, end).expect("cancelling cannot fail");
+        self.clock.apply(Command::Cancel, now, end).expect("cancelling cannot fail");
+        self.tell(element, now, events);
+    }
+
+    /// A command of the API. A play or a pause waits for the next frame that is drawn.
+    pub(super) fn command(
+        &mut self,
+        element: u64,
+        command: Command,
+        now: Instant,
+        events: &mut Vec<ApiEvent>,
+    ) -> Result<(), String> {
+        let end = self.end();
+        if command == Command::Cancel && self.clock.status(now, end) != Status::Idle {
+            self.cancelled = true;
+        }
+        let outcome = self.clock.apply(command, now, end);
+        self.tell(element, now, events);
+        outcome
+    }
+
+    /// `updateTiming()`: what it sets stays as set.
+    pub(super) fn update_timing(&mut self, element: u64, update: &TimingUpdate, now: Instant, events: &mut Vec<ApiEvent>) {
+        self.update.merge(update);
+        self.timing = self.update.over(self.base);
+        self.clock.retime(now, self.end());
         self.tell(element, now, events);
     }
 
@@ -453,10 +524,6 @@ impl Script {
             return;
         }
         for note in notes {
-            // The animation was made running, so it has nothing it was waiting to start.
-            if note == Note::Ready {
-                continue;
-            }
             events.push(ApiEvent::of(element, note, self.info_at(now)));
         }
     }
@@ -464,28 +531,16 @@ impl Script {
     fn info_at(&self, now: Instant) -> Info {
         Info::of(Kind::Script, self.name.to_string(), &self.clock, now, self.end())
     }
-
-    /// The instant the track's own clock would have been started at to be where this one is.
-    pub(super) fn started_at(&self, now: Instant) -> Instant {
-        if let Some(resume) = self.resume {
-            return resume;
-        }
-        if !self.started {
-            return self.created;
-        }
-        let time = self.clock.run_time(now).unwrap_or(0.0).max(0.0);
-        std::time::Duration::try_from_secs_f64(time)
-            .ok()
-            .and_then(|elapsed| now.checked_sub(elapsed))
-            .unwrap_or(now)
-    }
 }
 
-/// Whether the animation goes on after a frame.
+/// What a frame left of an animation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Advance {
     Running,
-    Over,
+    /// It ended and Motion committed the value it ends on: the first keyframe where it ran `backwards`.
+    Finished { backwards: bool },
+    /// `cancel()` was called on it, which Motion never hears.
+    Cancelled,
 }
 
 #[cfg(test)]
@@ -569,10 +624,12 @@ mod tests {
 
         state.advance_scripts(1, at(origin, 420), true, &mut events);
         assert!(state.script_list(at(origin, 420)).is_empty(), "Motion cancels its animation when it finishes");
+        assert_eq!(events.iter().map(|event| event.kind).collect::<Vec<_>>(), [ApiEventKind::Finish], "told because the animation was listed");
+        state.advance_scripts(1, at(origin, 436), true, &mut events);
         assert_eq!(
             events.iter().map(|event| event.kind).collect::<Vec<_>>(),
             [ApiEventKind::Finish, ApiEventKind::Cancel],
-            "told because the animation was listed"
+            "the cancel comes a frame after the finish, as the browser tells it"
         );
     }
 
@@ -666,5 +723,188 @@ mod tests {
         let effect = timed.script_effect(id, origin).unwrap().unwrap();
         assert_eq!(effect.duration, Some(500.0));
         assert_eq!(effect.easing.matches('%').count(), 50);
+    }
+
+    mod commands {
+        use super::*;
+
+        fn opacity(state: &MotionState, now: Instant) -> f64 {
+            state.tracks[&PropKey::Style(AnimProp::Opacity)].sample(now).position[0]
+        }
+
+        /// A second-long linear fade from 1 to 0 whose animation is drawn at `origin` and listed, so JS holds it.
+        fn fading(origin: Instant) -> (MotionState, u64, Vec<ApiEvent>) {
+            let mut state = tween(json!({ "opacity": 0.0 }), json!({ "opacity": 1.0 }), json!({ "duration": 1.0, "ease": "linear" }), origin);
+            let mut events = Vec::new();
+            state.advance_scripts(1, origin, true, &mut events);
+            let id = state.script_list(origin)[0].id;
+            (state, id, events)
+        }
+
+        fn command(state: &mut MotionState, id: u64, command: Command, now: Instant, events: &mut Vec<ApiEvent>) {
+            state.script_command(1, id, command, now, events).expect("the animation is there").unwrap();
+        }
+
+        /// A frame that is drawn at `now`, as the renderer builds it.
+        fn drawn(state: &mut MotionState, now: Instant, events: &mut Vec<ApiEvent>) -> crate::motion::MotionFrame {
+            state.advance_scripts(1, now, true, events);
+            state.frame(now)
+        }
+
+        #[test]
+        fn a_paused_animation_holds_the_value_and_asks_for_no_frame_and_completes_nothing() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 200), &mut events);
+            command(&mut state, id, Command::Pause, at(origin, 300), &mut events);
+            assert!(state.is_animating(at(origin, 300)), "the pause waits for a frame");
+            let frame = drawn(&mut state, at(origin, 316), &mut events);
+            assert!(!frame.active && !frame.just_settled);
+            assert_eq!(state.script_list(at(origin, 316))[0].status, Status::Paused);
+            for millis in [316, 2000, 60_000] {
+                assert!((opacity(&state, at(origin, millis)) - 0.7).abs() < 1e-9, "{millis}");
+                assert!(!state.is_animating(at(origin, millis)), "{millis}: a held animation moves when told to");
+                assert_eq!(state.wake(at(origin, millis)), Wake::Never);
+            }
+            let frame = drawn(&mut state, at(origin, 60_000), &mut events);
+            assert!(!frame.active && !frame.just_settled, "it is not done");
+
+            command(&mut state, id, Command::Play, at(origin, 60_000), &mut events);
+            drawn(&mut state, at(origin, 60_016), &mut events);
+            assert!((opacity(&state, at(origin, 60_216)) - 0.5).abs() < 1e-9);
+            let frame = drawn(&mut state, at(origin, 60_800), &mut events);
+            assert!(frame.just_settled);
+            assert_eq!(opacity(&state, at(origin, 60_800)), 0.0);
+        }
+
+        #[test]
+        fn pausing_and_playing_tell_ready_and_a_cancel_tells_the_cancel() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 100), &mut events);
+            command(&mut state, id, Command::Pause, at(origin, 100), &mut events);
+            assert!(events.is_empty());
+            drawn(&mut state, at(origin, 116), &mut events);
+            assert_eq!(events.iter().map(|event| event.kind).collect::<Vec<_>>(), [ApiEventKind::Ready]);
+            command(&mut state, id, Command::Cancel, at(origin, 116), &mut events);
+            assert_eq!(events.iter().map(|event| event.kind).collect::<Vec<_>>(), [ApiEventKind::Ready, ApiEventKind::Cancel]);
+        }
+
+        #[test]
+        fn a_cancelled_animation_leaves_the_value_where_it_started_and_the_motion_never_completes() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            assert!((opacity(&state, at(origin, 300)) - 0.7).abs() < 1e-9);
+            command(&mut state, id, Command::Cancel, at(origin, 300), &mut events);
+            assert!(state.script_list(at(origin, 300)).is_empty(), "it is gone at once");
+            let frame = drawn(&mut state, at(origin, 316), &mut events);
+            assert!(!frame.active && !frame.just_settled);
+            assert!(!state.has_scripts());
+            for millis in [316, 1200, 9000] {
+                assert_eq!(opacity(&state, at(origin, millis)), 1.0);
+                assert!(!drawn(&mut state, at(origin, millis), &mut events).just_settled);
+            }
+        }
+
+        #[test]
+        fn a_new_target_after_a_cancel_starts_from_where_the_cancelled_animation_started_and_completes() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            command(&mut state, id, Command::Cancel, at(origin, 300), &mut events);
+            drawn(&mut state, at(origin, 316), &mut events);
+            let later = at(origin, 600);
+            state
+                .sync(
+                    &json!({ "animate": { "opacity": 0.5 }, "transition": { "duration": 0.4, "ease": "linear" } }),
+                    None,
+                    Colors::root(),
+                    None,
+                    0,
+                    later,
+                )
+                .unwrap();
+            assert_eq!(opacity(&state, later), 1.0);
+            drawn(&mut state, later, &mut events);
+            assert!((opacity(&state, at(origin, 800)) - 0.75).abs() < 1e-9);
+            assert!(drawn(&mut state, at(origin, 1000), &mut events).just_settled);
+        }
+
+        #[test]
+        fn finishing_commits_the_final_value_and_completes_a_frame_later_like_a_natural_finish() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            command(&mut state, id, Command::Finish, at(origin, 300), &mut events);
+            let [info] = &state.script_list(at(origin, 300))[..] else { panic!("it stays until the frame") };
+            assert_eq!((info.status, info.current_time), (Status::Finished, 1000.0));
+            assert_eq!(events.iter().map(|event| event.kind).collect::<Vec<_>>(), [ApiEventKind::Finish]);
+            let frame = drawn(&mut state, at(origin, 316), &mut events);
+            assert!(frame.just_settled);
+            assert!(state.script_list(at(origin, 316)).is_empty());
+            assert_eq!(opacity(&state, at(origin, 316)), 0.0);
+            assert_eq!(events.iter().map(|event| event.kind).collect::<Vec<_>>(), [ApiEventKind::Finish]);
+            drawn(&mut state, at(origin, 332), &mut events);
+            assert_eq!(events.iter().map(|event| event.kind).collect::<Vec<_>>(), [ApiEventKind::Finish, ApiEventKind::Cancel]);
+        }
+
+        #[test]
+        fn an_animation_run_back_to_its_start_commits_the_first_keyframe() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 400), &mut events);
+            command(&mut state, id, Command::SetPlaybackRate(-1.0), at(origin, 400), &mut events);
+            assert!((opacity(&state, at(origin, 600)) - 0.8).abs() < 1e-9);
+            assert!(!drawn(&mut state, at(origin, 700), &mut events).just_settled);
+            let frame = drawn(&mut state, at(origin, 810), &mut events);
+            assert!(frame.just_settled);
+            assert_eq!(opacity(&state, at(origin, 810)), 1.0);
+        }
+
+        #[test]
+        fn a_seek_past_the_end_finishes_it_and_a_seek_back_runs_it_again() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            command(&mut state, id, Command::SetCurrentTime(800.0), at(origin, 300), &mut events);
+            assert!((opacity(&state, at(origin, 300)) - 0.2).abs() < 1e-9);
+            command(&mut state, id, Command::SetCurrentTime(100.0), at(origin, 300), &mut events);
+            assert!(!drawn(&mut state, at(origin, 316), &mut events).just_settled);
+            assert!((opacity(&state, at(origin, 316)) - 0.884).abs() < 1e-9);
+            command(&mut state, id, Command::SetCurrentTime(1500.0), at(origin, 316), &mut events);
+            assert!(drawn(&mut state, at(origin, 332), &mut events).just_settled);
+            assert_eq!(opacity(&state, at(origin, 332)), 0.0);
+        }
+
+        #[test]
+        fn updating_the_timing_re_times_the_value_as_well_as_the_clock() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            let update = TimingUpdate { duration: Some(DurationUpdate::Seconds(2.0)), ..Default::default() };
+            state.script_update_timing(1, id, &update, at(origin, 300), &mut events).unwrap();
+            assert!((opacity(&state, at(origin, 300)) - 0.85).abs() < 1e-9);
+            assert!((opacity(&state, at(origin, 1000)) - 0.5).abs() < 1e-9);
+            assert!(!drawn(&mut state, at(origin, 1500), &mut events).just_settled);
+            let effect = state.script_effect(id, at(origin, 1500)).unwrap().unwrap();
+            assert_eq!(effect.duration, Some(2000.0));
+            assert!(drawn(&mut state, at(origin, 2100), &mut events).just_settled);
+            assert_eq!(opacity(&state, at(origin, 2100)), 0.0);
+        }
+
+        #[test]
+        fn updating_the_easing_eases_the_progress_and_a_shorter_end_finishes_it() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 500), &mut events);
+            let eased = TimingUpdate { easing: Some(parse_timing_function("ease-in").unwrap()), ..Default::default() };
+            state.script_update_timing(1, id, &eased, at(origin, 500), &mut events).unwrap();
+            assert!((opacity(&state, at(origin, 500)) - (1.0 - 0.315)).abs() < 0.001);
+            let shorter = TimingUpdate { duration: Some(DurationUpdate::Seconds(0.2)), ..Default::default() };
+            state.script_update_timing(1, id, &shorter, at(origin, 500), &mut events).unwrap();
+            assert_eq!(state.script_list(at(origin, 500))[0].status, Status::Finished);
+            assert!(drawn(&mut state, at(origin, 516), &mut events).just_settled);
+        }
     }
 }

@@ -1,6 +1,7 @@
 /// The Solid half of `motion-waapi.test.tsx` of the React package: Motion hands an `opacity` animation to the browser's
 /// Web Animations, which `getAnimations()` then lists as a plain `Animation`, and runs an `x` animation in JavaScript, which
-/// nothing lists. The expected shape is Chrome's (`packages/react/src/__tests__/fixtures/motion-waapi-oracle.json`).
+/// nothing lists. The expected shape is Chrome's (`packages/react/src/__tests__/fixtures/motion-waapi-oracle.json`), and so
+/// is what the commands on the listed `Animation` do to the motion that made it.
 
 import { describe, expect, it } from "bun:test"
 import { motion } from "../index.js"
@@ -72,6 +73,79 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion animations in getAnimation
     frame(app, 0)
     frame(app, 200)
     expect(box.getAnimations()).toEqual([])
+    app.unmount()
+  })
+
+  it("holds a listed opacity animation when it is paused, and a cancel takes the opacity back to where it started without a completion", () => {
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    app.renderer.setInlineDraws(false)
+    let box!: HostElement
+    let completions = 0
+    app.render(() => (
+      <motion.div
+        ref={(element: HostElement) => (box = element)}
+        testId="box"
+        style={{ width: 50, height: 20 }}
+        animate={{ opacity: 0.5 }}
+        transition={{ duration: 0.4, ease: "linear" }}
+        onMotionComplete={() => completions++}
+      />
+    ))
+    frame(app, 0)
+    frame(app, 100)
+    const [animation] = box.getAnimations()
+    expect(animation.currentTime).toBe(100)
+
+    animation.pause()
+    expect(animation.playState).toBe("paused")
+    expect(animation.pending).toBe(true)
+    frame(app, 0)
+    expect(animation.pending).toBe(false)
+    frame(app, 600)
+    expect(animation.currentTime).toBe(100)
+    expect(box.getAnimations()).toEqual([animation])
+    expect(completions).toBe(0)
+
+    animation.play()
+    frame(app, 0)
+    frame(app, 150)
+    expect(animation.currentTime).toBe(250)
+
+    animation.cancel()
+    expect(box.getAnimations()).toEqual([])
+    frame(app, 0)
+    frame(app, 600)
+    expect(animation.playState).toBe("idle")
+    expect(completions).toBe(0)
+    app.unmount()
+  })
+
+  it("completes the motion when the listed animation is finished", () => {
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    app.renderer.setInlineDraws(false)
+    let box!: HostElement
+    let completions = 0
+    app.render(() => (
+      <motion.div
+        ref={(element: HostElement) => (box = element)}
+        testId="box"
+        style={{ width: 50, height: 20 }}
+        animate={{ opacity: 0.5 }}
+        transition={{ duration: 0.4, ease: "linear" }}
+        onMotionComplete={() => completions++}
+      />
+    ))
+    frame(app, 0)
+    frame(app, 100)
+    const [animation] = box.getAnimations()
+    animation.finish()
+    expect(animation.playState).toBe("finished")
+    expect(completions).toBe(0)
+    frame(app, 20)
+    expect(box.getAnimations()).toEqual([])
+    expect(completions).toBe(1)
     app.unmount()
   })
 })
