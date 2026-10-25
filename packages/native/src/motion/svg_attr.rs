@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use super::text::{pixels, six_digits, Text};
 use super::value::{AnimValue, Color};
 use crate::color::ColorContext;
 use crate::custom_elements::svg_path::{format_number, PathData};
@@ -333,13 +334,30 @@ impl SvgAttr {
 }
 
 impl SvgAttr {
-    /// `value` of this property as Chrome writes a computed value in `getKeyframes()`. Only
-    /// colours are derived from Chrome so far.
-    pub(super) fn computed_text(self, value: &AnimValue) -> Result<String, String> {
-        match value {
-            AnimValue::Color(color) => color.computed_text(),
-            _ => Err(format!("the value of {} has no computed text yet", self.name())),
-        }
+    /// `value` of this property as Chrome writes a computed value in `getKeyframes()`: a length in
+    /// px, a number as it is, a dash list with commas, a path as `path("...")`, a paint as a colour
+    /// or `none`.
+    pub(super) fn computed_text(self, value: &AnimValue, of: Text) -> Result<Vec<(String, String)>, String> {
+        let text = match (self.kind(), value) {
+            (_, AnimValue::Keyword(Some(keyword))) => keyword.clone(),
+            (Kind::Colour, AnimValue::Color(color)) => match of {
+                Text::Keyframe => color.computed_text(),
+                Text::Transition => color.interpolated_text(),
+            },
+            (Kind::Number, AnimValue::Number(number)) => match self {
+                Self::LetterSpacing if *number == 0.0 => "normal".to_string(),
+                Self::Opacity | Self::FillOpacity | Self::StrokeOpacity | Self::FloodOpacity | Self::StopOpacity | Self::StrokeMiterlimit => {
+                    six_digits(*number)
+                }
+                _ => pixels(*number),
+            },
+            (Kind::Dashes, AnimValue::Numbers(numbers)) => {
+                numbers.iter().map(|number| pixels(*number)).collect::<Vec<_>>().join(", ")
+            }
+            (Kind::Path, AnimValue::Path(path)) => format!("path(\"{}\")", path.to_data()),
+            _ => return Err(format!("the value of {} has no computed text yet", self.name())),
+        };
+        Ok(vec![(self.name().to_string(), text)])
     }
 }
 

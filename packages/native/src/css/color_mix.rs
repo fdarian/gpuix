@@ -2,7 +2,7 @@
 
 use super::color_space::{Space, Vec3};
 use super::syntax::{split_commas, split_whitespace};
-use crate::color::{resolve_unclamped, ColorContext, Srgba};
+use crate::color::{resolve_unclamped, ColorContext, ComputedColor, Srgba};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum HueMethod {
@@ -15,6 +15,22 @@ enum HueMethod {
 /// `args` is the text between the parentheses. Both operands are resolved with
 /// `context`, so `currentColor`, `light-dark()` and a nested `color-mix()` work.
 pub(crate) fn parse(args: &str, context: &ColorContext) -> Option<Srgba> {
+    let (space, mixed, alpha) = parse_in_space(args, context)?;
+    Some(Srgba { rgb: space.to_srgb(mixed), alpha })
+}
+
+/// The mix as the colour CSS computes it to: in the space it was mixed in, which `hsl` and `hwb`
+/// leave for `srgb`.
+pub(crate) fn parse_computed(args: &str, context: &ColorContext) -> Option<ComputedColor> {
+    let (space, mixed, alpha) = parse_in_space(args, context)?;
+    Some(match space {
+        Space::Hsl | Space::Hwb => ComputedColor::Space { space: Space::Srgb, components: space.to_srgb(mixed), alpha },
+        space => ComputedColor::Space { space, components: mixed, alpha },
+    })
+}
+
+/// The mixed components, in the space they were mixed in, and the alpha.
+fn parse_in_space(args: &str, context: &ColorContext) -> Option<(Space, Vec3, f64)> {
     let pieces = split_commas(args);
     let [header, first, second] = pieces.as_slice() else {
         return None;
@@ -36,7 +52,7 @@ pub(crate) fn parse(args: &str, context: &ColorContext) -> Option<Srgba> {
     // A total under 100% leaves the result partly transparent; over 100% only
     // rescales the weights.
     let alpha_scale = (total / 100.0).min(1.0);
-    Some(mix(
+    let (mixed, alpha) = mix(
         space,
         hue_method,
         &first,
@@ -44,7 +60,8 @@ pub(crate) fn parse(args: &str, context: &ColorContext) -> Option<Srgba> {
         &second,
         second_percent / total,
         alpha_scale,
-    ))
+    );
+    Some((space, mixed, alpha))
 }
 
 fn parse_header(header: &str) -> Option<(Space, HueMethod)> {
@@ -101,7 +118,7 @@ fn mix(
     second: &Srgba,
     second_weight: f64,
     alpha_scale: f64,
-) -> Srgba {
+) -> (Vec3, f64) {
     let (first_alpha, second_alpha) = (first.alpha.clamp(0.0, 1.0), second.alpha.clamp(0.0, 1.0));
     let mut a = space.from_srgb(first.rgb);
     let mut b = space.from_srgb(second.rgb);
@@ -136,10 +153,7 @@ fn mix(
             (first_weight * first_alpha * a[index] + second_weight * second_alpha * b[index]) / alpha
         };
     }
-    Srgba {
-        rgb: space.to_srgb(mixed),
-        alpha: alpha * alpha_scale,
-    }
+    (mixed, alpha * alpha_scale)
 }
 
 /// Adjusts two hue angles so linear interpolation takes the requested arc.

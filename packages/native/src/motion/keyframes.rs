@@ -164,6 +164,11 @@ impl Keyframe {
         self.values.iter().any(|(key, written)| reads_vars(*key, written))
     }
 
+    /// What the keyframe wrote for `key`.
+    pub(super) fn written(&self, key: PropKey) -> Option<&Value> {
+        self.values.iter().find(|(k, _)| *k == key).map(|(_, written)| written)
+    }
+
     fn merge(&mut self, later: &Keyframe) {
         for (key, value) in &later.values {
             self.set(*key, value.clone());

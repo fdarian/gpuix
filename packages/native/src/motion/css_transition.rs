@@ -21,6 +21,7 @@ use super::css_animation::{Direction, FillMode, IterationCount, PropTarget, SvgS
 use super::effect::{DurationUpdate, EffectInfo, KeyframeInfo, Timing, TimingUpdate};
 use super::property::{expand_shorthand, AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
+use super::text::{pixels, Text};
 use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentValues};
 use super::web_animation::{next_seq, ApiEvent, Command, Info, Kind, Playback, Status};
 use super::{MotionState, PropKey};
@@ -238,7 +239,7 @@ impl Lists {
 }
 
 fn default_timing() -> Ease {
-    Ease::CubicBezier([0.25, 0.1, 0.25, 1.0])
+    Ease::Name("ease".to_string())
 }
 
 /// Splits on `separator`, ignoring any inside parentheses. Empty items are an
@@ -693,6 +694,9 @@ struct Running {
     restart: Option<f64>,
     /// `transitionrun` is owed at the next frame: the run was cancelled and played again.
     announce: bool,
+    /// The border box the transition started in, which Chrome resolves a `transform-origin` against
+    /// when it writes the endpoints.
+    border_box: Option<(f64, f64)>,
 }
 
 impl Running {
@@ -708,6 +712,7 @@ impl Running {
         reversing_start: AnimValue,
         shortening: f64,
         now: Instant,
+        measurement: Option<&Measurement>,
     ) -> Option<Self> {
         let flips = matches!(key, PropKey::Style(prop) if prop.flips_without_allow_discrete());
         let segment = pair_in(key.name(), from, to, Interpolation::Css)
@@ -737,6 +742,9 @@ impl Running {
             began: false,
             restart: None,
             announce: false,
+            border_box: measurement.map(|measurement| {
+                (f64::from(measurement.border_box.width.as_f32()), f64::from(measurement.border_box.height.as_f32()))
+            }),
         })
     }
 
@@ -769,6 +777,19 @@ impl Running {
         )
     }
 
+    /// What Chrome writes of an endpoint: a transition holds a `transform-origin` as the lengths of
+    /// the box it started in.
+    fn endpoint_text(&self, key: PropKey, value: &AnimValue) -> Result<Vec<(String, String)>, String> {
+        let origin = matches!(key, PropKey::Style(AnimProp::TransformOrigin));
+        match (origin, self.border_box, value.origin_parts()) {
+            (true, Some((width, height)), Some((x, y, z))) => {
+                let (x, y) = (pixels(x.0 + x.1 * width), pixels(y.0 + y.1 * height));
+                Ok(vec![(key.name().to_string(), if z == 0.0 { format!("{x} {y}") } else { format!("{x} {y} {}", pixels(z)) })])
+            }
+            _ => key.computed_text(value, Text::Transition),
+        }
+    }
+
     /// `getKeyframes()`: the computed start and end values, eased by the effect and not by them.
     fn keyframe_info(&self, key: PropKey) -> Result<Vec<KeyframeInfo>, String> {
         [(0.0, &self.from), (1.0, &self.to)]
@@ -778,7 +799,7 @@ impl Running {
                     offset,
                     easing: "linear".to_string(),
                     composite: "auto",
-                    values: vec![(key.name().to_string(), key.computed_text(value)?)],
+                    values: self.endpoint_text(key, value)?,
                 })
             })
             .collect()
@@ -1368,7 +1389,7 @@ impl ElementState {
             {
                 let reversing_start = before_computed.unwrap_or_else(|| from.clone());
                 if let Some(running) = Running::new(
-                    key, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, now,
+                    key, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, now, measurement,
                 ) {
                     self.begin(id, key, running, events);
                 }
@@ -1403,7 +1424,7 @@ impl ElementState {
         }
         let (reversing_start, shortening) = reversal.unwrap_or_else(|| (current.clone(), 1.0));
         if let Some(running) = Running::new(
-            key, &current, &to, (end, end_computed), &entry, reversing_start, shortening, now,
+            key, &current, &to, (end, end_computed), &entry, reversing_start, shortening, now, measurement,
         ) {
             self.begin(id, key, running, events);
         }
@@ -2021,7 +2042,7 @@ mod tests {
                 matcher: Matcher::Props(vec![PropKey::Style(AnimProp::BackgroundColor)]),
                 duration: 0.15,
                 delay: 0.0,
-                timing: Ease::CubicBezier([0.0, 0.0, 0.58, 1.0]),
+                timing: Ease::Name("easeOut".to_string()),
                 allow_discrete: false,
             }
         );
@@ -2033,7 +2054,7 @@ mod tests {
         let reordered = list(r#"{ "transition": "ease-in 1s 2s width" }"#);
         assert_eq!(entry(&reordered, 0).1, 1.0);
         assert_eq!(entry(&reordered, 0).2, 2.0);
-        assert_eq!(reordered.0[0].timing, Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]));
+        assert_eq!(reordered.0[0].timing, Ease::Name("easeIn".to_string()));
     }
 
     #[test]

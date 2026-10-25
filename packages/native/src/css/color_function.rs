@@ -2,11 +2,22 @@
 
 use super::color_space::Space;
 use super::syntax::split_whitespace;
-use crate::color::Srgba;
+use crate::color::{ComputedColor, Srgba};
 
 /// `args` is the text between the parentheses. Out-of-gamut results are left
 /// for the caller to clip.
 pub(crate) fn parse(args: &str) -> Option<Srgba> {
+    let (space, components, alpha) = parse_in_space(args)?;
+    Some(Srgba { rgb: space.to_srgb(components), alpha })
+}
+
+/// The colour as CSS computes it: in the space it names, components as written.
+pub(crate) fn parse_computed(args: &str) -> Option<ComputedColor> {
+    let (space, components, alpha) = parse_in_space(args)?;
+    Some(ComputedColor::Space { space, components, alpha })
+}
+
+fn parse_in_space(args: &str) -> Option<(Space, [f64; 3], f64)> {
     let spaced = args.replace('/', " / ");
     let tokens = split_whitespace(&spaced);
     let (space, rest) = tokens.split_first()?;
@@ -20,10 +31,7 @@ pub(crate) fn parse(args: &str) -> Option<Srgba> {
     for (slot, token) in components.iter_mut().zip(rest) {
         *slot = parse_component(token)?;
     }
-    Some(Srgba {
-        rgb: space.to_srgb(components),
-        alpha,
-    })
+    Some((space, components, alpha))
 }
 
 /// A number, a percentage (100% is 1 in every space `color()` names) or `none`.

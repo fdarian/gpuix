@@ -6,6 +6,14 @@ import type { HostElement } from "../host.js"
 
 defineKeyframes("solid-wa-grow", { from: { width: 100 }, to: { width: 200 } })
 defineKeyframes("solid-wa-tall", { from: { height: 10 }, to: { height: 30 } })
+defineKeyframes("solid-wa-move", {
+  from: { transform: "translateX(10px)", boxShadow: "none" },
+  to: { transform: "translateX(1em) rotate(0.5turn)", boxShadow: "0 0 4px oklch(0.7 0.1 200)" },
+})
+defineKeyframes("solid-wa-circle", {
+  from: { r: 5, fill: "oklch(0.7 0.1 200)", strokeDasharray: "4 2" },
+  to: { r: 25, fill: "#0000ff", strokeDasharray: "8 4" },
+})
 
 describe.skipIf(!hasNativeTestRenderer)("Solid Web animations", () => {
   const sizeOf = (app: ReturnType<typeof createTestRoot>) => {
@@ -313,6 +321,64 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Web animations", () => {
       expect(() => running.effect.updateTiming({ duration: -1 })).toThrow(TypeError)
       expect(() => running.effect.updateTiming({ easing: "nope" })).toThrow(TypeError)
       expect(running.effect.getTiming().duration).toBe(2000)
+      app.unmount()
+    })
+
+    it("writes a transform as the functions it was written with, and a colour in the space it was written in", () => {
+      const { app, box } = stage("solid-wa-move 1s cubic-bezier(0.25, 0.1, 0.25, 1)")
+      const [animation] = box.getAnimations()
+      expect(animation.effect.getKeyframes()).toEqual([
+        {
+          offset: 0,
+          computedOffset: 0,
+          easing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+          composite: "auto",
+          transform: "translateX(10px)",
+          boxShadow: "none",
+        },
+        {
+          offset: 1,
+          computedOffset: 1,
+          easing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+          composite: "auto",
+          transform: "translateX(16px) rotate(180deg)",
+          boxShadow: "oklch(0.7 0.1 200) 0px 0px 4px 0px",
+        },
+      ])
+      app.unmount()
+    })
+
+    it("writes the keyframes of a shape: lengths in px, a paint as a colour, a dash list with commas", () => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      let circle!: HostElement
+      app.render(() => (
+        <svg width={100} height={100} viewBox="0 0 100 100">
+          <circle ref={(element) => (circle = element)} cx={50} cy={50} r={10} style={{ animation: "solid-wa-circle 1s step-start" }} />
+        </svg>
+      ))
+      app.renderer.clockFastForward(0)
+      const [animation] = circle.getAnimations()
+      expect(animation.effect.getKeyframes()).toEqual([
+        {
+          offset: 0,
+          computedOffset: 0,
+          easing: "steps(1, start)",
+          composite: "auto",
+          r: "5px",
+          fill: "oklch(0.7 0.1 200)",
+          strokeDasharray: "4px, 2px",
+        },
+        {
+          offset: 1,
+          computedOffset: 1,
+          easing: "steps(1, start)",
+          composite: "auto",
+          r: "25px",
+          fill: "rgb(0, 0, 255)",
+          strokeDasharray: "8px, 4px",
+        },
+      ])
       app.unmount()
     })
 

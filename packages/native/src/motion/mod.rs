@@ -17,6 +17,7 @@ mod list;
 pub(crate) mod measure;
 mod property;
 mod svg_attr;
+pub(crate) mod text;
 mod track;
 mod transform_value;
 mod value;
@@ -117,10 +118,18 @@ impl PropKey {
     }
 
     /// See [`AnimProp::computed_text`].
-    fn computed_text(self, value: &AnimValue) -> Result<String, String> {
+    fn computed_text(self, value: &AnimValue, of: text::Text) -> Result<Vec<(String, String)>, String> {
         match self {
-            Self::Style(prop) => prop.computed_text(value),
-            Self::Svg(attr) => attr.computed_text(value),
+            Self::Style(prop) => prop.computed_text(value, of),
+            Self::Svg(attr) => attr.computed_text(value, of),
+        }
+    }
+
+    /// See [`AnimProp::written_text`].
+    fn written_text(self, written: &Value) -> Option<String> {
+        match self {
+            Self::Style(prop) => prop.written_text(written),
+            Self::Svg(_) => None,
         }
     }
 

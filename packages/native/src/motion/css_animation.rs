@@ -28,6 +28,7 @@ use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
 use super::property::{AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
+use super::text::Text;
 use super::track::{Goal, Track};
 use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentValues};
 use super::web_animation::{next_seq, ApiEvent, Command, Info, Kind, Playback};
@@ -177,7 +178,7 @@ struct Lists {
 }
 
 fn default_timing() -> Ease {
-    Ease::CubicBezier([0.25, 0.1, 0.25, 1.0])
+    Ease::Name("ease".to_string())
 }
 
 impl Lists {
@@ -866,6 +867,8 @@ struct ViewFrame {
     implicit: bool,
     easing: Ease,
     values: Vec<(PropKey, AnimValue)>,
+    /// What a keyframe wrote for a property whose text the value it parsed to cannot give.
+    written: Vec<(PropKey, String)>,
 }
 
 /// What a [`View`] was made from, so it is made again only when one changes.
@@ -905,6 +908,10 @@ impl View {
                     .iter()
                     .filter_map(|prop| Some((*prop, frame.value(*prop, &key.colors, key.custom.as_ref())?)))
                     .collect(),
+                written: properties
+                    .iter()
+                    .filter_map(|prop| Some((*prop, prop.written_text(frame.written(*prop)?)?)))
+                    .collect(),
             })
             .filter(|frame| !frame.values.is_empty())
             .collect();
@@ -923,6 +930,7 @@ impl View {
                             implicit: true,
                             easing: key.timing.clone(),
                             values: vec![(*prop, value.clone())],
+                            written: Vec::new(),
                         };
                         if offset == 0.0 {
                             frames.insert(0, frame);
@@ -947,8 +955,12 @@ impl View {
                     values: frame
                         .values
                         .iter()
-                        .map(|(prop, value)| Ok((prop.name().to_string(), prop.computed_text(value)?)))
-                        .collect::<Result<_, String>>()?,
+                        .map(|(prop, value)| match frame.written.iter().find(|(set, _)| set == prop) {
+                            Some((_, text)) => Ok(vec![(prop.name().to_string(), text.clone())]),
+                            None => prop.computed_text(value, Text::Keyframe),
+                        })
+                        .collect::<Result<Vec<_>, String>>()?
+                        .concat(),
                 })
             })
             .collect()
@@ -2284,7 +2296,7 @@ mod tests {
     #[test]
     fn omitted_parts_take_their_initial_values() {
         let animations = parse(r#"{ "animation": "fade 1s" }"#);
-        assert_eq!(animations[0].timing, Ease::CubicBezier([0.25, 0.1, 0.25, 1.0]));
+        assert_eq!(animations[0].timing, Ease::Name("ease".to_string()));
         assert_eq!(animations[0].delay, 0.0);
         assert_eq!(animations[0].iteration_count, IterationCount::Finite(1.0));
         assert_eq!(animations[0].direction, Direction::Normal);
@@ -2934,7 +2946,7 @@ mod tests {
 
     #[test]
     fn reversing_plays_time_backwards_but_keeps_each_interval_easing() {
-        let ease_in = Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]);
+        let ease_in = Ease::Name("easeIn".to_string());
         let mut frames = Frames::new();
         frames.define("fade", FADE);
         let animated = fading("fade 1s ease-in reverse");
@@ -3252,7 +3264,7 @@ mod tests {
 
     #[test]
     fn the_animation_timing_function_eases_every_keyframe_interval() {
-        let ease_in = Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]);
+        let ease_in = Ease::Name("easeIn".to_string());
         let mut frames = Frames::new();
         frames.define(
             "pulse",

@@ -5,7 +5,51 @@
 //! position along them, and [`blend`] decides, for the pair a position falls between, what the list
 //! there is.
 
+use std::ops::Deref;
+use std::sync::Arc;
+
 use gpui::{blend_rotations, list_matrix, px, size, TransformFunction, TransformLength};
+
+/// The functions of a `transform`, `translate`, `rotate` or `scale` value. Empty is `none`.
+///
+/// A value that was written keeps the text Chrome gives its computed value, because the functions
+/// have lost how they were written: `translateX(10px)` and `translate(10px, 0)` are the same one.
+/// The text is no part of the value.
+#[derive(Clone, Debug, Default)]
+pub(super) struct TransformList {
+    functions: Vec<TransformFunction>,
+    written: Option<Arc<str>>,
+}
+
+impl TransformList {
+    pub(super) fn written(functions: Vec<TransformFunction>, text: Option<String>) -> Self {
+        Self { functions, written: text.map(Arc::from) }
+    }
+
+    pub(super) fn computed_text(&self) -> Option<&str> {
+        self.written.as_deref()
+    }
+}
+
+impl From<Vec<TransformFunction>> for TransformList {
+    fn from(functions: Vec<TransformFunction>) -> Self {
+        Self { functions, written: None }
+    }
+}
+
+impl Deref for TransformList {
+    type Target = Vec<TransformFunction>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.functions
+    }
+}
+
+impl PartialEq for TransformList {
+    fn eq(&self, other: &Self) -> bool {
+        self.functions == other.functions
+    }
+}
 
 /// The list `progress` of the way from `from` to `to`. Progress outside 0 to 1 extrapolates.
 ///

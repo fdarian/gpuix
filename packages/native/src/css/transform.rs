@@ -9,6 +9,7 @@
 use gpui::{ElementTransform, TransformFunction, TransformLength};
 
 use super::length::LinearLength;
+use crate::motion::text::six_digits;
 
 use super::angle::parse_degrees;
 use super::cache::{Cache, Inputs};
@@ -716,6 +717,162 @@ pub(crate) fn format_origin(origin: &Origin) -> String {
     }
 }
 
+/// The transform properties whose value is a list of functions, or `none`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Property {
+    Transform,
+    Translate,
+    Rotate,
+    Scale,
+}
+
+/// The computed value of `value` as Chrome writes it in `getKeyframes()`: the functions as they were
+/// written (`translateX(10px)` is not `translate(10px, 0px)`), lengths in px, a percentage or
+/// `calc()`, angles in degrees and numbers to six digits. `None` for a value that does not parse.
+pub(crate) fn computed_text(property: Property, value: &str, lengths: &LengthContext) -> Option<String> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("none") {
+        return Some("none".to_string());
+    }
+    let tokens = split_whitespace(value);
+    match property {
+        Property::Transform => {
+            let functions = tokens.iter().map(|token| function_text(token, lengths)).collect::<Option<Vec<_>>>()?;
+            (!functions.is_empty()).then(|| functions.join(" "))
+        }
+        Property::Translate => {
+            let texts = tokens
+                .iter()
+                .enumerate()
+                .map(|(index, token)| {
+                    if index == 2 {
+                        Some(length_text(&TransformLength::pixels(parse_length(token, lengths)? as f32)))
+                    } else {
+                        translate_length(token, lengths).map(|length| length_text(&length))
+                    }
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(texts.join(" "))
+        }
+        Property::Rotate => {
+            let angle = match tokens.as_slice() {
+                [angle] => *angle,
+                [axis, angle] if axis.eq_ignore_ascii_case("z") => *angle,
+                [angle, axis] if axis.eq_ignore_ascii_case("z") => *angle,
+                _ => {
+                    let Value::List(functions) = parse_rotate(value)? else { return None };
+                    return functions_text(Property::Rotate, &functions);
+                }
+            };
+            Some(angle_text(parse_degrees(angle)?))
+        }
+        Property::Scale => {
+            let factors = tokens.iter().map(|token| scale_factor(token).map(|factor| f64::from(factor))).collect::<Option<Vec<_>>>()?;
+            let (x, y, z) = match factors.as_slice() {
+                [x] => (*x, *x, 1.0),
+                [x, y] => (*x, *y, 1.0),
+                [x, y, z] => (*x, *y, *z),
+                _ => return None,
+            };
+            let mut texts = vec![six_digits(x)];
+            if y != x || z != 1.0 {
+                texts.push(six_digits(y));
+            }
+            if z != 1.0 {
+                texts.push(six_digits(z));
+            }
+            Some(texts.join(" "))
+        }
+    }
+}
+
+/// The text of a value made of functions, for one that was never written (a transition that starts
+/// from the middle of another). `None` where the functions are a blend of two lists.
+pub(crate) fn functions_text(property: Property, functions: &[TransformFunction]) -> Option<String> {
+    let degrees = |angle: &f32| angle_text(f64::from(*angle).to_degrees());
+    let texts = functions
+        .iter()
+        .map(|function| {
+            Some(match (property, function) {
+                (Property::Translate, TransformFunction::Translate(x, y)) => format!("{} {}", length_text(x), length_text(y)),
+                (Property::Rotate, TransformFunction::Rotate(angle)) => degrees(angle),
+                (Property::Rotate, TransformFunction::Rotate3d(x, y, z, angle)) => match (*x, *y, *z) {
+                    (1.0, 0.0, 0.0) => format!("x {}", degrees(angle)),
+                    (0.0, 1.0, 0.0) => format!("y {}", degrees(angle)),
+                    _ => format!(
+                        "{} {} {} {}",
+                        six_digits(f64::from(*x)),
+                        six_digits(f64::from(*y)),
+                        six_digits(f64::from(*z)),
+                        degrees(angle)
+                    ),
+                },
+                (Property::Scale, TransformFunction::Scale(x, y)) => format!("{} {}", six_digits(f64::from(*x)), six_digits(f64::from(*y))),
+                (Property::Transform, TransformFunction::Translate(x, y)) => format!("translate({}, {})", length_text(x), length_text(y)),
+                (Property::Transform, TransformFunction::Scale(x, y)) => {
+                    format!("scale({}, {})", six_digits(f64::from(*x)), six_digits(f64::from(*y)))
+                }
+                (Property::Transform, TransformFunction::Rotate(angle)) => format!("rotate({})", degrees(angle)),
+                (Property::Transform, TransformFunction::Skew(x, y)) => format!("skew({}, {})", degrees(x), degrees(y)),
+                (Property::Transform, TransformFunction::SkewX(x)) => format!("skewX({})", degrees(x)),
+                (Property::Transform, TransformFunction::SkewY(y)) => format!("skewY({})", degrees(y)),
+                (Property::Transform, TransformFunction::Matrix(values)) => format!(
+                    "matrix({})",
+                    values.iter().map(|value| six_digits(f64::from(*value))).collect::<Vec<_>>().join(", ")
+                ),
+                _ => return None,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(if texts.is_empty() { "none".to_string() } else { texts.join(" ") })
+}
+
+fn angle_text(degrees: f64) -> String {
+    format!("{}deg", six_digits(degrees))
+}
+
+fn length_text(length: &TransformLength) -> String {
+    crate::motion::text::length(f64::from(length.px), f64::from(length.fraction))
+}
+
+/// One function of a `transform` list as Chrome writes it.
+fn function_text(token: &str, lengths: &LengthContext) -> Option<String> {
+    let name = token[..token.find('(')?].to_ascii_lowercase();
+    let args = split_commas(function_args(token, &name)?);
+    let length = |arg: &&str| translate_length(arg, lengths).map(|length| length_text(&length));
+    let factor = |arg: &&str| scale_factor(arg).map(|factor| six_digits(f64::from(factor)));
+    let angle = |arg: &&str| parse_degrees(arg).map(angle_text);
+    let list = |texts: Option<Vec<String>>| texts.map(|texts| texts.join(", "));
+    let (written, arguments) = match name.as_str() {
+        "translate" if (1..=2).contains(&args.len()) => ("translate", list(args.iter().map(length).collect())?),
+        "translatex" if args.len() == 1 => ("translateX", list(args.iter().map(length).collect())?),
+        "translatey" if args.len() == 1 => ("translateY", list(args.iter().map(length).collect())?),
+        "translatez" if args.len() == 1 => (
+            "translateZ",
+            crate::motion::text::pixels(parse_length(args[0], lengths)?),
+        ),
+        "translate3d" if args.len() == 3 => (
+            "translate3d",
+            list(args[..2].iter().map(length).chain([Some(crate::motion::text::pixels(parse_length(args[2], lengths)?))]).collect())?,
+        ),
+        "scale" if (1..=2).contains(&args.len()) => ("scale", list(args.iter().map(factor).collect())?),
+        "scalex" if args.len() == 1 => ("scaleX", list(args.iter().map(factor).collect())?),
+        "scaley" if args.len() == 1 => ("scaleY", list(args.iter().map(factor).collect())?),
+        "scalez" if args.len() == 1 => ("scaleZ", list(args.iter().map(factor).collect())?),
+        "scale3d" if args.len() == 3 => ("scale3d", list(args.iter().map(factor).collect())?),
+        "rotate" if args.len() == 1 => ("rotate", list(args.iter().map(angle).collect())?),
+        "rotatez" if args.len() == 1 => ("rotateZ", list(args.iter().map(angle).collect())?),
+        // The second angle of a skew is written when it was not.
+        "skew" if args.len() == 1 => ("skew", format!("{}, 0deg", angle(&args[0])?)),
+        "skew" if args.len() == 2 => ("skew", list(args.iter().map(angle).collect())?),
+        "skewx" if args.len() == 1 => ("skewX", list(args.iter().map(angle).collect())?),
+        "skewy" if args.len() == 1 => ("skewY", list(args.iter().map(angle).collect())?),
+        "matrix" if args.len() == 6 => ("matrix", list(args.iter().map(|arg| finite_number(arg).map(six_digits)).collect())?),
+        _ => return None,
+    };
+    Some(format!("{written}({arguments})"))
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Position {
     Length(TransformLength),
@@ -797,6 +954,28 @@ fn parse_position(tokens: &[&str], lengths: &LengthContext) -> Option<Position2d
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_computed_text_keeps_the_functions_a_value_was_written_with() {
+        let text = |property: Property, value: &str| computed_text(property, value, &lengths()).unwrap();
+        assert_eq!(text(Property::Transform, "translateX(1px) translateY(50%) translate(2px)"), "translateX(1px) translateY(50%) translate(2px)");
+        assert_eq!(text(Property::Transform, "matrix(1, 0, 0, 1, 10.5, 20.25)"), "matrix(1, 0, 0, 1, 10.5, 20.25)");
+        assert_eq!(text(Property::Transform, "translate3d(1px, 2px, 3px) scale3d(1, 2, 3)"), "translate3d(1px, 2px, 3px) scale3d(1, 2, 3)");
+        assert_eq!(text(Property::Transform, "rotate(100grad) skewX(1deg) skewY(2deg)"), "rotate(90deg) skewX(1deg) skewY(2deg)");
+        assert_eq!(text(Property::Translate, "none"), "none");
+        assert_eq!(text(Property::Translate, "10px"), "10px");
+        assert_eq!(text(Property::Rotate, "45deg"), "45deg");
+        assert_eq!(text(Property::Scale, "2 3"), "2 3");
+        assert_eq!(text(Property::Scale, "2 2"), "2");
+        assert!(computed_text(Property::Transform, "rotateX(10deg)", &lengths()).is_none());
+    }
+
+    #[test]
+    fn functions_that_were_never_written_are_written_out() {
+        let functions = [TransformFunction::Translate(px(10.0), fraction(0.5)), TransformFunction::Rotate(std::f32::consts::FRAC_PI_2)];
+        assert_eq!(functions_text(Property::Transform, &functions).unwrap(), "translate(10px, 50%) rotate(90deg)");
+        assert_eq!(functions_text(Property::Transform, &[]).unwrap(), "none");
+    }
     use super::*;
 
     fn lengths() -> LengthContext {

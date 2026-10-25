@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use super::text::shortest;
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub(super) enum Ease {
@@ -23,6 +25,8 @@ pub(super) enum Ease {
 pub(super) struct Steps {
     count: u32,
     jump: Jump,
+    /// Written `jump-start`, which Chrome keeps apart from `start`.
+    jump_start_term: bool,
 }
 
 /// Where the jumps of a `steps()` function fall.
@@ -711,15 +715,16 @@ fn stops_segment(progress: f64, stops: &[(f64, f64)]) -> ((f64, f64), (f64, f64)
 /// `linear()` with stops.
 pub(super) fn parse_timing_function(text: &str) -> Result<Ease, String> {
     let text = text.trim().to_ascii_lowercase();
-    let named = |curve: [f64; 4]| Ok(Ease::CubicBezier(curve));
+    // The keywords stay names, as Chrome reads `ease` back as `ease` and `cubic-bezier(.25, .1, .25, 1)` as itself.
+    let named = |name: &str| Ok(Ease::Name(name.to_string()));
     match text.as_str() {
-        "linear" => return Ok(Ease::Name("linear".to_string())),
-        "ease" => return named([0.25, 0.1, 0.25, 1.0]),
-        "ease-in" => return named([0.42, 0.0, 1.0, 1.0]),
-        "ease-out" => return named([0.0, 0.0, 0.58, 1.0]),
-        "ease-in-out" => return named([0.42, 0.0, 0.58, 1.0]),
-        "step-start" => return Ok(Ease::Steps(Steps { count: 1, jump: Jump::Start })),
-        "step-end" => return Ok(Ease::Steps(Steps { count: 1, jump: Jump::End })),
+        "linear" => return named("linear"),
+        "ease" => return named("ease"),
+        "ease-in" => return named("easeIn"),
+        "ease-out" => return named("easeOut"),
+        "ease-in-out" => return named("easeInOut"),
+        "step-start" => return Ok(Ease::Steps(Steps { count: 1, jump: Jump::Start, jump_start_term: false })),
+        "step-end" => return Ok(Ease::Steps(Steps { count: 1, jump: Jump::End, jump_start_term: false })),
         _ => {}
     }
     let (name, arguments) = text
@@ -750,16 +755,12 @@ pub(super) fn parse_timing_function(text: &str) -> Result<Ease, String> {
 }
 
 impl Ease {
-    /// The text Chrome gives an easing in `getTiming().easing`: a keyword for the named curves,
-    /// `steps(n)` for a jump at the end and `steps(n, start)` for one at the start. A `linear()`
-    /// has no text derived from Chrome yet.
+    /// The text Chrome gives an easing in `getTiming().easing` and in the `easing` of a keyframe:
+    /// the keyword for a keyword, `cubic-bezier()` for four numbers as they were written (the
+    /// numbers of `ease` written out are not `ease`), `steps(n)` for a jump at the end,
+    /// `steps(n, start)` or `steps(n, jump-start)` as the term was written, and `linear()` with
+    /// every stop's input in percent.
     pub(super) fn to_css(&self) -> Result<String, String> {
-        const NAMED: [(&str, [f64; 4]); 4] = [
-            ("ease", [0.25, 0.1, 0.25, 1.0]),
-            ("ease-in", [0.42, 0.0, 1.0, 1.0]),
-            ("ease-out", [0.0, 0.0, 0.58, 1.0]),
-            ("ease-in-out", [0.42, 0.0, 0.58, 1.0]),
-        ];
         match self {
             Self::Name(name) => match name.as_str() {
                 "linear" => Ok("linear".to_string()),
@@ -769,19 +770,35 @@ impl Ease {
                 "easeInOut" => Ok("ease-in-out".to_string()),
                 other => Err(format!("`{other}` is not an easing")),
             },
-            Self::CubicBezier(curve) => Ok(match NAMED.iter().find(|(_, named)| named == curve) {
-                Some((name, _)) => (*name).to_string(),
-                None => format!("cubic-bezier({}, {}, {}, {})", curve[0], curve[1], curve[2], curve[3]),
-            }),
+            Self::CubicBezier(curve) => Ok(format!(
+                "cubic-bezier({}, {}, {}, {})",
+                shortest(curve[0]),
+                shortest(curve[1]),
+                shortest(curve[2]),
+                shortest(curve[3])
+            )),
             Self::Steps(steps) => Ok(match steps.jump {
                 Jump::End => format!("steps({})", steps.count),
+                Jump::Start if steps.jump_start_term => format!("steps({}, jump-start)", steps.count),
                 Jump::Start => format!("steps({}, start)", steps.count),
                 Jump::None => format!("steps({}, jump-none)", steps.count),
                 Jump::Both => format!("steps({}, jump-both)", steps.count),
             }),
-            Self::Stops(_) => Err("a linear() easing has no text to give yet".to_string()),
+            Self::Stops(stops) => Ok(format!(
+                "linear({})",
+                stops
+                    .iter()
+                    .map(|(input, output)| format!("{} {}%", shortest(*output), shortest(percent(*input))))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
         }
     }
+}
+
+/// An input of `linear()` in percent, without the noise of the division (`0.58 * 100` is `57.99999999999999`).
+fn percent(input: f64) -> f64 {
+    format!("{:.12e}", input * 100.0).parse().expect("a float written in scientific notation reads back")
 }
 
 fn parse_number(text: &str) -> Result<f64, String> {
@@ -792,7 +809,7 @@ fn parse_number(text: &str) -> Result<f64, String> {
 }
 
 fn parse_steps(arguments: &[&str]) -> Result<Ease, String> {
-    let (count, jump) = match arguments {
+    let (count, jump_term) = match arguments {
         [count] => (count, "jump-end"),
         [count, jump] => (count, *jump),
         _ => return Err("steps() takes a count and an optional jump term".to_string()),
@@ -802,7 +819,7 @@ fn parse_steps(arguments: &[&str]) -> Result<Ease, String> {
         .ok()
         .filter(|count| *count >= 1)
         .ok_or_else(|| format!("steps() count must be a positive integer: {count}"))?;
-    let jump = match jump {
+    let jump = match jump_term {
         "jump-start" | "start" => Jump::Start,
         "jump-end" | "end" => Jump::End,
         "jump-none" => Jump::None,
@@ -812,7 +829,7 @@ fn parse_steps(arguments: &[&str]) -> Result<Ease, String> {
     if jump == Jump::None && count < 2 {
         return Err("steps() with jump-none needs at least two steps".to_string());
     }
-    Ok(Ease::Steps(Steps { count, jump }))
+    Ok(Ease::Steps(Steps { count, jump, jump_start_term: jump_term == "jump-start" }))
 }
 
 /// CSS Easing 2 `linear()`: each stop is a number with up to two percentage
@@ -936,6 +953,24 @@ pub(crate) fn cubic_bezier(x: f64, [x1, y1, x2, y2]: [f64; 4]) -> f64 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_easing_reads_back_as_it_was_written() {
+        let back = |text: &str| css(text).to_css().unwrap();
+        assert_eq!(back("EASE-IN"), "ease-in");
+        assert_eq!(back("cubic-bezier(.25,.1,.25,1)"), "cubic-bezier(0.25, 0.1, 0.25, 1)");
+        assert_eq!(back("cubic-bezier(0, 0, 1, 1)"), "cubic-bezier(0, 0, 1, 1)");
+        assert_eq!(back("cubic-bezier(0.1, 1e-7, 0.9, 1)"), "cubic-bezier(0.1, 1e-7, 0.9, 1)");
+        assert_eq!(back("step-start"), "steps(1, start)");
+        assert_eq!(back("step-end"), "steps(1)");
+        assert_eq!(back("steps( 2 , END )"), "steps(2)");
+        assert_eq!(back("steps(4, start)"), "steps(4, start)");
+        assert_eq!(back("steps(4, jump-start)"), "steps(4, jump-start)");
+        assert_eq!(back("steps(3, jump-both)"), "steps(3, jump-both)");
+        assert_eq!(back("linear(0, 1)"), "linear(0 0%, 1 100%)");
+        assert_eq!(back("linear(0, 0.5 58%, 1)"), "linear(0 0%, 0.5 58%, 1 100%)");
+        assert_eq!(back("linear(0 30%, 0.5 20%, 1)"), "linear(0 30%, 0.5 30%, 1 100%)");
+    }
     use super::*;
 
     #[test]
@@ -975,9 +1010,10 @@ mod tests {
 
     #[test]
     fn css_keywords_are_the_standard_cubic_beziers() {
-        assert_eq!(css("ease"), Ease::CubicBezier([0.25, 0.1, 0.25, 1.0]));
-        assert_eq!(css("EASE-IN"), Ease::CubicBezier([0.42, 0.0, 1.0, 1.0]));
-        assert_eq!(css("ease-out"), Ease::CubicBezier([0.0, 0.0, 0.58, 1.0]));
+        assert_eq!(css("ease"), Ease::Name("ease".to_string()));
+        assert_eq!(css("EASE-IN"), Ease::Name("easeIn".to_string()));
+        assert_eq!(css("ease-out"), Ease::Name("easeOut".to_string()));
+        assert_eq!(at("ease", 0.3), at("cubic-bezier(0.25, 0.1, 0.25, 1)", 0.3));
         assert!((at("ease-in-out", 0.5) - 0.5).abs() < 1e-3);
         assert_eq!(at("linear", 0.3), 0.3);
         assert_eq!(

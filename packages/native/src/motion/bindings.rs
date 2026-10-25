@@ -888,8 +888,8 @@ fn parse_value(value: &Value, context: &ValueContext) -> Result<AnimValue, Strin
             }
             // Last, so that a colour or a length that looks like a function is not read as one.
             match parse_transform(text, &context.lengths) {
-                Some(TransformValue::None) => return Ok(AnimValue::Transform(Vec::new())),
-                Some(TransformValue::List(functions)) => return Ok(AnimValue::Transform(functions)),
+                Some(TransformValue::None) => return Ok(AnimValue::Transform(Vec::new().into())),
+                Some(TransformValue::List(functions)) => return Ok(AnimValue::Transform(functions.into())),
                 None => {}
             }
             if split_slash_tokens(text).len() < 2 {

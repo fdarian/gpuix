@@ -20,7 +20,7 @@
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
-import type { ReactElement } from "react"
+import { createElement, type ReactElement } from "react"
 import { describe, expect, it } from "vitest"
 import {
   Animation,
@@ -115,6 +115,19 @@ interface ApiCase {
   steps: Step[]
   records: ApiSnapshot[]
 }
+interface EffectCase {
+  name: string
+  tag: string
+  attrs: Record<string, unknown>
+  style: Record<string, unknown>
+  keyframesName: string | null
+  keyframes: string | null
+  change: Record<string, unknown> | null
+  attrChange: Record<string, unknown> | null
+  update: Record<string, unknown> | null
+  animations: { kind: string; name: string; keyframes: unknown; timing: unknown }[]
+  updated: unknown[] | null
+}
 const ORACLE: {
   keyframes: Record<string, Record<string, Record<string, number>>>
   richKeyframes: Record<string, string>
@@ -122,6 +135,7 @@ const ORACLE: {
   cases: Case[]
   apiCases: ApiCase[]
   treeCases: TreeCase[]
+  effectCases: EffectCase[]
 } = JSON.parse(
   fs.readFileSync(
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/web-animations-oracle.json"),
@@ -163,6 +177,28 @@ const composes = (scenario: { style: Record<string, unknown> }): boolean =>
 
 for (const [name, body] of Object.entries(ORACLE.richKeyframes)) {
   if (!COMPOSITION.test(body)) defineKeyframes(name, framesOf(body))
+}
+/** `"2.5"` as the number a style or a keyframe takes for a property of numbers; text is left as it is. */
+const numeric = <T extends Record<string, unknown>>(record: T): T =>
+  Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [
+      key,
+      typeof value === "string" && /^-?\d*\.?\d+$/.test(value) ? Number.parseFloat(value) : value,
+    ])
+  ) as T
+
+/** The effect cases whose keyframes gpuix refuses where they are defined, and why: it animates nothing of them. */
+const REFUSED = new Map<string, string>()
+for (const scenario of ORACLE.effectCases) {
+  if (!scenario.keyframesName || !scenario.keyframes) continue
+  try {
+    defineKeyframes(
+      scenario.keyframesName,
+      Object.fromEntries(Object.entries(framesOf(scenario.keyframes)).map(([offset, frame]) => [offset, numeric(frame)]))
+    )
+  } catch (error) {
+    REFUSED.set(scenario.name, (error as Error).message)
+  }
 }
 
 /** `"50px"` as the number a style takes. */
@@ -991,5 +1027,253 @@ describeNative("Web animations beyond what Chrome can pin on a paused page", () 
     expect(seen).toEqual(["animationend"])
     expect(animation.playState).toBe("finished")
     unmount()
+  })
+})
+
+/**
+ * The cases of `effectCases`: what `getKeyframes()` and `getTiming()` read for a CSS animation or transition of each
+ * kind of value. They read the same whatever the time, so the cases of one kind of element share a window: a `div`
+ * for each case of a `div`, a shape in one `<svg>` for each of a shape.
+ *
+ * Chrome's own answers that gpuix has no value to give them from are skipped, each for a reason.
+ */
+const EFFECT_SKIPS: [RegExp, string][] = [
+  // A length of 0% is the number 0 once parsed, which reads back as 0px.
+  [/border-top-right-radius in percent|border-radius in percent|flex of one number|flex with a percent basis|transform-origin (keywords|of one keyword)/, "0% reads 0px"],
+  // An em on an SVG length is not a number of px, which is all an SVG attribute holds here.
+  [/^animation: text font-size in em/, "an SVG length in em is not read"],
+  // A two-value border-color in a style is not read as the shorthand.
+  [/^transition: border-color$/, "a two-value border-color is not read"],
+  // A percentage of 1em is folded into px when the thickness is parsed.
+  [/text-decoration-thickness in percent/, "a percentage thickness is folded into px"],
+  [/font-weight relative/, "lighter and bolder are not parsed"],
+  // Chrome writes the colour a transition starts from as black when it was written currentcolor.
+  [/^transition: (border-top-color|box-shadow with) currentcolor/, "Chrome writes currentcolor as black in a transition"],
+  // Chrome starts no transition between these two, gpuix does (or the other way round).
+  [/^transition: (text-underline-offset from auto|text-decoration-thickness from|aspect-ratio with auto and a ratio|translate of one value|transform translateZ)/, "a transition gpuix does not start as Chrome does"],
+  [/^transition: transform-origin of one value/, "a transition gpuix does not start as Chrome does"],
+]
+
+/** The cases whose colours are Chrome's to the last digits but one: see `closeEnough`. */
+const APPROXIMATE = new Set<string>([
+  "transition: background-color lab(50% 40 59)",
+  "transition: background-color lab(50% 40 59 / 0.5)",
+  "transition: background-color lch(50% 80 30)",
+  "transition: background-color lch(50% 80 30deg / 0.4)",
+  "transition: background-color color(srgb 1 0 0)",
+  "transition: background-color color(srgb 0.5 0.25 0.1 / 0.5)",
+  "transition: background-color color(srgb-linear 0.5 0.5 0.5)",
+  "transition: background-color color(display-p3 1 0 0)",
+  "transition: background-color color(a98-rgb 1 0 0)",
+  "transition: background-color color(prophoto-rgb 1 0 0)",
+  "transition: background-color color(rec2020 1 0 0)",
+  "transition: background-color color(xyz 0.2 0.3 0.4)",
+  "transition: background-color color(xyz-d50 0.2 0.3 0.4)",
+  "transition: background-color color-mix(in srgb, red, blue)",
+  "animation: background-color color-mix(in oklch, red 30%, blue)",
+  "transition: background-color color-mix(in oklch, red 30%, blue)",
+  "transition: background-color color-mix(in srgb, red 50%, transparent)",
+  "transition: background-color color-mix(in srgb, #f00, #00f 25%)",
+  "transition: background-color color-mix(in hsl, red, blue)",
+  "transition: background-color color-mix(in hwb, red, blue)",
+  "animation: background-color color-mix(in lab, red, blue)",
+  "transition: background-color color-mix(in lab, red, blue)",
+  "animation: background-color color-mix(in oklab, red, blue)",
+  "transition: background-color color-mix(in oklab, red, blue)",
+  "animation: background-color color-mix(in lch longer hue, red, blue)",
+  "transition: background-color color-mix(in lch longer hue, red, blue)",
+  "animation: background-color color-mix(in xyz, red, blue)",
+  "transition: background-color color-mix(in xyz, red, blue)",
+  "animation: background-color color-mix(in display-p3, red, blue)",
+  "transition: background-color color-mix(in display-p3, red, blue)",
+  "transition: background-color color-mix(in srgb, red 30%, blue 20%)",
+  "transition: background-color lch(120% 200 30)",
+  "transition: background-color color(srgb 2 -1 0.5)",
+  "transition: background-color color(display-p3 2 -1 0.5)",
+  "transition: background-color lab(50% 100% -100%)",
+  "transition: background-color color(srgb 1 0 0 / 150%)",
+  "transition: outline-color from the default",
+  "transition: box-shadow with a modern colour",
+  "transition: fill in a modern colour",
+  "transition: stroke in a modern colour",
+])
+
+describeNative("What getKeyframes() and getTiming() read, against Chrome", () => {
+  const groups: [string, (scenario: EffectCase) => boolean][] = [
+    ["a div", (scenario) => scenario.tag === "div"],
+    ["a shape of an svg", (scenario) => scenario.tag !== "div" && scenario.tag !== "svg"],
+    ["an svg", (scenario) => scenario.tag === "svg"],
+  ]
+  /**
+   * Chrome converts a colour between spaces with float matrices of its own, so what it writes for a colour it had to
+   * convert (a `lab()` in a transition, which holds colours in Oklab, a `color-mix()`) differs from ours in the last
+   * digits. The numbers of such a colour are compared to 2e-4 plus 3e-4 of their size; everything else about it, and every other value, is
+   * compared as written.
+   */
+  const closeEnough = (got: unknown, want: unknown): boolean => {
+    if (typeof got === "string" && typeof want === "string") {
+      if (!/\b(oklab|oklch|lab|lch|color)\(/.test(want)) return got === want
+      const shape = (text: string) => text.replace(/-?\d*\.?\d+(?:e-?\d+)?/g, "#")
+      const numbers = (text: string) => (text.match(/-?\d*\.?\d+(?:e-?\d+)?/g) ?? []).map(Number)
+      if (shape(got) !== shape(want)) return false
+      const [a, b] = [numbers(got), numbers(want)]
+      return a.every((number, index) => Math.abs(number - b[index]) <= 2e-4 + 3e-4 * Math.abs(b[index]))
+    }
+    if (Array.isArray(got) && Array.isArray(want)) {
+      return got.length === want.length && got.every((member, index) => closeEnough(member, want[index]))
+    }
+    if (got && want && typeof got === "object" && typeof want === "object") {
+      const [a, b] = [got as Record<string, unknown>, want as Record<string, unknown>]
+      return Object.keys(a).length === Object.keys(b).length && Object.keys(b).every((key) => closeEnough(a[key], b[key]))
+    }
+    return got === want
+  }
+  /** The members of an animation's effect that differ, as the two read them. */
+  const compact = (value: unknown): string => JSON.stringify(value).slice(0, 700)
+  for (const [group, takes] of groups) {
+    const cases = ORACLE.effectCases.filter(
+      (scenario) =>
+        takes(scenario) &&
+        !REFUSED.has(scenario.name) &&
+        !REFUSED.has(scenario.name.replace(/^transition:/, "animation:")) &&
+        !EFFECT_SKIPS.some(([skipped]) => skipped.test(scenario.name))
+    )
+    for (let from = 0; from < cases.length; from += 100) {
+      const chunk = cases.slice(from, from + 100)
+      it(`${group}: ${chunk[0].name} to ${chunk[chunk.length - 1].name}`, { timeout: 300_000 }, () => {
+        const { render, renderer, unmount } = createTestRoot()
+        renderer.clockPause()
+        const failures: string[] = []
+        const approximate: string[] = []
+        const read = (call: () => unknown) => {
+          try {
+            return call()
+          } catch (error) {
+            return { threw: (error as Error).name }
+          }
+        }
+        try {
+          // One case at a time in one window: a style gpuix cannot parse spoils its own case and no other.
+          for (const scenario of chunk) {
+            const target: { current: PublicInstance | null } = { current: null }
+            const element = (changed: boolean) => {
+              const style = numeric({
+                ...(scenario.tag === "div" ? ORACLE.base : {}),
+                ...scenario.style,
+                ...(changed ? scenario.change : {}),
+              })
+              const attrs = { ...scenario.attrs, ...(changed ? scenario.attrChange : {}) }
+              const ref = (node: PublicInstance | null) => {
+                target.current = node
+              }
+              if (scenario.tag === "div") return <div style={style} ref={ref} />
+              if (scenario.tag === "svg") return createElement("svg", { ...attrs, style, ref })
+              return (
+                <svg width={200} height={100} viewBox="0 0 200 100">
+                  {createElement(scenario.tag, { ...attrs, style, ref }, ...(scenario.tag === "text" ? ["hello"] : []))}
+                </svg>
+              )
+            }
+            try {
+              render(element(false))
+              renderer.clockFastForward(0)
+              renderer.getElementBounds(target.current!.id)
+              render(element(true))
+              renderer.clockFastForward(0)
+              renderer.dispatchNativeEvents()
+              const animations = target.current!.getAnimations()
+              const got = animations.map((animation) => ({
+                kind: animation.constructor.name,
+                name: nameOf(animation),
+                keyframes: read(() => clean(animation.effect.getKeyframes())),
+                timing: read(() => clean(animation.effect.getTiming())),
+              }))
+              if (JSON.stringify(got) !== JSON.stringify(scenario.animations)) {
+                try {
+                  expect(got).toEqual(scenario.animations)
+                } catch {
+                  if (closeEnough(got, scenario.animations)) approximate.push(scenario.name)
+                  else failures.push(`${scenario.name}\n   want ${compact(scenario.animations)}\n   got  ${compact(got)}`)
+                }
+              }
+              if (scenario.update && scenario.updated) {
+                const updated = animations.map((animation) =>
+                  read(() => {
+                    animation.effect.updateTiming(revive(scenario.update!))
+                    return clean(animation.effect.getTiming())
+                  })
+                )
+                try {
+                  expect(updated).toEqual(scenario.updated)
+                } catch {
+                  failures.push(`${scenario.name}: updateTiming()\n   want ${compact(scenario.updated)}\n   got  ${compact(updated)}`)
+                }
+              }
+            } catch (error) {
+              failures.push(`${scenario.name}: threw ${(error as Error).message}`)
+            } finally {
+              render(<></>)
+            }
+          }
+        } finally {
+          unmount()
+        }
+        expect(failures.length, `${failures.length} of ${chunk.length} differ:\n${failures.join("\n")}`).toBe(0)
+        expect(approximate.filter((name) => !APPROXIMATE.has(name)), "cases that are only close").toEqual([])
+      })
+    }
+  }
+})
+
+describeNative("What gpuix refuses to animate where Chrome does", () => {
+  it("refuses, where the keyframes are defined, the values that only layout or a parser it has not got can give", () => {
+    expect([...REFUSED.keys()]).toEqual([
+  "animation: width to min-content",
+  "animation: width to fit-content",
+  "animation: min-height from auto",
+  "animation: max-width from none",
+  "animation: column-gap from normal",
+  "animation: border-left-width keywords",
+  "animation: font-size keywords",
+  "animation: line-height in px",
+  "animation: line-height in percent",
+  "animation: line-height from normal",
+  "animation: z-index from auto",
+  "animation: aspect-ratio as a ratio",
+  "animation: aspect-ratio from auto",
+  "animation: aspect-ratio with auto and a ratio",
+  "animation: opacity in percent",
+  "animation: display",
+  "animation: position",
+  "animation: overflow-x",
+  "animation: overflow-y",
+  "animation: pointer-events",
+  "animation: table-layout",
+  "animation: border-collapse",
+  "animation: caption-side",
+  "animation: empty-cells",
+  "animation: flex-direction",
+  "animation: flex-wrap",
+  "animation: align-items",
+  "animation: align-self",
+  "animation: align-content",
+  "animation: justify-content",
+  "animation: justify-items",
+  "animation: justify-self",
+  "animation: display in keyframes",
+  "animation: overflow in keyframes",
+  "animation: pointer-events in keyframes",
+  "animation: outline",
+  "animation: border",
+  "animation: border-top",
+  "animation: background",
+  "animation: text-decoration",
+  "animation: overflow",
+  "animation: place-items",
+  "animation: circle r in em",
+  "animation: text letter-spacing from normal",
+  "animation: text letter-spacing in em",
+  "keyframe easing linear(0.5)",
+])
   })
 })

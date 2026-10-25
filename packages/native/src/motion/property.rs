@@ -10,6 +10,8 @@
 use serde_json::Value;
 
 use super::list::ListValue;
+use super::text::{self, six_digits, Text};
+use super::transform_value::TransformList;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
@@ -26,8 +28,9 @@ use crate::css::border_radius::parse_radii;
 use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
 use crate::css::syntax::{expand_sides, split_slash_tokens};
 use crate::css::transform::{
-    format_list, format_origin, format_rotate, format_scale, format_translate, parse_origin, parse_perspective,
-    parse_perspective_origin, parse_rotate, parse_scale, parse_transform, parse_translate, Origin, Value as TransformValue,
+    computed_text as computed_transform_text, format_list, format_origin, format_rotate, format_scale, format_translate,
+    functions_text, parse_origin, parse_perspective, parse_perspective_origin, parse_rotate, parse_scale, parse_transform,
+    parse_translate, Origin, Property as TransformProperty, Value as TransformValue,
 };
 use gpui::{TransformFunction, TransformLength};
 use crate::layout::aspect_ratio::AspectRatio;
@@ -572,11 +575,24 @@ fn thickness_write(slot: &mut Option<String>, value: AnimValue) {
 const FROM_FONT: &str = "from-font";
 
 /// A `transform`, `translate`, `rotate` or `scale` held as the text it was written in; `none` is the empty list.
-fn transform_read(slot: &Option<String>, parse: impl FnOnce(&str) -> Option<TransformValue>) -> Option<AnimValue> {
-    Some(AnimValue::Transform(match parse(slot.as_deref()?)? {
-        TransformValue::None => Vec::new(),
-        TransformValue::List(functions) => functions,
-    }))
+fn transform_read(
+    slot: &Option<String>,
+    parse: impl FnOnce(&str) -> Option<TransformValue>,
+    property: TransformProperty,
+    lengths: &LengthContext,
+) -> Option<AnimValue> {
+    let text = slot.as_deref()?;
+    Some(transform_value_of(parse(text)?, computed_transform_text(property, text, lengths)))
+}
+
+fn transform_value_of(parsed: TransformValue, written: Option<String>) -> AnimValue {
+    AnimValue::Transform(TransformList::written(
+        match parsed {
+            TransformValue::None => Vec::new(),
+            TransformValue::List(functions) => functions,
+        },
+        written,
+    ))
 }
 
 fn transform_write(slot: &mut Option<String>, value: AnimValue, format: fn(&[TransformFunction]) -> String) {
@@ -683,16 +699,16 @@ macro_rules! read_field {
         offset_read(&$slot, $cx)
     };
     (Transform, $slot:expr, $cx:expr) => {
-        transform_read(&$slot, |text| parse_transform(text, $cx.lengths))
+        transform_read(&$slot, |text| parse_transform(text, $cx.lengths), TransformProperty::Transform, $cx.lengths)
     };
     (Translate, $slot:expr, $cx:expr) => {
-        transform_read(&$slot, |text| parse_translate(text, $cx.lengths))
+        transform_read(&$slot, |text| parse_translate(text, $cx.lengths), TransformProperty::Translate, $cx.lengths)
     };
     (Rotate, $slot:expr, $cx:expr) => {
-        transform_read(&$slot, parse_rotate)
+        transform_read(&$slot, parse_rotate, TransformProperty::Rotate, $cx.lengths)
     };
     (Scale, $slot:expr, $cx:expr) => {
-        transform_read(&$slot, parse_scale)
+        transform_read(&$slot, parse_scale, TransformProperty::Scale, $cx.lengths)
     };
     (TransformOrigin, $slot:expr, $cx:expr) => {
         transform_origin_read(&$slot, $cx)
@@ -836,7 +852,7 @@ macro_rules! properties {
                 // or the style's `transform` made.
                 if self == Self::MotionTransform && style.motion_transform.is_none() {
                     return crate::css::transform::list_of(style, &colors.lengths).map(|list| {
-                        AnimValue::Transform(list.functions().to_vec())
+                        AnimValue::Transform(list.functions().to_vec().into())
                     });
                 }
                 let cx = &Reading { colors: self.colors(colors), lengths: &colors.lengths };
@@ -1354,34 +1370,116 @@ impl AnimProp {
         }
     }
 
-    /// `value` of this property as Chrome writes a computed value in `getKeyframes()`: lengths in
-    /// px, a percentage or `calc()` as it is, a colour as `rgb()`. A kind of value whose text was
-    /// not derived from Chrome is an error.
-    pub(super) fn computed_text(self, value: &AnimValue) -> Result<String, String> {
-        let length = |terms: [f64; 4]| {
-            LinearLength { px: terms[0], percent: terms[1], em: terms[2], rem: terms[3], ..Default::default() }.to_string()
-        };
+    /// `value` of this property as Chrome writes a computed value in `getKeyframes()`, under the name of
+    /// the property it is a value of: lengths in px, a percentage or `calc()`, a colour in the space it
+    /// was written in, a transform with the functions it was written with. A property can be
+    /// several (`border-spacing` is two).
+    pub(super) fn computed_text(self, value: &AnimValue, of: Text) -> Result<Vec<(String, String)>, String> {
         let unsupported = || format!("the value of {} has no computed text yet", self.name());
+        let named = |text: String| Ok(vec![(self.name().to_string(), text)]);
+        let length = |value: &AnimValue| -> Option<String> {
+            let [px, percent, em, rem] = value.as_terms()?;
+            Some(if em == 0.0 && rem == 0.0 {
+                text::length(px, percent)
+            } else {
+                LinearLength { px, percent, em, rem, ..Default::default() }.to_string()
+            })
+        };
         match (self.kind(), value) {
-            (_, AnimValue::Color(color)) => color.computed_text(),
-            (Kind::Dimension, AnimValue::Auto) => Ok("auto".to_string()),
-            (Kind::Offset | Kind::UnderlineOffset | Kind::Thickness | Kind::VerticalAlign, AnimValue::Keyword(Some(keyword))) => {
-                Ok(keyword.clone())
+            (_, AnimValue::Color(color)) => named(match of {
+                Text::Keyframe => color.computed_text(),
+                Text::Transition => color.interpolated_text(),
+            }),
+            (Kind::Dimension | Kind::Offset | Kind::UnderlineOffset | Kind::Thickness | Kind::VerticalAlign | Kind::Integer, AnimValue::Keyword(Some(keyword))) => {
+                named(keyword.clone())
             }
-            (Kind::Keyword | Kind::TypedKeyword, AnimValue::Keyword(Some(keyword))) => Ok(keyword.clone()),
+            (Kind::Dimension, AnimValue::Auto) => named("auto".to_string()),
+            (Kind::Keyword | Kind::TypedKeyword, AnimValue::Keyword(Some(keyword))) => named(keyword.clone()),
             (Kind::Number, AnimValue::Number(number)) => match self {
-                Self::Opacity | Self::FlexGrow | Self::FlexShrink | Self::LineHeight => Ok(number.to_string()),
+                Self::Opacity | Self::FlexGrow | Self::FlexShrink | Self::LineHeight => named(six_digits(*number)),
+                Self::AspectRatio => named(format!("{} / 1", six_digits(*number))),
                 _ => Err(unsupported()),
             },
-            (Kind::FontWeight | Kind::Integer, AnimValue::Number(number)) => Ok(number.to_string()),
-            (
-                Kind::Length | Kind::Dimension | Kind::Offset | Kind::FontSize | Kind::UnderlineOffset | Kind::Thickness,
-                value,
-            ) => value.as_terms().map(length).ok_or_else(unsupported),
-            (Kind::Corner, AnimValue::Ellipse { x, y }) => Ok(format!("{} {}", length([x.0, x.1, 0.0, 0.0]), length([y.0, y.1, 0.0, 0.0]))),
-            (Kind::Corner, value) => value.as_terms().map(length).ok_or_else(unsupported),
+            (Kind::FontWeight | Kind::Integer, AnimValue::Number(number)) => named(six_digits(*number)),
+            (Kind::Spacing, value) => {
+                let ((horizontal, _), (vertical, _)) = value.as_ellipse().ok_or_else(unsupported)?;
+                Ok(vec![
+                    ("webkitBorderHorizontalSpacing".to_string(), text::pixels(horizontal)),
+                    ("webkitBorderVerticalSpacing".to_string(), text::pixels(vertical)),
+                ])
+            }
+            (Kind::Corner, AnimValue::Ellipse { x, y }) => {
+                named(format!("{} {}", text::length(x.0, x.1), text::length(y.0, y.1)))
+            }
+            (Kind::TransformOrigin, AnimValue::Ellipse { x, y }) => {
+                named(format!("{} {}", text::length(x.0, x.1), text::length(y.0, y.1)))
+            }
+            (Kind::TransformOrigin, AnimValue::List(list)) => {
+                let [x, y, AnimValue::Number(z)] = list.items.as_slice() else { return Err(unsupported()) };
+                let (x, y) = (length(x).ok_or_else(unsupported)?, length(y).ok_or_else(unsupported)?);
+                // Chrome leaves the z out of the computed value while it is 0.
+                named(if *z == 0.0 { format!("{x} {y}") } else { format!("{x} {y} {}", text::pixels(*z)) })
+            }
+            (Kind::TransformOrigin | Kind::Corner, value) => {
+                let single = length(value).ok_or_else(unsupported)?;
+                named(if self.kind() == Kind::TransformOrigin { format!("{single} {single}") } else { single })
+            }
+            (Kind::Length | Kind::Dimension | Kind::Offset | Kind::FontSize | Kind::UnderlineOffset | Kind::Thickness | Kind::VerticalAlign, value) => {
+                named(length(value).ok_or_else(unsupported)?)
+            }
+            (Kind::Shadow, AnimValue::Shadows(shadows)) => named(if shadows.is_empty() {
+                "none".to_string()
+            } else {
+                shadows.iter().map(|shadow| shadow.computed_text(of)).collect::<Vec<_>>().join(", ")
+            }),
+            (Kind::Variations, AnimValue::Variations(axes)) => named(if axes.is_empty() {
+                "normal".to_string()
+            } else {
+                axes.iter()
+                    .map(|(tag, value)| format!("\"{}\" {}", String::from_utf8_lossy(&tag.to_be_bytes()), six_digits(*value)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }),
+            (Kind::Transform | Kind::Translate | Kind::Rotate | Kind::Scale, AnimValue::Transform(list)) => named(match list.computed_text() {
+                Some(text) => text.to_string(),
+                None => {
+                    let property = match self.kind() {
+                        Kind::Transform => TransformProperty::Transform,
+                        Kind::Translate => TransformProperty::Translate,
+                        Kind::Rotate => TransformProperty::Rotate,
+                        _ => TransformProperty::Scale,
+                    };
+                    functions_text(property, list).ok_or_else(unsupported)?
+                }
+            }),
             _ => Err(unsupported()),
         }
+    }
+
+    /// What a keyframe wrote for this property when its text is not recoverable from the value it
+    /// parsed to: an `aspect-ratio` keeps the numbers it was written with.
+    pub(super) fn written_text(self, written: &Value) -> Option<String> {
+        if self != Self::AspectRatio {
+            return None;
+        }
+        let number = |text: &str| text.trim().parse::<f64>().ok().map(six_digits);
+        let text = match written {
+            Value::Number(number) => format!("{} / 1", six_digits(number.as_f64()?)),
+            Value::String(text) => {
+                let text = text.trim();
+                let (auto, ratio) = match text.strip_prefix("auto") {
+                    Some("") => return Some("auto".to_string()),
+                    Some(ratio) => ("auto ", ratio),
+                    None => ("", text),
+                };
+                match ratio.split_once('/') {
+                    Some((width, height)) => format!("{auto}{} / {}", number(width)?, number(height)?),
+                    None => format!("{auto}{} / 1", number(ratio)?),
+                }
+            }
+            _ => return None,
+        };
+        Some(text)
     }
 
     /// Whether the value flips instead of blending, so only a transition with
@@ -1482,7 +1580,7 @@ impl AnimProp {
                 y: TransformLength::fraction(0.5),
                 z: 0.0,
             })),
-            Initial::NoTransform => Some(AnimValue::Transform(Vec::new())),
+            Initial::NoTransform => Some(AnimValue::Transform(Vec::new().into())),
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(
                 f64::from(crate::css::border::resolve_width(&crate::css::border::MEDIUM, &colors.lengths)),
@@ -1597,25 +1695,25 @@ impl AnimProp {
                 }
             },
             Kind::Transform => match value.as_str() {
-                Some(text) => transform_value(name, parse_transform(text, lengths), text)?,
+                Some(text) => transform_value(name, parse_transform(text, lengths), TransformProperty::Transform, text, lengths)?,
                 None => return Err(format!("motion {name} must be a CSS transform list")),
             },
             Kind::Translate => match value.as_str() {
-                Some(text) => transform_value(name, parse_translate(text, lengths), text)?,
+                Some(text) => transform_value(name, parse_translate(text, lengths), TransformProperty::Translate, text, lengths)?,
                 None => return Err(format!("motion {name} must be none or one or two CSS lengths")),
             },
             Kind::Rotate => match value {
-                Value::String(text) => transform_value(name, parse_rotate(text), text)?,
+                Value::String(text) => transform_value(name, parse_rotate(text), TransformProperty::Rotate, text, lengths)?,
                 value => {
                     let degrees = parse_number(name, value)?;
-                    transform_value(name, parse_rotate(&format!("{degrees}deg")), &degrees.to_string())?
+                    transform_value(name, parse_rotate(&format!("{degrees}deg")), TransformProperty::Rotate, &format!("{degrees}deg"), lengths)?
                 }
             },
             Kind::Scale => match value {
-                Value::String(text) => transform_value(name, parse_scale(text), text)?,
+                Value::String(text) => transform_value(name, parse_scale(text), TransformProperty::Scale, text, lengths)?,
                 value => {
                     let factor = parse_number(name, value)?;
-                    transform_value(name, parse_scale(&factor.to_string()), &factor.to_string())?
+                    transform_value(name, parse_scale(&factor.to_string()), TransformProperty::Scale, &factor.to_string(), lengths)?
                 }
             },
             Kind::TransformOrigin => {
@@ -1901,10 +1999,15 @@ pub(super) fn shadow_layers(shadows: Vec<Shadow>) -> BoxShadowValues {
 }
 
 /// A value of a transform property that parsed, or the error for `text`, which did not.
-fn transform_value(name: &str, parsed: Option<TransformValue>, text: &str) -> Result<AnimValue, String> {
+fn transform_value(
+    name: &str,
+    parsed: Option<TransformValue>,
+    property: TransformProperty,
+    text: &str,
+    lengths: &LengthContext,
+) -> Result<AnimValue, String> {
     match parsed {
-        Some(TransformValue::None) => Ok(AnimValue::Transform(Vec::new())),
-        Some(TransformValue::List(functions)) => Ok(AnimValue::Transform(functions)),
+        Some(parsed) => Ok(transform_value_of(parsed, computed_transform_text(property, text, lengths))),
         None => Err(format!("motion {name} is not a valid value: {text}")),
     }
 }
@@ -1925,6 +2028,86 @@ fn parse_number(name: &str, value: &Value) -> Result<f64, String> {
 
 #[cfg(test)]
 mod tests {
+
+    fn text(prop: AnimProp, json: serde_json::Value, of: Text) -> Vec<(String, String)> {
+        let value = prop.parse(&json, &Colors::root()).unwrap();
+        prop.computed_text(&value, of).unwrap()
+    }
+
+    fn written(prop: AnimProp, json: serde_json::Value) -> String {
+        text(prop, json, Text::Keyframe).remove(0).1
+    }
+
+    #[test]
+    fn the_functions_of_a_transform_are_written_as_they_were_not_as_one_translate() {
+        let transform = |value: &str| written(AnimProp::Transform, serde_json::json!(value));
+        assert_eq!(transform("translateX(10px) rotate(0.5turn) scaleY(2)"), "translateX(10px) rotate(180deg) scaleY(2)");
+        assert_eq!(transform("translate(0) skew(10deg)"), "translate(0px) skew(10deg, 0deg)");
+        assert_eq!(transform("translate(calc(10px + 5%), 1em) scale(150%)"), "translate(calc(5% + 10px), 16px) scale(1.5)");
+        assert_eq!(transform("none"), "none");
+        assert_eq!(transform("rotate(1rad)"), "rotate(57.2958deg)");
+        assert_eq!(written(AnimProp::Translate, serde_json::json!("10px 20px 30px")), "10px 20px 30px");
+        assert_eq!(written(AnimProp::Rotate, serde_json::json!("z 0.25turn")), "90deg");
+        assert_eq!(written(AnimProp::Scale, serde_json::json!("1 1 1")), "1");
+        assert_eq!(written(AnimProp::Scale, serde_json::json!("50% 150%")), "0.5 1.5");
+    }
+
+    #[test]
+    fn a_colour_is_written_in_the_space_it_was_written_in() {
+        let color = |value: &str| written(AnimProp::BackgroundColor, serde_json::json!(value));
+        assert_eq!(color("#ff000080"), "rgba(255, 0, 0, 0.5)");
+        assert_eq!(color("hwb(120 10% 20%)"), "rgb(26, 204, 26)");
+        assert_eq!(color("oklch(70% 0.1 400deg / 0.5)"), "oklch(0.7 0.1 40 / 0.5)");
+        assert_eq!(color("lab(50% 100% -100%)"), "lab(50 125 -125)");
+        assert_eq!(color("color(xyz 0.2 0.3 0.4)"), "color(xyz-d65 0.2 0.3 0.4)");
+        assert_eq!(color("color-mix(in srgb, red 30%, blue 20%)"), "color(srgb 0.6 0 0.4 / 0.5)");
+        assert_eq!(color("color-mix(in hsl, red, blue)"), "color(srgb 1 0 1)");
+        assert_eq!(color("light-dark(oklch(0.7 0.1 200), blue)"), "oklch(0.7 0.1 200)");
+        assert_eq!(color("currentcolor"), "rgb(0, 0, 0)");
+    }
+
+    #[test]
+    fn a_transition_holds_a_colour_of_another_space_in_oklab() {
+        let color = |value: &str| text(AnimProp::BackgroundColor, serde_json::json!(value), Text::Transition).remove(0).1;
+        assert_eq!(color("oklch(0.7 0.1 200)"), "oklab(0.7 -0.0939693 -0.034202)");
+        assert_eq!(color("rgb(255 0 0 / 0)"), "rgba(0, 0, 0, 0)");
+        assert_eq!(color("hsl(120 100% 50%)"), "rgb(0, 255, 0)");
+    }
+
+    #[test]
+    fn shadows_write_their_colour_first_and_inset_last() {
+        let shadow = |value: serde_json::Value| written(AnimProp::BoxShadow, value);
+        assert_eq!(shadow(serde_json::json!([])), "none");
+        assert_eq!(
+            shadow(serde_json::json!([{ "offsetX": 1, "offsetY": 2, "blurRadius": 3, "spreadRadius": 4, "color": "red", "inset": true }])),
+            "rgb(255, 0, 0) 1px 2px 3px 4px inset"
+        );
+    }
+
+    #[test]
+    fn border_spacing_is_two_properties_and_an_aspect_ratio_keeps_the_numbers_it_was_written_with() {
+        let spacing = text(AnimProp::BorderSpacing, serde_json::json!("4px 8px"), Text::Keyframe);
+        assert_eq!(
+            spacing,
+            [
+                ("webkitBorderHorizontalSpacing".to_string(), "4px".to_string()),
+                ("webkitBorderVerticalSpacing".to_string(), "8px".to_string())
+            ]
+        );
+        assert_eq!(AnimProp::AspectRatio.written_text(&serde_json::json!("16 / 9")).as_deref(), Some("16 / 9"));
+        assert_eq!(AnimProp::AspectRatio.written_text(&serde_json::json!("auto 4/3")).as_deref(), Some("auto 4 / 3"));
+        assert_eq!(AnimProp::AspectRatio.written_text(&serde_json::json!(1.5)).as_deref(), Some("1.5 / 1"));
+        assert_eq!(AnimProp::Opacity.written_text(&serde_json::json!(1)), None);
+    }
+
+    #[test]
+    fn variations_are_written_by_tag() {
+        let value = AnimValue::Variations(vec![(u32::from_be_bytes(*b"wdth"), 50.0), (u32::from_be_bytes(*b"wght"), 100.5)]);
+        let text = AnimProp::FontVariationSettings.computed_text(&value, Text::Keyframe).unwrap();
+        assert_eq!(text[0].1, "\"wdth\" 50, \"wght\" 100.5");
+        let none = AnimProp::FontVariationSettings.computed_text(&AnimValue::Variations(Vec::new()), Text::Keyframe).unwrap();
+        assert_eq!(none[0].1, "normal");
+    }
     use super::*;
     use crate::color::Scheme;
 
@@ -2033,7 +2216,7 @@ mod tests {
         prop.write(&mut style, parsed.clone());
         assert!(style.transform.is_none(), "the CSS property is not written");
         assert_eq!(prop.read(&style, &colors), Some(parsed));
-        assert_eq!(prop.initial(None, &colors), Some(AnimValue::Transform(Vec::new())));
+        assert_eq!(prop.initial(None, &colors), Some(AnimValue::Transform(Vec::new().into())));
     }
 
     #[test]
@@ -2083,9 +2266,9 @@ mod tests {
             assert_eq!(prop.read(&style, &colors), Some(parsed), "{text}");
         }
         let mut style = StyleDesc::default();
-        AnimProp::Transform.write(&mut style, AnimValue::Transform(Vec::new()));
+        AnimProp::Transform.write(&mut style, AnimValue::Transform(Vec::new().into()));
         assert_eq!(style.transform.as_deref(), Some("none"));
-        assert_eq!(AnimProp::Transform.read(&style, &colors), Some(AnimValue::Transform(Vec::new())));
+        assert_eq!(AnimProp::Transform.read(&style, &colors), Some(AnimValue::Transform(Vec::new().into())));
         assert!(AnimProp::Transform.parse(&json("rotate(90)"), &colors).is_err());
         assert!(AnimProp::Rotate.parse(&json("w 20deg"), &colors).is_err());
         assert_eq!(AnimProp::Rotate.parse(&serde_json::json!(90), &colors), AnimProp::Rotate.parse(&json("90deg"), &colors));

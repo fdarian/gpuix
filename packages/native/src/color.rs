@@ -440,6 +440,126 @@ pub(crate) fn resolve_unclamped(value: &str, context: &ColorContext) -> Option<S
     })
 }
 
+use crate::css::color_space::Space;
+
+/// A colour as CSS computes it, which keeps the space it was written in: what `getKeyframes()` writes
+/// is `rgb()` for the legacy syntaxes, and the colour's own space for the others.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum ComputedColor {
+    /// A hex colour, a name, `rgb()`, `hsl()` or `hwb()`: channels in 0 to 1, held to the gamut.
+    Rgb { rgb: [f64; 3], alpha: f64 },
+    /// `lab()`, `lch()`, `oklab()`, `oklch()`, `color()` and the result of `color-mix()`.
+    Space { space: Space, components: [f64; 3], alpha: f64 },
+}
+
+impl ComputedColor {
+    pub(crate) fn from_rgba(color: gpui::Rgba) -> Self {
+        Self::Rgb { rgb: [color.r as f64, color.g as f64, color.b as f64], alpha: color.a as f64 }
+    }
+
+    /// The colour in sRGB, outside the gamut where it is.
+    pub(crate) fn srgb(self) -> ([f64; 3], f64) {
+        match self {
+            Self::Rgb { rgb, alpha } => (rgb, alpha),
+            Self::Space { space, components, alpha } => (space.to_srgb(components), alpha),
+        }
+    }
+}
+
+/// How CSS computes `value`, for the text of a computed value. `None` where `value` is not a colour
+/// or is written in a form that is not read here (relative colours), which the caller keeps as a
+/// colour with no computed form.
+pub(crate) fn computed_color(value: &str, context: &ColorContext) -> Option<ComputedColor> {
+    use crate::css::syntax::{function_args, split_commas};
+
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("currentcolor") {
+        return Some(ComputedColor::from_rgba(context.current()));
+    }
+    if let Some(args) = function_args(value, "light-dark") {
+        let [light, dark] = split_commas(args).as_slice().try_into().ok()?;
+        return computed_color(
+            match context.scheme {
+                Scheme::Light => light,
+                Scheme::Dark => dark,
+            },
+            context,
+        );
+    }
+    if let Some(args) = function_args(value, "color-mix") {
+        return crate::css::color_mix::parse_computed(args, context);
+    }
+    if let Some(args) = function_args(value, "color") {
+        return crate::css::color_function::parse_computed(args);
+    }
+    for (name, space) in [("lab", Space::Lab), ("lch", Space::Lch), ("oklab", Space::Oklab), ("oklch", Space::Oklch)] {
+        if let Some(args) = function_args(value, name) {
+            return parse_lab_like(space, args);
+        }
+    }
+    let parsed = csscolorparser::parse(value).ok()?;
+    Some(ComputedColor::Rgb {
+        rgb: [parsed.r, parsed.g, parsed.b].map(|channel| (channel as f64).clamp(0.0, 1.0)),
+        alpha: (parsed.a as f64).clamp(0.0, 1.0),
+    })
+}
+
+/// `lab()`, `lch()`, `oklab()` or `oklch()`: lightness, two more components, an optional alpha. The
+/// lightness is held to its range, a chroma is not negative and a hue is an angle in 0 to 360.
+fn parse_lab_like(space: Space, args: &str) -> Option<ComputedColor> {
+    use crate::css::syntax::split_whitespace;
+
+    let spaced = args.replace('/', " / ");
+    let tokens = split_whitespace(&spaced);
+    let (components, alpha) = match tokens.as_slice() {
+        [first, second, third] => ([*first, *second, *third], 1.0),
+        [first, second, third, "/", alpha] => ([*first, *second, *third], parse_part(alpha, 1.0)?.clamp(0.0, 1.0)),
+        _ => return None,
+    };
+    // What 100% of each component is.
+    let (lightness, axis) = match space {
+        Space::Lab => (100.0, 125.0),
+        Space::Lch => (100.0, 150.0),
+        Space::Oklab => (1.0, 0.4),
+        Space::Oklch => (1.0, 0.4),
+        _ => unreachable!("{space:?} is not written as a lab or lch function"),
+    };
+    let mut parsed = [
+        parse_part(components[0], lightness)?.clamp(0.0, lightness),
+        parse_part(components[1], axis)?,
+        if space.hue_index().is_some() { parse_hue(components[2])?.rem_euclid(360.0) } else { parse_part(components[2], axis)? },
+    ];
+    if space.hue_index().is_some() {
+        parsed[1] = parsed[1].max(0.0);
+    }
+    Some(ComputedColor::Space { space, components: parsed, alpha })
+}
+
+/// A number, a percentage of `whole`, or `none`.
+fn parse_part(token: &str, whole: f64) -> Option<f64> {
+    if token.eq_ignore_ascii_case("none") {
+        return Some(0.0);
+    }
+    let value = match token.strip_suffix('%') {
+        Some(percent) => percent.parse::<f64>().ok()? / 100.0 * whole,
+        None => token.parse::<f64>().ok()?,
+    };
+    value.is_finite().then_some(value)
+}
+
+/// A hue in degrees: a number, or an angle.
+fn parse_hue(token: &str) -> Option<f64> {
+    if token.eq_ignore_ascii_case("none") {
+        return Some(0.0);
+    }
+    let units: [(&str, f64); 4] = [("deg", 1.0), ("grad", 0.9), ("rad", 180.0 / std::f64::consts::PI), ("turn", 360.0)];
+    let value = units
+        .iter()
+        .find_map(|(unit, scale)| token.strip_suffix(unit).map(|number| (number, *scale)))
+        .map_or_else(|| token.parse::<f64>().ok(), |(number, scale)| number.parse::<f64>().ok().map(|number| number * scale))?;
+    value.is_finite().then_some(value)
+}
+
 /// Compatibility helper kept at the gpuix-native crate root.
 pub fn parse_color(value: &str) -> Option<(f32, f32, f32, f32)> {
     parse_color_rgba(value).map(|color| (color.r, color.g, color.b, color.a))
@@ -452,6 +572,24 @@ pub fn parse_color_hex(value: &str) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_computed_colour_keeps_the_space_it_was_written_in() {
+        let context = ColorContext::root(Scheme::Light);
+        let computed = |value: &str| computed_color(value, &context);
+        assert_eq!(
+            computed("oklch(70% 0.1 -30deg)"),
+            Some(ComputedColor::Space { space: Space::Oklch, components: [0.7, 0.1, 330.0], alpha: 1.0 })
+        );
+        assert_eq!(
+            computed("lch(120% -5 0.5turn / 25%)"),
+            Some(ComputedColor::Space { space: Space::Lch, components: [100.0, 0.0, 180.0], alpha: 0.25 })
+        );
+        assert!(matches!(computed("hsl(120 100% 50%)"), Some(ComputedColor::Rgb { .. })));
+        assert!(matches!(computed("color-mix(in lab, red, blue)"), Some(ComputedColor::Space { space: Space::Lab, .. })));
+        assert!(matches!(computed("color-mix(in hwb, red, blue)"), Some(ComputedColor::Space { space: Space::Srgb, .. })));
+        assert_eq!(computed("lab(50% 40)"), None);
+    }
     use super::*;
 
     fn assert_same(input: &str, expected: &str) {

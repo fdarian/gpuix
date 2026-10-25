@@ -59,6 +59,21 @@ impl Space {
         })
     }
 
+    /// The name `color()` writes the space as, for the spaces it names.
+    pub(crate) fn color_function_name(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Srgb => "srgb",
+            Self::SrgbLinear => "srgb-linear",
+            Self::DisplayP3 => "display-p3",
+            Self::A98Rgb => "a98-rgb",
+            Self::ProphotoRgb => "prophoto-rgb",
+            Self::Rec2020 => "rec2020",
+            Self::XyzD65 => "xyz-d65",
+            Self::XyzD50 => "xyz-d50",
+            _ => return None,
+        })
+    }
+
     /// Which component is the hue angle in degrees, for the polar spaces.
     pub(crate) fn hue_index(self) -> Option<usize> {
         match self {

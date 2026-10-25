@@ -5,11 +5,13 @@
 //! vector, and [`Layout::decode`] turns sampled channels back into a value.
 
 use super::list::ListValue;
+use super::transform_value::TransformList;
 use gpui::{FontVariations, TransformFunction};
 
 use crate::custom_elements::svg_path::PathData;
 
-use crate::color::ColorContext;
+use crate::color::{ColorContext, ComputedColor};
+use super::text::{pixels, six_digits, Text};
 use crate::css::color_space::Space;
 use crate::css::custom_properties::CustomProperties;
 use crate::css::length::{LengthContext, LinearLength};
@@ -215,6 +217,9 @@ pub(super) struct Color {
     /// Written in a legacy syntax (hex, a name, `rgb()`, `hsl()`), which CSS
     /// interpolates in sRGB against another legacy colour. See [`Interpolation`].
     legacy: bool,
+    /// How CSS computes the colour as it was written, which is what an effect reads back; it is
+    /// no part of the value, and a colour made of channels has none.
+    computed: Option<ComputedColor>,
 }
 
 // The syntax is not part of the value: `red` and `#ff0000` are no change, and
@@ -230,12 +235,20 @@ impl Color {
         lab: [0.0; 3],
         alpha: 0.0,
         legacy: true,
+        computed: Some(ComputedColor::Rgb { rgb: [0.0; 3], alpha: 0.0 }),
     };
 
     pub(super) fn parse(value: &str, colors: &ColorContext) -> Option<Self> {
-        colors
-            .resolve(value)
-            .map(|rgba| Self::from_rgba(rgba, crate::color::is_legacy_syntax(value, colors)))
+        colors.resolve(value).map(|rgba| {
+            let legacy = crate::color::is_legacy_syntax(value, colors);
+            let color = Self::from_rgba(rgba, legacy);
+            // A legacy colour is its clipped sRGB channels already; any other keeps the space it was written in.
+            if legacy {
+                color
+            } else {
+                Self { computed: crate::color::computed_color(value, colors), ..color }
+            }
+        })
     }
 
     pub(super) fn from_rgba(rgba: gpui::Rgba, legacy: bool) -> Self {
@@ -245,6 +258,7 @@ impl Color {
             lab: [l as f64, a as f64, b as f64],
             alpha: alpha as f64,
             legacy,
+            computed: Some(ComputedColor::from_rgba(rgba)),
         }
     }
 
@@ -274,28 +288,49 @@ impl Color {
             ],
             alpha: alpha.min(1.0),
             legacy,
+            computed: None,
         }
     }
 
-    /// The computed value Chrome gives a colour written in a legacy syntax: `rgb(255, 0, 0)`, and
-    /// `rgba(0, 0, 0, 0.5)` with an alpha. A colour in another syntax computes to the syntax it
-    /// was written in, which is not kept.
-    pub(super) fn computed_text(self) -> Result<String, String> {
-        if !self.legacy {
-            return Err("a colour written outside the legacy syntaxes has no computed text yet".to_string());
+    /// The computed value Chrome gives a colour in a keyframe: `rgb(255, 0, 0)` and `rgba(0, 0, 0, 0.5)`
+    /// for the legacy syntaxes, and the colour's own space for the others (`oklch(0.7 0.1 200)`,
+    /// `color(srgb 0.5 0 0.5)`, a `color-mix()` in the space it mixed in).
+    pub(super) fn computed_text(self) -> String {
+        match self.computed {
+            Some(ComputedColor::Rgb { rgb, alpha }) => rgb_text(rgb, alpha),
+            Some(ComputedColor::Space { space, components, alpha }) => space_text(space, components, alpha),
+            None => self.blended_text(),
         }
+    }
+
+    /// What a transition holds of a colour: the same for a legacy one, and the colour in Oklab for
+    /// any other, as it is the space Chrome interpolates it in. A transparent colour has lost its
+    /// channels.
+    pub(super) fn interpolated_text(self) -> String {
+        match self.computed {
+            Some(ComputedColor::Rgb { alpha, .. }) if alpha == 0.0 => rgb_text([0.0; 3], 0.0),
+            Some(ComputedColor::Rgb { rgb, alpha }) => rgb_text(rgb, alpha),
+            Some(ComputedColor::Space { space: Space::Oklab, components, alpha }) => space_text(Space::Oklab, components, alpha),
+            Some(computed @ ComputedColor::Space { .. }) => {
+                let (rgb, alpha) = computed.srgb();
+                let mut oklab = Space::Oklab.from_srgb(rgb);
+                // A lightness beyond white is held to it.
+                oklab[0] = oklab[0].clamp(0.0, 1.0);
+                space_text(Space::Oklab, oklab, alpha)
+            }
+            None => self.blended_text(),
+        }
+    }
+
+    /// The text of a colour that was blended and so was never written: `rgb()` if it blends as a
+    /// legacy one, and Oklab otherwise.
+    fn blended_text(self) -> String {
         let [l, a, b] = self.lab;
-        let rgb = csscolorparser::Color::from_oklaba(l as f32, a as f32, b as f32, 1.0);
-        let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let (red, green, blue) = (channel(rgb.r), channel(rgb.g), channel(rgb.b));
-        let alpha = (self.alpha.clamp(0.0, 1.0) * 255.0).round();
-        if alpha == 255.0 {
-            return Ok(format!("rgb({red}, {green}, {blue})"));
+        if self.legacy {
+            let rgb = csscolorparser::Color::from_oklaba(l as f32, a as f32, b as f32, 1.0);
+            return rgb_text([rgb.r as f64, rgb.g as f64, rgb.b as f64], self.alpha);
         }
-        // Two decimals when they give the same 8-bit alpha back, three otherwise.
-        let two = (alpha / 255.0 * 100.0).round() / 100.0;
-        let alpha = if (two * 255.0).round() == alpha { two } else { (alpha / 255.0 * 1000.0).round() / 1000.0 };
-        Ok(format!("rgba({red}, {green}, {blue}, {alpha})"))
+        space_text(Space::Oklab, self.lab, self.alpha)
     }
 
     /// Springs overshoot, so the result is clamped to the sRGB gamut here and
@@ -313,6 +348,38 @@ impl Color {
     }
 }
 
+/// A colour of the legacy syntaxes: channels rounded to a byte, and an alpha with two decimals when
+/// they give the same byte back and three when they do not.
+fn rgb_text(rgb: [f64; 3], alpha: f64) -> String {
+    // The channels come from 32-bit floats, which land a hair under a half.
+    let channel = |value: f64| (value.clamp(0.0, 1.0) * 255.0 + 1e-4).round() as u8;
+    let (red, green, blue) = (channel(rgb[0]), channel(rgb[1]), channel(rgb[2]));
+    let alpha = (alpha.clamp(0.0, 1.0) * 255.0).round();
+    if alpha == 255.0 {
+        return format!("rgb({red}, {green}, {blue})");
+    }
+    let two = (alpha / 255.0 * 100.0).round() / 100.0;
+    let alpha = if (two * 255.0).round() == alpha { two } else { (alpha / 255.0 * 1000.0).round() / 1000.0 };
+    format!("rgba({red}, {green}, {blue}, {})", six_digits(alpha))
+}
+
+/// A colour of one space, written as its function: `lab()` and `oklch()` for their own, `color()` for
+/// the rest. The alpha comes last, after a slash, unless it is 1.
+fn space_text(space: Space, components: [f64; 3], alpha: f64) -> String {
+    let [first, second, third] = components.map(six_digits);
+    let alpha = if alpha < 1.0 { format!(" / {}", six_digits(alpha.max(0.0))) } else { String::new() };
+    match space {
+        Space::Lab => format!("lab({first} {second} {third}{alpha})"),
+        Space::Lch => format!("lch({first} {second} {third}{alpha})"),
+        Space::Oklab => format!("oklab({first} {second} {third}{alpha})"),
+        Space::Oklch => format!("oklch({first} {second} {third}{alpha})"),
+        space => format!(
+            "color({} {first} {second} {third}{alpha})",
+            space.color_function_name().unwrap_or_else(|| unreachable!("{space:?} is written as a colour function"))
+        ),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Shadow {
     pub(super) offset_x: f64,
@@ -324,6 +391,22 @@ pub(super) struct Shadow {
 }
 
 impl Shadow {
+    /// The layer as Chrome writes a computed `box-shadow`: the colour, the four lengths, then `inset`.
+    pub(super) fn computed_text(&self, of: Text) -> String {
+        let colour = match of {
+            Text::Keyframe => self.color.computed_text(),
+            Text::Transition => self.color.interpolated_text(),
+        };
+        format!(
+            "{colour} {} {} {} {}{}",
+            pixels(self.offset_x),
+            pixels(self.offset_y),
+            pixels(self.blur),
+            pixels(self.spread),
+            if self.inset { " inset" } else { "" }
+        )
+    }
+
     /// The layer a shorter list is padded with: `0 0 0 0 transparent`, with the
     /// other list's `inset` so the two stay interpolable.
     fn none(inset: bool) -> Self {
@@ -454,13 +537,25 @@ pub(super) enum AnimValue {
     /// motion value holds one: a style property takes the components one by one.
     List(ListValue),
     /// A `transform` list, or the one function of `translate`, `rotate` or `scale`. Empty is `none`.
-    Transform(Vec<TransformFunction>),
+    Transform(TransformList),
     /// An angle in degrees that a motion value was given as a CSS angle (`"0.25turn"`). It mixes with a
     /// number, which is degrees too, and only an angle key of Motion takes it.
     Angle(f64),
 }
 
 impl AnimValue {
+    /// The lengths along x and y, each as px and a share of the box, and the px along z, of a
+    /// `transform-origin`.
+    pub(super) fn origin_parts(&self) -> Option<((f64, f64), (f64, f64), f64)> {
+        match self {
+            Self::List(list) => match list.items.as_slice() {
+                [x, y, Self::Number(z)] => Some((x.as_length()?, y.as_length()?, *z)),
+                _ => None,
+            },
+            value => value.as_ellipse().map(|(x, y)| (x, y, 0.0)),
+        }
+    }
+
     /// The degrees of a number or an angle, the two things an angle key of Motion is driven by.
     pub(super) fn as_degrees(&self) -> Option<f64> {
         match self {
@@ -734,12 +829,15 @@ impl Layout {
                 AnimValue::List(ListValue { items, slash: *slash })
             }
             Self::DiscreteList(options) => options[option_index(channels[0], options.len())].clone(),
-            Self::Transform(lists) => AnimValue::Transform(match *channels {
-                [at] => lists[at as usize].clone(),
-                [from, to, _] if from == to => lists[from as usize].clone(),
-                [from, to, progress] => super::transform_value::blend(&lists[from as usize], &lists[to as usize], progress),
-                _ => unreachable!("a transform position has one or three channels"),
-            }),
+            Self::Transform(lists) => AnimValue::Transform(
+                match *channels {
+                    [at] => lists[at as usize].clone(),
+                    [from, to, _] if from == to => lists[from as usize].clone(),
+                    [from, to, progress] => super::transform_value::blend(&lists[from as usize], &lists[to as usize], progress),
+                    _ => unreachable!("a transform position has one or three channels"),
+                }
+                .into(),
+            ),
             Self::Angle => AnimValue::Angle(channels[0]),
         }
     }
@@ -1081,8 +1179,8 @@ fn align_transforms(values: &[&AnimValue]) -> Aligned {
             let AnimValue::Transform(list) = value else {
                 unreachable!("kinds were checked");
             };
-            let index = lists.iter().position(|known| known == list).unwrap_or_else(|| {
-                lists.push(list.clone());
+            let index = lists.iter().position(|known| *known == **list).unwrap_or_else(|| {
+                lists.push((**list).clone());
                 lists.len() - 1
             });
             vec![index as f64]
@@ -1805,8 +1903,8 @@ mod tests {
     }
     fn transform(text: &str) -> AnimValue {
         match crate::css::transform::parse_transform(text, &LengthContext::for_tests()) {
-            Some(crate::css::transform::Value::List(functions)) => AnimValue::Transform(functions),
-            Some(crate::css::transform::Value::None) => AnimValue::Transform(Vec::new()),
+            Some(crate::css::transform::Value::List(functions)) => AnimValue::Transform(functions.into()),
+            Some(crate::css::transform::Value::None) => AnimValue::Transform(Vec::new().into()),
             None => panic!("{text}"),
         }
     }
