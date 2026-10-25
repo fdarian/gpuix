@@ -650,6 +650,7 @@ struct Stop {
     timing: Ease,
 }
 
+#[derive(Clone)]
 enum PropPlan {
     Continuous {
         key: PropKey,
@@ -711,6 +712,7 @@ struct PlanKey {
     measurement: Option<Measurement>,
 }
 
+#[derive(Clone)]
 struct Plan {
     key: PlanKey,
     props: Vec<PropPlan>,
@@ -880,6 +882,7 @@ impl Planner<'_> {
 
 // ── One running animation ────────────────────────────────────────────
 
+#[derive(Clone)]
 struct Run {
     name: String,
     /// The registry's definition of `name` as of the last frame.
@@ -1226,6 +1229,7 @@ impl Run {
 
 type Config = [Option<String>; 9];
 
+#[derive(Clone)]
 struct ElementState {
     config: Config,
     list: AnimationList,
@@ -1432,7 +1436,61 @@ fn earlier(first: Option<Instant>, second: Option<Instant>) -> Option<Instant> {
     }
 }
 
+/// What `CssAnimations` held for one element and what a pass queued, to put back after a pass that
+/// only reads the values (`CssAnimations::rewind`).
+pub(crate) struct Rewind {
+    id: u64,
+    state: Option<ElementState>,
+    events: usize,
+    api_events: usize,
+    active: bool,
+    queued: bool,
+}
+
 impl CssAnimations {
+    /// The point `rewind` goes back to: taken before the element is advanced, by a pass that reads the
+    /// values of its animations at an instant and must leave them as they were.
+    pub(crate) fn rewind_point(&self, id: u64) -> Rewind {
+        Rewind {
+            id,
+            state: self.states.get(&id).cloned(),
+            events: self.events.len(),
+            api_events: self.api_events.len(),
+            active: self.active,
+            queued: self.sleepers.next.contains(&id),
+        }
+    }
+
+    /// Takes the element back to `point`: its runs and clocks, and the events and the wake the pass
+    /// since queued, which nothing was to hear. An animation the pass met that the element had no run
+    /// of stays, as it started at `now` and not yet ticked (no event, no phase): a read styles the
+    /// element, as in Chrome, and the animation runs from then, so that a later read finds it where
+    /// the clock has taken it and `getAnimations` lists it.
+    pub(crate) fn rewind(&mut self, point: Rewind, now: Instant) {
+        let after = self.states.remove(&point.id);
+        let mut state = point.state;
+        if let Some(after) = after {
+            for run in after.runs {
+                let known = state.as_ref().is_some_and(|state| state.runs.iter().any(|kept| kept.name == run.name));
+                if !known {
+                    let fresh = Run::start(&run.name, run.keyframes, &run.params, now);
+                    state.get_or_insert_with(ElementState::new).runs.push(fresh);
+                }
+            }
+        }
+        if let Some(state) = state {
+            self.states.insert(point.id, state);
+        }
+        self.events.truncate(point.events);
+        self.api_events.truncate(point.api_events);
+        self.active = point.active;
+        if point.queued {
+            self.sleepers.next.insert(point.id);
+        } else {
+            self.sleepers.next.remove(&point.id);
+        }
+    }
+
     /// Whether `id` takes part in animations: it declares one, in its own style
     /// or a state style, or already has animation state to keep.
     pub(crate) fn wants(&self, id: u64, style: Option<&StyleDesc>) -> bool {
@@ -2250,6 +2308,42 @@ mod tests {
 
     fn fading(animation: &str) -> StyleDesc {
         style(&format!(r#"{{ "animation": "{animation}" }}"#))
+    }
+
+    #[test]
+    fn a_rewound_pass_shows_the_values_and_leaves_the_runs_and_the_events_as_they_were() {
+        let declared = fading("fade 1s linear 2");
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &declared);
+        frames.events();
+        // The pass reads at 1500 ms: the first iteration ended and the second is half through.
+        let point = frames.animations.rewind_point(1);
+        let shown = frames.frame(1500, &declared);
+        near(opacity(&shown), 0.5);
+        assert!(!frames.events().is_empty(), "the pass queued the iteration it passed");
+        frames.animations.rewind(point, frames.at(1500));
+        assert!(frames.events().is_empty(), "and nothing is told of it");
+        // The runs are at 0 again: a frame at 1500 ms tells the iteration now.
+        let late = frames.frame(1500, &declared);
+        near(opacity(&late), 0.5);
+        assert_eq!(frames.events().len(), 1, "the frame that is built tells what the pass did not");
+    }
+
+    #[test]
+    fn a_rewound_pass_keeps_an_animation_it_started_where_the_clock_takes_it() {
+        let declared = fading("fade 1s linear");
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let point = frames.animations.rewind_point(1);
+        near(opacity(&frames.frame(100, &declared)), 0.0);
+        frames.animations.rewind(point, frames.at(100));
+        assert!(frames.events().is_empty(), "it has told nothing yet");
+        let point = frames.animations.rewind_point(1);
+        near(opacity(&frames.frame(600, &declared)), 0.5);
+        frames.animations.rewind(point, frames.at(600));
+        near(opacity(&frames.frame(850, &declared)), 0.75);
+        assert_eq!(frames.events().iter().map(|event| event.0).collect::<Vec<_>>(), vec![Start]);
     }
 
     #[test]

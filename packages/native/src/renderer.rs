@@ -9880,24 +9880,55 @@ fn animate_style(
     element: &crate::retained_tree::RetainedElement,
     input: StyleInputs,
 ) -> Animated {
+    if input.provisional || !crate::layout::content_visibility::is_forced_by_ancestor(ctx.tree, element) {
+        let steps = !input.provisional;
+        return animate_style_at(ctx, window, element, input, steps);
+    }
+    // Content forced for a read shows what its animations are at this instant, and nothing of them
+    // moves on: the runs, the clocks, the events and the wakes are what they were, so the frames
+    // that skip the content find it as the last of them left it.
+    let animations = ctx.css_animations.rewind_point(element.id);
+    let transitions = ctx.css_transitions.rewind_point(element.id);
+    let mut animated = animate_style_at(ctx, window, element, input, false);
+    ctx.css_animations.rewind(animations, ctx.now);
+    ctx.css_transitions.rewind(transitions);
+    if animated.dynamic != 0 {
+        ctx.tree.relevance.note_timed_read();
+    }
+    // The build is not dynamic for the frames that skip it.
+    animated.dynamic &= crate::retain::Dynamic::Motion as u8 | crate::retain::Dynamic::MotionValues as u8;
+    animated
+}
+
+/// `steps`: the element is built for a frame, so what it runs counts (it marks the build dynamic, it
+/// is an effect group or has a transform for as long as it runs, and its measurement is kept). An
+/// element built for a read of skipped content or provisionally only has its values.
+fn animate_style_at(
+    ctx: &mut BuildCtx,
+    window: &gpui::Window,
+    element: &crate::retained_tree::RetainedElement,
+    input: StyleInputs,
+    steps: bool,
+) -> Animated {
     use crate::retain::Dynamic;
 
     let id = element.id;
     let props = element.custom_props();
     let has_motion = props.contains_key("motion");
     let motion_binding = props.get("motionValues");
-    let steps = !input.provisional && !crate::layout::content_visibility::is_forced_by_ancestor(ctx.tree, element);
-    let transitions_wanted = steps && ctx.css_transitions.wants(id, input.declared);
-    let animations_wanted = steps && ctx.css_animations.wants(id, input.declared);
+    let moves = !input.provisional;
+    let transitions_wanted = moves && ctx.css_transitions.wants(id, input.declared);
+    let animations_wanted = moves && ctx.css_animations.wants(id, input.declared);
     // A plain element has no measurement to read: it is not wrapped below, and
     // the root render prunes the measurement of any element that was not.
-    let measured = has_motion || transitions_wanted || animations_wanted;
+    let reads_measurement = has_motion || transitions_wanted || animations_wanted;
+    let measured = has_motion || (steps && reads_measurement);
     // Motion and bound values resolve their colours when they are stepped, before the build, so the
     // `currentColor` of one is not read as it is built.
     if has_motion || motion_binding.is_some() {
         ctx.inherited.colors.note_read();
     }
-    let measurement = measured.then(|| ctx.measurements.get(id)).flatten();
+    let measurement = reads_measurement.then(|| ctx.measurements.get(id)).flatten();
     let mut dynamic = 0;
     if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
         dynamic |= Dynamic::Motion as u8;
@@ -10016,8 +10047,8 @@ fn animate_style(
         resolved
     });
     let (mut transitioned, mut moved, mut bound, mut animated) = (transitioned, moved, bound, animated);
-    // Nothing was stepped for an element built as forced content (or provisionally), so there is no
-    // style that an animation of its opacity runs on, whatever the clocks of its states say.
+    // An element built as forced content (or provisionally) is not a step of the clocks of its
+    // states: it is not an effect group or a transform for the frames that skip it, whatever they say.
     if steps {
         let opacity = opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now);
         let transform = transform_runs(

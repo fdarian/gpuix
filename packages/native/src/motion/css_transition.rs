@@ -812,6 +812,7 @@ fn config_key(style: &StyleDesc) -> ConfigKey {
     ]
 }
 
+#[derive(Clone)]
 struct ElementState {
     /// The previous frame's after-change style: the before-change style of the
     /// next style change.
@@ -831,6 +832,7 @@ struct ElementState {
 
 /// A transition that ran to its end and left the running ones. It stays until
 /// the style moves off its end value.
+#[derive(Clone)]
 struct Completed {
     /// The computed end value.
     end: AnimValue,
@@ -1187,7 +1189,47 @@ pub(crate) struct CssTransitions {
     hidden: HashSet<u64>,
 }
 
+/// See `css_animation::Rewind`.
+pub(crate) struct Rewind {
+    id: u64,
+    state: Option<ElementState>,
+    dom_events: usize,
+    api_events: usize,
+    active: bool,
+    running_dormant: bool,
+}
+
 impl CssTransitions {
+    pub(crate) fn rewind_point(&self, id: u64) -> Rewind {
+        Rewind {
+            id,
+            state: self.states.get(&id).cloned(),
+            dom_events: self.events.dom.len(),
+            api_events: self.events.api.len(),
+            active: self.active,
+            running_dormant: self.running_dormant.contains(&id),
+        }
+    }
+
+    pub(crate) fn rewind(&mut self, point: Rewind) {
+        match point.state {
+            Some(state) => {
+                self.states.insert(point.id, state);
+            }
+            None => {
+                self.states.remove(&point.id);
+            }
+        }
+        self.events.dom.truncate(point.dom_events);
+        self.events.api.truncate(point.api_events);
+        self.active = point.active;
+        if point.running_dormant {
+            self.running_dormant.insert(point.id);
+        } else {
+            self.running_dormant.remove(&point.id);
+        }
+    }
+
     /// Whether `id` takes part in transitions: it declares one, in its own
     /// style or a state style, or still has transitions to settle.
     ///

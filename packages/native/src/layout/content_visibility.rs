@@ -320,6 +320,9 @@ struct Known {
     chain: Vec<u64>,
     /// The last forced layout pass of a read, while nothing has happened to the window since.
     forced_read: Option<ForcedRead>,
+    /// The pass being run for a read built an element that runs something, whose values follow the
+    /// clock (`note_timed_read`).
+    read_timed: bool,
     layout_runs: LayoutRuns,
     transform_writes: TransformWrites,
     /// The focused element and its ancestors, which hold the focus.
@@ -334,6 +337,9 @@ struct Known {
 struct ForcedRead {
     forced: Vec<u64>,
     stamp: gpui::LayoutStamp,
+    /// The pass built an element that runs an animation, a transition or a motion: its boxes are those
+    /// of the instant of the pass, and the next read is another instant.
+    timed: bool,
     hosts: FxHashMap<u64, HostPlace>,
     /// [`LayoutRuns::clock`] right after the pass.
     runs_at: u64,
@@ -589,6 +595,7 @@ impl Relevance {
     /// [`Relevance::end_read_chain`].
     pub(crate) fn force_for_read(&self, forced: Vec<u64>, chain: Vec<u64>) {
         let mut known = self.0.lock();
+        known.read_timed = false;
         self.0.chain.store(chain.len(), Ordering::Relaxed);
         known.chain = chain;
         known.forced = forced;
@@ -650,7 +657,7 @@ impl Relevance {
         chain: &[u64],
     ) -> Option<Vec<u64>> {
         let known = self.0.lock();
-        let read = known.forced_read.as_ref().filter(|read| read.stamp.same_invalidations(&now))?;
+        let read = known.forced_read.as_ref().filter(|read| !read.timed && read.stamp.same_invalidations(&now))?;
         // A transform written on the element read or above it moves the boxes the pass captured, with no
         // box moved: the host's own is seen below, and the ones inside it are not built by the frames.
         if known.transform_writes.since(read.transforms_at, chain) {
@@ -677,7 +684,14 @@ impl Relevance {
         let mut known = self.0.lock();
         let runs_at = known.layout_runs.clock;
         let transforms_at = known.transform_writes.clock;
-        known.forced_read = Some(ForcedRead { forced, stamp, hosts, runs_at, transforms_at });
+        let timed = std::mem::take(&mut known.read_timed);
+        known.forced_read = Some(ForcedRead { forced, stamp, timed, hosts, runs_at, transforms_at });
+    }
+
+    /// Notes that the pass of a read built an element in forced content that runs something whose
+    /// values follow the clock, so that the boxes it publishes are not the ones of the next read.
+    pub(crate) fn note_timed_read(&self) {
+        self.0.lock().read_timed = true;
     }
 
     /// Notes that the transform of the element `id` was written in a way that moves no box.
@@ -864,8 +878,8 @@ pub(crate) fn ancestors_of(tree: &RetainedTree, id: u64) -> Vec<u64> {
 }
 
 /// Whether a strict ancestor of `element` is forced, so that `element` is laid out for a read of
-/// geometry and nothing of what it runs advances: no animation or transition starts or steps below
-/// a skipped element.
+/// geometry: what it runs shows its values at the instant of the pass, and no animation or transition
+/// below a skipped element starts, steps or tells anything (`animate_style`).
 pub(crate) fn is_forced_by_ancestor(tree: &RetainedTree, element: &RetainedElement) -> bool {
     if !tree.relevance.any_forced() {
         return false;
