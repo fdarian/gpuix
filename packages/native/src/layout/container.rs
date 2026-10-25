@@ -591,11 +591,14 @@ pub(crate) struct Chain<'a> {
 impl Containers for Chain<'_> {
     fn container(&self, name: Option<&str>, needs: Needs) -> Option<Measured> {
         let Some(scope) = self.scopes.and_then(|scopes| scopes.nearest(name, needs.axes)) else {
-            return (name.is_none() && needs.axes == Axes::NONE && needs.style).then(|| Measured {
-                width: None,
-                height: None,
-                lengths: self.parent_lengths,
-                custom: self.parent_custom.clone(),
+            return (name.is_none() && needs.axes == Axes::NONE && needs.style).then(|| {
+                crate::css::custom_properties::reads::note();
+                Measured {
+                    width: None,
+                    height: None,
+                    lengths: self.parent_lengths,
+                    custom: self.parent_custom.clone(),
+                }
             });
         };
         scope.note_read(needs.axes);

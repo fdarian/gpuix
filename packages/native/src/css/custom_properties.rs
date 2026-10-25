@@ -59,6 +59,24 @@ fn is_inherit(value: &str) -> bool {
     ["inherit", "unset"].iter().any(|keyword| value.eq_ignore_ascii_case(keyword))
 }
 
+/// Which retained elements read the custom properties they inherit (see `retain::Record::reads_custom`):
+/// a build notes a read, and an element that is built read if the count moved while it was.
+pub(crate) mod reads {
+    use std::cell::Cell;
+
+    thread_local! {
+        static READS: Cell<u64> = const { Cell::new(0) };
+    }
+
+    pub(crate) fn note() {
+        READS.set(READS.get() + 1);
+    }
+
+    pub(crate) fn count() -> u64 {
+        READS.get()
+    }
+}
+
 /// Whether `text` has a `var()` in it.
 pub(crate) fn has_var(text: &str) -> bool {
     find_var(text).is_some()

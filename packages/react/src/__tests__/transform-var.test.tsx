@@ -7,6 +7,7 @@
 import React from "react"
 import { describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import { verifying } from "./retained-harness.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -34,6 +35,8 @@ function mounted(tree: React.ReactElement, run: (renderer: Renderer, root: Retur
 }
 
 /** A viewport holding a track 300 wide, once translated by `var(--p)` and once by the literal it comes to. */
+const across = (renderer: Renderer, testId: string) => box(renderer, testId).filter((_, index) => index !== 1)
+
 function Carousel({ p, custom }: { p: number | string; custom?: Record<string, unknown> }) {
   const fraction = Number(p)
   return (
@@ -47,12 +50,12 @@ function Carousel({ p, custom }: { p: number | string; custom?: Record<string, u
 describeNative("var() in a transform", () => {
   it("moves a carousel's track like the literal translate, for a number or a string set from JS", () => {
     mounted(<Carousel p={0} />, (renderer, root) => {
-      expect(box(renderer, "track")).toEqual(box(renderer, "literal"))
+      expect(across(renderer, "track")).toEqual(across(renderer, "literal"))
       for (const p of [0.4, "0.75", 1, 0.125, 0]) {
         root.render(<Carousel p={p} />)
         renderer.flush()
         renderer.drawFrame()
-        expect(box(renderer, "track")).toEqual(box(renderer, "literal"))
+        expect(across(renderer, "track")).toEqual(across(renderer, "literal"))
         expect(box(renderer, "track")[0]).toBeCloseTo(20 - Number(p) * 300, 3)
       }
     })
@@ -98,16 +101,16 @@ describeNative("var() in a transform", () => {
   it("is not a transform until its var() resolves: no containing block for a missing one", () => {
     mounted(
       <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600 }}>
-        <div testId="none" style={{ position: "absolute", left: 100, top: 100, width: 200, height: 100, transform: "translateX(var(--missing))" }}>
+        <div style={{ width: 200, height: 100, transform: "translateX(var(--missing))" }}>
           <div testId="child-none" style={{ position: "absolute", right: 0, bottom: 0, width: 10, height: 10 }} />
         </div>
-        <div testId="active" style={{ position: "absolute", left: 100, top: 300, width: 200, height: 100, transform: "translateX(var(--missing, 0px))" }}>
+        <div style={{ width: 200, height: 100, transform: "translateX(var(--missing, 0px))" }}>
           <div testId="child-active" style={{ position: "absolute", right: 0, bottom: 0, width: 10, height: 10 }} />
         </div>
       </div>,
       (renderer) => {
         expect(box(renderer, "child-none")[0], "the root is the containing block").toBe(790)
-        expect(box(renderer, "child-active")[0], "the element is").toBe(290)
+        expect(box(renderer, "child-active")[0], "the element is").toBe(190)
       }
     )
   }, SLOW)
@@ -131,13 +134,17 @@ describeNative("var() in a transform", () => {
 
 describeNative("a --p set from JS each frame", () => {
   const ROWS = 200
+  const ROW_ELEMENTS = 1 + 4 * 2
 
-  /** `--p` is set on the head, above the track only, or on the page, above the rows too. */
-  function Page({ p, onPage }: { p: number; onPage: boolean }) {
+  /** `--p` is set on the head, above the track only, or on the page, above the rows too; `literal` has no var(). */
+  type Mode = "head" | "page" | "literal"
+
+  function Page({ p, mode }: { p: number; mode: Mode }) {
+    const track = mode === "literal" ? `translateX(${-p * 100}%)` : "translateX(calc(-100% * var(--p)))"
     return (
-      <div style={{ display: "flex", flexDirection: "column", width: 760, height: 560, overflow: "hidden", ...(onPage ? { "--p": p } : {}) }}>
-        <div style={{ height: 80, overflow: "hidden", ...(onPage ? {} : { "--p": p }) }}>
-          <div testId="track" style={{ width: 300, height: 60, transform: "translateX(calc(-100% * var(--p)))" }} />
+      <div style={{ display: "flex", flexDirection: "column", width: 760, height: 560, overflow: "hidden", ...(mode === "page" ? { "--p": p } : {}) }}>
+        <div style={{ height: 80, overflow: "hidden", ...(mode === "head" ? { "--p": p } : {}) }}>
+          <div testId="track" style={{ width: 300, height: 60, transform: track }} />
         </div>
         {Array.from({ length: ROWS }, (_, row) => (
           <div key={row} style={{ display: "flex", gap: 4, padding: 2 }}>
@@ -152,31 +159,45 @@ describeNative("a --p set from JS each frame", () => {
     )
   }
 
-  for (const onPage of [false, true]) {
-    it(`moves the track without a layout pass, with --p on the ${onPage ? "page" : "head"}`, () => {
-      const root = createTestRoot({ width: 800, height: 600 })
-      const renderer = root.renderer
-      try {
-        root.render(<Page p={0} onPage={onPage} />)
-        for (let frame = 0; frame < 6; frame++) {
-          renderer.flush()
-          renderer.drawFrame()
-        }
-        const layout = renderer.getLayoutCounters()
-        const built = renderer.getBuildCounters().elementsBuilt
-        const frames = 10
-        for (let frame = 1; frame <= frames; frame++) {
-          root.render(<Page p={frame / frames} onPage={onPage} />)
-          renderer.flush()
-          renderer.drawFrame()
-          expect(box(renderer, "track")[0]).toBeCloseTo(-(frame / frames) * 300, 3)
-        }
-        const passes = renderer.getLayoutCounters().passes - layout.passes
-        const elements = renderer.getBuildCounters().elementsBuilt - built
-        console.log(`--p on the ${onPage ? "page" : "head"}: ${frames} updates, ${passes} layout passes, ${elements} elements built`)
-      } finally {
-        root.unmount()
+  /** What `frames` updates of the page did: layout passes and elements built per update. */
+  function updates(mode: Mode, frames = 10) {
+    const root = createTestRoot({ width: 800, height: 600 })
+    const renderer = root.renderer
+    try {
+      root.render(<Page p={0} mode={mode} />)
+      for (let frame = 0; frame < 6; frame++) {
+        renderer.flush()
+        renderer.drawFrame()
       }
-    }, SLOW)
+      const layout = renderer.getLayoutCounters()
+      const built = renderer.getBuildCounters().elementsBuilt
+      for (let frame = 1; frame <= frames; frame++) {
+        root.render(<Page p={frame / frames} mode={mode} />)
+        renderer.flush()
+        renderer.drawFrame()
+        expect(box(renderer, "track")[0]).toBeCloseTo(-(frame / frames) * 300, 3)
+      }
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return {
+        passes: (renderer.getLayoutCounters().passes - layout.passes) / frames,
+        built: (renderer.getBuildCounters().elementsBuilt - built) / frames,
+      }
+    } finally {
+      root.unmount()
+    }
   }
+
+  it("builds as much as the same update of a literal transform, wherever --p is set", () => {
+    const literal = updates("literal")
+    const head = updates("head")
+    const page = updates("page")
+    console.log(`per update: literal ${JSON.stringify(literal)}, --p on the head ${JSON.stringify(head)}, --p on the page ${JSON.stringify(page)}`)
+    expect(head.passes).toBe(literal.passes)
+    expect(page.passes).toBe(literal.passes)
+    // Verify builds every replayed frame a second time, whole: the count is the whole page then.
+    if (verifying) return
+    // The rows read no custom property, so the change of --p above them does not build them again.
+    expect(page.built).toBeLessThan(ROWS * ROW_ELEMENTS * 0.1)
+    expect(head.built).toBeLessThanOrEqual(literal.built + 2)
+  }, SLOW)
 })

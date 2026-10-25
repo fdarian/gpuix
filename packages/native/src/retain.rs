@@ -125,7 +125,6 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
     fp.hash(&inherited.computed_variations);
     inherited.font_state.fingerprint(&mut fp);
     inherited.direction.fingerprint(&mut fp);
-    inherited.custom.fingerprint(&mut fp);
     fp.hash(&inherited.interpolate_size);
     fp.f64(inherited.table.spacing.horizontal);
     fp.f64(inherited.table.spacing.vertical);
@@ -145,6 +144,15 @@ fn inherited_fingerprint(inherited: &Inherited) -> u64 {
     if let Some(scope) = inherited.self_container.as_deref() {
         scope.fingerprint(&mut fp);
     }
+    fp.finish()
+}
+
+/// The custom properties `inherited` hands down, which the key holds apart from the rest for the
+/// same reason as the colours: only a subtree that read one (`Record::reads_custom`) is another
+/// build for a change in them. The containers above hold theirs in `inherited`.
+fn custom_fingerprint(inherited: &Inherited) -> u64 {
+    let mut fp = Fingerprint::new();
+    inherited.custom.fingerprint(&mut fp);
     fp.finish()
 }
 
@@ -342,14 +350,18 @@ struct Key {
     inherited: u64,
     /// The colours in `Inherited`, see [`colors_fingerprint`].
     colors: u64,
+    /// The custom properties in `Inherited`, see [`custom_fingerprint`].
+    custom: u64,
     shape: u64,
 }
 
 impl Key {
     /// Whether an element built under `self` is built differently under `now`, given whether it
-    /// read the colour it inherits.
-    fn inherits_differently(&self, now: &Key, reads_colors: bool) -> bool {
-        self.inherited != now.inherited || (reads_colors && self.colors != now.colors)
+    /// read the colour and the custom properties it inherits.
+    fn inherits_differently(&self, now: &Key, reads_colors: bool, reads_custom: bool) -> bool {
+        self.inherited != now.inherited
+            || (reads_colors && self.colors != now.colors)
+            || (reads_custom && self.custom != now.custom)
     }
 }
 
@@ -433,6 +445,10 @@ struct Record {
     /// its own, a `currentColor`, an element that paints as it likes. A colour is part of the key of
     /// the record only then.
     reads_colors: bool,
+    /// Something built in the subtree read a custom property (`custom_properties::reads`): a
+    /// transform with a `var()`, a `style()` query on the parent. A subtree that read none is the
+    /// same build under other custom properties.
+    reads_custom: bool,
     /// The element is costly to build, see [`Entry::costly`]: all that makes a root of one worth it.
     costly: bool,
     subtree: crate::layout::cull::Subtree,
@@ -680,6 +696,9 @@ struct Node {
     /// Open while the element is built, see [`Record::reads_colors`].
     colors_frame: Option<crate::color::reads::Frame>,
     reads_colors: bool,
+    /// `custom_properties::reads::count` when the element was entered, while it is built.
+    custom_reads_at: u64,
+    reads_custom: bool,
 }
 
 /// What a node adds up to with what is below it, filled in bottom-up when the build is done.
@@ -2000,6 +2019,7 @@ impl Retain {
                     revision: entry.revision,
                     inherited: inherited_fingerprint(entry.inherited),
                     colors: colors_fingerprint(entry.inherited),
+                    custom: custom_fingerprint(entry.inherited),
                     shape: shape.finish(),
                 }
             }
@@ -2049,6 +2069,8 @@ impl Retain {
             loading: crate::background_images::still_loading(),
             colors_frame: None,
             reads_colors: false,
+            custom_reads_at: 0,
+            reads_custom: false,
             records: self.planning
                 && self.lifted == 0
                 && self.unit.is_none()
@@ -2067,12 +2089,16 @@ impl Retain {
                 node.forms_context = record.forms_context;
                 node.lift_run = record.lift_run;
                 node.reads_colors = record.reads_colors;
+                node.reads_custom = record.reads_custom;
                 node.subtree = record.subtree;
                 node.end = at + 1;
                 node.skipped = Some(Skipped { size: record.size, digest: record.digest });
                 crate::perf_counters::elements_skipped(u64::from(record.size));
                 if record.reads_colors {
                     entry.inherited.colors.note_read();
+                }
+                if record.reads_custom {
+                    crate::css::custom_properties::reads::note();
                 }
                 let overscan = match record.wrapped {
                     // A scroller laid out empty is no scroller (`Scroller::of`), so the pass that
@@ -2106,6 +2132,7 @@ impl Retain {
             Err(kept) => self.debug_kept(kept, node.id),
         }
         node.colors_frame = Some(crate::color::reads::open());
+        node.custom_reads_at = crate::css::custom_properties::reads::count();
         self.stack.push(at);
         self.nodes.push(node);
         self.below.push(Below::default());
@@ -2172,7 +2199,7 @@ impl Retain {
         if record.enter.revision != node.enter.revision {
             return Err(Kept::Revision);
         }
-        if record.enter.inherits_differently(&node.enter, record.reads_colors) {
+        if record.enter.inherits_differently(&node.enter, record.reads_colors, record.reads_custom) {
             return Err(Kept::Inherited);
         }
         if record.enter.shape != node.enter.shape {
@@ -2208,6 +2235,7 @@ impl Retain {
         node.end = end;
         node.effects_end = crate::tape::build_effects_len();
         node.reads_colors = node.colors_frame.take().is_some_and(crate::color::reads::Frame::close);
+        node.reads_custom = crate::css::custom_properties::reads::count() != node.custom_reads_at;
         self.exited_absent = node.absent;
         self.settle(at);
         let recording = self.to_record(at);
@@ -2264,7 +2292,7 @@ impl Retain {
             own.changed = match before {
                 None => Some(Cause::New),
                 Some(before) if before.key.revision != node.key.revision => Some(Cause::Edited),
-                Some(before) if before.key.inherits_differently(&node.key, before.reads_colors) => Some(Cause::Inherited),
+                Some(before) if before.key.inherits_differently(&node.key, before.reads_colors, before.reads_custom) => Some(Cause::Inherited),
                 Some(before) if before.key.shape != node.key.shape => Some(Cause::Shape),
                 Some(before) => node.vol.cause_against(&before.vol),
             };
@@ -2293,6 +2321,9 @@ impl Retain {
                 // A subtree that reads no colour it inherits is the same build under another one.
                 if node.reads_colors {
                     token.word(node.enter.colors);
+                }
+                if node.reads_custom {
+                    token.word(node.enter.custom);
                 }
                 token.word(node.enter.shape);
                 token.word(epoch);
@@ -2831,6 +2862,7 @@ impl Retain {
                     holes,
                     size: own.size,
                     reads_colors: node.reads_colors,
+                    reads_custom: node.reads_custom,
                     costly: node.costly,
                     subtree: node.subtree,
                     effects,
