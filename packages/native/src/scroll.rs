@@ -685,8 +685,8 @@ pub(crate) fn scroll_by_key<'a>(
     false
 }
 
-/// A box in window coordinates.
-#[derive(Clone, Copy, Debug)]
+/// A box in the window's space, or in the space of one scroller.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Rect {
     pub x: f32,
     pub y: f32,
@@ -694,8 +694,44 @@ pub(crate) struct Rect {
     pub height: f32,
 }
 
-/// Scrolls one scroll container so `target` sits where `options` ask, and moves `target` to
-/// where that leaves it, for the next container out. False if the container could not move.
+impl Rect {
+    /// The box with sides parallel to the axes that holds the corners of this one after `matrix`
+    /// (what of it is behind the eye of a perspective is cut off first), or `None` for a box that
+    /// is all behind the eye.
+    pub(crate) fn through(&self, matrix: &gpui::TransformationMatrix) -> Option<Self> {
+        if !matrix.is_affine() {
+            let bounds = gpui::Bounds::new(
+                gpui::point(gpui::px(self.x), gpui::px(self.y)),
+                gpui::size(gpui::px(self.width), gpui::px(self.height)),
+            );
+            let mapped = matrix.try_bounding_box(bounds)?;
+            return Some(Self {
+                x: f32::from(mapped.origin.x),
+                y: f32::from(mapped.origin.y),
+                width: f32::from(mapped.size.width),
+                height: f32::from(mapped.size.height),
+            });
+        }
+        let [[a, b], [c, d]] = matrix.linear().map(|row| row.map(f64::from));
+        let [e, f] = matrix.translation().map(f64::from);
+        let (x0, y0) = (f64::from(self.x), f64::from(self.y));
+        let (x1, y1) = (x0 + f64::from(self.width), y0 + f64::from(self.height));
+        let (mut left, mut top) = (f64::INFINITY, f64::INFINITY);
+        let (mut right, mut bottom) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (x, y) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
+            let (x, y) = (a * x + b * y + e, c * x + d * y + f);
+            left = left.min(x);
+            right = right.max(x);
+            top = top.min(y);
+            bottom = bottom.max(y);
+        }
+        Some(Self { x: left as f32, y: top as f32, width: (right - left) as f32, height: (bottom - top) as f32 })
+    }
+}
+
+/// Scrolls one scroll container so `target`, a box in the space it lays out in, sits where
+/// `options` ask, and moves `target` to where that leaves it, for the next container out. False
+/// if the container could not move.
 pub(crate) fn scroll_into_view(
     id: u64,
     handle: &gpui::ScrollHandle,
@@ -766,6 +802,57 @@ pub(crate) fn virtual_list_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn turn(degrees: f32) -> gpui::TransformationMatrix {
+        let (sin, cos) = degrees.to_radians().sin_cos();
+        gpui::TransformationMatrix::affine([[cos, -sin], [sin, cos]], [0.0, 0.0])
+    }
+
+    fn close(rect: Rect, want: (f32, f32, f32, f32)) {
+        let got = (rect.x, rect.y, rect.width, rect.height);
+        assert!(
+            [got.0 - want.0, got.1 - want.1, got.2 - want.2, got.3 - want.3].iter().all(|error| error.abs() < 1e-4),
+            "got {got:?} want {want:?}"
+        );
+    }
+
+    #[test]
+    fn a_box_through_a_quarter_turn_swaps_its_sides() {
+        let rect = Rect { x: 0.0, y: 0.0, width: 10.0, height: 20.0 };
+        close(rect.through(&turn(90.0)).unwrap(), (-20.0, 0.0, 20.0, 10.0));
+    }
+
+    #[test]
+    fn a_box_through_an_eighth_turn_is_held_by_a_square_of_both_sides() {
+        let rect = Rect { x: 0.0, y: 0.0, width: 10.0, height: 20.0 };
+        let side = (10.0 + 20.0) / std::f32::consts::SQRT_2;
+        let turned = rect.through(&turn(45.0)).unwrap();
+        close(turned, (turned.x, turned.y, side, side));
+    }
+
+    #[test]
+    fn a_box_through_a_turn_and_back_is_the_larger_box_that_held_it() {
+        // What Chrome does from scroller to scroller: the box that holds a turned box, turned back, holds that.
+        let rect = Rect { x: 5.0, y: 7.0, width: 10.0, height: 20.0 };
+        let loose = rect.through(&turn(45.0)).unwrap().through(&turn(-45.0)).unwrap();
+        assert!(loose.width > rect.width + 1.0 && loose.height > rect.height + 1.0);
+        // About the same centre.
+        close(Rect { x: loose.x + loose.width / 2.0, y: loose.y + loose.height / 2.0, width: 0.0, height: 0.0 }, (10.0, 17.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn a_box_through_a_scale_and_a_move_is_scaled_then_moved() {
+        let matrix = gpui::TransformationMatrix::affine([[2.0, 0.0], [0.0, 0.5]], [3.0, -4.0]);
+        let rect = Rect { x: 1.0, y: 2.0, width: 10.0, height: 20.0 };
+        close(rect.through(&matrix).unwrap(), (5.0, -3.0, 20.0, 10.0));
+    }
+
+    #[test]
+    fn a_box_through_a_flip_keeps_its_size() {
+        let matrix = gpui::TransformationMatrix::affine([[-1.0, 0.0], [0.0, 1.0]], [0.0, 0.0]);
+        let rect = Rect { x: 1.0, y: 2.0, width: 10.0, height: 20.0 };
+        close(rect.through(&matrix).unwrap(), (-11.0, 2.0, 10.0, 20.0));
+    }
 
     #[test]
     fn a_client_size_rounds_half_up_like_chromes() {

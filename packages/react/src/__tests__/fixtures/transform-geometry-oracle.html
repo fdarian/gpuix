@@ -19,6 +19,9 @@
 // and for a scene with `points`, `from["x,y"]` is the id of document.elementFromPoint(x, y), and for `clicks`,
 // `offsets["x,y"]` is [id, offsetX, offsetY] of a click dispatched on that element at that point.
 // `scroll` lists [id, scrollTop, scrollLeft] applied before measuring.
+// `nest` is a scene of nested scrollers O > I > T: for every entry of `nest.ops` (a scrollIntoView option bag, or "focus"
+// for T.focus()) the scrollers are put back to `nest.reset` ([id, scrollTop, scrollLeft]), T is aimed at, and
+// `nested[i]` is [O.scrollTop, O.scrollLeft, I.scrollTop, I.scrollLeft] after it.
 
 const abs = (id, l, t, w, h, css = "", inner = "") =>
   `<div id="${id}" style="position:absolute;left:${l}px;top:${t}px;width:${w}px;height:${h}px;${css}">${inner}</div>`;
@@ -257,6 +260,43 @@ scenes["into-view"] = {
   into: [["T", { block: "start", inline: "nearest" }], ["U", { block: "center", inline: "nearest" }], ["V", { block: "end", inline: "start" }]],
 };
 
+// scrollIntoView and focus through nested scrollers: an outer scroller O holds an inner scroller I (a transform on one or
+// both of them) that holds the target T (a transform of its own). Chrome aligns the box that holds the target in the space
+// of each scroller in turn.
+{
+  const nest = (outerCss, innerCss, targetCss, reset) => ({
+    html: abs(
+      "O", 20, 20, 300, 200, SCROLLER + outerCss,
+      `<div id="op" style="position:relative;width:900px;height:1200px">` +
+        abs(
+          "I", 120, 300, 220, 140, SCROLLER + innerCss,
+          `<div id="ip" style="position:relative;width:600px;height:900px">` + abs("T", 300, 500, 50, 30, "background:red;" + targetCss) + `</div>`
+        ) +
+        `</div>`
+    ),
+    nest: { reset, ops: [] },
+  });
+  const OPS = [];
+  for (const block of ["start", "center", "end", "nearest"]) for (const inline of ["start", "center", "end", "nearest"]) OPS.push({ block, inline });
+  OPS.push("focus");
+  const RESET = [["O", 0, 0], ["I", 0, 0]];
+  const RESET_SCROLLED = [["O", 70, 40], ["I", 90, 30]];
+  const scenesOfNest = {
+    "nest-plain": nest("", "", "", RESET),
+    "nest-rotate": nest("", "transform:rotate(20deg)", "", RESET),
+    "nest-scale": nest("", "transform:scale(1.4, 0.8)", "transform:scale(1.3)", RESET),
+    "nest-target": nest("", "", "transform:rotate(30deg)", RESET),
+    "nest-both": nest("transform:rotate(10deg)", "transform:rotate(25deg)", "transform:rotate(30deg)", RESET_SCROLLED),
+    "nest-skew": nest("", "transform:skew(15deg, 8deg)", "transform:scale(1.2)", RESET_SCROLLED),
+    "nest-outer-scale": nest("transform:scale(0.7)", "transform:rotate(-15deg)", "", RESET_SCROLLED),
+    "nest-turn": nest("", "transform:rotate(90deg)", "transform:rotate(45deg)", RESET),
+  };
+  for (const [name, scene] of Object.entries(scenesOfNest)) {
+    scene.nest.ops = OPS;
+    scenes[name] = scene;
+  }
+}
+
 // Scroll extents: a scroller of 120x80 holding a transformed child.
 {
   const extents = [
@@ -306,6 +346,30 @@ function measure(name, scene) {
     document.getElementById(id).scrollIntoView(options);
     scrolls.push([id, document.getElementById("S").scrollTop, document.getElementById("S").scrollLeft]);
   }
+  const nested = [];
+  const nest = scene.nest;
+  if (nest) {
+    const O = document.getElementById("O");
+    const I = document.getElementById("I");
+    const T = document.getElementById("T");
+    T.tabIndex = 0;
+    for (const op of nest.ops) {
+      for (const [id, top, left] of nest.reset) {
+        const el = document.getElementById(id);
+        el.scrollTop = top;
+        el.scrollLeft = left;
+      }
+      if (op === "focus") T.focus();
+      else T.scrollIntoView(op);
+      nested.push([O.scrollTop, O.scrollLeft, I.scrollTop, I.scrollLeft]);
+    }
+    for (const [id, top, left] of nest.reset) {
+      const el = document.getElementById(id);
+      el.scrollTop = top;
+      el.scrollLeft = left;
+    }
+    document.activeElement?.blur();
+  }
   const boxes = {};
   const sizes = {};
   for (const el of holder.querySelectorAll("[id]")) {
@@ -339,7 +403,7 @@ function measure(name, scene) {
     offsets[`${x},${y}`] = seen;
   }
   holder.remove();
-  return { html: scene.html, scroll: scene.scroll ?? [], into: scene.into ?? [], scrolls, boxes, sizes, from, offsets };
+  return { html: scene.html, scroll: scene.scroll ?? [], into: scene.into ?? [], scrolls, nest: scene.nest ?? null, nested, boxes, sizes, from, offsets };
 }
 
 const out = {};

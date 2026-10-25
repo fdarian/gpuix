@@ -213,6 +213,16 @@ fn selection_scroll_step(
     }
 }
 
+/// The window point `position` in the space the list `list_id` lays out in. `None` where the
+/// list has no box or a transform flattens it.
+fn list_local_pointer(
+    window: gpui::WindowId,
+    list_id: u64,
+    position: gpui::Point<gpui::Pixels>,
+) -> Option<gpui::Point<gpui::Pixels>> {
+    crate::automation::get_bounds(window, list_id)?.to_local_point(position)
+}
+
 /// Queue a virtual-list scroll for the next render. `offset_in_item` may be
 /// negative: gpui then anchors the viewport top above the item, which is what
 /// keeps a row pixel-stable while unmeasured rows are spliced in above it.
@@ -6518,19 +6528,14 @@ impl GpuixView {
         options: crate::scroll::IntoView,
     ) -> bool {
         let window_id = window.window_handle().window_id();
-        // The box to align is the one the nearest scroller sees: where a transform puts the element in
-        // the space the scroller lays out in.
-        let nearest_scroller = {
-            let tree = self.tree.lock().unwrap();
-            crate::layout::containing_block::reaching_ancestors(&tree, id)
-                .into_iter()
-                .find(|ancestor| self.scroll_handles.contains_key(ancestor))
-        };
-        let target = painted_rect_in(window_id, id, nearest_scroller);
+        let target = painted_rect(window_id, id);
         self.scroll_element_into_view_at(window, id, options, target)
     }
 
-    /// [`Self::scroll_element_into_view`] for an element whose box the caller read.
+    /// [`Self::scroll_element_into_view`] for an element whose box the caller read, the box that
+    /// holds it in the window. Each scroller takes the box that holds that one in its own space and
+    /// hands the next the box that holds where its scroll left it, as Chrome does, so a turn between
+    /// two scrollers makes the box a little larger each time.
     pub(crate) fn scroll_element_into_view_at(
         &self,
         window: &gpui::Window,
@@ -6548,12 +6553,21 @@ impl GpuixView {
             if let Some(entry) = self.virtual_lists.get(&ancestor_id) {
                 if let Some(index) = entry.logical_index_of(child) {
                     let viewport = entry.state.viewport_bounds();
-                    let row = crate::automation::get_bounds(window_id, child);
-                    let offset = crate::scroll::virtual_list_offset(
-                        options.block,
-                        row.map(|row| (row.y as f32, row.height as f32)),
-                        (f32::from(viewport.origin.y), f32::from(viewport.size.height)),
-                    );
+                    // The viewport is in the space the list lays out in, and so is the row's box.
+                    let row = match (
+                        crate::automation::get_bounds(window_id, child),
+                        crate::automation::get_bounds(window_id, ancestor_id),
+                    ) {
+                        (Some(row), Some(list)) => row.box_in(&list).map(Some),
+                        _ => Some(None),
+                    };
+                    let offset = row.and_then(|row| {
+                        crate::scroll::virtual_list_offset(
+                            options.block,
+                            row.map(|(_, y, _, height)| (y as f32, height as f32)),
+                            (f32::from(viewport.origin.y), f32::from(viewport.size.height)),
+                        )
+                    });
                     if let Some(offset) = offset {
                         scrolled |= self.scroll_virtual_list_to_item(ancestor_id, index, offset);
                         // The row moves when the list does, and the list applies that on the
@@ -6561,14 +6575,34 @@ impl GpuixView {
                         target = None;
                     }
                 }
-            } else if let (Some(handle), Some(target)) =
-                (self.scroll_handles.get(&ancestor_id), target.as_mut())
-            {
-                scrolled |= crate::scroll::scroll_into_view(ancestor_id, handle, target, options);
+            } else if let (Some(handle), Some(window_box)) = (self.scroll_handles.get(&ancestor_id), target) {
+                target = self.scroll_in_its_space(window_id, ancestor_id, handle, window_box, options, &mut scrolled);
             }
             child = ancestor_id;
         }
         scrolled
+    }
+
+    /// Scrolls the scroller `id` to `window_box`, a box of the window, and gives the box that holds
+    /// the target after it. `None` where the scroller's transform flattens the plane.
+    fn scroll_in_its_space(
+        &self,
+        window_id: gpui::WindowId,
+        id: u64,
+        handle: &gpui::ScrollHandle,
+        window_box: crate::scroll::Rect,
+        options: crate::scroll::IntoView,
+        scrolled: &mut bool,
+    ) -> Option<crate::scroll::Rect> {
+        let space = crate::automation::get_bounds(window_id, id)?;
+        if !space.is_transformed() {
+            let mut target = window_box;
+            *scrolled |= crate::scroll::scroll_into_view(id, handle, &mut target, options);
+            return Some(target);
+        }
+        let mut target = window_box.through(&space.to_window.inverse()?)?;
+        *scrolled |= crate::scroll::scroll_into_view(id, handle, &mut target, options);
+        target.through(&space.to_window)
     }
 
     pub(crate) fn set_selection_change_listener(&mut self, enabled: bool, event_id: u64) {
@@ -7947,18 +7981,23 @@ impl GpuixView {
             self.stop_selection_scroll();
             return;
         }
+        // The viewport is in the space the list lays out in, which a transform maps to the window.
         let list_id = self
             .selection_scroll_list
             .filter(|id| {
                 self.virtual_lists.get(id).is_some_and(|entry| {
                     let bounds = entry.state.viewport_bounds();
-                    position.x >= bounds.left() && position.x <= bounds.right()
+                    list_local_pointer(window, *id, position)
+                        .is_some_and(|local| local.x >= bounds.left() && local.x <= bounds.right())
                 })
             })
             .or_else(|| {
                 self.virtual_lists
                     .iter()
-                    .find(|(_, entry)| entry.state.viewport_bounds().contains(&position))
+                    .find(|(id, entry)| {
+                        list_local_pointer(window, **id, position)
+                            .is_some_and(|local| entry.state.viewport_bounds().contains(&local))
+                    })
                     .map(|(id, _)| *id)
             });
         let Some(list_id) = list_id else {
@@ -7976,19 +8015,26 @@ impl GpuixView {
         self.selection_scroll_task = None;
     }
 
+    /// How far the list under the drag scrolls now: the pointer where the list lays out against
+    /// its viewport, so none where a transform flattens it.
+    fn selection_scroll_step_now(&self) -> f32 {
+        let (Some((window, position)), Some(list_id)) =
+            (self.selection_drag_position, self.selection_scroll_list)
+        else {
+            return 0.0;
+        };
+        let Some(entry) = self.virtual_lists.get(&list_id) else {
+            return 0.0;
+        };
+        list_local_pointer(window, list_id, position)
+            .map_or(0.0, |local| selection_scroll_step(entry.state.viewport_bounds(), local))
+    }
+
     fn schedule_selection_scroll(&mut self, cx: &mut gpui::Context<Self>) {
         if self.selection_scroll_task.is_some() || !self.selection.lock().is_dragging() {
             return;
         }
-        let (Some((_, position)), Some(list_id)) =
-            (self.selection_drag_position, self.selection_scroll_list)
-        else {
-            return;
-        };
-        let Some(entry) = self.virtual_lists.get(&list_id) else {
-            return;
-        };
-        if selection_scroll_step(entry.state.viewport_bounds(), position) == 0.0 {
+        if self.selection_scroll_step_now() == 0.0 {
             return;
         }
         self.selection_scroll_task = Some(cx.spawn(async move |view, cx| {
@@ -8018,7 +8064,7 @@ impl GpuixView {
             self.stop_selection_scroll();
             return;
         };
-        let step = selection_scroll_step(entry.state.viewport_bounds(), position);
+        let step = self.selection_scroll_step_now();
         if step == 0.0 {
             return;
         }
@@ -8145,19 +8191,10 @@ impl GpuixView {
     }
 }
 
-/// The box `id` was last painted or laid out with, for the scrolls that align it.
+/// The box that holds `id` in the window as it was last painted or laid out, for the scrolls that
+/// align it.
 pub(crate) fn painted_rect(window_id: gpui::WindowId, id: u64) -> Option<crate::scroll::Rect> {
-    painted_rect_in(window_id, id, None)
-}
-
-/// [`painted_rect`] where a transform puts the box, in the space of the element `space` (the
-/// window's when `None`), which is the box a scroll of that element aligns.
-pub(crate) fn painted_rect_in(window_id: gpui::WindowId, id: u64, space: Option<u64>) -> Option<crate::scroll::Rect> {
-    let painted = crate::automation::get_bounds(window_id, id)?;
-    let (x, y, width, height) = match space {
-        Some(space) => painted.box_in(&crate::automation::get_bounds(window_id, space)?)?,
-        None => painted.window_box(),
-    };
+    let (x, y, width, height) = crate::automation::get_bounds(window_id, id)?.window_box();
     Some(crate::scroll::Rect { x: x as f32, y: y as f32, width: width as f32, height: height as f32 })
 }
 

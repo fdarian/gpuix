@@ -10,6 +10,9 @@
 ///   target of a pointer move, point for point.
 /// - `offsetX` and `offsetY` of a click are measured in the target's own space, from its padding edge.
 /// - A scroller scrolls as far as the transformed boxes inside it reach, and only forwards and down.
+/// - `scrollIntoView` through nested scrollers, transformed or not: each scroller aligns the box that holds the target in
+///   its own space, and hands the next the box that holds where its scroll left it, so a turn between scrollers makes the
+///   box larger each time (128 cases of the oracle, 8 scenes). Focus scrolls to the `nearest` edges.
 
 import fs from "fs"
 import path from "path"
@@ -24,11 +27,15 @@ import { verifying } from "./retained-harness.js"
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
 type Rect = [number, number, number, number]
+type IntoViewOptions = { block: string; inline: string }
 interface Scene {
   html: string
   scroll: [string, number, number][]
   into: [string, { block: string; inline: string }][]
   scrolls: [string, number, number][]
+  nest: { reset: [string, number, number][]; ops: (IntoViewOptions | "focus")[] } | null
+  /** Per op of `nest`: [O.scrollTop, O.scrollLeft, I.scrollTop, I.scrollLeft]. */
+  nested: number[][]
   boxes: Record<string, Rect>
   sizes: Record<string, number[]>
   from: Record<string, string | null>
@@ -84,6 +91,7 @@ function withScene(name: string, run: (scene: Scene, mounted: Mounted) => void) 
       onClick: (event: { target: unknown; currentTarget: unknown; offsetX: number; offsetY: number }) => {
         if (event.target === event.currentTarget) clicks.push({ target: id, x: event.offsetX, y: event.offsetY })
       },
+      ...(scene.nest && id === "T" ? { tabIndex: 0 } : {}),
     })
     render(
       <div testId="case" style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600 }} {...handlers("case")}>
@@ -225,6 +233,54 @@ describeNative("scrollIntoView aligns the box that holds the corners of a transf
       expect(wrong).toEqual([])
     })
   }, SLOW)
+})
+
+const NESTED_SCENES = Object.keys(ORACLE).filter((name) => name.startsWith("nest-"))
+
+describeNative("scrollIntoView and focus through nested scrollers with transforms", () => {
+  /** Reads [O.scrollTop, O.scrollLeft, I.scrollTop, I.scrollLeft]. */
+  const scrolls = (mounted: Mounted) => () => {
+    const offset = (id: string) => mounted.renderer.getScrollOffset(mounted.ids.get(id)!)!
+    return [offset("O")[1]!, offset("O")[0]!, offset("I")[1]!, offset("I")[0]!]
+  }
+  const reset = (scene: Scene, mounted: Mounted) => {
+    for (const [id, top, left] of scene.nest!.reset) mounted.renderer.scrollTo(mounted.ids.get(id)!, left, top)
+  }
+  const differs = (got: number[], want: number[]) => got.some((value, index) => Math.abs(value - want[index]!) > 1)
+
+  for (const name of NESTED_SCENES) {
+    it(`aligns the box that holds the target in each scroller in turn, as Chrome does: ${name}`, () => {
+      withScene(name, (scene, mounted) => {
+        const read = scrolls(mounted)
+        const wrong: string[] = []
+        scene.nest!.ops.forEach((op, index) => {
+          if (op === "focus") return
+          reset(scene, mounted)
+          mounted.renderer.scrollIntoView(mounted.ids.get("T")!, op.block, op.inline)
+          const got = read()
+          if (differs(got, scene.nested[index]!)) {
+            wrong.push(`${op.block}/${op.inline}: got [${got}] Chrome [${scene.nested[index]}] (O top, left; I top, left)`)
+          }
+        })
+        expect(wrong).toEqual([])
+      })
+    }, SLOW)
+
+    // Chrome centres a focus target that is out of view and gpuix scrolls it to the nearest edge (see the deviations),
+    // so the transforms are checked against Chrome's `nearest`.
+    it(`Tab scrolls the nearest edges of the target into view in each scroller: ${name}`, () => {
+      withScene(name, (scene, mounted) => {
+        const read = scrolls(mounted)
+        reset(scene, mounted)
+        mounted.renderer.simulateKeystrokes("Tab")
+        expect(mounted.renderer.getFocusedElementId()).toBe(mounted.ids.get("T"))
+        const nearest = scene.nest!.ops.findIndex((op) => op !== "focus" && op.block === "nearest" && op.inline === "nearest")
+        const got = read()
+        const want = scene.nested[nearest]!
+        expect(differs(got, want), `got [${got}] Chrome [${want}] (O top, left; I top, left)`).toBe(false)
+      })
+    }, SLOW)
+  }
 })
 
 describeNative("a scroller scrolls as far as the transformed boxes in it reach", () => {
