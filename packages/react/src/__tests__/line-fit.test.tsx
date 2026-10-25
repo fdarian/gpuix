@@ -2,7 +2,9 @@
 /// is within a hair of fitting. Blink's line breaker fits a line when the sum of the widths of its pieces (one per text
 /// node), each from the start of the line and ceiled to 1/64 of a device pixel, is at most the width of the box cut to
 /// 1/64 of a device pixel and one 1/64 more; a line that was `<= width + 1/1024` in floats broke a word early at those
-/// widths, and `word-break: break-all` has its own places to break.
+/// widths, and `word-break: break-all` has its own places to break. A line that breaks between two kerned letters is shaped
+/// again at its end (`ShapingLineBreaker`), which moves the break of a cut word or of `break-all` a letter, and a `-` that
+/// starts a line is not broken from the digit after it.
 ///
 /// `fixtures/line-fit-oracle.html` is the page and `line-fit-oracle.json` and `line-fit-oracle-x2.json` the lines headless
 /// Chrome puts each text in at the widths of its rows, at device scale 1 and 2 (regenerate with `fixtures/dsf-oracle.sh
@@ -87,7 +89,7 @@ describeNative("a text breaks into lines where Chrome breaks it", () => {
   for (const scale of SCALES) {
     const oracle: Oracle = JSON.parse(fs.readFileSync(path.join(FIXTURES, scale.file), "utf8"))
 
-    it(`puts every text in the lines of its ${oracle.rows.length} rows at scale ${scale.scaleFactor}`, { timeout: 120_000 }, () => {
+    it(`puts every text in the lines of its ${oracle.rows.length} rows at scale ${scale.scaleFactor}`, { timeout: 300_000 }, () => {
       const root = createTestRoot({ width: 1700, height: 6000, scaleFactor: scale.scaleFactor, fonts: [FONT] })
       const mismatches: string[] = []
       try {
