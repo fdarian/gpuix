@@ -1,6 +1,7 @@
 //! One property's animation: keyframes of channel vectors, played once or
 //! repeated.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use web_time::Instant;
@@ -88,6 +89,19 @@ pub(super) struct Track {
     /// Seconds a repeating spring takes to settle, which is the length of one
     /// of its iterations. Zero for everything else.
     pub(super) settle: f64,
+    /// When a spring that plays once comes to rest. Found by a scan, so kept until the keyframes or
+    /// the speed it leaves with change.
+    rest: OnceLock<Option<Rest>>,
+}
+
+/// Seconds after its delay that a spring is at rest.
+#[derive(Clone, Copy, Debug)]
+struct Rest {
+    /// The first step of the 60 Hz scan that finds it at rest, which is where its span ends.
+    scanned: f64,
+    /// The first instant it is at rest, which is where a frame sees it stop. A nanosecond past it,
+    /// so that the `Duration` it is turned into is not short of it.
+    exact: f64,
 }
 
 pub(super) struct Sample {
@@ -126,6 +140,7 @@ enum Direction {
 }
 
 const SPRING_SETTLE_STEP: f64 = 1.0 / 60.0;
+const NANOSECOND: f64 = 1e-9;
 const SPRING_SETTLE_LIMIT: f64 = 20.0;
 
 impl Track {
@@ -213,6 +228,7 @@ impl Track {
             transition,
             started: now,
             settle: 0.0,
+            rest: OnceLock::new(),
         };
         track.settle = track.spring_settle();
         track
@@ -313,6 +329,7 @@ impl Track {
         if let Some(rate) = layout.velocity_in(&self.layout, &rate) {
             self.from_velocity = rate;
             self.settle = self.spring_settle();
+            self.rest = OnceLock::new();
         }
     }
 
@@ -340,6 +357,7 @@ impl Track {
         if elapsed < seconds(self.transition.delay) {
             return Ok(Some(Self {
                 frames: vec![self.frames[0].clone(), moved.to],
+                rest: OnceLock::new(),
                 ..self.clone()
             }));
         }
@@ -371,6 +389,7 @@ impl Track {
         }
         let mut next = Self {
             frames: aligned.frames,
+            rest: OnceLock::new(),
             ..self.clone()
         };
         next.settle = next.spring_settle();
@@ -618,15 +637,37 @@ impl Track {
     /// Seconds a spring takes to come to rest, found by the scan of
     /// [`Self::spring_settle`]; `None` if it is still moving after 20 s.
     fn settle_time(&self) -> Option<f64> {
-        let Curve::Spring(spring) = &self.transition.curve else {
-            return Some(0.0);
-        };
-        let steps = (SPRING_SETTLE_LIMIT / SPRING_SETTLE_STEP) as u32;
-        (1..=steps)
-            .map(|step| f64::from(step) * SPRING_SETTLE_STEP)
-            .find(|t| {
-                evolve_all(&self.layout, spring, &self.frames[0], &self.frames[1], &self.from_velocity, *t).at_rest
-            })
+        self.rest().map(|rest| rest.scanned)
+    }
+
+    fn rest(&self) -> Option<Rest> {
+        *self.rest.get_or_init(|| {
+            let Curve::Spring(spring) = &self.transition.curve else {
+                return None;
+            };
+            let at_rest = |t: f64| {
+                evolve_all(&self.layout, spring, &self.frames[0], &self.frames[1], &self.from_velocity, t).at_rest
+            };
+            let steps = (SPRING_SETTLE_LIMIT / SPRING_SETTLE_STEP) as u32;
+            let scanned = (1..=steps)
+                .map(|step| f64::from(step) * SPRING_SETTLE_STEP)
+                .find(|t| at_rest(*t))?;
+            // The scan steps over the instant the spring stops, and a frame between the two steps
+            // already sees it at rest.
+            let (mut moving, mut resting) = (scanned - SPRING_SETTLE_STEP, scanned);
+            if at_rest(moving) {
+                return Some(Rest { scanned, exact: moving + NANOSECOND });
+            }
+            for _ in 0..40 {
+                let middle = (moving + resting) / 2.0;
+                if at_rest(middle) {
+                    resting = middle;
+                } else {
+                    moving = middle;
+                }
+            }
+            Some(Rest { scanned, exact: resting + NANOSECOND })
+        })
     }
 
     /// How long the track plays. A spring that has not come to rest after 20 s
@@ -649,26 +690,32 @@ impl Track {
             }
             RepeatCount::Infinite => f64::INFINITY,
         };
-        Span { iteration, end }
+        let rests = match &self.transition.curve {
+            Curve::Spring(_) if self.has_motion() && !repeat.repeats() => {
+                self.rest().map_or(f64::INFINITY, |rest| delay + rest.exact)
+            }
+            _ => end,
+        };
+        Span { iteration, end, rests }
     }
 
     /// When the track next has to be sampled for anything but its value, which is a function of
-    /// the time: the instant a timed one ends. A repeat without a count never ends. A spring
-    /// comes to rest at a time that only a scan of it finds, so it is sampled in every frame.
+    /// the time: the instant it ends, or for a spring that plays once the instant it comes to rest.
+    /// A repeat without a count never ends, and a spring that is still moving after the 20 s its
+    /// scan covers has no instant to give, so it is sampled in every frame.
     pub(super) fn wake(&self, now: Instant) -> Wake {
         if !self.sample(now).active {
             return Wake::Never;
         }
-        match &self.transition.curve {
-            Curve::Tween { .. } => {
-                let end = self.span().end;
-                if end.is_finite() {
-                    Wake::At(self.started + Duration::from_secs_f64(end))
-                } else {
-                    Wake::Never
-                }
-            }
-            Curve::Spring(_) if self.transition.repeat.count == RepeatCount::Infinite => Wake::Never,
+        if self.transition.repeat.count == RepeatCount::Infinite {
+            return Wake::Never;
+        }
+        let rests = self.span().rests;
+        if rests.is_finite() {
+            return Wake::At(self.started + Duration::from_secs_f64(rests));
+        }
+        match self.transition.curve {
+            Curve::Tween { .. } => Wake::Never,
             Curve::Spring(_) => Wake::NextFrame,
         }
     }
@@ -693,6 +740,9 @@ pub(super) struct Span {
     pub(super) iteration: f64,
     /// Where the track ends, the delay and the repeats included.
     pub(super) end: f64,
+    /// The first instant at which it no longer has anything to report: `end`, or for a spring that
+    /// plays once, the instant it is at rest, which comes up to a scan step before `end`.
+    pub(super) rests: f64,
 }
 
 struct Evolved {

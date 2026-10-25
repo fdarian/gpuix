@@ -2274,10 +2274,58 @@ mod tests {
     }
 
     #[test]
-    fn a_spring_is_sampled_in_every_frame_for_its_end_is_found_by_a_scan() {
+    fn a_spring_is_sampled_where_it_comes_to_rest() {
         let spring = json!({ "type": "spring", "stiffness": 200, "damping": 10 });
-        let (clock, store) = watched(false, true, spring);
+        let (clock, mut store) = watched(false, true, spring);
+        let Wake::At(rest) = store.dormant_wake(clock.at(100)) else {
+            panic!("a spring that rests within 20 s says when");
+        };
+        assert!(rest > clock.at(1000), "it is not a frame away");
+        let before = store.advance_dormant(rest - Duration::from_millis(1));
+        assert!(kinds(&before).is_empty(), "a millisecond early it still moves");
+        let done = store.advance_dormant(rest);
+        assert_eq!(kinds(&done), vec![(0, MotionValueEventKind::AnimationComplete)]);
+        assert_eq!(store.dormant_wake(rest), Wake::Never);
+    }
+
+    #[test]
+    fn a_spring_that_is_listened_to_for_its_changes_is_sampled_in_every_frame() {
+        let spring = json!({ "type": "spring", "stiffness": 200, "damping": 10 });
+        let (clock, store) = watched(true, true, spring);
         assert_eq!(store.dormant_wake(clock.at(100)), Wake::NextFrame);
+    }
+
+    fn follower_of_a_source(listen_to: f64) -> (Clock, MotionValueStore) {
+        let clock = clock();
+        let mut store = MotionValueStore::default();
+        store.create_source(0.0, &json!(0)).unwrap();
+        store.create_follower(1.0, 0.0, &json!({ "stiffness": 300, "damping": 30 }), clock.at(0)).unwrap();
+        store.listen(listen_to, false, true, clock.at(0)).unwrap();
+        (clock, store)
+    }
+
+    #[test]
+    fn a_follower_of_a_value_at_rest_is_sampled_where_it_comes_to_rest() {
+        let (clock, mut store) = follower_of_a_source(1.0);
+        store.set(0.0, &json!(100), clock.at(100)).unwrap();
+        store.frame([], &[], clock.at(116));
+        let Wake::At(rest) = store.dormant_wake(clock.at(116)) else {
+            panic!("a follower of a value at rest says when it rests");
+        };
+        assert!(rest > clock.at(400));
+        let done = store.advance_dormant(rest);
+        assert_eq!(kinds(&done).last(), Some(&(1, MotionValueEventKind::AnimationComplete)));
+        assert_eq!(store.dormant_wake(rest), Wake::Never);
+    }
+
+    #[test]
+    fn a_follower_of_a_value_that_moves_is_sampled_in_every_frame() {
+        let (clock, mut store) = follower_of_a_source(1.0);
+        store.animate(0.0, &json!(100), Some(&linear(1.0)), clock.at(100)).unwrap();
+        store.frame([], &[], clock.at(116));
+        assert_eq!(store.dormant_wake(clock.at(116)), Wake::NextFrame);
+        store.frame([], &[], clock.at(1116));
+        assert!(matches!(store.dormant_wake(clock.at(1116)), Wake::At(_)), "once the source rests, the follower's end is known");
     }
 
     #[test]

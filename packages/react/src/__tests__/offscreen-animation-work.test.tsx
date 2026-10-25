@@ -18,7 +18,7 @@
 import fs from "fs"
 import React, { useEffect, useState } from "react"
 import { afterEach, describe, expect, it } from "vitest"
-import { animate, defineKeyframes, motion, useMotionValue } from "../index"
+import { animate, defineKeyframes, motion, useMotionValue, useSpring } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { verifying } from "./retained-harness.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
@@ -909,5 +909,153 @@ describeNative("a motion value bound to an element that nobody sees", { timeout:
     expect(full.dormantTicks, "a dormant tick for each tick").toBeGreaterThanOrEqual(59)
     expect(full.changes, "a change for each card at each tick").toBeGreaterThanOrEqual(59 * 20)
     expect(full.paintedFrames, "no frame is drawn").toBe(0)
+  })
+})
+
+// ── Springs that nobody sees ────────────────────────────────────────
+
+type SpringPlace = "culled" | "skipped" | "visible"
+
+const SPRING = { type: "spring", stiffness: 300, damping: 20 } as const
+const SPRING_TICKS = 150
+
+/** Cards below the clip of a scroller (`culled`), in content that skips (`skipped`), or in plain view (`visible`). */
+function SpringPage({ cards, place, card }: { cards: number; place: SpringPlace; card: (index: number) => React.ReactNode }) {
+  const content = Array.from({ length: cards }, (_, index) => <React.Fragment key={index}>{card(index)}</React.Fragment>)
+  if (place === "culled") return <MotionPage cards={cards} place="hidden" card={card} />
+  return (
+    <div style={{ width: SIZE.width, height: SIZE.height, flexDirection: "column" }}>
+      {place === "skipped" ? (
+        <div style={{ width: 400, height: SCROLLER, flexDirection: "column", contentVisibility: "hidden" } as React.CSSProperties}>{content}</div>
+      ) : (
+        content
+      )}
+    </div>
+  )
+}
+
+/** What a page of springs does over `ticks` ticks of 16 ms: the tick each completion was delivered in, and the dormant ticks. */
+async function springRun(place: SpringPlace, card: (index: number, report: (step: number | undefined) => void) => React.ReactNode, cards: number, ticks = SPRING_TICKS, probe?: () => number) {
+  const root = createTestRoot({ width: SIZE.width, height: SIZE.height })
+  const renderer = root.renderer
+  const done: Array<[number, number]> = []
+  let step = 0
+  try {
+    renderer.clockPause()
+    root.render(<SpringPage cards={cards} place={place} card={(index) => card(index, () => done.push([index, step]))} />)
+    await settle(renderer)
+    renderer.setInlineDraws(false)
+    renderer.setA11yActive(false)
+    done.length = 0
+    renderer.resetBuildCounters()
+    const before = read(renderer)
+    for (step = 1; step <= ticks; step++) elapse(renderer)
+    return { done, dormantTicks: read(renderer).dormantTicks - before.dormantTicks, paintedFrames: read(renderer).paintedFrames - before.paintedFrames, probed: probe?.() }
+  } finally {
+    root.unmount()
+  }
+}
+
+const stepsOf = (done: Array<[number, number]>) => new Set(done.map(([, at]) => at))
+
+describeNative("a native spring that nobody sees", { timeout: TIMEOUT }, () => {
+  const card = (index: number, report: () => void) => (
+    <div testId={`spring-card-${index}`} style={{ height: 120, flexShrink: 0 }}>
+      <motion.div
+        testId={`spring-${index}`}
+        style={{ height: 30 }}
+        initial={{ opacity: 1 }}
+        animate={{ opacity: 0.25 }}
+        transition={SPRING}
+        onMotionComplete={report}
+      />
+    </div>
+  )
+
+  it.skipIf(!retained || verifying)("is visible: completes once for each card", async () => {
+    const visible = await springRun("visible", card, 3)
+    expect(visible.done.length).toBe(3)
+    expect(stepsOf(visible.done).size, "all in one tick").toBe(1)
+    console.info(`[offscreen-animation-work] native spring in view completes in tick ${[...stepsOf(visible.done)]}`)
+  })
+
+  for (const place of ["culled", "skipped"] as const)
+    it.skipIf(!retained || verifying)(`completes in the tick it does in view, in at most two dormant ticks: ${place}`, async () => {
+      const visible = await springRun("visible", card, 3)
+      const hidden = await springRun(place, card, 20)
+      console.info(`[offscreen-animation-work] ${SPRING_TICKS} ticks of 20 ${place} native springs: ${hidden.dormantTicks} dormant ticks, completed in ${[...stepsOf(hidden.done)]} (in view: ${[...stepsOf(visible.done)]})`)
+      expect(hidden.done.length, "one completion for each card").toBe(20)
+      expect(stepsOf(hidden.done), "the tick of the spring in view").toEqual(stepsOf(visible.done))
+      expect(hidden.dormantTicks, "dormant ticks").toBeLessThanOrEqual(2)
+      expect(hidden.paintedFrames, "only the frame that applies its end is drawn").toBeLessThanOrEqual(1)
+    })
+})
+
+describeNative("a spring motion value that nobody sees", { timeout: TIMEOUT }, () => {
+  type Listen = "none" | "animation" | "change"
+  const values: Array<{ get: () => number }> = []
+
+  /** A box whose opacity is a value that springs to 1 (or follows a source that was set to 1). */
+  const card = (listen: Listen, following: boolean) =>
+    function SpringValueCard({ index, report }: { index: number; report: () => void }) {
+      const source = useMotionValue(0)
+      const own = useSpring(following ? source : 0, SPRING)
+      useEffect(() => {
+        values[index] = own
+        const offs = [] as Array<() => void>
+        if (listen === "animation") offs.push(own.on("animationComplete", report))
+        if (listen === "change") offs.push(own.on("change", () => {}))
+        if (following) source.set(1)
+        else own.set(1)
+        return () => offs.forEach((off) => off())
+      }, [])
+      return (
+        <div style={{ height: 120, flexShrink: 0 }}>
+          <div testId={`bound-${index}`} style={{ width: 50, height: 20, backgroundColor: "#ff0000", opacity: own }} />
+        </div>
+      )
+    }
+
+  const scenes = [
+    { name: "a spring with its own target", following: false },
+    { name: "a follower of a value at rest", following: true },
+  ]
+  for (const scene of scenes)
+    for (const place of ["culled", "skipped"] as const)
+      it.skipIf(!retained || verifying)(`completes in the tick it does in view, in at most two dormant ticks: ${scene.name}, ${place}`, async () => {
+        const Card = card("animation", scene.following)
+        const render = (index: number, report: () => void) => <Card index={index} report={report} />
+        const probe = () => values[0].get()
+        const visible = await springRun("visible", render, 3, SPRING_TICKS, probe)
+        const hidden = await springRun(place, render, 20, SPRING_TICKS, probe)
+        console.info(`[offscreen-animation-work] ${SPRING_TICKS} ticks of 20 ${place} springs, ${scene.name}: ${hidden.dormantTicks} dormant ticks, completed in ${[...stepsOf(hidden.done)]} (in view: ${[...stepsOf(visible.done)]})`)
+        expect(visible.done.length, "in view").toBe(3)
+        expect(hidden.done.length, "one completion for each card").toBe(20)
+        expect(stepsOf(hidden.done), "the tick of the spring in view").toEqual(stepsOf(visible.done))
+        expect(hidden.dormantTicks, "dormant ticks").toBeLessThanOrEqual(2)
+        expect(hidden.probed, "the value after the run").toBe(visible.probed)
+      })
+
+  it.skipIf(!retained || verifying)("is not sampled at all when nothing listens to it", async () => {
+    const Card = card("none", false)
+    const hidden = await springRun("culled", (index, report) => <Card index={index} report={report} />, 20)
+    expect(hidden.dormantTicks).toBe(0)
+  })
+
+  it.skipIf(!retained || verifying)("sends a change for each tick it moves in when it is listened to", async () => {
+    const Card = card("change", false)
+    const hidden = await springRun("culled", (index, report) => <Card index={index} report={report} />, 20, 30)
+    expect(hidden.dormantTicks, "a dormant tick for each tick").toBeGreaterThanOrEqual(28)
+  })
+
+  it.skipIf(!retained || verifying)("shows the value of the current instant when it is revealed mid-run", async () => {
+    const Card = card("animation", false)
+    const render = (index: number, report: () => void) => <Card index={index} report={report} />
+    const probe = () => values[0].get()
+    const visible = await springRun("visible", render, 1, 8, probe)
+    const hidden = await springRun("culled", render, 1, 8, probe)
+    expect(hidden.probed).toBe(visible.probed)
+    expect(visible.probed).toBeGreaterThan(0)
+    expect(visible.probed).toBeLessThan(1)
   })
 })

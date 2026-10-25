@@ -256,13 +256,21 @@ impl MotionValues {
 
     /// When the animation of `id` next needs a sample for anything but what the value is, which is a
     /// function of the time: the instant it ends, which its listeners are told of. An animation
-    /// that does not end (a loop without a count), or is held, has none, and one that only a scan
-    /// finds the end of (a spring) is sampled in every frame.
+    /// that does not end (a loop without a count), or is held, has none. A spring ends where it
+    /// comes to rest, which is known while nothing moves its target; a follower of a value that is
+    /// not at rest is sampled in every frame, for its target changes with the frames it is sampled in.
     pub(super) fn wake(&self, id: ValueId, now: Instant) -> Wake {
         match self.nodes.get(&id) {
             Some(Node::Source(source)) => source.run.as_ref().map_or(Wake::Never, |run| run.wake(now)),
             Some(Node::Transform(transform)) => self.wake(transform.input, now),
-            Some(Node::Spring(_)) => Wake::NextFrame,
+            Some(Node::Spring(follower)) => {
+                let source = follower.source.map_or(Wake::Never, |source| self.wake(source, now));
+                if source == Wake::Never {
+                    follower.track.wake(now)
+                } else {
+                    Wake::NextFrame
+                }
+            }
             None => Wake::Never,
         }
     }
@@ -794,9 +802,14 @@ impl Run {
             return Wake::Never;
         }
         let transition = self.track.transition();
+        if transition.repeat.count == RepeatCount::Infinite {
+            return Wake::Never;
+        }
+        if self.span.rests.is_finite() {
+            return self.playback.wake_at(self.span.rests, now);
+        }
         match transition.curve {
-            Curve::Tween { .. } => self.playback.wake_at(self.span.end, now),
-            Curve::Spring(_) if transition.repeat.count == RepeatCount::Infinite => Wake::Never,
+            Curve::Tween { .. } => Wake::Never,
             Curve::Spring(_) => Wake::NextFrame,
         }
     }

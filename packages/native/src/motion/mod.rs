@@ -1851,15 +1851,83 @@ mod tests {
         }
 
         #[test]
-        fn a_spring_wakes_at_every_frame_until_it_rests() {
+        fn a_spring_wakes_where_it_comes_to_rest() {
             let now = Instant::now();
             let spring = state(
                 serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0 }),
                 serde_json::json!({ "opacity": 0.25 }),
                 now,
             );
-            assert_eq!(spring.wake(now), Wake::NextFrame);
-            assert_eq!(spring.wake(now + Duration::from_secs(60)), Wake::Never, "it has come to rest");
+            let Wake::At(rest) = spring.wake(now) else {
+                panic!("a spring that rests within 20 s says when");
+            };
+            assert!(rest > now + Duration::from_millis(300) && rest < now + Duration::from_secs(3));
+            assert_eq!(spring.wake(now + Duration::from_millis(200)), Wake::At(rest), "it is the same instant later on");
+            assert!(spring.is_animating(rest - Duration::from_millis(1)));
+            assert!(!spring.is_animating(rest), "a frame at the wake finds it at rest");
+            assert_eq!(spring.wake(rest), Wake::Never);
+        }
+
+        #[test]
+        fn a_spring_waits_out_its_delay_before_it_wakes() {
+            let now = Instant::now();
+            let transition = |delay: f64| serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0, "delay": delay });
+            let animate = serde_json::json!({ "opacity": 0.25 });
+            let (Wake::At(plain), Wake::At(delayed)) = (
+                state(transition(0.0), animate.clone(), now).wake(now),
+                state(transition(0.5), animate, now).wake(now),
+            ) else {
+                panic!("both rest");
+            };
+            assert!((delayed - plain).abs_diff(Duration::from_millis(500)) < Duration::from_micros(10));
+        }
+
+        #[test]
+        fn a_spring_that_rests_in_a_scan_step_is_known_to_before_the_step_ends() {
+            let now = Instant::now();
+            let spring = state(
+                serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0 }),
+                serde_json::json!({ "opacity": 0.25 }),
+                now,
+            );
+            let Wake::At(rest) = spring.wake(now) else {
+                panic!("it rests");
+            };
+            let scanned = spring.tracks.values().next().unwrap().span().end;
+            let rested = (rest - now).as_secs_f64();
+            assert!(rested <= scanned + 1e-6 && rested > scanned - 1.0 / 60.0, "{rested} against {scanned}");
+        }
+
+        #[test]
+        fn a_spring_that_does_not_rest_within_the_scan_wakes_at_every_frame() {
+            let now = Instant::now();
+            let undamped = state(
+                serde_json::json!({ "type": "spring", "stiffness": 100.0, "damping": 0.000001 }),
+                serde_json::json!({ "opacity": 0.25 }),
+                now,
+            );
+            assert_eq!(undamped.wake(now), Wake::NextFrame);
+        }
+
+        #[test]
+        fn a_spring_repeated_a_number_of_times_wakes_at_its_end() {
+            let now = Instant::now();
+            let repeated = state(
+                serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0, "repeat": 1 }),
+                serde_json::json!({ "opacity": 0.25 }),
+                now,
+            );
+            let once = state(
+                serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0 }),
+                serde_json::json!({ "opacity": 0.25 }),
+                now,
+            );
+            let (Wake::At(twice), Wake::At(once)) = (repeated.wake(now), once.wake(now)) else {
+                panic!("both end");
+            };
+            assert!(twice > once + Duration::from_millis(300), "two iterations last longer than one");
+            assert!(!repeated.is_animating(twice));
+            assert!(repeated.is_animating(twice - Duration::from_millis(1)));
         }
 
         #[test]
