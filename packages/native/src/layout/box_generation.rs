@@ -61,6 +61,20 @@ pub(crate) fn is_hidden_in_pass(tree: &RetainedTree, element: &RetainedElement) 
     has_display_none_in_chain(tree, element) || crate::layout::content_visibility::is_skipped_by_unforced_ancestor(tree, element)
 }
 
+/// Whether no box is built for `element` in the pass about to be made, for what is decided before
+/// it is built: its motion is not synced if it is not. Where the build could decide otherwise (a
+/// `display` an `@container` folds, a skip it forces) this says no.
+pub(crate) fn is_hidden_before_build(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    let mut current = Some(element);
+    while let Some(element) = current {
+        if is_display_none(element) && element.container_display.borrow().is_none() {
+            return true;
+        }
+        current = element.parent.and_then(|parent| tree.elements.get(&parent));
+    }
+    crate::layout::content_visibility::is_skipped_in_next_pass(tree, element)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

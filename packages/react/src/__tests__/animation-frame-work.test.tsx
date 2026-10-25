@@ -1723,6 +1723,99 @@ describeNative("a tick beside native motions that rest", { timeout: TIMEOUT }, (
   })
 })
 
+/** A frame built whole reads the motions it builds and the ones it was told of, not the ones that rest beside them. */
+describeNative("a frame built whole by a hover beside native motions that rest", { timeout: TIMEOUT }, () => {
+  const resting = Array.from({ length: 400 }, (_, index) => (
+    <motion.div key={index} style={{ height: 4, backgroundColor: "#99ccff" }} initial={false} animate={{ opacity: 0.5 }} />
+  ))
+  const head = (
+    <>
+      {motionHead}
+      <div testId="hot" style={{ height: 10, flexShrink: 0, hover: { backgroundColor: "#e5e5e5" } }} />
+      {resting}
+    </>
+  )
+
+  counted("syncs the motion that moves and none of the 400 that rest, as the pointer goes on and off", async () => {
+    const page = await mount(head, 500)
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      for (const [name, y] of [["onto the box", 29], ["off it", 700], ["onto it again", 29]] as const) {
+        const whole = work(page.renderer, () => page.renderer.dispatchMouseMove(10, y))
+        expect(whole.patchedFrames, name).toBe(0)
+        expect(whole.motionsSynced, name).toBe(1)
+      }
+    } finally {
+      page.root.unmount()
+    }
+  })
+
+  counted("syncs the motion the pointer reaches, and the loop beside it", async () => {
+    const reached = (
+      <>
+        {motionHead}
+        <motion.div
+          testId="reach"
+          style={{ height: 10, flexShrink: 0, backgroundColor: "#99ccff" }}
+          initial={false}
+          animate={{ opacity: 0.5 }}
+          whileHover={{ opacity: 1 }}
+        />
+        {resting}
+      </>
+    )
+    const page = await mount(reached, 500)
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      const whole = work(page.renderer, () => page.renderer.dispatchMouseMove(10, 29))
+      expect(whole.motionsSynced, "onto it").toBe(2)
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      expect(work(page.renderer, () => page.renderer.dispatchMouseMove(10, 700)).motionsSynced, "off it").toBe(2)
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
+/** A row of a virtual list is built on its own, and reads the motions of its own subtree: not those of the page. */
+describeNative("the rows of a virtual list built beside native motions that rest", { timeout: TIMEOUT }, () => {
+  const ROWS = 40
+  const RESTING = 60
+  const list = (
+    <>
+      {Array.from({ length: RESTING }, (_, index) => (
+        <motion.div key={index} style={{ height: 1, backgroundColor: "#99ccff" }} initial={false} animate={{ opacity: 0.5 }} />
+      ))}
+      <virtual-list testId="list" itemCount={ROWS} estimatedItemHeight={30} style={{ width: 300, height: 150, flexShrink: 0 }}>
+        {Array.from({ length: ROWS }, (_, index) => (
+          <div key={index} style={{ height: 30 }}>
+            <motion.div style={{ height: 10, backgroundColor: "#99ccff" }} initial={false} animate={{ opacity: 0.5 }} />
+          </div>
+        ))}
+      </virtual-list>
+    </>
+  )
+
+  counted("builds its rows without a sync of the page for each, as the list scrolls", async () => {
+    const page = await mount(list, 0)
+    try {
+      for (let warm = 0; warm < WARM; warm++) tick(page.renderer)
+      const id = page.renderer.findByTestId("list")!.id
+      const everything = RESTING + ROWS
+      const within = work(page.renderer, () => page.renderer.scrollTo(id, 0, 90))
+      expect(within.elementsBuilt, "the rows in view are built").toBeGreaterThan(0)
+      expect(within.motionsSynced, "nothing moves, nothing is told").toBe(0)
+      // A window of rows that changes is a change of the tree, which a frame or two syncs every motion for.
+      for (const to of [300, 600, 150]) {
+        const scrolled = work(page.renderer, () => page.renderer.scrollTo(id, 0, to))
+        expect(scrolled.motionsSynced, `scrolled to ${to}`).toBeLessThanOrEqual(2 * everything)
+      }
+    } finally {
+      page.root.unmount()
+    }
+  })
+})
+
 /** Loops of both kinds on content past the clip of the page: native motions of a colour, and CSS loops of a colour. */
 const culledLoops = (count: number) =>
   Array.from({ length: count }, (_, index) => (

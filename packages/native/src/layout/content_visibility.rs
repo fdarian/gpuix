@@ -555,7 +555,7 @@ impl Relevance {
 
     /// Whether `id` is on the chain of the read in progress and, going by its `declared` value, skips
     /// or would skip.
-    fn joins_read(&self, declared: ContentVisibility, id: u64) -> bool {
+    pub(crate) fn joins_read(&self, declared: ContentVisibility, id: u64) -> bool {
         if self.0.chain.load(Ordering::Relaxed) == 0 || declared == ContentVisibility::Visible {
             return false;
         }
@@ -762,6 +762,27 @@ pub(crate) fn is_skipped_by_ancestor(tree: &RetainedTree, element: &RetainedElem
 /// [`is_skipped_by_ancestor`] for the pass being built: an ancestor that is forced builds its content.
 pub(crate) fn is_skipped_by_unforced_ancestor(tree: &RetainedTree, element: &RetainedElement) -> bool {
     skipping_ancestor(tree, element, |ancestor| !tree.relevance.is_forced(ancestor.id))
+}
+
+/// Whether a strict ancestor of `element` skips its content in the pass about to be made, as the
+/// build will decide: an `auto` one that has become near builds it, and so does a forced one or one
+/// a read is about to force. Where this is not sure it says no, so that what it is used to leave out
+/// is never built.
+pub(crate) fn is_skipped_in_next_pass(tree: &RetainedTree, element: &RetainedElement) -> bool {
+    let mut current = element.parent.and_then(|parent| tree.elements.get(&parent));
+    while let Some(ancestor) = current {
+        let declared = ancestor.style.as_deref().and_then(|style| style.content_visibility).unwrap_or_default();
+        if declared != ContentVisibility::Visible
+            && crate::text::inline::is_host_container(ancestor)
+            && !crate::layout::contents::is_display_contents(ancestor)
+            && skips(&tree.relevance, value_of(tree, ancestor), ancestor.id)
+            && !tree.relevance.joins_read(declared, ancestor.id)
+        {
+            return true;
+        }
+        current = ancestor.parent.and_then(|parent| tree.elements.get(&parent));
+    }
+    false
 }
 
 fn skipping_ancestor(tree: &RetainedTree, element: &RetainedElement, counts: impl Fn(&RetainedElement) -> bool) -> bool {

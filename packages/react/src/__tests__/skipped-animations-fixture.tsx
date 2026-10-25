@@ -93,7 +93,7 @@ export function Filler() {
   )
 }
 
-/** What `moves` hovers of the rows, each drawn as the window does, built: elements built and frames drawn whole. */
+/** What `moves` hovers of the rows, each drawn as the window does, built: elements built, frames drawn whole and motions synced. */
 export function hovered(renderer, moves: number) {
   const over = (move: number) => renderer.dispatchMouseMove(10, ((move * 7 + 1) % ROWS) * ROW + ROW / 2)
   for (let warm = 0; warm < 4; warm++) {
@@ -108,7 +108,11 @@ export function hovered(renderer, moves: number) {
     renderer.flush()
     elapse(renderer)
   }
-  return { elementsBuilt: renderer.getBuildCounters().elementsBuilt, paintedFrames: renderer.getPaintedFrameCount() - painted }
+  return {
+    elementsBuilt: renderer.getBuildCounters().elementsBuilt,
+    paintedFrames: renderer.getPaintedFrameCount() - painted,
+    motionsSynced: renderer.getBuildCounters().motionsSynced,
+  }
 }
 
 /** What `steps` ticks of 16 ms did to the window after `warm` that are not counted. */

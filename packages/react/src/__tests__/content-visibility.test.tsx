@@ -447,8 +447,7 @@ describeNative("animations in hidden content", { timeout: 120_000 }, () => {
       const alone = ticksOf({ cards: 0, value: "hidden", visibleLoop: true }, start)
       const beside = ticksOf({ cards: CARDS, value: "hidden", visibleLoop: true }, start)
       expect(alone.patchedFrames, "the loop is patched at every tick").toBeGreaterThanOrEqual(TICKS - 1)
-      // The verifier builds each replayed frame once more, whole, and a whole build syncs every motion.
-      expect(verifying ? { ...beside, motionsSynced: alone.motionsSynced } : beside).toEqual(alone)
+      expect(beside).toEqual(alone)
     })
   }
 
@@ -468,9 +467,25 @@ describeNative("animations in hidden content", { timeout: 120_000 }, () => {
           page.root.unmount()
         }
       }
-      expect(frames(["motion", "path", "css"])).toEqual(frames([]))
+      const running = frames(["motion", "path", "css"])
+      expect(running).toEqual(frames([]))
+      // A frame built whole reads the motions it builds, and the motions of skipped content are not.
+      expect(running.motionsSynced).toBe(0)
     })
   }
+
+  it("syncs the motions of the host a read forces and not those of the hosts it does not", () => {
+    const page = mount({ cards: CARDS, value: "hidden", kinds: ["motion", "path"] })
+    try {
+      for (let tick = 0; tick < 12; tick++) elapse(page.renderer)
+      page.renderer.resetBuildCounters()
+      expect(page.renderer.getElementBounds(page.renderer.findByTestId("card-3")!.id), "the read lays the card out").toBeDefined()
+      // The motion and the path of the card: a layout pass builds the content it forces and nothing else.
+      expect(page.renderer.getBuildCounters().motionsSynced).toBeLessThanOrEqual(2)
+    } finally {
+      page.root.unmount()
+    }
+  })
 
   it("leaves an animation on the host itself running", () => {
     const root = createTestRoot({ width: 400, height: 600 })

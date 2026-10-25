@@ -2346,8 +2346,7 @@ describeNative("animations in auto content that is skipped", { timeout: 120_000 
       const alone = ticksOf({ cards: 0, visibleLoop: true }, start)
       const beside = ticksOf({ cards: CARDS, visibleLoop: true }, start)
       expect(alone.paintedFrames + alone.patchedFrames, "a frame for each tick of the loop").toBeGreaterThanOrEqual(TICKS - 1)
-      // The verifier builds each replayed frame once more, whole, and a whole build syncs every motion.
-      expect(verifying ? { ...beside, motionsSynced: alone.motionsSynced } : beside).toEqual(alone)
+      expect(beside).toEqual(alone)
     })
 
     it(`builds for a hover what it builds for cards that run nothing: ${start}`, () => {
@@ -2361,7 +2360,10 @@ describeNative("animations in auto content that is skipped", { timeout: 120_000 
           page.root.unmount()
         }
       }
-      expect(frames(["motion", "path", "css"])).toEqual(frames([]))
+      const running = frames(["motion", "path", "css"])
+      expect(running).toEqual(frames([]))
+      // A frame built whole reads the motions it builds, and the motions of skipped content are not.
+      expect(running.motionsSynced).toBe(0)
     })
   }
 

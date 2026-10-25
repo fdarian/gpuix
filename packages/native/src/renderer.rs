@@ -5649,10 +5649,37 @@ pub(crate) struct GpuixView {
 
 /// What `GpuixView::sync_motions` read, and the motions that were moving when it did.
 struct MotionSynced {
-    inputs: u64,
+    inputs: MotionInputs,
     moving: Vec<u64>,
     /// How `moving` divides, once a step has asked: a frame decides what is dormant after it syncs.
     split: Option<MotionSplit>,
+}
+
+/// Everything a sync of the motions reads but the clock, see `GpuixView::motion_inputs`.
+#[derive(Clone, PartialEq)]
+struct MotionInputs {
+    /// What the motions are made of: the tree, the window and the measurements.
+    structure: u64,
+    /// What the gestures of the motions are made of: the elements the pointer is over or presses, and the
+    /// one that matches `:focus-visible`.
+    hovered: Vec<u64>,
+    active: Vec<u64>,
+    focus_visible: Option<u64>,
+}
+
+impl MotionInputs {
+    /// The elements whose hover, press or `:focus-visible` state is not the same in `other`.
+    fn gestures_flipped(&self, other: &Self) -> Vec<u64> {
+        let mut flipped = Vec::new();
+        for (ours, theirs) in [(&self.hovered, &other.hovered), (&self.active, &other.active)] {
+            flipped.extend(ours.iter().filter(|id| !theirs.contains(id)));
+            flipped.extend(theirs.iter().filter(|id| !ours.contains(id)));
+        }
+        if self.focus_visible != other.focus_visible {
+            flipped.extend(self.focus_visible.into_iter().chain(other.focus_visible));
+        }
+        flipped
+    }
 }
 
 /// The motions that move, divided by whether anything of them is drawn (`GpuixView::motion_sleeps`).
@@ -5985,6 +6012,18 @@ fn sync_motions(
     }
 
     (animating, settled)
+}
+
+/// Whether the element `id` is `ancestor` or below it.
+fn is_within(tree: &crate::retained_tree::RetainedTree, id: u64, ancestor: u64) -> bool {
+    let mut current = Some(id);
+    while let Some(id) = current {
+        if id == ancestor {
+            return true;
+        }
+        current = tree.elements.get(&id).and_then(|element| element.parent);
+    }
+    false
 }
 
 /// Emits a DOM event that bubbles and cannot be cancelled, aimed at `id`, when
@@ -6771,8 +6810,9 @@ impl GpuixView {
         let focus_styles = self.focus.styles(&tree, tree.keyboard_focus_dim());
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
+        crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         let (motion_animating, motion_settled) =
-            self.sync_motions(&tree, window, now, &focus_styles, &pointer);
+            self.sync_motions_for_build(&tree, window, now, &focus_styles, &pointer, Some(expected_child_id));
         let motion_active = !motion_animating.is_empty();
         let motion_values_active =
             sync_row_motion_values(&tree, &mut self.motion_values, expected_child_id, now);
@@ -6808,7 +6848,6 @@ impl GpuixView {
 
         crate::accessibility::links::sync(&tree);
         let activation = self.activation();
-        crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         let mut build_ctx = self.build_ctx(
             &tree,
             &callback,
@@ -8301,16 +8340,16 @@ impl GpuixView {
         })
     }
 
-    /// Everything a sync of the motions reads but the clock, as one number: what a motion that is
-    /// not moving does with a sync is the same while it is the same. None while a measurement
-    /// waits for a frame to take it, which a motion reads.
+    /// Everything a sync of the motions reads but the clock: what a motion that is not moving does
+    /// with a sync is the same while it is the same. None while a measurement waits for a frame to
+    /// take it, which a motion reads.
     fn motion_inputs(
         &self,
         tree: &crate::retained_tree::RetainedTree,
         window: &gpui::Window,
         focus: &crate::focus::FocusStyles,
         pointer: &crate::events::state::PointerState,
-    ) -> Option<u64> {
+    ) -> Option<MotionInputs> {
         use std::hash::{Hash, Hasher};
 
         if !self.measurements.peek_changed().is_empty() {
@@ -8323,9 +8362,12 @@ impl GpuixView {
         let viewport = window.viewport_size();
         f32::from(viewport.width).to_bits().hash(&mut hasher);
         f32::from(viewport.height).to_bits().hash(&mut hasher);
-        pointer.chains().hash(&mut hasher);
-        focus.visible.hash(&mut hasher);
-        Some(hasher.finish())
+        Some(MotionInputs {
+            structure: hasher.finish(),
+            hovered: pointer.chains().0.to_vec(),
+            active: pointer.chains().1.to_vec(),
+            focus_visible: focus.visible,
+        })
     }
 
     /// What the bindings of the motion values and what they are sampled under are, as one number:
@@ -8421,6 +8463,90 @@ impl GpuixView {
         synced
     }
 
+    /// What a sync of the motions does for a frame that builds: while what a sync reads is what the
+    /// last one found, the motions that move are stepped, but the ones whose element no box is built
+    /// for in this pass (`display: none`, the content of a host that skips) only when the earliest
+    /// `wake` of them is due: what such a motion shows is a function of the time, which it is asked
+    /// for when it is built. `within` leaves out the motions outside the subtree of a row, which a
+    /// row of a virtual list builds on its own. Of the motions that were not stepped nothing has
+    /// changed since, and they stay as they were found moving.
+    ///
+    /// Returns the motions it stepped that still move, and the ones that settled.
+    pub(crate) fn sync_motions_for_build(
+        &mut self,
+        tree: &crate::retained_tree::RetainedTree,
+        window: &gpui::Window,
+        now: web_time::Instant,
+        focus: &crate::focus::FocusStyles,
+        pointer: &crate::events::state::PointerState,
+        within: Option<u64>,
+    ) -> (Vec<u64>, Vec<(u64, u64)>) {
+        use crate::dormant_wake::Wake;
+
+        let inputs = self.motion_inputs(tree, window, focus, pointer);
+        let Some((mut synced, inputs)) = self
+            .motion_synced
+            .take()
+            .zip(inputs)
+            .filter(|(synced, inputs)| synced.inputs.structure == inputs.structure)
+        else {
+            return self.sync_motions(tree, window, now, focus, pointer);
+        };
+        // A motion is told of a gesture when its element, or the ancestor that controls its variants, flips
+        // one. It is synced whether it moves or not, and whether it has a box or not.
+        let flipped = synced.inputs.gestures_flipped(&inputs);
+        // A row builds in a draw that its page rendered in, so the gestures are the page's.
+        if within.is_some() && !flipped.is_empty() {
+            return self.sync_motions(tree, window, now, focus, pointer);
+        }
+        synced.inputs = inputs;
+        let touched: Vec<u64> = if flipped.is_empty() {
+            Vec::new()
+        } else {
+            tree.motion_ids
+                .iter()
+                .copied()
+                .filter(|id| {
+                    flipped.contains(id)
+                        || crate::motion::gesture_controller(tree, *id).is_some_and(|controller| flipped.contains(&controller))
+                })
+                .collect()
+        };
+        let hidden_due = synced.split.as_ref().is_none_or(|split| match split.wake {
+            Wake::Never => false,
+            Wake::NextFrame => true,
+            Wake::At(at) => at <= now,
+        });
+        let (mut stepping, resting): (Vec<u64>, Vec<u64>) = synced.moving.iter().partition(|id| {
+            within.is_none_or(|row| is_within(tree, **id, row)) && (hidden_due || !self.motion_is_hidden(tree, **id))
+        });
+        let unstepped: Vec<u64> = touched.iter().copied().filter(|id| !stepping.contains(id)).collect();
+        stepping.extend(unstepped);
+        let resting: Vec<u64> = resting.into_iter().filter(|id| !touched.contains(id)).collect();
+        let (stepped, settled) = step_motion_states(
+            tree,
+            &mut self.motion_states,
+            &stepping,
+            &self.measurements,
+            window.appearance(),
+            window.viewport_size(),
+            &|id| gestures_of(tree, pointer, focus, id),
+            now,
+        );
+        synced.moving = stepped.iter().chain(&resting).copied().collect();
+        self.motion_synced = Some(synced);
+        (stepped, settled)
+    }
+
+    /// [`Self::motion_sleeps`] for the pass about to be built, which is not yet built: no box
+    /// is, for what is certain before it.
+    fn motion_is_hidden(&self, tree: &crate::retained_tree::RetainedTree, id: u64) -> bool {
+        let host = crate::custom_elements::svg_tree::host_of(tree, id);
+        tree.elements
+            .get(&host)
+            .is_some_and(|element| crate::layout::box_generation::is_hidden_before_build(tree, element))
+    }
+
     /// What a sync of the motions does for a tick: the motions that were moving are stepped, and
     /// the rest of them stay as the sync that found them still left them, unless something it
     /// reads has changed since, which is a sync of all of them. The cost of a tick does not follow
@@ -8437,7 +8563,7 @@ impl GpuixView {
         use crate::dormant_wake::Wake;
 
         let inputs = self.motion_inputs(tree, window, focus, pointer);
-        if !self.motion_synced.as_ref().is_some_and(|synced| inputs == Some(synced.inputs)) {
+        if !self.motion_synced.as_ref().is_some_and(|synced| inputs.as_ref() == Some(&synced.inputs)) {
             let (moving, settled) = self.sync_motions(tree, window, now, focus, pointer);
             let (awake, asleep) = self.note_motion_split(tree, moving, now);
             return MotionStep { awake, asleep, settled };
@@ -9048,8 +9174,11 @@ impl gpui::Render for GpuixView {
         tree.relevance.set_focus_within(&focus_styles.within);
         let pointer_state = self.pointer.clone();
         let pointer = pointer_state.borrow();
-        let (motion_animating, motion_settled) =
-            self.sync_motions(&tree, window, now, &focus_styles, &pointer);
+        // Before the motions are synced, which ask what has a box: the builds below read the same.
+        crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
+        let (stepped, motion_settled) =
+            self.sync_motions_for_build(&tree, window, now, &focus_styles, &pointer, None);
+        let motion_animating = self.motion_synced.as_ref().map_or(stepped, |synced| synced.moving.clone());
         self.motion_values
             .set_appearance(color_scheme_of(window.appearance()));
         let motion_value_frame = self.sync_values(&tree, window, now);
@@ -9078,7 +9207,6 @@ impl gpui::Render for GpuixView {
         let mut highlight_events = Vec::new();
         crate::accessibility::links::sync(&tree);
         let activation = self.activation();
-        crate::layout::box_generation::hold_display(self.css_transitions.held_displays());
         let commanded: Vec<u64> = self
             .css_transitions
             .take_commanded()
