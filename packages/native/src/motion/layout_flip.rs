@@ -673,8 +673,9 @@ impl gpui::Element for FlipOffset {
             // child is prepainted and painted after the rest of the window,
             // at the offset it has here, so it covers its siblings. Its
             // content mask is the one it has here, so a clipping ancestor
-            // still clips it. Boxes inside it read no enclosing move: the
-            // only ones are another `layout` box held at the same time.
+            // still clips it, and the transforms around it still turn it.
+            // Boxes inside it read no enclosing move: the only ones are
+            // another `layout` box held at the same time.
             self.deferred = true;
             let child = std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
             window.with_element_offset(offset, |window| {

@@ -499,13 +499,16 @@ impl CustomElement for AnchoredElement {
             }
         }
 
-        let anchored = anchored.child(content);
         let layer = if self.deferred {
-            gpui::deferred(anchored)
+            // A portal into body: the layer is not turned or scaled by the ancestors of its
+            // trigger, and is put by where the window has the trigger (what floating-ui reads
+            // from `getBoundingClientRect`).
+            gpui::deferred(anchored.reference_in_deferral_site().child(content))
+                .in_window_space()
                 .with_priority(self.priority)
                 .into_any_element()
         } else {
-            anchored.into_any_element()
+            anchored.child(content).into_any_element()
         };
 
         if self.position.is_some() || self.fill_window {
