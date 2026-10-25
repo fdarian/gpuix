@@ -1,0 +1,117 @@
+<!doctype html>
+<!--
+  Oracle for soft-hyphen.test.tsx: the hyphen Blink adds at the end of a row that breaks at a soft hyphen (U+00AD),
+  and what it does to the geometry of the row. Regenerate with `sh dsf-oracle.sh soft-hyphen` (device scale 1 and 2).
+
+  The hyphen is a generated fragment after the text of the row (logical_line_builder.cc), shaped in the style of the
+  text before the break, and its inline size counts in the width of the row, so `text-align: center` and `right` place
+  the row with it. It is not part of the text: no character of a Range or of the box is at it.
+
+  A case is a text in a box of a width, with an alignment, in a font. Its entry has
+    box       the box, [x, y, width, height]
+    lines     the text of each row, with the soft hyphens that are in it, so a row that ends in U+00AD is hyphenated
+    rows      the rects of a Range over the text node: one for each row, and a rect after it for the hyphen of a
+              hyphenated row (Chrome reports the generated hyphen as a rect of the Range)
+    ends      for each row, the right edge of its last character that is not a soft hyphen or a space
+    span      the bounding rect of the <span> around the text, and spanRects the rect of each row of it
+  A `mc|` case is the width of a box of `width: min-content`.
+  Every number is relative to the box (the `data-case` element).
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: 'Inter Variable'; src: url('inter-text-subset.ttf') format('truetype'); font-weight: 100 900; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; }
+  .case { color: #000; line-height: 24px; white-space: normal; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<script>
+  const FAMILIES = [
+    ['Inter Variable', '16px'],
+    ['Helvetica', '16px'],
+    ['Menlo', '14px'],
+  ]
+  const TEXTS = [
+    'Compu­ter pro­gram­ming is a hard­ly eas­y job',
+    'Extra­ordinary',
+  ]
+  const WIDTHS = [60, 80, 100, 120, 150, 400]
+  const ALIGNS = ['left', 'center', 'right']
+
+  const relative = (rect, origin) => [rect.x - origin.x, rect.y - origin.y, rect.width, rect.height]
+
+  function measure(box, id, text) {
+    const origin = box.getBoundingClientRect()
+    const span = box.firstChild
+    const node = span.firstChild
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const rows = Array.from(range.getClientRects()).map((rect) => relative(rect, origin))
+
+    // The row of each character is where its rect is; a soft hyphen and a collapsed space may have none.
+    const lines = ['']
+    const ends = []
+    let top = null
+    for (let i = 0; i < text.length; i++) {
+      const char = range.cloneRange()
+      char.setStart(node, i)
+      char.setEnd(node, i + 1)
+      // The range of the character after a soft hyphen also holds the rect of the hyphen before it.
+      const rect = Array.from(char.getClientRects()).filter((rect) => rect.height > 0).at(-1)
+      const visible = text[i] !== '­' && text[i] !== ' '
+      if (rect && visible) {
+        if (top !== null && rect.top > top + 1) {
+          lines.push('')
+        }
+        top = rect.top
+        ends[lines.length - 1] = rect.right - origin.x
+      }
+      lines[lines.length - 1] += text[i]
+    }
+    return {
+      box: relative(origin, origin),
+      lines,
+      rows,
+      ends,
+      span: relative(span.getBoundingClientRect(), origin),
+      spanRects: Array.from(span.getClientRects()).map((rect) => relative(rect, origin)),
+    }
+  }
+
+  document.fonts.load("16px 'Inter Variable'").then(() => {
+    const rects = {}
+    for (const [family, size] of FAMILIES) {
+      const quoted = family.includes(' ') ? `'${family}'` : family
+      for (const [textIx, text] of TEXTS.entries()) {
+        for (const width of WIDTHS) {
+          for (const align of ALIGNS) {
+            const id = `${family}|${size}|${align}|${width}|${textIx}`
+            const box = document.createElement('div')
+            box.className = 'case'
+            box.dataset.case = ''
+            box.dataset.id = id
+            box.style.cssText = `width: ${width}px; text-align: ${align}; font: ${size}/24px ${quoted}`
+            const span = document.createElement('span')
+            span.textContent = text
+            box.append(span)
+            document.body.append(box)
+            rects[id] = measure(box, id, text)
+          }
+        }
+        const id = `mc|${family}|${size}|${textIx}`
+        const box = document.createElement('div')
+        box.className = 'case'
+        box.style.cssText = `width: min-content; font: ${size}/24px ${quoted}`
+        box.textContent = text
+        document.body.append(box)
+        rects[id] = box.getBoundingClientRect().width
+      }
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>

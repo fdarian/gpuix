@@ -3847,7 +3847,11 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
   edge: its `TextStyle::overflow_wrap` defaults to `BreakWord`, and `Normal` is
   what gpuix sets for all of its text.
 
-A hanging space at a soft wrap stays in the text, ICU4X breaks a few rare sequences differently from Chrome's ICU, and `hyphens` and `line-break` are not styles (a soft hyphen breaks without drawing a hyphen): [deviations](./docs/fork/deviations.md#text).
+A soft hyphen (U+00AD) breaks where Chrome's does, and the row that breaks there ends with a hyphen (U+2010 if the font has it, a
+hyphen-minus if not) that counts in the row's width and alignment and in the box of the element holding it, but is no part of the text
+(copy, search, the caret and hit testing don't see it).
+
+A hanging space at a soft wrap stays in the text, ICU4X breaks a few rare sequences differently from Chrome's ICU, and `hyphens` and `line-break` are not styles: [deviations](./docs/fork/deviations.md#text).
 
 #### Balanced and pretty lines
 

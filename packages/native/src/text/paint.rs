@@ -1159,6 +1159,7 @@ pub fn range_rects(
         |index| position_on_row(layout, index),
         |index| layout.row_for_index(index),
         |index| layout.align_offset_at(index),
+        |_| px(0.0),
     )
     .into_iter()
     .map(|row| row.rect)
@@ -1188,7 +1189,9 @@ pub struct RangeRow {
     pub row: TextRow,
 }
 
-/// [`range_rects`] without padding, and with the row each box is on.
+/// [`range_rects`] without padding, and with the row each box is on. A row that ends in a
+/// soft hyphen of the range is as wide as the hyphen Chrome draws there too: the box of an
+/// element holds it, where the wash over a selection does not.
 pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
     range_rows_with_positions(
         layout.bounds(),
@@ -1198,10 +1201,13 @@ pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
         |index| position_on_row(layout, index),
         |index| layout.row_for_index(index),
         |index| layout.align_offset_at(index),
+        |index| layout.hyphen_width_at_break(index),
     )
 }
 
-/// `align_offset` is how far text alignment moves the row a byte is on from the left of `bounds`.
+/// `align_offset` is how far text alignment moves the row a byte is on from the left of `bounds`,
+/// and `hyphen_after` how wide the hyphen is that a row ending at a byte has, which the part of
+/// the range on the row holds when it reaches the end of the row.
 fn range_rows_with_positions(
     bounds: Bounds<gpui::Pixels>,
     range: &Range<usize>,
@@ -1210,6 +1216,7 @@ fn range_rows_with_positions(
     position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
     row_for_index: impl Fn(usize) -> Option<TextRow>,
     align_offset: impl Fn(usize) -> gpui::Pixels,
+    hyphen_after: impl Fn(usize) -> gpui::Pixels,
 ) -> Vec<RangeRow> {
     let mut rects = Vec::new();
     let mut cur = range.start;
@@ -1251,7 +1258,10 @@ fn range_rows_with_positions(
                 rects.push(RangeRow {
                     rect: Bounds::new(
                         point(p1.x - px(pad_x), p1.y + px(inset_y)),
-                        size(p2.x - p1.x + px(2.0 * pad_x), row.height - px(2.0 * inset_y)),
+                        size(
+                            p2.x - p1.x + hyphen_after(seg_end) + px(2.0 * pad_x),
+                            row.height - px(2.0 * inset_y),
+                        ),
                     ),
                     start: cur,
                     end: seg_end,
@@ -1305,6 +1315,7 @@ mod tests {
             0.0,
             wrapped_position,
             even_row,
+            |_| px(0.0),
             |_| px(0.0),
         )
     }
@@ -1360,6 +1371,23 @@ mod tests {
     }
 
     #[test]
+    fn a_row_that_ends_where_the_text_breaks_at_a_soft_hyphen_holds_its_hyphen() {
+        let rows = range_rows_with_positions(
+            Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(44.0))),
+            &(2..9),
+            0.0,
+            0.0,
+            wrapped_position,
+            even_row,
+            |_| px(0.0),
+            |index| if index == 5 { px(4.0) } else { px(0.0) },
+        );
+        // Byte 2 to the break at 5 is 30 wide, and the hyphen after it 4; the last row has none.
+        assert_eq!(rows[0].rect.size.width, px(34.0));
+        assert_eq!(rows[1].rect.size.width, px(40.0));
+    }
+
+    #[test]
     fn each_box_is_as_tall_as_its_own_row() {
         let rows = range_rows_with_positions(
             Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(80.0))),
@@ -1368,6 +1396,7 @@ mod tests {
             0.0,
             uneven_positions,
             uneven_row,
+            |_| px(0.0),
             |_| px(0.0),
         );
         assert_eq!(rows.len(), 2);
@@ -1388,6 +1417,7 @@ mod tests {
             1.5,
             uneven_positions,
             uneven_row,
+            |_| px(0.0),
             |_| px(0.0),
         );
         assert_eq!(rows[0].rect.size.height, px(27.0));
