@@ -262,8 +262,14 @@ interface NativeTestRendererApi
   releaseAnimation(animationId: number): void
   pauseAnimation(animationId: number): void
   playAnimation(animationId: number): void
+  cancelAnimation(animationId: number): void
+  finishAnimation(animationId: number): void
+  reverseAnimation(animationId: number): void
   setAnimationCurrentTime(animationId: number, milliseconds: number): void
   setAnimationPlaybackRate(animationId: number, rate: number): void
+  updateAnimationPlaybackRate(animationId: number, rate: number): void
+  setAnimationStartTime(animationId: number, startTime: number | null): void
+  getAnimationTimelineTime(): number
   cancelDrag(): void
   requestPointerLock(elementId: number): void
   exitPointerLock(): void
@@ -1498,6 +1504,30 @@ export class TestRenderer implements NativeRenderer {
 
   setAnimationPlaybackRate(animationId: number, rate: number): void {
     this.native.setAnimationPlaybackRate(animationId, rate)
+  }
+
+  cancelAnimation(animationId: number): void {
+    this.native.cancelAnimation(animationId)
+  }
+
+  finishAnimation(animationId: number): void {
+    this.native.finishAnimation(animationId)
+  }
+
+  reverseAnimation(animationId: number): void {
+    this.native.reverseAnimation(animationId)
+  }
+
+  updateAnimationPlaybackRate(animationId: number, rate: number): void {
+    this.native.updateAnimationPlaybackRate(animationId, rate)
+  }
+
+  setAnimationStartTime(animationId: number, startTime: number | null): void {
+    this.native.setAnimationStartTime(animationId, startTime)
+  }
+
+  getAnimationTimelineTime(): number {
+    return this.native.getAnimationTimelineTime()
   }
 
   /** Applies from the next simulated pointer input. */

@@ -301,6 +301,37 @@ export declare class GpuixRenderer {
   setAnimationCurrentTime(animationId: number, milliseconds: number): void
   /** `animation.playbackRate = rate`, keeping the current time. */
   setAnimationPlaybackRate(animationId: number, rate: number): void
+  /**
+   * `animation.cancel()`: the animation is idle, with no current time and out of
+   * `getAnimations()`; `play()` brings it back from the start.
+   */
+  cancelAnimation(animationId: number): void
+  /**
+   * `animation.finish()`. Throws `InvalidStateError: ...` for a rate of 0 and for an animation
+   * that never ends.
+   */
+  finishAnimation(animationId: number): void
+  /**
+   * `animation.reverse()`: the rate flips at the next frame. Throws `InvalidStateError: ...`
+   * for an animation that never ends, from its start.
+   */
+  reverseAnimation(animationId: number): void
+  /**
+   * `animation.updatePlaybackRate(rate)`: at the next frame for a running animation, at once
+   * for the others.
+   */
+  updateAnimationPlaybackRate(animationId: number, rate: number): void
+  /**
+   * `animation.startTime = startTime`, in milliseconds on the timeline of the animations
+   * (`getAnimationTimelineTime`); `null` holds the current time.
+   */
+  setAnimationStartTime(animationId: number, startTime?: number | undefined | null): void
+  /**
+   * The time of the timeline of the animations (`animation.timeline.currentTime`): the
+   * instant of the last frame, in milliseconds on the clock of the renderer. The same
+   * number `startTime` and the `timelineTime` of the events are on.
+   */
+  getAnimationTimelineTime(): number
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
   /** Drop the current selection and request a repaint. */
@@ -1185,6 +1216,37 @@ export declare class TestGpuixRenderer {
   setAnimationCurrentTime(animationId: number, milliseconds: number): void
   /** `animation.playbackRate = rate`, keeping the current time. */
   setAnimationPlaybackRate(animationId: number, rate: number): void
+  /**
+   * `animation.cancel()`: the animation is idle, with no current time and out of
+   * `getAnimations()`; `play()` brings it back from the start.
+   */
+  cancelAnimation(animationId: number): void
+  /**
+   * `animation.finish()`. Throws `InvalidStateError: ...` for a rate of 0 and for an animation
+   * that never ends.
+   */
+  finishAnimation(animationId: number): void
+  /**
+   * `animation.reverse()`: the rate flips at the next frame. Throws `InvalidStateError: ...`
+   * for an animation that never ends, from its start.
+   */
+  reverseAnimation(animationId: number): void
+  /**
+   * `animation.updatePlaybackRate(rate)`: at the next frame for a running animation, at once
+   * for the others.
+   */
+  updateAnimationPlaybackRate(animationId: number, rate: number): void
+  /**
+   * `animation.startTime = startTime`, in milliseconds on the timeline of the animations
+   * (`getAnimationTimelineTime`); `null` holds the current time.
+   */
+  setAnimationStartTime(animationId: number, startTime?: number | undefined | null): void
+  /**
+   * The time of the timeline of the animations (`animation.timeline.currentTime`): the
+   * instant of the last frame, in milliseconds on the clock of the renderer. The same
+   * number `startTime` and the `timelineTime` of the events are on.
+   */
+  getAnimationTimelineTime(): number
   /** Advance GPUI's deterministic test executor and run due timers. */
   advanceTime(milliseconds: number): void
   /** Get the root element ID, or null if no root is set. */
@@ -1667,6 +1729,17 @@ export interface EventPayload {
    */
   animationId?: number
   /**
+   * Milliseconds, the `currentTime` of the `AnimationPlaybackEvent`. Populated for:
+   * webanimationfinish.
+   */
+  currentTime?: number
+  /**
+   * Milliseconds on the renderer's clock, the `timelineTime` of the
+   * `AnimationPlaybackEvent`: the timeline time the event was made at. Populated for:
+   * webanimationfinish, webanimationcancel.
+   */
+  timelineTime?: number
+  /**
    * Seconds of the transition's or animation's active time, as the DOM
    * `elapsedTime`. Populated for: the transition and animation events.
    */
@@ -2131,9 +2204,16 @@ export interface WebAnimationInfo {
   playbackRate: number
   /**
    * `"running"`, `"paused"`, `"finished"`, or `"idle"` for a run that was
-   * cancelled and has not been released yet.
+   * cancelled (`currentTime` is not meant then).
    */
   playState: string
+  /** A play or pause waits for the next frame. */
+  pending: boolean
+  /**
+   * The `startTime`: milliseconds on the renderer's clock since its origin, as the timeline
+   * of the animations reads (`getAnimationTimelineTime`). `null` while it has none.
+   */
+  startTime?: number
 }
 
 export interface WindowInsets {

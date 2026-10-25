@@ -3374,6 +3374,55 @@ impl GpuixRenderer {
         )
     }
 
+    /// `animation.cancel()`: the animation is idle, with no current time and out of
+    /// `getAnimations()`; `play()` brings it back from the start.
+    #[napi]
+    pub fn cancel_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Cancel)
+    }
+
+    /// `animation.finish()`. Throws `InvalidStateError: ...` for a rate of 0 and for an animation
+    /// that never ends.
+    #[napi]
+    pub fn finish_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Finish)
+    }
+
+    /// `animation.reverse()`: the rate flips at the next frame. Throws `InvalidStateError: ...`
+    /// for an animation that never ends, from its start.
+    #[napi]
+    pub fn reverse_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Reverse)
+    }
+
+    /// `animation.updatePlaybackRate(rate)`: at the next frame for a running animation, at once
+    /// for the others.
+    #[napi]
+    pub fn update_animation_playback_rate(&self, animation_id: f64, rate: f64) -> Result<()> {
+        self.command_animation(
+            animation_id,
+            crate::motion::web_animation::Command::UpdatePlaybackRate(rate),
+        )
+    }
+
+    /// `animation.startTime = startTime`, in milliseconds on the timeline of the animations
+    /// (`getAnimationTimelineTime`); `null` holds the current time.
+    #[napi]
+    pub fn set_animation_start_time(&self, animation_id: f64, start_time: Option<f64>) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::Layout, move |view, now| {
+            view.set_web_animation_start_time(id, start_time, now)
+        })
+    }
+
+    /// The time of the timeline of the animations (`animation.timeline.currentTime`): the
+    /// instant of the last frame, in milliseconds on the clock of the renderer. The same
+    /// number `startTime` and the `timelineTime` of the events are on.
+    #[napi]
+    pub fn get_animation_timeline_time(&self) -> Result<f64> {
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animation_timeline_time(now)))
+    }
+
     fn command_animation(
         &self,
         animation_id: f64,
@@ -6129,26 +6178,75 @@ pub(crate) fn emit_animation_events(
     }
 }
 
-/// Tells JS a CSS animation or transition finished or was cancelled. The
+/// Tells JS a CSS animation or transition finished, was cancelled or became ready. The
 /// payload has no path, so it reaches the element's own handlers only and no
 /// ancestor, and it is not subject to a listener check: the `Animation` object
 /// of `getAnimations()` listens by existing.
 ///
-/// The run is retired as it showed then, so JS can still read it until it has
-/// consumed the event (`releaseAnimation`).
-pub(crate) fn emit_web_animation_events(
+/// A finished or cancelled run is retired as it showed then, so JS can still read it until it
+/// has consumed the event (`releaseAnimation`). `clock` turns the instants of the events into
+/// the timeline time they carry.
+fn emit_web_animation_event(
     callback: &Option<EventCallback>,
     retired: &mut crate::motion::web_animation::Retired,
-    events: Vec<crate::motion::web_animation::ApiEvent>,
+    clock: &crate::automation::AutomationClock,
+    event: crate::motion::web_animation::ApiEvent,
 ) {
+    use crate::motion::web_animation::ApiEventKind;
     if callback.is_none() {
         return;
     }
-    for event in events {
+    let timeline_time = clock.ms_of(event.info.at);
+    let current_time = (event.kind == ApiEventKind::Finish).then_some(event.info.current_time);
+    if event.kind != ApiEventKind::Ready {
         retired.retire(event.info);
-        emit_event_full(callback, event.element, event.kind.event_type(), |payload| {
-            payload.animation_id = Some(event.run as f64);
-        });
+    }
+    emit_event_full(callback, event.element, event.kind.event_type(), |payload| {
+        payload.animation_id = Some(event.run as f64);
+        payload.current_time = current_time;
+        payload.timeline_time = Some(timeline_time);
+    });
+}
+
+/// What the CSS animations and transitions queued, in the order it happened: the DOM's events
+/// of the two, each in its own order, with the events of the Web Animations objects between them
+/// where they were made. Chrome tells a `finish` before the `animationend` it comes with, and a
+/// pause that ran after the events of the frame.
+pub(crate) fn emit_css_events(
+    callback: &Option<EventCallback>,
+    tree: &crate::retained_tree::RetainedTree,
+    retired: &mut crate::motion::web_animation::Retired,
+    clock: &crate::automation::AutomationClock,
+    transitions: Vec<crate::motion::TransitionEvent>,
+    animations: Vec<crate::motion::AnimationEvent>,
+    mut web: Vec<crate::motion::web_animation::ApiEvent>,
+) {
+    enum Dom {
+        Transition(crate::motion::TransitionEvent),
+        Animation(crate::motion::AnimationEvent),
+    }
+    web.sort_by_key(|event| event.seq);
+    let mut web = web.into_iter().peekable();
+    let (late, dom): (Vec<_>, Vec<_>) = transitions
+        .into_iter()
+        .map(|event| (event.seq, event.late, Dom::Transition(event)))
+        .chain(animations.into_iter().map(|event| (event.seq, event.late, Dom::Animation(event))))
+        .partition(|(_, late, _)| *late);
+    let tell = |event: Dom| match event {
+        Dom::Transition(event) => emit_transition_events(callback, tree, vec![event]),
+        Dom::Animation(event) => emit_animation_events(callback, tree, vec![event]),
+    };
+    for (seq, _, event) in dom {
+        while let Some(earlier) = web.next_if(|event| event.seq < seq) {
+            emit_web_animation_event(callback, retired, clock, earlier);
+        }
+        tell(event);
+    }
+    for event in web {
+        emit_web_animation_event(callback, retired, clock, event);
+    }
+    for (_, _, event) in late {
+        tell(event);
     }
 }
 
@@ -6253,15 +6351,18 @@ impl GpuixView {
         self.css_transitions.element_of(id).or_else(|| self.css_animations.element_of(id))
     }
 
-    /// The Web Animations of `element`: its CSS transitions, then its CSS
-    /// animations, each in composite order, as of the last frame.
+    /// The Web Animations of `element`: its CSS transitions, then its CSS animations, each in composite order, as of the last frame.
     pub(crate) fn web_animations(&self, element: u64, now: web_time::Instant) -> Vec<WebAnimationInfo> {
         let Some(now) = self.api_instant(Some(element), now) else {
             return Vec::new();
         };
         let transitions = self.css_transitions.list(element, now);
         let animations = self.css_animations.list(element, now);
-        transitions.into_iter().chain(animations).map(WebAnimationInfo::from).collect()
+        transitions
+            .into_iter()
+            .chain(animations)
+            .map(|info| WebAnimationInfo::at(info, &self.clock))
+            .collect()
     }
 
     /// The run `id` as it is now, or as it showed when its finish or cancel
@@ -6272,8 +6373,14 @@ impl GpuixView {
                 self.css_transitions.info(id, now).or_else(|| self.css_animations.info(id, now))
             })
             .or_else(|| self.retired_animations.get(id).cloned())
-            .map(WebAnimationInfo::from)
+            .map(|info| WebAnimationInfo::at(info, &self.clock))
             .ok_or_else(|| unknown_web_animation(id))
+    }
+
+    /// The time of the timeline of the animations, in milliseconds on the clock of the renderer:
+    /// the instant of the last frame, which is what everything the API reads is as of.
+    pub(crate) fn web_animation_timeline_time(&self, now: web_time::Instant) -> f64 {
+        self.clock.ms_of(self.frame_instant.unwrap_or(now))
     }
 
     /// JS consumed an event of the run `id`.
@@ -6295,6 +6402,41 @@ impl GpuixView {
                 .or_else(|| self.css_animations.command(id, command, now))
         });
         outcome.unwrap_or_else(|| Err(unknown_web_animation(id)))
+    }
+
+    /// `animation.startTime = start_time`, a time on the clock of the renderer.
+    pub(crate) fn set_web_animation_start_time(
+        &mut self,
+        id: u64,
+        start_time: Option<f64>,
+        now: web_time::Instant,
+    ) -> std::result::Result<(), String> {
+        let at = self.api_instant(self.element_of_web_animation(id), now).ok_or_else(|| unknown_web_animation(id))?;
+        let offset = start_time.map(|start| start - self.clock.ms_of(at));
+        self.command_web_animation(id, crate::motion::web_animation::Command::SetStartTime(offset), now)
+    }
+
+    /// Tells what the CSS animations and transitions queued: see `emit_css_events`.
+    pub(crate) fn emit_css_events(&mut self, callback: &Option<EventCallback>, tree: &crate::retained_tree::RetainedTree) {
+        let mut web = self.css_animations.take_api_events();
+        web.extend(self.css_transitions.take_api_events());
+        emit_css_events(
+            callback,
+            tree,
+            &mut self.retired_animations,
+            &self.clock,
+            self.css_transitions.take_events(),
+            self.css_animations.take_events(),
+            web,
+        );
+    }
+
+    /// Whether the pass about to be built is a layout pass a read forced rather than a frame
+    /// that is drawn, which decides when the animations and transitions start and tell.
+    pub(crate) fn note_pass(&mut self, window: &gpui::Window) {
+        let layout_only = window.is_layout_pass();
+        self.css_animations.set_layout_only(layout_only);
+        self.css_transitions.set_layout_only(layout_only);
     }
 
     /// The instant the pass being built samples time at: a draw reads the clock, anything else
@@ -6909,10 +7051,7 @@ impl GpuixView {
         drop(pointer);
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
-        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        self.emit_css_events(&callback, &tree);
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active()
             || self.css_animations.take_active()
@@ -8288,6 +8427,7 @@ impl GpuixView {
     ) -> gpui::AnyElement {
         use gpui::IntoElement;
 
+        self.note_pass(window);
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
@@ -8308,10 +8448,7 @@ impl GpuixView {
         self.retain.finish_deferred();
         drop(pointer);
         debug_assert!(highlight_events.is_empty(), "a highlight is never inside a retained subtree");
-        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        self.emit_css_events(&callback, &tree);
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         if self.css_transitions.take_active() || self.css_animations.take_active() {
             window.request_animation_frame();
@@ -8343,6 +8480,7 @@ impl GpuixView {
     ) -> Option<ScratchUnit> {
         use gpui::IntoElement;
 
+        self.note_pass(window);
         let mut env = self.retain.unit(id)?.env.clone();
         env.start.now = now;
         let effects = crate::tape::build_effects_len();
@@ -8367,10 +8505,7 @@ impl GpuixView {
         drop(pointer);
         debug_assert!(highlight_events.is_empty(), "a highlight is never inside a unit");
         self.frame_instant = Some(now);
-        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        self.emit_css_events(&callback, &tree);
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let tape = crate::tape::Tape::capturing();
         Some(ScratchUnit {
@@ -9062,6 +9197,7 @@ impl GpuixView {
     /// motion is stepped, `animationiteration` and its kin are emitted, and `getAnimations` reads
     /// the instant of the tick.
     fn dormant_tick(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        self.note_pass(window);
         self.dormant_wake.frame_ran();
         crate::perf_counters::dormant_tick();
         let tree_arc = self.tree.clone();
@@ -9086,10 +9222,7 @@ impl GpuixView {
             .set_appearance(color_scheme_of(window.appearance()));
         let motion_values = self.motion_values.advance_dormant(now);
         emit_motion_value_events(&callback, &motion_values.events);
-        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        self.emit_css_events(&callback, &tree);
         if !step.awake.is_empty() {
             // A motion that no frame has seen run: a frame of its own sets it going.
             cx.notify();
@@ -9109,6 +9242,7 @@ impl gpui::Render for GpuixView {
         use gpui::IntoElement;
 
         window.set_window_title(&self.window_title);
+        self.note_pass(window);
         self.apply_pointer_lock(window, cx);
         self.install_patcher(window, cx);
         let verifies = self.retain.verifies_frames();
@@ -9356,10 +9490,7 @@ impl gpui::Render for GpuixView {
         emit_highlight_events(&callback, &highlight_events);
         emit_motion_settled(&callback, &tree, &motion_settled);
         emit_motion_value_events(&callback, &motion_value_frame.events);
-        emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
-        emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        self.emit_css_events(&callback, &tree);
         emit_layout_events(&callback, &tree, self.layout_flips.take_events());
         let transitions_active =
             self.css_transitions.take_active() | self.css_animations.take_active();
@@ -13391,8 +13522,13 @@ pub struct WebAnimationInfo {
     pub end_time: f64,
     pub playback_rate: f64,
     /// `"running"`, `"paused"`, `"finished"`, or `"idle"` for a run that was
-    /// cancelled and has not been released yet.
+    /// cancelled (`currentTime` is not meant then).
     pub play_state: String,
+    /// A play or pause waits for the next frame.
+    pub pending: bool,
+    /// The `startTime`: milliseconds on the renderer's clock since its origin, as the timeline
+    /// of the animations reads (`getAnimationTimelineTime`). `null` while it has none.
+    pub start_time: Option<f64>,
 }
 
 /// What the controls of a motion value's animation read, in seconds.
@@ -13434,9 +13570,12 @@ impl MotionValuePlayback {
     }
 }
 
-impl From<crate::motion::web_animation::Info> for WebAnimationInfo {
-    fn from(info: crate::motion::web_animation::Info) -> Self {
+impl WebAnimationInfo {
+    /// `clock` is the renderer's, which the instant the info was read at is turned into the
+    /// timeline time with.
+    pub(crate) fn at(info: crate::motion::web_animation::Info, clock: &crate::automation::AutomationClock) -> Self {
         use crate::motion::web_animation::Kind;
+        let timeline_time = clock.ms_of(info.at);
         let (animation_name, transition_property) = match info.kind {
             Kind::Animation => (Some(info.name), None),
             Kind::Transition => (None, Some(info.name)),
@@ -13450,6 +13589,8 @@ impl From<crate::motion::web_animation::Info> for WebAnimationInfo {
             end_time: info.end_time,
             playback_rate: info.playback_rate,
             play_state: info.status.name().to_string(),
+            pending: info.pending,
+            start_time: info.start_offset.map(|offset| timeline_time + offset),
         }
     }
 }
@@ -17933,11 +18074,10 @@ mod web_animation_event_tests {
     use crate::motion::web_animation::{ApiEvent, ApiEventKind, Info, Kind, Retired, Status};
 
     fn event(run: u64, kind: ApiEventKind, status: Status) -> ApiEvent {
-        ApiEvent {
-            element: 5,
-            run,
+        ApiEvent::new(
+            5,
             kind,
-            info: Info {
+            Info {
                 id: run,
                 kind: Kind::Transition,
                 name: "width".to_string(),
@@ -17945,8 +18085,11 @@ mod web_animation_event_tests {
                 end_time: 1000.0,
                 playback_rate: 1.0,
                 status,
+                pending: false,
+                start_offset: None,
+                at: web_time::Instant::now(),
             },
-        }
+        )
     }
 
     fn heard() -> (Option<EventCallback>, Arc<Mutex<Vec<EventPayload>>>) {
@@ -17956,11 +18099,18 @@ mod web_animation_event_tests {
         (Some(callback), seen)
     }
 
+    fn emit(callback: &Option<EventCallback>, retired: &mut Retired, events: Vec<ApiEvent>) {
+        let clock = crate::automation::AutomationClock::new();
+        for event in events {
+            emit_web_animation_event(callback, retired, &clock, event);
+        }
+    }
+
     #[test]
     fn an_event_retires_its_run_until_it_is_released() {
         let (callback, seen) = heard();
         let mut retired = Retired::default();
-        emit_web_animation_events(
+        emit(
             &callback,
             &mut retired,
             vec![event(7, ApiEventKind::Finish, Status::Finished), event(8, ApiEventKind::Cancel, Status::Idle)],
@@ -17970,6 +18120,9 @@ mod web_animation_event_tests {
             seen.iter().map(|payload| (payload.event_type.as_str(), payload.animation_id)).collect::<Vec<_>>(),
             [("webanimationfinish", Some(7.0)), ("webanimationcancel", Some(8.0))]
         );
+        assert_eq!(seen[0].current_time, Some(1000.0), "a finish says the time it finished at");
+        assert_eq!(seen[1].current_time, None, "a cancel has none");
+        assert!(seen.iter().all(|payload| payload.timeline_time.is_some()));
         assert_eq!(retired.get(7).unwrap().status, Status::Finished);
         assert_eq!(retired.get(8).unwrap().status, Status::Idle);
         retired.release(7);
@@ -17978,9 +18131,18 @@ mod web_animation_event_tests {
     }
 
     #[test]
+    fn a_ready_is_told_and_retires_nothing() {
+        let (callback, seen) = heard();
+        let mut retired = Retired::default();
+        emit(&callback, &mut retired, vec![event(7, ApiEventKind::Ready, Status::Running)]);
+        assert_eq!(seen.lock().unwrap()[0].event_type, "webanimationready");
+        assert_eq!(retired.len(), 0, "no release would ever come for it");
+    }
+
+    #[test]
     fn nothing_is_retired_when_no_one_hears_the_events() {
         let mut retired = Retired::default();
-        emit_web_animation_events(&None, &mut retired, vec![event(7, ApiEventKind::Finish, Status::Finished)]);
+        emit(&None, &mut retired, vec![event(7, ApiEventKind::Finish, Status::Finished)]);
         assert_eq!(retired.len(), 0, "no release would ever come for it");
     }
 }

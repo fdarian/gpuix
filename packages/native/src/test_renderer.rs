@@ -2736,6 +2736,55 @@ impl TestGpuixRenderer {
         )
     }
 
+    /// `animation.cancel()`: the animation is idle, with no current time and out of
+    /// `getAnimations()`; `play()` brings it back from the start.
+    #[napi]
+    pub fn cancel_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Cancel)
+    }
+
+    /// `animation.finish()`. Throws `InvalidStateError: ...` for a rate of 0 and for an animation
+    /// that never ends.
+    #[napi]
+    pub fn finish_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Finish)
+    }
+
+    /// `animation.reverse()`: the rate flips at the next frame. Throws `InvalidStateError: ...`
+    /// for an animation that never ends, from its start.
+    #[napi]
+    pub fn reverse_animation(&self, animation_id: f64) -> Result<()> {
+        self.command_animation(animation_id, crate::motion::web_animation::Command::Reverse)
+    }
+
+    /// `animation.updatePlaybackRate(rate)`: at the next frame for a running animation, at once
+    /// for the others.
+    #[napi]
+    pub fn update_animation_playback_rate(&self, animation_id: f64, rate: f64) -> Result<()> {
+        self.command_animation(
+            animation_id,
+            crate::motion::web_animation::Command::UpdatePlaybackRate(rate),
+        )
+    }
+
+    /// `animation.startTime = startTime`, in milliseconds on the timeline of the animations
+    /// (`getAnimationTimelineTime`); `null` holds the current time.
+    #[napi]
+    pub fn set_animation_start_time(&self, animation_id: f64, start_time: Option<f64>) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::Layout, move |view, now| {
+            view.set_web_animation_start_time(id, start_time, now)
+        })
+    }
+
+    /// The time of the timeline of the animations (`animation.timeline.currentTime`): the
+    /// instant of the last frame, in milliseconds on the clock of the renderer. The same
+    /// number `startTime` and the `timelineTime` of the events are on.
+    #[napi]
+    pub fn get_animation_timeline_time(&self) -> Result<f64> {
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animation_timeline_time(now)))
+    }
+
     fn command_animation(
         &self,
         animation_id: f64,

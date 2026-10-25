@@ -887,6 +887,12 @@ impl AutomationClock {
             * 1000.0
     }
 
+    /// Milliseconds from the origin of the clock to `instant`.
+    pub fn ms_of(&self, instant: Instant) -> f64 {
+        let inner = self.inner.lock().unwrap();
+        instant.saturating_duration_since(inner.origin).as_secs_f64() * 1000.0
+    }
+
     pub fn pause(&self) -> f64 {
         let mut inner = self.inner.lock().unwrap();
         let now = current_instant(&inner);

@@ -182,6 +182,7 @@ impl GpuixView {
         let tree_arc = self.tree.clone();
         let tree = tree_arc.lock().unwrap();
         let callback = self.event_callback.clone();
+        self.note_pass(window);
         self.frame_instant = Some(now);
         self.css_animations.advance_dormant(now);
         self.css_transitions.advance_dormant(now);
@@ -204,10 +205,7 @@ impl GpuixView {
         crate::renderer::emit_motion_value_events(&callback, &motion_values.events);
         // The units built after this emit these too, but a tick with none must not leave the end of
         // a transition or an iteration that was due for the frame that follows.
-        crate::renderer::emit_transition_events(&callback, &tree, self.css_transitions.take_events());
-        crate::renderer::emit_animation_events(&callback, &tree, self.css_animations.take_events());
-        crate::renderer::emit_web_animation_events(&callback, &mut self.retired_animations, self.css_transitions.take_api_events());
-        crate::renderer::emit_web_animation_events(&callback, &mut self.retired_animations, self.css_animations.take_api_events());
+        self.emit_css_events(&callback, &tree);
         Stepped {
             motion: !step.awake.is_empty(),
             dormant_motion: step.asleep,

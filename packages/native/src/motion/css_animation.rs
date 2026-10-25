@@ -29,7 +29,7 @@ use super::property::{AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
 use super::track::{Goal, Track};
 use super::value::{AnimValue, Colors, Interpolation, ParentValues};
-use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback};
+use super::web_animation::{next_seq, ApiEvent, Command, Info, Kind, Playback};
 use super::{needs_layout, resolve_keyframes, InterpolateSize, PropKey};
 use crate::color::ColorContext;
 use crate::css::custom_properties::CustomProperties;
@@ -438,6 +438,11 @@ pub(crate) struct AnimationEvent {
     pub(crate) name: String,
     /// Seconds.
     pub(crate) elapsed: f64,
+    /// See [`next_seq`].
+    pub(crate) seq: u64,
+    /// Told after the events of the Web Animations objects made in the same pass: Chrome tells
+    /// of an animation whose play just ran at the frame after, when its timing is updated.
+    pub(crate) late: bool,
 }
 
 /// An event with the instant it happened at, which can be before the frame
@@ -472,6 +477,11 @@ fn active_duration(animation: &Animation) -> f64 {
         IterationCount::Infinite => f64::INFINITY,
         IterationCount::Finite(count) => animation.duration * count,
     }
+}
+
+/// Where the effect of an animation ends, in local time: the delay and the active duration.
+fn effect_end(animation: &Animation) -> f64 {
+    (animation.delay + active_duration(animation)).max(0.0)
 }
 
 /// `elapsedTime` of an `animationstart`: the part of the active interval a
@@ -895,7 +905,18 @@ struct Run {
     params: Animation,
     /// The animation's local time (its `currentTime`), the API controls and its id.
     clock: Playback,
+    /// The phase the DOM events were told of. A frame that is drawn tells them; a layout pass a
+    /// read forced does not, and neither does a play that waits for its frame: Chrome tells of
+    /// an animation when its timing is updated for a frame, not when the style is resolved.
     phase: Phase,
+    /// The phase of the last evaluation, told or not.
+    shown: Phase,
+    /// A frame that was drawn has evaluated the run since it was made or cancelled.
+    begun: bool,
+    /// `animation.cancel()` made the run idle, and the DOM has not been told of it since: if the
+    /// first thing a frame finds is that it ended (`finish()` of a cancelled animation), Chrome
+    /// tells nothing.
+    silent: bool,
     iteration: u64,
     /// The keyframe progress `CssAnimations::advance` found this frame, `None`
     /// while the animation has no effect.
@@ -937,8 +958,11 @@ impl Run {
             properties: keyframes.properties(),
             keyframes,
             params: params.clone(),
-            clock: Playback::start(now, params.play_state == PlayState::Running),
+            clock: Playback::start(now, params.play_state == PlayState::Paused, effect_end(params)),
             phase: Phase::Before,
+            shown: Phase::Before,
+            begun: false,
+            silent: false,
             iteration: 0,
             progress: None,
             plan: None,
@@ -980,6 +1004,9 @@ impl Run {
     /// How long until the clock reaches the next start of the active phase, end of it, and with
     /// `iterations` the next iteration boundary.
     fn next_boundary(&self, now: Instant, iterations: bool) -> Next {
+        if self.clock.is_idle() {
+            return Next::Never;
+        }
         if self.clock.pending() {
             return Next::Unknown;
         }
@@ -1029,7 +1056,7 @@ impl Run {
     /// Where the effect ends, in local time. Infinite for an animation that
     /// repeats forever.
     fn end_time(&self) -> f64 {
-        (self.params.delay + active_duration(&self.params)).max(0.0)
+        effect_end(&self.params)
     }
 
     fn local(&self, now: Instant) -> f64 {
@@ -1046,23 +1073,34 @@ impl Run {
     fn retune(&mut self, params: &Animation, now: Instant) {
         self.quiet_until = None;
         let end = self.end_time();
-        self.clock.follow_style(params.play_state == PlayState::Running, now, end);
+        self.clock.follow_style(params.play_state == PlayState::Paused, now, end);
         self.params = params.clone();
     }
 
     fn event(&self, id: u64, kind: AnimationEventKind, elapsed: f64, at: Instant) -> Scheduled {
         Scheduled {
-            event: AnimationEvent { id, kind, name: self.name.clone(), elapsed },
+            event: AnimationEvent { id, kind, name: self.name.clone(), elapsed, seq: next_seq(), late: false },
             at,
         }
     }
 
-    /// Moves to `now`, queueing the events the phase and iteration changes
-    /// make (CSS Animations 2, "event dispatch").
+    /// Evaluates the effect at `now`, and tells the DOM of the phase and iteration changes since
+    /// the last time it was told (CSS Animations 2, "event dispatch").
     fn advance(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) -> Evaluation {
-        use AnimationEventKind::{End, Iteration, Start};
         let local = self.local(now);
         let evaluation = evaluate(&self.params, local, self.clock.rate() < 0.0);
+        self.report(id, now, local, &evaluation, events);
+        evaluation
+    }
+
+    /// Queues the events the change from the phase the DOM was told of to `evaluation` makes.
+    fn report(&mut self, id: u64, now: Instant, local: f64, evaluation: &Evaluation, events: &mut Vec<Scheduled>) {
+        use AnimationEventKind::{End, Iteration, Start};
+        if std::mem::take(&mut self.silent) && evaluation.phase == Phase::After {
+            self.phase = Phase::After;
+            self.begun = true;
+            return;
+        }
         let params = &self.params;
         let active_duration = active_duration(params);
         let starts = params.delay.max(0.0);
@@ -1080,14 +1118,14 @@ impl Run {
                 events.push(end(ends, active_duration));
             }
             (Phase::After, Phase::Active) => events.push(start(local, active_duration)),
-            (Phase::After, Phase::Before) => {
-                events.push(start(local, active_duration));
-                events.push(end(local, initial));
-            }
+            // A jump back over the whole effect (the rate of a finished animation turned round)
+            // tells nothing in Chrome.
+            (Phase::After, Phase::Before) => {}
             (Phase::Active, Phase::After) => events.push(end(ends, active_duration)),
             (Phase::Active, Phase::Before) => events.push(end(local, initial)),
             (Phase::Active, Phase::Active) if evaluation.iteration != self.iteration => {
-                let boundary = params.duration * evaluation.iteration as f64;
+                // Going back across a boundary tells the boundary it left: that of the later iteration.
+                let boundary = params.duration * evaluation.iteration.max(self.iteration) as f64;
                 events.push(self.event(
                     id,
                     Iteration,
@@ -1098,25 +1136,53 @@ impl Run {
             _ => {}
         }
         self.phase = to;
+        self.begun = true;
         if to == Phase::Active {
             self.iteration = evaluation.iteration;
         }
-        evaluation
+    }
+
+    /// What the clock noted since the last call, for the Web Animations objects.
+    fn tell(&mut self, id: u64, now: Instant, api: &mut Vec<ApiEvent>) {
+        for note in self.clock.take_notes() {
+            api.push(ApiEvent::of(id, note, self.info(now)));
+        }
     }
 
     /// The clock half of a frame: moves to `now` and reports a finish. It needs no style, which
     /// is what lets an element nothing is built for keep its animations on time.
-    fn tick(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+    ///
+    /// `drawing` is false in a layout pass a read forced: that is not a frame, so nothing waits
+    /// for it, and no event of the DOM is made. In a frame a play that waits starts first, and
+    /// the run is evaluated after, since it has no time of its own before; a pause is evaluated
+    /// first, and held after.
+    fn tick(&mut self, id: u64, now: Instant, drawing: bool, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
         self.quiet_until = None;
-        self.clock.resolve_pending(now);
-        self.progress = self.advance(id, now, events).progress;
-        if self.clock.take_finish(now, self.end_time()) {
-            api.push(ApiEvent {
-                element: id,
-                run: self.clock.id(),
-                kind: ApiEventKind::Finish,
-                info: self.info(now),
-            });
+        if self.clock.is_idle() {
+            self.progress = None;
+            return;
+        }
+        let end = self.end_time();
+        let started = drawing && self.clock.pending_play();
+        if started {
+            self.clock.resolve_pending(now, end);
+        }
+        self.clock.settle(now, end);
+        self.tell(id, now, api);
+        let local = self.local(now);
+        let evaluation = evaluate(&self.params, local, self.clock.rate() < 0.0);
+        self.progress = evaluation.progress;
+        self.shown = evaluation.phase;
+        if drawing && !self.clock.pending_play() {
+            let before = events.len();
+            self.report(id, now, local, &evaluation, events);
+            for scheduled in &mut events[before..] {
+                scheduled.event.late = started;
+            }
+        }
+        if drawing && self.clock.pending_pause() {
+            self.clock.resolve_pending(now, end);
+            self.tell(id, now, api);
         }
     }
 
@@ -1126,18 +1192,63 @@ impl Run {
     /// cancel either way, as a finished animation is cancelled too.
     fn cancel(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
         self.quiet_until = None;
-        self.advance(id, now, events);
-        api.push(ApiEvent {
-            element: id,
-            run: self.clock.id(),
-            kind: ApiEventKind::Cancel,
-            info: self.info(now).cancelled(),
-        });
-        if self.phase == Phase::After {
+        if self.clock.is_idle() {
             return;
         }
-        let elapsed = (self.local(now) - self.params.delay).clamp(0.0, active_duration(&self.params));
-        events.push(self.event(id, AnimationEventKind::Cancel, elapsed, now));
+        let owed = self.cancel_owed(id, now, events);
+        let end = self.end_time();
+        self.clock.apply(Command::Cancel, now, end).expect("cancelling cannot fail");
+        self.tell(id, now, api);
+        if let Some(elapsed) = owed {
+            events.push(self.event(id, AnimationEventKind::Cancel, elapsed, now));
+        }
+    }
+
+    /// Brings the DOM up to `now` before the run stops, and says what the `animationcancel` of
+    /// it would carry, if it is owed one: not for a run that ended, nor one that never had a
+    /// frame.
+    fn cancel_owed(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) -> Option<f64> {
+        if !self.begun {
+            return None;
+        }
+        if !self.clock.pending_play() {
+            self.advance(id, now, events);
+        }
+        if self.phase == Phase::After {
+            return None;
+        }
+        Some((self.local(now) - self.params.delay).clamp(0.0, active_duration(&self.params)))
+    }
+
+    /// `animation.cancel()`: the run stays, idle, for `play()` and the like to bring back.
+    fn cancel_by_api(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+        self.cancel(id, now, events, api);
+        self.phase = Phase::Before;
+        self.shown = Phase::Before;
+        self.begun = false;
+        self.silent = true;
+        self.iteration = 0;
+        self.progress = None;
+    }
+
+    /// A command of the API. `id` is the element.
+    fn command(
+        &mut self,
+        id: u64,
+        command: Command,
+        now: Instant,
+        events: &mut Vec<Scheduled>,
+        api: &mut Vec<ApiEvent>,
+    ) -> Result<(), String> {
+        self.quiet_until = None;
+        if command == Command::Cancel {
+            self.cancel_by_api(id, now, events, api);
+            return Ok(());
+        }
+        let end = self.end_time();
+        let outcome = self.clock.apply(command, now, end);
+        self.tell(id, now, api);
+        outcome
     }
 
     fn values(
@@ -1197,7 +1308,7 @@ impl Run {
     /// toward its end, a `play()` waits for a frame, or it waits on layout.
     fn wants_frame(&self, now: Instant) -> bool {
         self.clock.wants_frame(now, self.end_time())
-            || self.plan.as_ref().is_some_and(|plan| plan.waiting)
+            || (!self.clock.is_idle() && self.plan.as_ref().is_some_and(|plan| plan.waiting))
     }
 
     /// Whether the animation is relevant in Web Animations terms: current
@@ -1206,13 +1317,13 @@ impl Run {
     /// alone: a paused animation at the end of its effect is not current, and
     /// neither is one run back to the start.
     fn is_relevant(&self) -> bool {
-        self.progress.is_some() || self.is_current()
+        !self.clock.is_idle() && (self.progress.is_some() || self.is_current())
     }
 
     /// Whether the animation is current: active, before its active phase going forward, or after it
     /// going back. One that only fills is in effect and not current.
     fn is_current(&self) -> bool {
-        match self.phase {
+        match self.shown {
             Phase::Before => self.clock.rate() > 0.0,
             Phase::Active => true,
             Phase::After => self.clock.rate() < 0.0,
@@ -1220,15 +1331,7 @@ impl Run {
     }
 
     fn info(&self, now: Instant) -> Info {
-        Info {
-            id: self.clock.id(),
-            kind: Kind::Animation,
-            name: self.name.clone(),
-            current_time: self.local(now) * 1000.0,
-            end_time: self.end_time() * 1000.0,
-            playback_rate: self.clock.rate(),
-            status: self.clock.status(now, self.end_time()),
-        }
+        Info::of(Kind::Animation, self.name.clone(), &self.clock, now, self.end_time())
     }
 }
 
@@ -1381,8 +1484,11 @@ pub(crate) fn animates_width(style: &StyleDesc, registry: &KeyframesRegistry) ->
 pub(crate) struct CssAnimations {
     states: HashMap<u64, ElementState>,
     events: Vec<Scheduled>,
-    /// What the Web Animations objects of JS are told: finishes and cancels.
+    /// What the Web Animations objects of JS are told: finishes, cancels and the plays that ran.
     api_events: Vec<ApiEvent>,
+    /// The pass being built is a layout pass a read forced, not a frame that is drawn: see
+    /// `Run::tick`.
+    layout_only: bool,
     /// The elements a Web Animations command reached since the last frame.
     commanded: Vec<u64>,
     active: bool,
@@ -1536,7 +1642,7 @@ impl CssAnimations {
 
         let mut covered = Vec::new();
         for run in &mut state.runs {
-            run.tick(id, now, &mut self.events, &mut self.api_events);
+            run.tick(id, now, !self.layout_only, &mut self.events, &mut self.api_events);
             if run.progress.is_some() {
                 covered.extend(run.properties.iter().filter_map(|key| match key {
                     PropKey::Style(prop) if scope.animates(*prop) => Some(*prop),
@@ -1620,7 +1726,7 @@ impl CssAnimations {
             if run.quiet_until.is_some_and(|until| now < until) {
                 continue;
             }
-            run.tick(id, now, &mut self.events, &mut self.api_events);
+            run.tick(id, now, true, &mut self.events, &mut self.api_events);
             run.quiet_until = run.quiet_after(now);
             run.events = run.events_after(now);
             ticked = true;
@@ -1893,6 +1999,12 @@ impl CssAnimations {
         self.run(id).map(|run| run.info(now))
     }
 
+    /// Whether the pass being built is a layout pass a read forced rather than a frame that is
+    /// drawn. Plays and pauses wait for a frame, and the DOM hears of an animation at a frame.
+    pub(crate) fn set_layout_only(&mut self, layout_only: bool) {
+        self.layout_only = layout_only;
+    }
+
     /// Applies `command` to the animation `id` at `now`, the time of the last
     /// frame. `None` for an id that is not running.
     pub(crate) fn command(&mut self, id: u64, command: Command, now: Instant) -> Option<Result<(), String>> {
@@ -1901,9 +2013,7 @@ impl CssAnimations {
             .iter_mut()
             .flat_map(|(element, state)| state.runs.iter_mut().map(move |run| (*element, run)))
             .find(|(_, run)| run.clock.id() == id)?;
-        let end = run.end_time();
-        run.quiet_until = None;
-        let outcome = run.clock.apply(command, now, end);
+        let outcome = run.command(element, command, now, &mut self.events, &mut self.api_events);
         self.commanded.push(element);
         if self.dormant.contains(&element) {
             self.sleepers.next.insert(element);
@@ -3586,7 +3696,7 @@ mod tests {
 
     // ── Web Animations controls ──────────────────────────────────────
 
-    use super::super::web_animation::Status;
+    use super::super::web_animation::{ApiEventKind, Status};
 
     fn listed(frames: &Frames, millis: u64) -> Vec<Info> {
         frames.animations.list(1, frames.at(millis))
@@ -3605,7 +3715,13 @@ mod tests {
     }
 
     fn api_events(frames: &mut Frames) -> Vec<(ApiEventKind, u64)> {
-        frames.animations.take_api_events().into_iter().map(|event| (event.kind, event.run)).collect()
+        frames
+            .animations
+            .take_api_events()
+            .into_iter()
+            .filter(|event| event.kind != ApiEventKind::Ready)
+            .map(|event| (event.kind, event.run))
+            .collect()
     }
 
     #[test]
@@ -3636,6 +3752,113 @@ mod tests {
         assert!(restarted.iter().all(|info| !first.iter().any(|old| old.id == info.id)));
         assert_eq!(restarted[0].name, "fade");
         assert_eq!(restarted[0].kind, Kind::Animation);
+    }
+
+    #[test]
+    fn a_run_made_in_a_layout_pass_waits_for_a_frame_and_the_dom_hears_of_it_there() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.animations.set_layout_only(true);
+        frames.frame(0, &animated);
+        frames.frame(0, &animated);
+        let waiting = only(&frames, 0);
+        assert!(waiting.pending);
+        assert_eq!(waiting.start_offset, None);
+        assert_eq!(waiting.current_time, 0.0);
+        assert!(frames.events().is_empty(), "a layout is no frame");
+        assert!(api_events(&mut frames).is_empty());
+
+        frames.animations.set_layout_only(false);
+        frames.frame(16, &animated);
+        let started = only(&frames, 16);
+        assert!(!started.pending);
+        assert_eq!(started.start_offset, Some(0.0));
+        let kinds: Vec<_> = frames.animations.take_api_events().iter().map(|event| event.kind).collect();
+        assert_eq!(kinds, [ApiEventKind::Ready]);
+        assert_eq!(frames.events().len(), 1, "the animationstart");
+    }
+
+    #[test]
+    fn a_pending_play_in_a_frame_is_told_before_the_start_it_makes_and_a_pending_pause_after() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.animations.set_layout_only(true);
+        frames.frame(0, &animated);
+        frames.animations.set_layout_only(false);
+        frames.frame(16, &animated);
+        let ready = frames.animations.take_api_events();
+        let start = frames.animations.take_events();
+        assert_eq!(start.len(), 1);
+        assert!(start[0].late, "the start is told after the ready of the frame");
+        assert_eq!(ready.len(), 1);
+
+        let paused = fading("fade 1s linear paused");
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.animations.set_layout_only(true);
+        frames.frame(0, &paused);
+        frames.animations.set_layout_only(false);
+        frames.frame(16, &paused);
+        let start = frames.animations.take_events();
+        assert_eq!(start.len(), 1);
+        assert!(!start[0].late, "a pause is evaluated, then held");
+        assert!(start[0].seq < frames.animations.take_api_events()[0].seq);
+    }
+
+    #[test]
+    fn cancel_keeps_the_run_idle_for_play_and_the_style_does_not_start_it_again() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.frame(0, &animated);
+        frames.frame(300, &animated);
+        frames.events();
+        let id = only(&frames, 300).id;
+        command(&mut frames, 300, id, Command::Cancel);
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, id)]);
+        let seen = frames.events();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert_eq!(seen[0].0, AnimationEventKind::Cancel);
+        assert!(listed(&frames, 300).is_empty());
+        assert!(frames.frame(400, &animated).opacity.is_none(), "nothing animates an idle run");
+
+        // A style change that keeps the name, and the same style again, leave it idle.
+        let slower = fading("fade 2s linear");
+        frames.frame(500, &slower);
+        frames.frame(600, &slower);
+        assert!(listed(&frames, 600).is_empty());
+        assert!(frames.events().is_empty());
+
+        command(&mut frames, 600, id, Command::Play);
+        frames.frame(616, &slower);
+        let back = only(&frames, 616);
+        assert_eq!(back.id, id);
+        assert_eq!(back.status, Status::Running);
+        assert_eq!(frames.events().len(), 1, "it starts again");
+
+        // The name leaving the style ends the run for good, silently, as it was idle.
+        command(&mut frames, 616, id, Command::Cancel);
+        frames.events();
+        api_events(&mut frames);
+        frames.frame(700, &fading("none"));
+        assert!(frames.events().is_empty());
+        assert!(api_events(&mut frames).is_empty());
+        assert!(frames.animations.command(id, Command::Play, frames.at(700)).is_none());
+    }
+
+    #[test]
+    fn a_run_cancelled_before_any_frame_told_the_dom_nothing_and_owes_it_nothing() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        frames.animations.set_layout_only(true);
+        frames.frame(0, &animated);
+        let id = only(&frames, 0).id;
+        command(&mut frames, 0, id, Command::Cancel);
+        assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, id)]);
+        assert!(frames.events().is_empty());
     }
 
     #[test]

@@ -296,6 +296,15 @@ pub struct EventPayload {
     /// carry no path, so they reach no handler of the app.
     pub animation_id: Option<f64>,
 
+    /// Milliseconds, the `currentTime` of the `AnimationPlaybackEvent`. Populated for:
+    /// webanimationfinish.
+    pub current_time: Option<f64>,
+
+    /// Milliseconds on the renderer's clock, the `timelineTime` of the
+    /// `AnimationPlaybackEvent`: the timeline time the event was made at. Populated for:
+    /// webanimationfinish, webanimationcancel.
+    pub timeline_time: Option<f64>,
+
     /// Seconds of the transition's or animation's active time, as the DOM
     /// `elapsedTime`. Populated for: the transition and animation events.
     pub elapsed_time: Option<f64>,
@@ -380,6 +389,8 @@ impl Default for EventPayload {
             property_name: None,
             animation_name: None,
             animation_id: None,
+            current_time: None,
+            timeline_time: None,
             elapsed_time: None,
             pseudo_element: None,
             modifiers: None,
