@@ -1046,7 +1046,7 @@ mod tests {
     #[test]
     fn a_capture_may_differ_from_the_recording_in_the_transforms_and_nothing_else() {
         let window = WindowId::from(911);
-        let moved = |dx: f32| gpui::TransformationMatrix { rotation_scale: [[1.0, 0.0], [0.0, 1.0]], translation: [dx, 0.0] };
+        let moved = |dx: f32| gpui::TransformationMatrix::affine([[1.0, 0.0], [0.0, 1.0]], [dx, 0.0]);
         let tapes = TapeStore::default();
         let recorded = SharedTape::default();
         record_box(&recorded, window, moved(5.0), 30.0);

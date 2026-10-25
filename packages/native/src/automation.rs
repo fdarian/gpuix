@@ -139,13 +139,29 @@ impl ElementBounds {
     }
 
     fn box_through(&self, matrix: &TransformationMatrix) -> (f64, f64, f64, f64) {
+        if !matrix.is_affine() {
+            // What of the box is behind the eye is cut off first; one that is all behind it is empty.
+            let bounds = gpui::Bounds::new(
+                point(px(self.x as f32), px(self.y as f32)),
+                gpui::size(px(self.width as f32), px(self.height as f32)),
+            );
+            return match matrix.try_bounding_box(bounds) {
+                Some(mapped) => (
+                    f64::from(f32::from(mapped.origin.x)),
+                    f64::from(f32::from(mapped.origin.y)),
+                    f64::from(f32::from(mapped.size.width)),
+                    f64::from(f32::from(mapped.size.height)),
+                ),
+                None => (0.0, 0.0, 0.0, 0.0),
+            };
+        }
         let corners = [
             (self.x, self.y),
             (self.x + self.width, self.y),
             (self.x, self.y + self.height),
             (self.x + self.width, self.y + self.height),
         ]
-        .map(|(x, y)| apply(matrix, x, y));
+        .map(|(x, y)| apply(matrix, x, y).expect("an affine matrix maps every point"));
         let (mut left, mut top) = (f64::INFINITY, f64::INFINITY);
         let (mut right, mut bottom) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
         for (x, y) in corners {
@@ -158,12 +174,13 @@ impl ElementBounds {
     }
 
     /// The window point `(x, y)` in the space `self.x` and `self.y` are in, or `None` where the
-    /// transform flattens the plane and nothing is hit.
+    /// transform flattens the plane or the point is at the horizon or behind the eye of a
+    /// perspective, and nothing is hit.
     pub fn to_local(&self, x: f64, y: f64) -> Option<(f64, f64)> {
         if !self.is_transformed() {
             return Some((x, y));
         }
-        self.to_window.inverse().map(|inverse| apply(&inverse, x, y))
+        self.to_window.inverse().and_then(|inverse| apply(&inverse, x, y))
     }
 
     /// [`Self::to_local`] for a point of the window as gpui has it.
@@ -214,9 +231,18 @@ impl ElementBounds {
     /// matrix is told to a thousandth: moving a transformed box by a replay and building it there
     /// differ in the last bits of a single precision sum.
     fn described(self) -> String {
-        let [[a, c], [b, d]] = self.to_window.rotation_scale;
-        let [e, f] = self.to_window.translation;
-        format!("{} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3})", self.described_apart_from_transform())
+        let [[a, c], [b, d]] = self.to_window.linear();
+        let [e, f] = self.to_window.translation();
+        let perspective = if self.to_window.is_affine() {
+            String::new()
+        } else {
+            let [g, h, i] = self.to_window.rows[2];
+            format!(" perspective({g:.6}, {h:.6}, {i:.3})")
+        };
+        format!(
+            "{} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3}){perspective}",
+            self.described_apart_from_transform()
+        )
     }
 
     fn described_apart_from_transform(self) -> String {
@@ -238,10 +264,15 @@ impl ElementBounds {
     }
 }
 
-fn apply(matrix: &TransformationMatrix, x: f64, y: f64) -> (f64, f64) {
-    let [[a, b], [c, d]] = matrix.rotation_scale.map(|row| row.map(f64::from));
-    let [e, f] = matrix.translation.map(f64::from);
-    (a * x + b * y + e, c * x + d * y + f)
+/// `(x, y)` after the matrix, or `None` where a matrix with perspective puts it at the horizon or
+/// behind the eye.
+fn apply(matrix: &TransformationMatrix, x: f64, y: f64) -> Option<(f64, f64)> {
+    let [[a, b, e], [c, d, f], [g, h, i]] = matrix.rows.map(|row| row.map(f64::from));
+    if matrix.is_affine() {
+        return Some((a * x + b * y + e, c * x + d * y + f));
+    }
+    let w = g * x + h * y + i;
+    (w >= f64::from(gpui::MIN_W)).then(|| ((a * x + b * y + e) / w, (c * x + d * y + f) / w))
 }
 
 /// The matrix of a box that was moved by `offset` before it was transformed, so that it puts the
@@ -253,14 +284,17 @@ fn moved_matrix(matrix: TransformationMatrix, offset: Point<Pixels>) -> Transfor
         return matrix;
     }
     let (dx, dy) = (f32::from(offset.x), f32::from(offset.y));
-    let [[a, b], [c, d]] = matrix.rotation_scale;
-    TransformationMatrix {
-        rotation_scale: matrix.rotation_scale,
-        translation: [
-            matrix.translation[0] + dx - (a * dx + b * dy),
-            matrix.translation[1] + dy - (c * dx + d * dy),
-        ],
+    if !matrix.is_affine() {
+        let to_window = TransformationMatrix::affine([[1.0, 0.0], [0.0, 1.0]], [dx, dy]);
+        let from_window = TransformationMatrix::affine([[1.0, 0.0], [0.0, 1.0]], [-dx, -dy]);
+        return to_window.compose(matrix).compose(from_window);
     }
+    let [[a, b], [c, d]] = matrix.linear();
+    let translation = matrix.translation();
+    TransformationMatrix::affine(
+        matrix.linear(),
+        [translation[0] + dx - (a * dx + b * dy), translation[1] + dy - (c * dx + d * dy)],
+    )
 }
 
 /// The painted boxes of one window.
@@ -1172,7 +1206,7 @@ mod tests {
     /// A box of 80 x 40 at (10, 20), turned a quarter around its middle (50, 40) and moved 5 right.
     fn turned() -> ElementBounds {
         ElementBounds {
-            to_window: TransformationMatrix { rotation_scale: [[0.0, -1.0], [1.0, 0.0]], translation: [100.0 + 5.0, -10.0] },
+            to_window: TransformationMatrix::affine([[0.0, -1.0], [1.0, 0.0]], [100.0 + 5.0, -10.0]),
             ..ElementBounds::plain(10.0, 20.0, 80.0, 40.0)
         }
     }
@@ -1203,11 +1237,58 @@ mod tests {
     #[test]
     fn a_box_that_a_transform_flattens_is_hit_nowhere() {
         let flat = ElementBounds {
-            to_window: TransformationMatrix { rotation_scale: [[0.0, 0.0], [0.0, 1.0]], translation: [0.0, 0.0] },
+            to_window: TransformationMatrix::affine([[0.0, 0.0], [0.0, 1.0]], [0.0, 0.0]),
             ..ElementBounds::plain(10.0, 20.0, 80.0, 40.0)
         };
         assert_eq!(flat.to_local(30.0, 30.0), None);
         assert!(!flat.holds_window_point(30.0, 30.0, true, true));
+    }
+
+    /// A box of 100 x 50 at (0, 0) seen along its x axis from 200 away: `W = 1 - x / 200`.
+    fn in_perspective() -> ElementBounds {
+        ElementBounds {
+            to_window: TransformationMatrix { rows: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0 / 200.0, 0.0, 1.0]] },
+            ..ElementBounds::plain(0.0, 0.0, 100.0, 50.0)
+        }
+    }
+
+    #[test]
+    fn a_box_in_perspective_reports_the_box_of_its_divided_corners() {
+        // The far edge, x = 100, is half as far (W = 0.5) and shows at x = 200, y = 100.
+        let (x, y, width, height) = in_perspective().window_box();
+        assert_eq!((x, y), (0.0, 0.0));
+        assert!((width - 200.0).abs() < 1e-3 && (height - 100.0).abs() < 1e-3, "{width} x {height}");
+    }
+
+    #[test]
+    fn a_box_with_a_corner_behind_the_eye_reports_a_finite_box_and_one_wholly_behind_it_an_empty_one() {
+        let partly = ElementBounds { width: 300.0, ..in_perspective() };
+        let (x, _, width, height) = partly.window_box();
+        assert_eq!(x, 0.0);
+        assert!(width.is_finite() && width > 200.0 && height.is_finite(), "{width} x {height}");
+        let behind = ElementBounds { x: 250.0, width: 50.0, ..in_perspective() };
+        assert_eq!(behind.window_box(), (0.0, 0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn a_point_in_perspective_maps_back_with_the_divide_and_misses_behind_the_eye() {
+        let wide = ElementBounds { width: 800.0, ..in_perspective() };
+        // x = 100 shows at x = 200, and y = 30 at 60.
+        let (x, y) = wide.to_local(200.0, 60.0).unwrap();
+        assert!((x - 100.0).abs() < 1e-3 && (y - 30.0).abs() < 1e-3, "{x} {y}");
+        assert!(wide.holds_window_point(200.0, 60.0, true, true));
+        // x = 600 is behind the eye and would show at -300: nothing is there.
+        assert_eq!(wide.to_local(-300.0, 20.0), None);
+        assert!(!wide.holds_window_point(-300.0, 20.0, true, true));
+    }
+
+    #[test]
+    fn a_replay_moves_a_box_in_perspective_by_the_offset_in_the_window() {
+        let moved = in_perspective().translated(point(px(0.0), px(30.0)));
+        let (x, y, width, height) = in_perspective().window_box();
+        let (moved_x, moved_y, moved_width, moved_height) = moved.window_box();
+        assert!((moved_x - x).abs() < 1e-2 && (moved_y - (y + 30.0)).abs() < 1e-2, "{moved_x} {moved_y}");
+        assert!((moved_width - width).abs() < 1e-2 && (moved_height - height).abs() < 1e-2);
     }
 
     #[test]

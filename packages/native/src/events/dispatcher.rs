@@ -1975,10 +1975,7 @@ mod tests {
         let tree = tree(&listening_everywhere(&["pointermove"]));
         let bounds = Bounds::new(point(px(100.0), px(100.0)), size(px(50.0), px(50.0)));
         // A quarter turn around the middle of the box: (x, y) goes to (250 - y, x).
-        let quarter_turn = gpui::TransformationMatrix {
-            rotation_scale: [[0.0, -1.0], [1.0, 0.0]],
-            translation: [250.0, 0.0],
-        };
+        let quarter_turn = gpui::TransformationMatrix::affine([[0.0, -1.0], [1.0, 0.0]], [250.0, 0.0]);
         crate::automation::record_bounds(
             WindowId::from(3),
             4,
