@@ -10094,7 +10094,8 @@ fn animate_style_at(
     if steps {
         let opacity = opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now);
         let transform = ctx.css_animations.animates_transform(element.id) || ctx.css_transitions.animates_transform(element.id);
-        if opacity || transform {
+        let in_motion = transform_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now);
+        if opacity || in_motion {
             // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
             let current = animated
                 .as_deref_mut()
@@ -10104,7 +10105,7 @@ fn animate_style_at(
                 .expect("an animation that runs has the style it runs on");
             current.animating_opacity |= opacity;
             current.animating_transform |= transform;
-            current.transform_in_motion |= transform;
+            current.transform_in_motion |= in_motion;
         }
     }
     Animated {
