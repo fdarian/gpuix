@@ -5,6 +5,7 @@ use crate::css::background::{self, Background, Property};
 use crate::css::length::LengthContext;
 use crate::css::border::{self, parse_color_sides, parse_style_sides};
 use crate::css::mask::Mask;
+use crate::css::custom_properties::has_var;
 use crate::css::{clip_path, filter, mask_border, text_box, text_decoration, transform};
 use crate::style::{BackgroundValue, StyleDesc};
 
@@ -241,7 +242,8 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
 /// colour resolves does not depend on the element, so the root context stands
 /// in for it, and so does the initial length context: whether a length is valid
 /// never depends on what it resolves to. Parsing here is not reused for
-/// painting: the style holds the text.
+/// painting: the style holds the text. A transform property with a `var()` is valid until the
+/// element's custom properties substitute it.
 pub(crate) fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
     let colors = ColorContext::root(Scheme::Light);
     let lengths = LengthContext::initial(0.0, 0.0);
@@ -257,11 +259,11 @@ pub(crate) fn without_invalid_values(over: &StyleDesc) -> Cow<'_, StyleDesc> {
         filter: |value| filter::parse_resolved(value, &colors, &lengths).is_some(),
         backdrop_filter: |value| filter::parse_resolved(value, &colors, &lengths).is_some(),
         clip_path: |value| clip_path::parse(value, &lengths).is_some(),
-        transform: |value| transform::parse_transform(value, &lengths).is_some(),
-        translate: |value| transform::parse_translate(value, &lengths).is_some(),
-        rotate: |value| transform::parse_rotate(value).is_some(),
-        scale: |value| transform::parse_scale(value).is_some(),
-        transform_origin: |value| transform::parse_origin(value, &lengths).is_some(),
+        transform: |value| has_var(value) || transform::parse_transform(value, &lengths).is_some(),
+        translate: |value| has_var(value) || transform::parse_translate(value, &lengths).is_some(),
+        rotate: |value| has_var(value) || transform::parse_rotate(value).is_some(),
+        scale: |value| has_var(value) || transform::parse_scale(value).is_some(),
+        transform_origin: |value| has_var(value) || transform::parse_origin(value, &lengths).is_some(),
         mask: |value| background::is_valid_shorthand::<Mask>(value, &colors, &lengths),
         mask_image: |value| background::is_valid_image_list::<Mask>(value, &colors, &lengths),
         mask_size: |value| background::is_valid_list::<Mask>(Property::Size, value, &lengths),

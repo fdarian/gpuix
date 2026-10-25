@@ -219,7 +219,7 @@ pub(crate) fn split_dimension(token: &str) -> Option<(f64, String)> {
 /// The dimension at the start of `text`: its number, its unit as written and
 /// the bytes it covers. A number that overflows `f64` is infinite, which the
 /// callers clamp.
-fn scan_dimension(text: &str) -> Option<(f64, &str, usize)> {
+pub(super) fn scan_dimension(text: &str) -> Option<(f64, &str, usize)> {
     let bytes = text.as_bytes();
     let digits = |from: usize| bytes[from..].iter().take_while(|byte| byte.is_ascii_digit()).count();
     let mut end = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));

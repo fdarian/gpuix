@@ -11,7 +11,8 @@ export function styleOf(css: string): Record<string, string | number> {
   const style: Record<string, string | number> = {}
   for (const declaration of css.split(";").filter(Boolean)) {
     const [name, value] = declaration.split(":")
-    const property = name!.trim().replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+    const trimmed = name!.trim()
+    const property = trimmed.startsWith("--") ? trimmed : trimmed.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
     style[property] = NUMBERS.has(property) ? Number(value) : value!.trim()
   }
   return style

@@ -9,9 +9,11 @@ use gpui::{ElementTransform, TransformFunction, TransformLength};
 
 use super::length::LinearLength;
 
+use super::angle::parse_degrees;
 use super::cache::{Cache, Inputs};
+use super::custom_properties::{self, CustomProperties};
 use super::dimension::{
-    parse_length, parse_length_percentage, parse_number, parse_number_or_percentage, split_dimension, LengthPercentage,
+    parse_length, parse_length_percentage, parse_number, parse_number_or_percentage, LengthPercentage,
 };
 use super::length::LengthContext;
 use super::syntax::{function_args, split_commas, split_whitespace};
@@ -78,6 +80,60 @@ pub(crate) fn parse_origin(value: &str, lengths: &LengthContext) -> Option<Origi
     ORIGIN.with(|cache| {
         cache.get_or_parse(value, Inputs { colors: None, lengths }, || parse_origin_uncached(value, lengths))
     })
+}
+
+/// `style` with the `var()` in its transform properties replaced by what the element's computed
+/// custom properties say, so that the parsers and the readers of the transform (stacking, the
+/// containing block, painting) all see the same text. `None` when no such property has a `var()`.
+///
+/// A declaration whose `var()` cannot be resolved is invalid at computed-value time, which makes it
+/// the property's initial value: `none`, and `50% 50%` for the origin.
+///
+/// The focus styles are laid over the element when it is built, so they are substituted too. The
+/// pointer states are folded into the style before this runs.
+pub(crate) fn resolve_vars(style: &StyleDesc, custom: &CustomProperties) -> Option<StyleDesc> {
+    if !reads_vars(style) {
+        return None;
+    }
+    let mut resolved = style.clone();
+    resolve_vars_in(&mut resolved, custom);
+    Some(resolved)
+}
+
+fn own_texts(style: &mut StyleDesc) -> [(&mut Option<String>, &'static str); 5] {
+    [
+        (&mut style.transform, "none"),
+        (&mut style.translate, "none"),
+        (&mut style.rotate, "none"),
+        (&mut style.scale, "none"),
+        (&mut style.transform_origin, DEFAULT_ORIGIN_TEXT),
+    ]
+}
+
+const DEFAULT_ORIGIN_TEXT: &str = "50% 50%";
+
+/// Whether a transform property of the style has a `var()` in it, which its value depends on the
+/// custom properties for.
+pub(crate) fn reads_vars(style: &StyleDesc) -> bool {
+    [&style.transform, &style.translate, &style.rotate, &style.scale, &style.transform_origin]
+        .into_iter()
+        .any(|text| text.as_deref().is_some_and(custom_properties::has_var))
+        || [&style.focus_visible, &style.focus_within].into_iter().flatten().any(|state| reads_vars(state))
+}
+
+fn resolve_vars_in(style: &mut StyleDesc, custom: &CustomProperties) {
+    for (slot, initial) in own_texts(style) {
+        let Some(text) = slot.as_deref().filter(|text| custom_properties::has_var(text)) else {
+            continue;
+        };
+        *slot = Some(match custom_properties::substitute(text, custom) {
+            Some(substituted) => substituted.trim().to_owned(),
+            None => initial.to_owned(),
+        });
+    }
+    for state in [&mut style.focus_visible, &mut style.focus_within].into_iter().flatten() {
+        resolve_vars_in(state, custom);
+    }
 }
 
 /// The five properties of a style, each `None` where it is unset or invalid.
@@ -358,20 +414,6 @@ fn finite_number(token: &str) -> Option<f64> {
 /// An angle in radians. A unitless number is only valid for zero.
 fn parse_angle(token: &str) -> Option<f32> {
     parse_degrees(token).map(|degrees| degrees.to_radians() as f32)
-}
-
-/// An angle in degrees. A unitless number is only valid for zero.
-pub(crate) fn parse_degrees(token: &str) -> Option<f64> {
-    let (value, unit) = split_dimension(token.trim())?;
-    let degrees = match unit.as_str() {
-        "deg" => value,
-        "grad" => value * 0.9,
-        "rad" => value.to_degrees(),
-        "turn" => value * 360.0,
-        "" if value == 0.0 => 0.0,
-        _ => return None,
-    };
-    degrees.is_finite().then_some(degrees)
 }
 
 /// `none | <length-percentage> [<length-percentage> <length>?]?`. The length along z does nothing,
@@ -1020,6 +1062,98 @@ mod tests {
             transform.functions,
             [TransformFunction::Rotate(std::f32::consts::FRAC_PI_2), TransformFunction::Scale(1.5, 1.5)]
         );
+    }
+
+    fn custom(entries: &[(&str, &str)]) -> CustomProperties {
+        CustomProperties::declared(entries.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())))
+            .unwrap_or_default()
+    }
+
+    fn resolved(json: &str, custom: &CustomProperties) -> Option<ElementTransform> {
+        let style = style(json);
+        of(resolve_vars(&style, custom).as_ref().unwrap_or(&style), &lengths())
+    }
+
+    #[test]
+    fn a_calc_product_with_a_percentage_is_a_fraction_of_the_box() {
+        assert_eq!(
+            list("translateX(calc((0.5 - 1) * (100% - 6px)))"),
+            [TransformFunction::Translate(
+                TransformLength { px: 3.0, fraction: -0.5 },
+                TransformLength::default()
+            )]
+        );
+        assert_eq!(
+            list("translate(calc(-100% * 0.4), calc(2 * (10px + 5%)))"),
+            [TransformFunction::Translate(
+                TransformLength { px: 0.0, fraction: -0.4 },
+                TransformLength { px: 20.0, fraction: 0.1 }
+            )]
+        );
+    }
+
+    #[test]
+    fn calc_in_angles_sums_angles_and_scales_them_by_numbers() {
+        let quarter = std::f32::consts::FRAC_PI_2;
+        let angle = |value: &str| match list(value)[0] {
+            TransformFunction::Rotate(angle) | TransformFunction::SkewX(angle) | TransformFunction::SkewY(angle) => angle,
+            ref other => panic!("{other:?}"),
+        };
+        assert!((angle("rotate(calc(45deg + 0.125turn))") - quarter).abs() < 1e-5);
+        assert!((angle("rotate(calc(180deg * 0.5))") - quarter).abs() < 1e-5);
+        assert!((angle("skewX(calc(1turn / 4))") - quarter).abs() < 1e-5);
+        assert!((angle("skewY(calc((1 - 0.5) * 180deg))") - quarter).abs() < 1e-5);
+        assert!(parse_transform("rotate(calc(90))", &lengths()).is_none());
+        assert!(parse_transform("rotate(calc(1px * 2))", &lengths()).is_none());
+        let property = of(&style(r#"{"rotate":"calc(90deg * 2)"}"#), &lengths()).unwrap();
+        assert_eq!(property.functions, [TransformFunction::Rotate(std::f32::consts::PI)]);
+    }
+
+    #[test]
+    fn var_in_the_transform_properties_is_the_elements_computed_custom_property() {
+        let custom = custom(&[("--p", "0.4"), ("--turn", "0.25turn"), ("--origin", "left top")]);
+        let transform = resolved(
+            r#"{"transform":"translateX(calc(100% * var(--p)))","rotate":"var(--turn)","translate":"var(--gap, 8px) 0","transformOrigin":"var(--origin)"}"#,
+            &custom,
+        )
+        .unwrap();
+        assert_eq!(
+            transform.functions,
+            [
+                TransformFunction::Translate(px(8.0), TransformLength::default()),
+                TransformFunction::Rotate(std::f32::consts::FRAC_PI_2),
+                TransformFunction::Translate(fraction(0.4), TransformLength::default()),
+            ]
+        );
+        assert_eq!(transform.origin, (px(0.0), px(0.0)));
+    }
+
+    #[test]
+    fn an_unresolvable_var_makes_the_property_none_not_ignored() {
+        let custom = custom(&[("--loop", "var(--loop)")]);
+        for text in ["translateX(var(--missing))", "translateX(var(--loop))", "translateX(var(--missing, var(--loop)))"] {
+            let json = format!(r#"{{"transform":"{text}","scale":2}}"#);
+            let transform = resolved(&json, &custom).unwrap();
+            assert_eq!(transform.functions, [TransformFunction::Scale(2.0, 2.0)], "{text}");
+        }
+        let transform = resolved(r#"{"transform":"translateX(var(--missing))"}"#, &custom).unwrap();
+        assert_eq!(transform.functions, [], "none, which a base transform does not survive");
+        let invalid = resolved(r#"{"rotate":"var(--missing)"}"#, &custom).unwrap();
+        assert_eq!(invalid.functions, []);
+        assert!(!is_active(&resolve_vars(&style(r#"{"transform":"translateX(var(--missing))"}"#), &custom).unwrap(), &lengths()));
+    }
+
+    #[test]
+    fn a_style_without_var_is_left_alone() {
+        assert!(resolve_vars(&style(r#"{"transform":"translateX(10px)"}"#), &custom(&[("--p", "1")])).is_none());
+    }
+
+    #[test]
+    fn the_focus_styles_are_substituted_too() {
+        let custom = custom(&[("--s", "2")]);
+        let style = style(r#"{"focusVisible":{"scale":"var(--s)"}}"#);
+        let resolved = resolve_vars(&style, &custom).unwrap();
+        assert_eq!(resolved.focus_visible.as_ref().unwrap().scale.as_deref(), Some("2"));
     }
 
     #[test]

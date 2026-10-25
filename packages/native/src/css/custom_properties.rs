@@ -5,9 +5,10 @@
 //! two values are equal when their text is, which is how `style(--x: v)` compares them in a browser.
 //!
 //! They inherit. [`CustomProperties::descend`] lays an element's declarations over its parent's
-//! computed map. Nothing reads them except `style()` container queries: `var()` is not substituted
-//! into other properties.
+//! computed map. Two things read them: `style()` container queries, and [`substitute`], which puts
+//! them into the text of the transform properties. No other property substitutes `var()`.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -56,6 +57,90 @@ pub(crate) fn is_initial(value: &str) -> bool {
 
 fn is_inherit(value: &str) -> bool {
     ["inherit", "unset"].iter().any(|keyword| value.eq_ignore_ascii_case(keyword))
+}
+
+/// Whether `text` has a `var()` in it.
+pub(crate) fn has_var(text: &str) -> bool {
+    find_var(text).is_some()
+}
+
+/// The byte index of the next `var(`, as a function and not the end of another name.
+fn find_var(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let is_ident = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-' || !byte.is_ascii();
+    (0..bytes.len().saturating_sub(3)).find(|&at| {
+        bytes[at..at + 4].eq_ignore_ascii_case(b"var(") && (at == 0 || !is_ident(bytes[at - 1]))
+    })
+}
+
+/// `text` with each `var(--name)` and `var(--name, fallback)` replaced by the value `custom`
+/// computes for the name, or by the fallback (which may hold `var()` itself) when it computes to
+/// none. `None` when one cannot be resolved: a name that is missing without a fallback, a custom
+/// property that refers to itself, or a malformed call. CSS makes the declaration invalid at
+/// computed-value time then.
+///
+/// A custom property whose own value holds `var()` is expanded against `custom` as well, which
+/// is the map of the element reading it: a descendant that overrides a name the ancestor's value
+/// refers to changes what the ancestor's value means here, where CSS computes it at the ancestor.
+pub(crate) fn substitute<'a>(text: &'a str, custom: &CustomProperties) -> Option<Cow<'a, str>> {
+    if !has_var(text) {
+        return Some(Cow::Borrowed(text));
+    }
+    expand(text, custom, &mut Vec::new()).map(Cow::Owned)
+}
+
+fn expand(text: &str, custom: &CustomProperties, active: &mut Vec<String>) -> Option<String> {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = find_var(rest) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 4..];
+        let close = closing_paren(after)?;
+        let arguments = &after[..close];
+        let (name, fallback) = match arguments.find(',') {
+            Some(comma) => (arguments[..comma].trim(), Some(arguments[comma + 1..].trim())),
+            None => (arguments.trim(), None),
+        };
+        if !is_name(name) {
+            return None;
+        }
+        let value = custom.get(name).filter(|_| !active.iter().any(|open| open == name)).and_then(|value| {
+            active.push(name.to_owned());
+            let expanded = expand(value, custom, active);
+            active.pop();
+            expanded
+        });
+        let replacement = match (value, fallback) {
+            (Some(value), _) => value,
+            (None, Some(fallback)) => expand(fallback, custom, active)?,
+            (None, None) => return None,
+        };
+        // Spaces keep what the call stood for apart from the tokens around it, as tokens are.
+        out.push(' ');
+        out.push_str(&replacement);
+        out.push(' ');
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+/// The index of the `)` that closes a call whose `(` was just before `text`.
+fn closing_paren(text: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    for (index, character) in text.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 impl CustomProperties {
@@ -187,5 +272,48 @@ mod tests {
         assert_eq!((layered.get("--a"), layered.get("--b"), layered.get("--c")), (Some("1"), Some("initial"), Some("3")));
         assert_eq!(CustomProperties::layered(None, None), None);
         assert_eq!(CustomProperties::layered(Some(&base), None), Some(base));
+    }
+
+    #[test]
+    fn var_is_replaced_by_the_computed_value_or_its_fallback() {
+        let custom = declared(&[("--p", "0.4"), ("--len", "calc(1px + 2px)"), ("--twice", "calc(var(--p) * 2)")]);
+        let sub = |text: &str| substitute(text, &custom).map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "));
+        assert_eq!(sub("translateX(calc(100% * var(--p)))").as_deref(), Some("translateX(calc(100% * 0.4 ))"));
+        assert_eq!(sub("none").as_deref(), Some("none"));
+        assert_eq!(sub("translate(var(--len), 0)").as_deref(), Some("translate( calc(1px + 2px) , 0)"));
+        assert_eq!(sub("a var(--missing, 7px)").as_deref(), Some("a 7px"));
+        assert_eq!(sub("a var(--missing,)").as_deref(), Some("a"));
+        assert_eq!(sub("a var(--p, 7px)").as_deref(), Some("a 0.4"));
+        assert_eq!(sub("a var(--missing, var(--p))").as_deref(), Some("a 0.4"));
+        assert_eq!(sub("a var(--missing, var(--nope, 3px))").as_deref(), Some("a 3px"));
+        assert_eq!(sub("a VAR( --p )").as_deref(), Some("a 0.4"));
+        assert_eq!(sub("calc(var(--twice) + 1)").as_deref(), Some("calc( calc( 0.4 * 2) + 1)"));
+        assert_eq!(sub("a var(--p) b var(--len)").as_deref(), Some("a 0.4 b calc(1px + 2px)"));
+    }
+
+    #[test]
+    fn an_unresolvable_var_makes_the_whole_text_invalid() {
+        let custom = declared(&[("--a", "var(--b)"), ("--b", "var(--a)"), ("--self", "var(--self)"), ("--ok", "1")]);
+        for text in [
+            "var(--missing)",
+            "1 var(--ok) var(--missing)",
+            "var(--a)",
+            "var(--self)",
+            "var(--ok",
+            "var(ok)",
+            "var()",
+            "var(--missing, var(--also-missing))",
+        ] {
+            assert_eq!(substitute(text, &custom), None, "{text}");
+        }
+        assert_eq!(substitute("var(--self, 5px)", &custom).as_deref().map(str::trim), Some("5px"), "a cycle falls back");
+    }
+
+    #[test]
+    fn only_a_var_function_is_found() {
+        assert!(has_var("calc(var(--a))"));
+        assert!(!has_var("myvar(--a)"));
+        assert!(!has_var("translateX(10px)"));
+        assert!(!has_var("var"));
     }
 }

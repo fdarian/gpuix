@@ -106,7 +106,7 @@ fn deserialize_angle<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Optio
     Option::<NumberOrText>::deserialize(deserializer)?
         .map(|value| match value {
             NumberOrText::Number(degrees) => Ok(degrees),
-            NumberOrText::Text(text) => crate::css::transform::parse_degrees(&text)
+            NumberOrText::Text(text) => crate::css::angle::parse_degrees(&text)
                 .ok_or_else(|| serde::de::Error::custom(format!("invalid angle \"{text}\": expected a number of degrees or a CSS angle"))),
         })
         .transpose()
@@ -1287,9 +1287,11 @@ impl StyleDesc {
         painted.scrollbar_color = other.scrollbar_color.clone();
         painted.selection_color = other.selection_color.clone();
         // Having a transform makes the element a containing block, which layout reads: only the
-        // values of one that stays on or off are paint.
+        // values of one that stays on or off are paint. Whether a text with a `var()` is a
+        // transform is not known until the custom properties substitute it.
         let has_transform = |style: &Self| crate::css::transform::is_active(style, &LengthContext::initial(0.0, 0.0));
-        if has_transform(self) == has_transform(other) {
+        let reads_vars = crate::css::transform::reads_vars(self) || crate::css::transform::reads_vars(other);
+        if !reads_vars && has_transform(self) == has_transform(other) {
             painted.transform = other.transform.clone();
             painted.translate = other.translate.clone();
             painted.rotate = other.rotate.clone();
@@ -1325,6 +1327,21 @@ impl StyleDesc {
                 != (&other.x, &other.y, &other.translate_x, &other.translate_y, &other.origin_x, &other.origin_y)
             || (&self.motion_scale, &self.scale_x, &self.scale_y, &self.motion_rotate, &self.rotate_z, &self.skew, &self.skew_x, &self.skew_y)
                 != (&other.motion_scale, &other.scale_x, &other.scale_y, &other.motion_rotate, &other.rotate_z, &other.skew, &other.skew_x, &other.skew_y)
+            || self.motion_transform != other.motion_transform
+    }
+
+    /// [`Self::differs_only_in_paint`] that also lets the custom properties differ. They are read
+    /// by the transform properties (`var()`), which paint, and by `style()` container queries, which
+    /// lay out: the caller says the tree has no `@container` rule. A transform that reads one and
+    /// turns on or off with it (`transform: var(--t)`) moves a containing block, which the next frame
+    /// lays out but a read of bounds before it does not see.
+    pub(crate) fn differs_only_in_paint_or_custom_properties(&self, other: &Self) -> bool {
+        if self.custom_properties == other.custom_properties {
+            return self.differs_only_in_paint(other);
+        }
+        let mut same = self.clone();
+        same.custom_properties = other.custom_properties.clone();
+        same.differs_only_in_paint(other)
     }
 
     /// Whether the style depends on the size of a query container: it has `@container` blocks
@@ -1765,11 +1782,29 @@ mod tests {
             ("skewY", "1", "2"),
             ("originX", "1", "2"),
             ("originY", "1", "2"),
+            ("motionTransform", r#""scale(2)""#, r#""scale(3)""#),
         ] {
             assert!(touches(&format!(r#"{{"{key}":{from}}}"#), &format!(r#"{{"{key}":{to}}}"#)), "{key}");
             assert!(!touches(&format!(r#"{{"{key}":{from},"opacity":1}}"#), &format!(r#"{{"{key}":{from},"opacity":0.5}}"#)), "{key}");
         }
         assert!(!touches(r#"{"opacity":1,"width":3}"#, r#"{"opacity":0.5,"width":4}"#));
+    }
+
+    #[test]
+    fn a_custom_property_alone_is_paint_for_the_transform_properties_that_read_it() {
+        let paint = |from: &str, to: &str| style(from).differs_only_in_paint_or_custom_properties(&style(to));
+        assert!(paint(r#"{"--p":0.2,"opacity":1}"#, r#"{"--p":0.4,"opacity":0.5}"#));
+        assert!(paint(r#"{"--p":0.2}"#, r#"{"--p":"0.4","--q":1}"#));
+        assert!(paint(r#"{"--p":0.2}"#, "{}"));
+        assert!(!style(r#"{"--p":0.2}"#).differs_only_in_paint(&style(r#"{"--p":0.4}"#)), "whole, unless the caller says");
+        assert!(!paint(r#"{"--p":0.2,"width":1}"#, r#"{"--p":0.4,"width":2}"#));
+        // The text of a transform that reads a `var()` may turn it on or off.
+        let var = r#"{"transform":"translateX(var(--a))"}"#;
+        assert!(!paint(var, r#"{"transform":"scale(2)"}"#));
+        assert!(!paint(r#"{"transform":"scale(2)"}"#, var));
+        assert!(paint(r#"{"--a":"1px","transform":"translateX(var(--a))"}"#, r#"{"--a":"2px","transform":"translateX(var(--a))"}"#));
+        // A state style's custom properties are compared whole.
+        assert!(!paint(r#"{"hover":{"--p":1}}"#, r#"{"hover":{"--p":2}}"#));
     }
 
     #[test]

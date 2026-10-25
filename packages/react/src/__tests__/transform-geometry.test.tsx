@@ -6,6 +6,9 @@
 ///   and the ones around it, exact (0.06 px), whatever the origin, the units, the nesting or the scroll of a scroller
 ///   around it. The sizes `clientWidth`, `clientHeight`, `scrollWidth` and `scrollHeight` are the ones of the box
 ///   before it is transformed.
+/// - `var()` of the custom properties an element computes to, `calc()` products of lengths and percentages, and `calc()`
+///   sums of angles are substituted into the transform properties as Chrome does (scene `var`): a `var()` that cannot be
+///   resolved makes the property `none`, and `var(--k)px` is not `2px`.
 /// - The element at a point is the one whose transformed box holds it: `elementFromPoint` against `getElementsAt` and the
 ///   target of a pointer move, point for point.
 /// - `offsetX` and `offsetY` of a click are measured in the target's own space, from its padding edge.
@@ -126,6 +129,7 @@ describeNative("getBoundingClientRect through a transform follows Chrome", () =>
     "percent",
     "nested",
     "individual",
+    "var",
     "scrolled",
     "flow",
   ]) {

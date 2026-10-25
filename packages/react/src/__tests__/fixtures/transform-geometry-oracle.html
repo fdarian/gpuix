@@ -132,6 +132,33 @@ scenes["individual"] = {
     abs("i3", 400, 60, 80, 40, "rotate:30deg;transform-origin:0 0"),
 };
 
+// var() and calc() in the transform properties. The custom properties are set on an ancestor (`--p`, the carousel's
+// progress), on the element itself, and one overrides what the ancestor gives its own children.
+scenes["var"] = {
+  html:
+    abs(
+      "vp", 20, 20, 400, 100, "overflow:hidden;--p:0.4;--gap:12.5px;--turn:0.1turn;--twice:calc(var(--p) * 2)",
+      abs("track", 0, 0, 300, 60, "transform:translateX(calc(-100% * var(--p)))") +
+        abs("tw", 0, 70, 120, 20, "transform:translateX(calc(100% * var(--twice)))")
+    ) +
+    abs("c1", 100, 150, 80, 40, "transform:translateX(calc((0.5 - 1) * (100% - 6px)))") +
+    abs("c2", 250, 150, 80, 40, "translate:calc(-100% * 0.25) calc(2 * (10px + 50%))") +
+    abs("c3", 400, 150, 80, 40, "transform:translate(var(--nope, 12px), 3px)") +
+    abs("c4", 550, 150, 80, 40, "transform:translate(var(--nope, var(--also-nope, 7px)))") +
+    abs("a1", 100, 250, 80, 40, "transform:rotate(calc(45deg + 0.1turn))") +
+    abs("a2", 250, 250, 80, 40, "transform:rotate(calc((1 - 0.5) * 90deg))") +
+    abs("a3", 400, 250, 80, 40, "transform:skewX(calc(1turn / 12))") +
+    abs("a4", 550, 250, 80, 40, "rotate:calc(30deg * 2)") +
+    abs("a5", 100, 350, 80, 40, "transform:skew(calc(10deg + 5deg), calc(100grad / 10))") +
+    abs("m1", 250, 350, 80, 40, "transform:translateX(var(--missing))") +
+    abs("m2", 400, 350, 80, 40, "transform:translateX(var(--missing)) rotate(10deg)") +
+    abs("m3", 550, 350, 80, 40, "transform:rotate(30deg);rotate:var(--missing)") +
+    abs("o1", 100, 450, 80, 40, "transform:rotate(25deg);transform-origin:var(--o);--o:0 0") +
+    abs("o2", 250, 450, 80, 40, "--s:1.5;--t:calc(var(--s) * 2);transform:scale(var(--t)) rotate(var(--r, 10deg))") +
+    abs("o3", 400, 450, 80, 40, "--k:2;translate:var(--k)px 4px") +
+    abs("o4", 550, 450, 80, 40, "--n:-20px;transform:translateX( var(--n) )"),
+};
+
 scenes["scrolled"] = {
   html:
     abs(

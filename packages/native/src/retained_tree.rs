@@ -1105,6 +1105,9 @@ impl RetainedTree {
             return StyleChange::default();
         }
         let paints_only = match (element.style.as_deref(), style.as_deref()) {
+            (Some(old), Some(new)) if self.container_rule_count == 0 => {
+                old.differs_only_in_paint_or_custom_properties(new)
+            }
             (Some(old), Some(new)) => old.differs_only_in_paint(new),
             _ => false,
         };

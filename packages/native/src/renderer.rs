@@ -10438,6 +10438,9 @@ fn build_element_unpumped(
     // elements see the same cascade.
     let descended = ctx.inherited.clone().descend(style, element.has_inert_prop());
     let parent_inherited = std::mem::replace(&mut ctx.inherited, descended);
+    // The transform properties read the custom properties the element computes to, its own included.
+    let var_style = style.and_then(|style| crate::css::transform::resolve_vars(style, &ctx.inherited.custom));
+    let style = var_style.as_ref().or(style);
     crate::layout::table::enter(&mut ctx.inherited.table_row, &mut ctx.inherited.table_cell, element);
     // The start of a logical inline pair is the right side in an rtl element.
     let rtl_style = style
@@ -14117,7 +14120,6 @@ mod batch_tests {
             r#"{"height":10,"borderRadius":4}"#,
             r#"{"height":10,"position":"absolute"}"#,
             r##"{"height":10,"hover":{"backgroundColor":"#222222"}}"##,
-            r##"{"height":10,"--tone":"#222222"}"##,
             r##"{"height":10,"backgroundColor":"#222222","width":5}"##,
         ];
         for change in changes {
@@ -14130,6 +14132,33 @@ mod batch_tests {
                 "{change}"
             );
         }
+    }
+
+    #[test]
+    fn a_custom_property_alone_is_paint_until_a_container_rule_could_read_it() {
+        let mut tree = RetainedTree::new();
+        apply(&mut tree, MOUNT).expect("valid batch");
+        tree.take_dirty();
+        assert_eq!(dirty_after(&mut tree, r##"[["setStyle",3,{"height":10,"--tone":"#222222"}]]"##), Dirty::Paint, "added");
+        assert_eq!(dirty_after(&mut tree, r##"[["setStyle",3,{"height":10,"--tone":"#333333"}]]"##), Dirty::Paint, "changed");
+        assert_eq!(dirty_after(&mut tree, r##"[["setStyle",3,{"height":10}]]"##), Dirty::Paint, "removed");
+        assert_eq!(
+            dirty_after(&mut tree, r##"[["setStyle",3,{"height":10,"--tone":"#333333","width":5}]]"##),
+            Dirty::Layout,
+            "beside a layout key"
+        );
+        apply(
+            &mut tree,
+            r##"[["createElement",4,"div"],["appendChild",1,4],
+                ["setStyle",4,{"@container":{"style(--tone: #222222)":{"width":300}}}]]"##,
+        )
+        .expect("valid batch");
+        tree.take_dirty();
+        assert_eq!(
+            dirty_after(&mut tree, r##"[["setStyle",3,{"height":10,"--tone":"#222222"}]]"##),
+            Dirty::Layout,
+            "a style() query somewhere in the tree"
+        );
     }
 
     #[test]

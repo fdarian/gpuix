@@ -1456,7 +1456,7 @@ impl AnimProp {
                 self.resolve_length(&length, lengths)?
             }
             Kind::Angle => AnimValue::Number(match value {
-                Value::String(text) => crate::css::transform::parse_degrees(text)
+                Value::String(text) => crate::css::angle::parse_degrees(text)
                     .ok_or_else(|| format!("motion {name} must be a number of degrees or a CSS angle"))
                     .and_then(|degrees| check_finite(name, degrees))?,
                 value => parse_number(name, value)?,
