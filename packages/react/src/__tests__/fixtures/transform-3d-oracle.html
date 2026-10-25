@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>transform 3d oracle</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body>
+<script>
+// What CSS Transforms 2 does to geometry, scene by scene (the page of transform-geometry-oracle.html for the third
+// dimension). A scene is the markup of `#case` (an absolute 800x600 box at the window origin), measured in turn and
+// removed. Results go to <body data-oracle> as {scene: {...}}; transform-3d-oracle.sh extracts them. For every element
+// with an `id`:
+//   boxes[id] = getBoundingClientRect() as [x, y, width, height]
+// and for a scene with `points`, `from["x,y"]` is the id of document.elementFromPoint(x, y), and for `clicks`,
+// `offsets["x,y"]` is [id, offsetX, offsetY] of a click dispatched on that element at that point.
+
+const abs = (id, l, t, w, h, css = "", inner = "") =>
+  `<div id="${id}" style="position:absolute;left:${l}px;top:${t}px;width:${w}px;height:${h}px;${css}">${inner}</div>`;
+
+const grid = (x0, y0, x1, y1, step, dx = 0, dy = 0) => {
+  const out = [];
+  for (let y = y0 + dy; y < y1; y += step) for (let x = x0 + dx; x < x1; x += step) out.push([x, y]);
+  return out;
+};
+
+const scenes = {};
+
+// A parent with a perspective and a child turned about y under it; the viewer looks at the middle, a corner, an edge, a point.
+{
+  const origins = [
+    "", // 50% 50%
+    "perspective-origin:0 0",
+    "perspective-origin:100% 50%",
+    "perspective-origin:20px 80px",
+    "perspective-origin:left bottom",
+    "perspective-origin:-50px 50%",
+  ];
+  const cell = (i, perspective, child, extra = "") =>
+    abs(`P${i}`, 20 + (i % 4) * 195, 20 + Math.floor(i / 4) * 190, 170, 150, `perspective:${perspective};${extra}`, abs(`c${i}`, 25, 20, 120, 100, child));
+  scenes["persp-rotatey"] = {
+    html: [
+      cell(0, "400px", "transform:rotateY(60deg)"),
+      cell(1, "400px", "transform:rotateY(60deg)", origins[1]),
+      cell(2, "400px", "transform:rotateY(60deg)", origins[2]),
+      cell(3, "400px", "transform:rotateY(60deg)", origins[3]),
+      cell(4, "400px", "transform:rotateY(60deg)", origins[4]),
+      cell(5, "400px", "transform:rotateY(60deg)", origins[5]),
+      cell(6, "150px", "transform:rotateY(60deg)"),
+      cell(7, "1000px", "transform:rotateY(-35deg)"),
+    ].join(""),
+  };
+  scenes["persp-rotatex"] = {
+    html: [
+      cell(0, "400px", "transform:rotateX(45deg)"),
+      cell(1, "400px", "transform:rotateX(-70deg)"),
+      cell(2, "400px", "transform:rotateX(60deg) rotateY(30deg)"),
+      cell(3, "300px", "transform:rotate3d(1, 1, 0, 50deg)"),
+      cell(4, "400px", "transform:rotateX(60deg);transform-origin:50% 0"),
+      cell(5, "400px", "transform:rotateY(60deg);transform-origin:0 50%"),
+      cell(6, "400px", "transform:rotateY(70deg) rotate(20deg)"),
+      cell(7, "400px", "transform:rotate(20deg) rotateY(70deg)"),
+    ].join(""),
+  };
+  scenes["persp-translatez"] = {
+    html: [
+      cell(0, "400px", "transform:translateZ(100px)"),
+      cell(1, "400px", "transform:translateZ(-100px)"),
+      cell(2, "400px", "transform:translate3d(20px, 10px, 50px)"),
+      cell(3, "400px", "transform:translateZ(100px) rotateY(40deg)"),
+      cell(4, "400px", "transform:rotateY(40deg) translateZ(100px)"),
+      cell(5, "400px", "transform:scale3d(1.2, 0.8, 3) translateZ(30px)"),
+      cell(6, "400px", "transform:scaleZ(2) translateZ(60px)"),
+      cell(7, "200px", "transform:translateZ(150px)"),
+    ].join(""),
+  };
+}
+
+// perspective() in the list, with no perspective on the parent.
+scenes["perspective-function"] = {
+  html:
+    abs("f0", 40, 40, 120, 100, "transform:perspective(300px) rotateY(50deg)") +
+    abs("f1", 230, 40, 120, 100, "transform:translateX(30px) perspective(200px) rotateY(40deg)") +
+    abs("f2", 420, 40, 120, 100, "transform:rotateY(40deg) perspective(200px)") +
+    abs("f3", 40, 200, 120, 100, "transform:perspective(none) rotateY(40deg)") +
+    abs("f4", 230, 200, 120, 100, "transform:perspective(500px) translateZ(100px)") +
+    abs("f5", 420, 200, 120, 100, "transform:perspective(1px) translateZ(0.5px)") +
+    abs("f6", 40, 360, 120, 100, "transform:perspective(100px) rotateX(30deg);transform-origin:0 0") +
+    abs("f7", 230, 360, 120, 100, "transform:perspective(250px) rotate3d(0, 1, 0.5, 45deg)") +
+    abs("f8", 420, 360, 120, 100, "transform:perspective(0px) translateZ(0.25px)"),
+};
+
+// A parent perspective and the perspective() function in the child's list.
+scenes["perspective-both"] = {
+  html:
+    abs("Pa", 40, 40, 200, 150, "perspective:400px", abs("a", 40, 25, 120, 100, "transform:perspective(300px) rotateY(50deg)")) +
+    abs("Pb", 300, 40, 200, 150, "perspective:200px", abs("b", 40, 25, 120, 100, "transform:rotateY(50deg)", abs("bb", 20, 20, 40, 40, "transform:rotateX(40deg)"))) +
+    abs("Pc", 40, 260, 200, 150, "perspective:0", abs("c", 40, 25, 120, 100, "transform:translateZ(0.5px)")),
+};
+
+// matrix3d().
+scenes["matrix3d"] = {
+  html:
+    abs("m0", 60, 50, 120, 100, "transform:matrix3d(0.5,0,-0.866,0, 0,1,0,0, 0.866,0,0.5,0, 0,0,0,1)") +
+    abs("m1", 250, 50, 120, 100, "transform:matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,-0.002, 0,0,0,1) translateZ(100px)") +
+    abs("m2", 440, 50, 120, 100, "transform:matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 20,30,40,1)") +
+    abs("m3", 60, 220, 120, 100, "transform:matrix3d(1,0,0,0.001, 0,1,0,0, 0,0,1,0, 0,0,0,1)") +
+    abs("Pm", 250, 220, 200, 150, "perspective:400px", abs("m4", 40, 25, 120, 100, "transform:matrix3d(0.7,0,-0.7,0, 0,1,0,0, 0.7,0,0.7,0, 10,0,0,1)")) +
+    abs("m5", 500, 220, 120, 100, "transform:matrix3d(1,0,0,0, 0,0.5,0.866,0, 0,-0.866,0.5,0, 0,0,0,1)") +
+    abs("m6", 60, 400, 120, 100, "transform:matrix3d(2,0,0,0, 0,2,0,0, 0,0,2,0, 0,0,0,1)"),
+};
+
+// preserve-3d nesting, and the same nesting flat.
+{
+  const nest = (id, x, y, parent, a, b) =>
+    abs(`${id}P`, x, y, 220, 170, "perspective:600px;" + parent,
+      abs(`${id}A`, 40, 25, 140, 110, a, abs(`${id}B`, 15, 15, 80, 60, b)));
+  scenes["preserve-3d"] = {
+    html: [
+      nest("p0", 20, 20, "", "transform-style:preserve-3d;transform:rotateY(30deg)", "transform:rotateY(30deg)"),
+      nest("p1", 280, 20, "", "transform:rotateY(30deg)", "transform:rotateY(30deg)"),
+      nest("p2", 540, 20, "", "transform-style:preserve-3d;transform:rotateY(30deg)", "transform:translateZ(80px)"),
+      nest("p3", 20, 220, "", "transform:rotateY(30deg)", "transform:translateZ(80px)"),
+      nest("p4", 280, 220, "", "transform-style:preserve-3d;transform:rotateY(60deg)", "transform:rotateY(60deg)"),
+      nest("p5", 540, 220, "", "transform-style:preserve-3d;transform:rotateX(40deg)", "transform:rotateY(50deg)"),
+      nest("p6", 20, 420, "", "transform-style:preserve-3d", "transform:rotateY(40deg)"),
+      nest("p7", 280, 420, "", "transform-style:preserve-3d;transform:translateZ(60px) rotateY(20deg)", "transform:translateZ(60px) rotateY(20deg)"),
+    ].join(""),
+  };
+  // Three levels.
+  scenes["preserve-3d-deep"] = {
+    html:
+      abs("DP", 60, 40, 300, 250, "perspective:700px",
+        abs("DA", 40, 30, 200, 160, "transform-style:preserve-3d;transform:rotateY(25deg)",
+          abs("DB", 20, 20, 140, 110, "transform-style:preserve-3d;transform:rotateX(20deg) translateZ(40px)",
+            abs("DC", 15, 15, 80, 60, "transform:rotateY(-35deg)")))) +
+      abs("EP", 420, 40, 300, 250, "perspective:700px",
+        abs("EA", 40, 30, 200, 160, "transform-style:preserve-3d;transform:rotateY(25deg)",
+          abs("EB", 20, 20, 140, 110, "transform:rotateX(20deg) translateZ(40px)",
+            abs("EC", 15, 15, 80, 60, "transform:rotateY(-35deg)")))),
+  };
+}
+
+// A grouping property makes the used transform-style flat: the same nesting as preserve-3d `p0`.
+{
+  const grouped = (id, x, y, css) =>
+    abs(`${id}P`, x, y, 220, 170, "perspective:600px",
+      abs(`${id}A`, 40, 25, 140, 110, "transform-style:preserve-3d;transform:rotateY(30deg);" + css,
+        abs(`${id}B`, 15, 15, 80, 60, "transform:rotateY(30deg)")));
+  const cases = [
+    ["g0", ""],
+    ["g1", "overflow:hidden"],
+    ["g2", "opacity:0.5"],
+    ["g3", "overflow:clip"],
+    ["g4", "filter:brightness(1.1)"],
+    ["g5", "clip-path:inset(0)"],
+    ["g6", "overflow-x:hidden"],
+    ["g7", "backdrop-filter:blur(1px)"],
+    ["g8", "opacity:1"],
+    ["g9", "mask-image:linear-gradient(black, black)"],
+    ["g10", "isolation:isolate"],
+    ["g11", "mix-blend-mode:multiply"],
+    ["g12", "contain:paint"],
+    ["g13", "will-change:opacity"],
+    ["g14", "overflow:auto"],
+    ["g15", "overflow:visible"],
+  ];
+  scenes["grouping"] = {
+    html: cases.map(([id, css], i) => grouped(id, 10 + (i % 4) * 195, 10 + Math.floor(i / 4) * 145, css).replace("width:220px;height:170px", "width:190px;height:140px")).join(""),
+  };
+}
+
+// The card flip: a card of two faces that hide their backs, turned to several angles.
+{
+  const flip = (id, x, y, angle, extra = "") =>
+    abs(`${id}P`, x, y, 180, 230, "perspective:600px",
+      abs(`${id}C`, 15, 15, 150, 200, `transform-style:preserve-3d;transform:rotateY(${angle}deg);${extra}`,
+        abs(`${id}F`, 0, 0, 150, 200, "backface-visibility:hidden") +
+          abs(`${id}K`, 0, 0, 150, 200, "backface-visibility:hidden;transform:rotateY(180deg)")));
+  const angles = [0, 60, 89, 91, 120, 180, 270, 300];
+  scenes["flip"] = {
+    html: angles.map((angle, i) => flip(`a${angle}`, 5 + (i % 4) * 195, 5 + Math.floor(i / 4) * 240, angle)).join(""),
+    points: angles.flatMap((angle, i) => {
+      const x = 5 + (i % 4) * 195 + 15;
+      const y = 5 + Math.floor(i / 4) * 240 + 15;
+      return [[x + 75, y + 100], [x + 20, y + 30], [x + 130, y + 170], [x + 30, y + 160], [x + 120, y + 40]];
+    }),
+  };
+  // The card is flat: its faces are flattened into it, so the back that turns away is the face's own transform.
+  scenes["flip-flat"] = {
+    html: [0, 60, 120, 180].map((angle, i) => flip(`f${angle}`, 5 + i * 195, 5, angle, "transform-style:flat")).join(""),
+    points: [0, 60, 120, 180].flatMap((angle, i) => {
+      const x = 5 + i * 195 + 15;
+      return [[x + 75, 20 + 100], [x + 20, 20 + 30], [x + 130, 20 + 170]];
+    }),
+  };
+  // The same flip with the card turned about x, with the perspective on the card's parent as the origin.
+  scenes["flip-x"] = {
+    html: [0, 45, 100, 180].map((angle, i) =>
+      abs(`x${angle}P`, 5 + i * 195, 5, 180, 230, "perspective:600px",
+        abs(`x${angle}C`, 15, 15, 150, 200, `transform-style:preserve-3d;transform:rotateX(${angle}deg)`,
+          abs(`x${angle}F`, 0, 0, 150, 200, "backface-visibility:hidden") +
+            abs(`x${angle}K`, 0, 0, 150, 200, "backface-visibility:hidden;transform:rotateX(180deg)")))).join(""),
+    points: [0, 45, 100, 180].flatMap((angle, i) => {
+      const x = 5 + i * 195 + 15;
+      return [[x + 75, 20 + 100], [x + 20, 20 + 30], [x + 130, 20 + 170]];
+    }),
+  };
+  // backface-visibility with no preserve-3d: a child turned away under a flat parent, with and without a perspective.
+  scenes["backface-flat"] = {
+    html:
+      abs("bP0", 20, 20, 180, 140, "perspective:500px", abs("b0", 20, 20, 140, 100, "backface-visibility:hidden;transform:rotateY(180deg)")) +
+      abs("bP1", 220, 20, 180, 140, "perspective:500px", abs("b1", 20, 20, 140, 100, "backface-visibility:hidden;transform:rotateY(100deg)")) +
+      abs("bP2", 420, 20, 180, 140, "perspective:500px", abs("b2", 20, 20, 140, 100, "backface-visibility:visible;transform:rotateY(180deg)")) +
+      abs("bP3", 20, 200, 180, 140, "", abs("b3", 20, 20, 140, 100, "backface-visibility:hidden;transform:rotateY(180deg)")) +
+      abs("bP4", 220, 200, 180, 140, "", abs("b4", 20, 20, 140, 100, "backface-visibility:hidden;transform:rotate(180deg)")) +
+      abs("bP5", 420, 200, 180, 140, "", abs("b5", 20, 20, 140, 100, "backface-visibility:hidden;transform:scaleX(-1)")) +
+      abs("bP6", 20, 380, 180, 140, "perspective:500px", abs("b6", 20, 20, 140, 100, "backface-visibility:hidden;transform:rotateX(180deg)", abs("b6c", 20, 20, 60, 40))) +
+      abs("bP7", 220, 380, 180, 140, "perspective:500px;transform-style:preserve-3d", abs("b7", 20, 20, 140, 100, "backface-visibility:hidden;transform:rotateY(180deg)")) +
+      abs("bP8", 420, 380, 180, 140, "perspective:500px", abs("b8", 20, 20, 140, 100, "transform:rotateY(180deg)", abs("b8c", 20, 20, 60, 40, "backface-visibility:hidden"))),
+    points: [[90, 70], [290, 70], [490, 70], [90, 250], [290, 250], [490, 250], [90, 430], [290, 430], [490, 430], [60, 50], [250, 100]],
+  };
+}
+
+// The individual properties with a third component.
+scenes["individual-3d"] = {
+  html: (() => {
+    const cell = (i, css) => abs(`P${i}`, 20 + (i % 4) * 195, 20 + Math.floor(i / 4) * 190, 170, 150, "perspective:400px", abs(`c${i}`, 25, 20, 120, 100, css));
+    return [
+      cell(0, "rotate:y 45deg"),
+      cell(1, "rotate:x 45deg"),
+      cell(2, "rotate:1 1 0 30deg"),
+      cell(3, "translate:10px 20px 50px"),
+      cell(4, "scale:1 1 2;transform:translateZ(30px)"),
+      cell(5, "rotate:z 30deg"),
+      cell(6, "rotate:y 45deg;transform:rotateY(30deg)"),
+      cell(7, "translate:10px 0 40px;rotate:y 30deg;scale:1.2"),
+    ].join("");
+  })(),
+};
+
+// transform-origin with a z.
+scenes["origin-z"] = {
+  html: (() => {
+    const cell = (i, css) => abs(`P${i}`, 20 + (i % 4) * 195, 20 + Math.floor(i / 4) * 190, 170, 150, "perspective:400px", abs(`c${i}`, 25, 20, 120, 100, css));
+    return [
+      cell(0, "transform:rotateY(40deg);transform-origin:50% 50% 100px"),
+      cell(1, "transform:rotateY(40deg);transform-origin:0 0 -50px"),
+      cell(2, "transform:rotateX(40deg);transform-origin:50% 100% 60px"),
+      cell(3, "transform:scale(1.5);transform-origin:50% 50% 100px"),
+      cell(4, "transform:translateZ(0) rotateY(40deg);transform-origin:left 50% 30px"),
+      cell(5, "transform:rotateY(40deg);transform-origin:50% 50% 0"),
+      cell(6, "transform:rotate(30deg);transform-origin:50% 50% 100px"),
+      cell(7, "transform:rotateY(40deg);transform-origin:right 80px -20px"),
+    ].join("");
+  })(),
+};
+
+// The containing block and the stacking context of an element with a perspective or a preserve-3d. P is a static box, 50px
+// below the top of W, that holds an absolute child; where the child ends up says what P is.
+{
+  const holder = (id, x, y, css) =>
+    abs(`${id}W`, x, y, 180, 200, "",
+      `<div style="height:50px"></div><div id="${id}P" style="height:100px;margin-left:30px;${css}">` +
+        abs(`${id}A`, 10, 10, 40, 40, "") + `<div id="${id}F" style="position:fixed;left:3px;top:4px;width:20px;height:20px"></div></div>`);
+  const cases = [
+    ["k0", ""],
+    ["k1", "perspective:400px"],
+    ["k2", "transform-style:preserve-3d"],
+    ["k3", "transform-style:preserve-3d;overflow:hidden"],
+    ["k4", "backface-visibility:hidden"],
+    ["k5", "perspective:none"],
+    ["k6", "perspective:0px"],
+    ["k7", "transform-style:flat"],
+    ["k8", "transform-style:preserve-3d;opacity:0.5"],
+    ["k9", "transform:translateZ(0)"],
+    ["k10", "perspective-origin:0 0"],
+    ["k11", "transform:none"],
+  ];
+  scenes["containing-block"] = { html: cases.map(([id, css], i) => holder(id, 10 + (i % 4) * 195, 10 + Math.floor(i / 4) * 205, css)).join("") };
+
+  // P is positioned, z-index auto; A (z 5) inside it, and a later sibling S (z 1) overlapping. If P is a stacking context A is
+  // confined to it and S, later in order, is on top; if not, A is on top.
+  const stack = (id, x, y, css) =>
+    abs(`${id}W`, x, y, 180, 150, "",
+      `<div id="${id}P" style="position:relative;width:100px;height:100px;${css}">` +
+        abs(`${id}A`, 10, 10, 60, 60, "z-index:5") + `</div>` + abs(`${id}S`, 30, 30, 100, 100, "z-index:1"));
+  const stacks = [
+    ["s0", ""],
+    ["s1", "perspective:400px"],
+    ["s2", "transform-style:preserve-3d"],
+    ["s3", "transform-style:preserve-3d;overflow:hidden"],
+    ["s4", "backface-visibility:hidden"],
+    ["s5", "perspective:none"],
+    ["s6", "transform-style:flat"],
+    ["s7", "transform:translateZ(0)"],
+  ];
+  scenes["stacking"] = {
+    html: stacks.map(([id, css], i) => stack(id, 10 + (i % 4) * 195, 10 + Math.floor(i / 4) * 160, css)).join(""),
+    points: stacks.flatMap(([id], i) => {
+      const x = 10 + (i % 4) * 195;
+      const y = 10 + Math.floor(i / 4) * 160;
+      return [[x + 45, y + 45], [x + 20, y + 20], [x + 90, y + 90]];
+    }),
+  };
+}
+
+// Hit testing through a perspective.
+const HIT_GRID = grid(20, 20, 600, 400, 17, 0.37, 0.61);
+
+scenes["hit-persp"] = {
+  html:
+    abs("bg", 30, 30, 540, 340) +
+    abs("P", 60, 60, 300, 200, "perspective:400px", abs("r", 50, 30, 200, 140, "transform:rotateY(60deg)")) +
+    abs("Q", 400, 60, 160, 160, "perspective:300px", abs("t", 20, 20, 120, 120, "transform:rotateX(55deg)", abs("tc", 20, 20, 60, 60))),
+  points: HIT_GRID,
+};
+
+scenes["hit-preserve"] = {
+  html:
+    abs("bg", 30, 30, 540, 340) +
+    abs("P", 60, 60, 300, 220, "perspective:500px",
+      abs("A", 40, 30, 220, 160, "transform-style:preserve-3d;transform:rotateY(35deg)",
+        abs("B", 20, 20, 120, 90, "transform:translateZ(70px) rotateY(25deg)"))) +
+    abs("R", 400, 60, 160, 160, "perspective:300px;overflow:hidden", abs("w", 20, 20, 120, 120, "transform:rotateX(55deg)")),
+  points: HIT_GRID,
+};
+
+scenes["hit-persp-clip"] = {
+  html:
+    abs("bg", 30, 30, 540, 340) +
+    abs("P", 60, 60, 300, 200, "perspective:300px;overflow:hidden", abs("r", 150, 20, 200, 140, "transform:rotateY(50deg) translateZ(40px)")),
+  points: HIT_GRID,
+};
+
+// offsetX and offsetY.
+scenes["offset-persp"] = {
+  html:
+    abs("P", 60, 60, 300, 220, "perspective:400px", abs("t", 50, 30, 200, 140, "transform:rotateY(40deg)")) +
+    abs("Q", 400, 60, 200, 200, "perspective:300px", abs("u", 30, 30, 140, 140, "border:4px solid red;transform:rotateX(-35deg)", abs("uc", 20, 20, 60, 60))),
+  clicks: [
+    [170, 150], [210, 120], [240, 200], [150, 100], [260, 160], [300, 180], [130, 220], [200, 90],
+    [470, 150], [450, 120], [500, 200], [430, 100], [520, 160], [480, 190],
+  ],
+};
+
+function measure(name, scene) {
+  const holder = document.createElement("div");
+  holder.id = "case";
+  holder.style.cssText = "position:absolute;left:0;top:0;width:800px;height:600px";
+  holder.innerHTML = scene.html;
+  document.body.appendChild(holder);
+  const boxes = {};
+  for (const el of holder.querySelectorAll("[id]")) {
+    const r = el.getBoundingClientRect();
+    boxes[el.id] = [r.x, r.y, r.width, r.height];
+  }
+  // Chrome hit tests a point as a small area, so a point within a pixel of an edge can hit what the edge encloses
+  // although it is outside it. Only the points whose answer does not change a pixel around are kept.
+  const at = (x, y) => {
+    const hit = document.elementFromPoint(x, y);
+    return hit === document.body || hit === document.documentElement ? null : hit.id;
+  };
+  const from = {};
+  for (const [x, y] of scene.points ?? []) {
+    const answer = at(x, y);
+    let stable = true;
+    for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) stable = stable && at(x + dx, y + dy) === answer;
+    if (stable) from[`${x},${y}`] = answer;
+  }
+  const offsets = {};
+  for (const [x, y] of scene.clicks ?? []) {
+    const target = document.elementFromPoint(x, y);
+    let seen = null;
+    const listener = (e) => {
+      if (e.target === target && seen === null) seen = [target.id, e.offsetX, e.offsetY];
+    };
+    target.addEventListener("click", listener);
+    target.dispatchEvent(new PointerEvent("click", { clientX: x, clientY: y, bubbles: true }));
+    target.removeEventListener("click", listener);
+    offsets[`${x},${y}`] = seen;
+  }
+  holder.remove();
+  return { html: scene.html, boxes, from, offsets };
+}
+
+const out = {};
+for (const [name, scene] of Object.entries(scenes)) out[name] = measure(name, scene);
+document.body.setAttribute("data-oracle", JSON.stringify(out));
+</script>
+</body>
+</html>

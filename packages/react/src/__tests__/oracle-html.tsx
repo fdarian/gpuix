@@ -4,7 +4,7 @@
 import React from "react"
 
 /** The properties whose value is a number in a style object and not a CSS string. */
-const NUMBERS = new Set(["flexGrow", "flexShrink"])
+const NUMBERS = new Set(["flexGrow", "flexShrink", "opacity", "zIndex"])
 
 /** `text-wrap-mode:nowrap;white-space:pre` as a style object. */
 export function styleOf(css: string): Record<string, string | number> {

@@ -1067,9 +1067,6 @@ fn parse_binding(binding: &Value) -> Result<Vec<Bound>, String> {
             id.as_f64()
                 .ok_or_else(|| format!("motionValues.{name} must be a motion value id"))?,
         )?;
-        if AnimProp::is_depth_key(name) {
-            continue;
-        }
         match (AnimProp::from_name(name), expand_shorthand(name)) {
             (Some(prop), _) => bound.push(Bound::Longhand { prop, id }),
             (None, Some(_)) if name == "flex" => {

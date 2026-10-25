@@ -6,7 +6,9 @@
  *   they give is the one a plain element with that `transform` has, to the pixel.
  * - A tween, a spring and a motion value move an element through them and every tick of that is patched: the
  *   elements that run are built alone and gpui paints their operations again (`getPatchCounters`).
- * - The 3D keys are accepted and draw nothing. The CSS `scale` and `rotate` of a plain element are still CSS.
+ * - The 3D keys (`z`, `translateZ`, `rotateX`, `rotateY`, `transformPerspective`) are the CSS functions they stand for, in Motion's
+ *   order, with the perspective of a parent (`perspective` is the CSS property) or of the key. The CSS `scale` and `rotate`
+ *   of a plain element are still CSS.
  */
 
 import fs from "fs"
@@ -102,12 +104,53 @@ describeNative("Motion's transform keys compose like the CSS transform they stan
     expect(boundsOf(motionBox({}))).toEqual(boundsOf(cssBox({})))
   }, TIMEOUT)
 
-  it("accepts the 3D keys and draws nothing for them", () => {
-    const plain = boundsOf(motionBox({ x: 10 }))
-    const deep = boundsOf(motionBox({ x: 10, z: 40, translateZ: 20, rotateX: 45, rotateY: 30, transformPerspective: 500 }))
-    expectBox(deep, plain, "3D keys")
-    const onlyDeep = boundsOf(motionBox({ z: 40, rotateX: 45 }))
-    expectBox(onlyDeep, boundsOf(motionBox({})), "only 3D keys")
+  it("draws the 3D keys as the CSS functions they stand for, in Motion's order", () => {
+    const cases: [string, object, object][] = [
+      [
+        "every depth key",
+        { x: 10, z: 40, translateZ: 20, rotateX: 45, rotateY: 30, transformPerspective: 500 },
+        { transform: "perspective(500px) translateX(10px) translateZ(40px) translateZ(20px) rotateX(45deg) rotateY(30deg)" },
+      ],
+      ["only rotateX", { z: 40, rotateX: 45 }, { transform: "translateZ(40px) rotateX(45deg)" }],
+      [
+        "rotateX before rotateY before rotateZ, after rotate",
+        { rotateZ: 10, rotateY: 30, rotateX: 20, rotate: 5, transformPerspective: 300 },
+        { transform: "perspective(300px) rotate(5deg) rotateX(20deg) rotateY(30deg) rotate(10deg)" },
+      ],
+      ["angle strings", { rotateY: "0.1turn", rotateX: "50grad", transformPerspective: 400 }, { transform: "perspective(400px) rotateX(50grad) rotateY(0.1turn)" }],
+      ["length strings", { z: "2em", translateZ: "10px", rotateY: 20, transformPerspective: 400 }, { transform: "perspective(400px) translateZ(2em) translateZ(10px) rotateY(20deg)" }],
+      ["a key at its default", { rotateY: 0, z: 0, transformPerspective: 0, x: 5 }, { transform: "translateX(5px)" }],
+    ]
+    for (const [name, motionStyle, cssStyle] of cases) {
+      const got = boundsOf(motionBox(motionStyle))
+      const want = boundsOf(cssBox(cssStyle))
+      expectBox(got, want, name)
+    }
+    expect(boundsOf(motionBox({ rotateY: 60, transformPerspective: 300 }))).not.toEqual(boundsOf(cssBox({})))
+  }, TIMEOUT)
+
+  it("sees the 3D keys through the perspective property of a parent, which is the CSS property", () => {
+    const inFrame = (parent: object, child: React.ReactNode) => (
+      <div style={{ display: "flex", padding: 200 }}>
+        <div style={{ ...parent, width: 200, height: 100 }}>{child}</div>
+      </div>
+    )
+    const style = { width: BOX.width, height: BOX.height, backgroundColor: "#336699" }
+    const got = boundsOf(inFrame({ perspective: 400 }, <motion.div testId="box" style={{ ...style, rotateY: 55, z: 30 }} />))
+    const want = boundsOf(inFrame({ perspective: "400px" }, <div testId="box" style={{ ...style, transform: "translateZ(30px) rotateY(55deg)" }} />))
+    expectBox(got, want, "a number is px")
+    const flat = boundsOf(inFrame({}, <div testId="box" style={{ ...style, transform: "translateZ(30px) rotateY(55deg)" }} />))
+    expect(got[2], "the perspective makes it wider than the flat projection").not.toBeCloseTo(flat[2], 1)
+    const asMotion = boundsOf(inFrame({ perspective: 400 }, <motion.div testId="box" style={{ ...style, rotateY: 55, z: 30 }} />))
+    expectBox(asMotion, want, "a motion component as the parent")
+    const parentMotion = boundsOf(
+      <div style={{ display: "flex", padding: 200 }}>
+        <motion.div style={{ perspective: 400, width: 200, height: 100 }}>
+          <div testId="box" style={{ ...style, transform: "translateZ(30px) rotateY(55deg)" }} />
+        </motion.div>
+      </div>
+    )
+    expectBox(parentMotion, want, "perspective on a motion.div")
   }, TIMEOUT)
 
   it("keeps the CSS scale and rotate of a plain element CSS", () => {
@@ -178,9 +221,11 @@ describeNative("an animation of the transform keys", () => {
     expectBox(half, boundsOf(cssBox({ transform: "translateX(50px) rotate(22.5deg)" })), "two curves")
   }, TIMEOUT)
 
-  it("ignores the 3D keys in animate and its transition", () => {
-    const half = run({ x: 100, z: 50, rotateX: 90 }, { x: linear, z: linear, rotateX: linear }, 500)
-    expectBox(half, boundsOf(cssBox({ transform: "translateX(50px)" })), "3D keys")
+  it("animates the 3D keys through their own curves", () => {
+    const half = run({ x: 100, z: 50, rotateX: 90, rotateY: 40 }, { x: linear, z: linear, rotateX: { duration: 2, ease: "linear" }, rotateY: linear }, 500)
+    expectBox(half, boundsOf(cssBox({ transform: "translateX(50px) translateZ(25px) rotateX(22.5deg) rotateY(20deg)" })), "3D keys")
+    const withPerspective = run({ transformPerspective: 600, rotateY: 80 }, { rotateY: linear, transformPerspective: linear }, 500, { transformPerspective: 200, rotateY: 0 })
+    expectBox(withPerspective, boundsOf(cssBox({ transform: "perspective(400px) rotateY(40deg)" })), "transformPerspective")
   }, TIMEOUT)
 })
 

@@ -66,6 +66,9 @@ pub struct ElementBounds {
     /// From the space `x` and `y` are in to the window, in logical pixels and exact: the transforms
     /// around the element and its own. The unit matrix for an element no transform touches.
     pub to_window: TransformationMatrix,
+    /// The back of the element faces the viewer, so that `backface-visibility: hidden` hides it and what
+    /// is in it (`Window::layout_faces_away`).
+    pub faces_away: bool,
 }
 
 /// Layout resolution, the one of Chrome's `LayoutUnit`: a length is cut down to a multiple of
@@ -112,6 +115,7 @@ impl ElementBounds {
             collapsed_table: layout.collapsed_table,
             culled: layout.culled,
             to_window: layout.to_window,
+            faces_away: layout.faces_away,
         }
     }
 
@@ -221,6 +225,7 @@ impl ElementBounds {
             collapsed_table: false,
             culled: false,
             to_window: TransformationMatrix::unit(),
+            faces_away: false,
         }
     }
 
@@ -600,6 +605,8 @@ pub struct LaidOut {
     pub culled: bool,
     /// See `ElementBounds::to_window`.
     pub to_window: TransformationMatrix,
+    /// See `ElementBounds::faces_away`.
+    pub faces_away: bool,
 }
 
 impl LaidOut {
@@ -612,6 +619,7 @@ impl LaidOut {
             collapsed_table: false,
             culled: false,
             to_window: TransformationMatrix::unit(),
+            faces_away: false,
         }
     }
 
@@ -654,6 +662,7 @@ pub fn capture_layout_box<E: gpui::InteractiveElement>(el: E, scrolls: bool) -> 
             collapsed_table: false,
             culled: window.is_culling(),
             to_window,
+            faces_away: window.layout_faces_away(layout_id, border_box),
         };
         slot.set(Some(laid_out));
     });

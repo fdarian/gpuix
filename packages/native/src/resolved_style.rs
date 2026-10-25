@@ -48,10 +48,13 @@ pub(crate) struct Resolved {
     /// which CSS paints as a stacking context.
     pub effect_group: bool,
     /// The element has a transform (`transform`, `translate`, `rotate` or `scale` other than
-    /// `none`), which CSS paints as a stacking context and makes the containing block of its
-    /// absolute and fixed descendants. Not an effect group: gpui draws the element through its
-    /// matrix. A non-atomic inline box takes no transform, see [`RetainedTree::resolved_of`].
+    /// `none`), a `perspective` other than `none` or `transform-style: preserve-3d`, which CSS paints
+    /// as a stacking context and makes the containing block of its absolute and fixed descendants.
+    /// Not an effect group: gpui draws the element through its matrix. A non-atomic inline box takes
+    /// no transform, see [`RetainedTree::resolved_of`].
     pub transformed: bool,
+    /// `backface-visibility: hidden`: nothing of the element is hit while its back faces the viewer.
+    pub backface_hidden: bool,
     pub visibility: Visibility,
     pub pointer_events: PointerEvents,
     pub overflow: Axes,
@@ -70,6 +73,7 @@ impl Resolved {
         z_index: None,
         effect_group: false,
         transformed: false,
+        backface_hidden: false,
         visibility: Visibility::Inherit,
         pointer_events: PointerEvents::Inherit,
         overflow: Axes {
@@ -102,7 +106,8 @@ impl Resolved {
             position: Position::parse(style.position.as_deref()),
             z_index: style.z_index.map(crate::layout::stacking::round_z),
             effect_group: crate::layout::stacking::has_effect_group(style, colors, lengths),
-            transformed: crate::css::transform::is_active(style, lengths),
+            transformed: crate::css::transform::forms_context(style, lengths),
+            backface_hidden: crate::css::transform::declared_backface_hidden(style) == Some(true),
             visibility: match style.visibility.as_deref() {
                 Some("hidden") => Visibility::Hidden,
                 Some("visible") => Visibility::Visible,
@@ -223,7 +228,7 @@ impl RetainedTree {
             None => element
                 .style
                 .as_deref()
-                .is_some_and(|style| crate::css::transform::is_active(style, &LengthContext::initial(0.0, 0.0))),
+                .is_some_and(|style| crate::css::transform::forms_context(style, &LengthContext::initial(0.0, 0.0))),
         };
         transformed && !crate::text::inline::is_part_of_paragraph(self, element)
     }
@@ -331,6 +336,14 @@ mod tests {
         assert!(!element(r#"{"transform":"none"}"#).transformed);
         assert!(!element(r#"{"transform":"nonsense"}"#).transformed);
         assert!(!element("{}").transformed);
+        for json in [r#"{"perspective":"500px"}"#, r#"{"perspective":0}"#, r#"{"transformStyle":"preserve-3d"}"#, r#"{"z":5}"#] {
+            assert!(element(json).transformed, "{json}");
+        }
+        for json in [r#"{"perspective":"none"}"#, r#"{"transformStyle":"flat"}"#, r#"{"perspectiveOrigin":"0 0"}"#, r#"{"backfaceVisibility":"hidden"}"#] {
+            assert!(!element(json).transformed, "{json}");
+        }
+        assert!(element(r#"{"backfaceVisibility":"hidden"}"#).backface_hidden);
+        assert!(!element(r#"{"backfaceVisibility":"visible"}"#).backface_hidden);
 
         // In a block of text, the span is part of the paragraph and has no box to transform.
         let built = Resolved { transformed: true, ..Resolved::UNSTYLED };

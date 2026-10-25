@@ -1,9 +1,10 @@
 //! The CSS `transform`, `translate`, `rotate`, `scale` and `transform-origin` strings, parsed
-//! into the functions gpui draws an element through.
+//! into the functions gpui draws an element through, and the depth properties that go with them
+//! (`perspective`, `perspective-origin`, `transform-style` and `backface-visibility`).
 //!
-//! Only the 2D plane is drawn. Functions that move or scale along z are accepted and do
-//! nothing, which is what they do without a `perspective`; a rotation about x or y, `perspective()`
-//! and the 4x4 `matrix3d()` are invalid, so the declaration is ignored.
+//! The functions are CSS Transforms 2's, 3D ones included: `rotateZ()` stays the 2D rotation, the
+//! others become gpui's 4x4 variants. What gpui does with the perspective and the 3D rendering
+//! context is in `Window::with_element_space`.
 
 use gpui::{ElementTransform, TransformFunction, TransformLength};
 
@@ -13,7 +14,8 @@ use super::angle::parse_degrees;
 use super::cache::{Cache, Inputs};
 use super::custom_properties::{self, CustomProperties};
 use super::dimension::{
-    parse_length, parse_length_percentage, parse_number, parse_number_or_percentage, LengthPercentage,
+    parse_length, parse_length_percentage, parse_non_negative_length, parse_number,
+    parse_number_or_percentage, LengthPercentage,
 };
 use super::length::LengthContext;
 use super::syntax::{function_args, split_commas, split_whitespace};
@@ -37,7 +39,17 @@ impl Value {
     }
 }
 
-pub(crate) type Origin = (TransformLength, TransformLength);
+/// A `transform-origin`: the point of the border box the transform is applied around, and its distance
+/// in front of the box's plane.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Origin {
+    pub x: TransformLength,
+    pub y: TransformLength,
+    /// In px: a length, never a percentage.
+    pub z: f32,
+}
+
+type Position2d = (TransformLength, TransformLength);
 
 thread_local! {
     static TRANSFORM: Cache<Option<Value>> = Cache::new();
@@ -45,6 +57,7 @@ thread_local! {
     static ROTATE: Cache<Option<Value>> = Cache::new();
     static SCALE: Cache<Option<Value>> = Cache::new();
     static ORIGIN: Cache<Option<Origin>> = Cache::new();
+    static PERSPECTIVE_ORIGIN: Cache<Option<Position2d>> = Cache::new();
 }
 
 /// `None` is an invalid value, which CSS ignores as a whole.
@@ -82,6 +95,41 @@ pub(crate) fn parse_origin(value: &str, lengths: &LengthContext) -> Option<Origi
     })
 }
 
+pub(crate) fn parse_perspective_origin(value: &str, lengths: &LengthContext) -> Option<(TransformLength, TransformLength)> {
+    PERSPECTIVE_ORIGIN.with(|cache| {
+        cache.get_or_parse(value, Inputs { colors: None, lengths }, || {
+            parse_position(&split_whitespace(value.trim()), lengths)
+        })
+    })
+}
+
+/// `none | <length [0,∞)>`: `Some(None)` is `none`, which is no perspective.
+pub(crate) fn parse_perspective(value: &str, lengths: &LengthContext) -> Option<Option<f32>> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("none") {
+        return Some(None);
+    }
+    parse_non_negative_length(value, lengths).map(|distance| Some(distance as f32))
+}
+
+/// `flat | preserve-3d`: whether it is `preserve-3d`.
+pub(crate) fn parse_transform_style(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "flat" => Some(false),
+        "preserve-3d" => Some(true),
+        _ => None,
+    }
+}
+
+/// `visible | hidden`: whether it is `hidden`.
+pub(crate) fn parse_backface_visibility(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "visible" => Some(false),
+        "hidden" => Some(true),
+        _ => None,
+    }
+}
+
 /// `style` with the `var()` in its transform properties replaced by what the element's computed
 /// custom properties say, so that the parsers and the readers of the transform (stacking, the
 /// containing block, painting) all see the same text. `None` when no such property has a `var()`.
@@ -100,23 +148,34 @@ pub(crate) fn resolve_vars(style: &StyleDesc, custom: &CustomProperties) -> Opti
     Some(resolved)
 }
 
-fn own_texts(style: &mut StyleDesc) -> [(&mut Option<String>, &'static str); 5] {
+fn own_texts(style: &mut StyleDesc) -> [(&mut Option<String>, &'static str); 7] {
     [
         (&mut style.transform, "none"),
         (&mut style.translate, "none"),
         (&mut style.rotate, "none"),
         (&mut style.scale, "none"),
         (&mut style.transform_origin, DEFAULT_ORIGIN_TEXT),
+        (&mut style.perspective, "none"),
+        (&mut style.perspective_origin, DEFAULT_PERSPECTIVE_ORIGIN_TEXT),
     ]
 }
 
 pub(crate) const DEFAULT_ORIGIN_TEXT: &str = "50% 50%";
+const DEFAULT_PERSPECTIVE_ORIGIN_TEXT: &str = "50% 50%";
 
 /// Whether a transform property of the style has a `var()` in it, which its value depends on the
 /// custom properties for.
 pub(crate) fn reads_vars(style: &StyleDesc) -> bool {
-    [&style.transform, &style.translate, &style.rotate, &style.scale, &style.transform_origin]
-        .into_iter()
+    [
+        &style.transform,
+        &style.translate,
+        &style.rotate,
+        &style.scale,
+        &style.transform_origin,
+        &style.perspective,
+        &style.perspective_origin,
+    ]
+    .into_iter()
         .any(|text| text.as_deref().is_some_and(custom_properties::has_var))
         || [&style.focus_visible, &style.focus_within].into_iter().flatten().any(|state| reads_vars(state))
 }
@@ -136,7 +195,7 @@ fn resolve_vars_in(style: &mut StyleDesc, custom: &CustomProperties) {
     }
 }
 
-/// The five properties of a style, each `None` where it is unset or invalid.
+/// The properties of a style that make the transform, each `None` where it is unset or invalid.
 pub(crate) struct Parts {
     pub translate: Option<Value>,
     pub rotate: Option<Value>,
@@ -176,10 +235,11 @@ impl Parts {
         if values.iter().all(|value| value.is_none()) {
             return None;
         }
+        let origin = self.origin.unwrap_or(DEFAULT_ORIGIN);
         Some(ElementTransform {
             functions: values.into_iter().flatten().flat_map(|value| value.functions().iter().cloned()).collect(),
-            origin: self.origin.unwrap_or(DEFAULT_ORIGIN),
-            origin_z: 0.0,
+            origin: (origin.x, origin.y),
+            origin_z: origin.z,
             animating: false,
         })
     }
@@ -204,24 +264,36 @@ pub(crate) fn list_of(style: &StyleDesc, lengths: &LengthContext) -> Option<Valu
 /// What Motion's `buildTransform` writes for the keys of the style, in its order; `None` when the
 /// style has none. A key at its default is left out of the string, and when every key is, Motion
 /// writes `none`: no stacking context, no containing block. It still replaces `transform`, which
-/// `buildHTMLStyles` rebuilds. The 3D keys are not read: nothing draws them.
+/// `buildHTMLStyles` rebuilds.
 fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Value> {
     if !has_motion_keys(style) {
         return None;
     }
     let zero = TransformLength::default();
     let mut functions = Vec::new();
-    let mut translate = |length: &Option<LinearLength>, on_x: bool| {
+    // `transformPerspective` is written as `perspective(<px>)`.
+    if let Some(distance) = style.transform_perspective.as_ref().map(|length| lengths.resolve(length, 0.0) as f32) {
+        if distance != 0.0 {
+            functions.push(TransformFunction::Perspective(Some(distance)));
+        }
+    }
+    let mut translate = |length: &Option<LinearLength>, axis: Axis| {
         let Some(length) = length else { return };
         let length = transform_length(length, lengths);
         if length != zero {
-            functions.push(if on_x { TransformFunction::Translate(length, zero) } else { TransformFunction::Translate(zero, length) });
+            functions.push(match axis {
+                Axis::X => TransformFunction::Translate(length, zero),
+                Axis::Y => TransformFunction::Translate(zero, length),
+                Axis::Z => TransformFunction::Translate3d(zero, zero, length.px),
+            });
         }
     };
-    translate(&style.x, true);
-    translate(&style.y, false);
-    translate(&style.translate_x, true);
-    translate(&style.translate_y, false);
+    translate(&style.x, Axis::X);
+    translate(&style.y, Axis::Y);
+    translate(&style.z, Axis::Z);
+    translate(&style.translate_x, Axis::X);
+    translate(&style.translate_y, Axis::Y);
+    translate(&style.translate_z, Axis::Z);
     let mut scale = |factor: Option<f64>, function: fn(f32) -> TransformFunction| {
         functions.extend(factor.filter(|factor| *factor != 1.0).map(|factor| function(factor as f32)));
     };
@@ -232,11 +304,20 @@ fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Value> {
         functions.extend(degrees.filter(|degrees| *degrees != 0.0).map(|degrees| function(degrees.to_radians() as f32)));
     };
     turn(style.motion_rotate, TransformFunction::Rotate);
+    turn(style.rotate_x, |radians| TransformFunction::Rotate3d(1.0, 0.0, 0.0, radians));
+    turn(style.rotate_y, |radians| TransformFunction::Rotate3d(0.0, 1.0, 0.0, radians));
     turn(style.rotate_z, TransformFunction::Rotate);
     turn(style.skew, |radians| TransformFunction::Skew(radians, 0.0));
     turn(style.skew_x, TransformFunction::SkewX);
     turn(style.skew_y, TransformFunction::SkewY);
     Some(if functions.is_empty() { Value::None } else { Value::List(functions) })
+}
+
+#[derive(Clone, Copy)]
+enum Axis {
+    X,
+    Y,
+    Z,
 }
 
 /// `transform-origin` with the axes `originX` and `originY` replace.
@@ -245,17 +326,19 @@ fn motion_origin(style: &StyleDesc, lengths: &LengthContext, declared: Option<Or
         return declared;
     }
     let base = declared.unwrap_or(DEFAULT_ORIGIN);
-    Some((
-        style.origin_x.as_ref().map_or(base.0, |length| transform_length(length, lengths)),
-        style.origin_y.as_ref().map_or(base.1, |length| transform_length(length, lengths)),
-    ))
+    Some(Origin {
+        x: style.origin_x.as_ref().map_or(base.x, |length| transform_length(length, lengths)),
+        y: style.origin_y.as_ref().map_or(base.y, |length| transform_length(length, lengths)),
+        z: base.z,
+    })
 }
 
 /// `50% 50%`.
-const DEFAULT_ORIGIN: Origin = (
-    TransformLength { px: 0.0, fraction: 0.5 },
-    TransformLength { px: 0.0, fraction: 0.5 },
-);
+const DEFAULT_ORIGIN: Origin = Origin {
+    x: TransformLength { px: 0.0, fraction: 0.5 },
+    y: TransformLength { px: 0.0, fraction: 0.5 },
+    z: 0.0,
+};
 
 /// The transform `style` declares, for the element whose lengths are `lengths`.
 pub(crate) fn of(style: &StyleDesc, lengths: &LengthContext) -> Option<ElementTransform> {
@@ -287,6 +370,50 @@ pub(crate) fn is_active(style: &StyleDesc, lengths: &LengthContext) -> bool {
     style.animating_transform || (declares(style) && Parts::of(style, lengths).is_active())
 }
 
+/// The `perspective` the style declares: `Some(None)` for `none`, `None` when it declares none or an invalid one.
+pub(crate) fn perspective_of(style: &StyleDesc, lengths: &LengthContext) -> Option<Option<f32>> {
+    style.perspective.as_deref().and_then(|value| parse_perspective(value, lengths))
+}
+
+pub(crate) fn perspective_origin_of(style: &StyleDesc, lengths: &LengthContext) -> Option<Position2d> {
+    style.perspective_origin.as_deref().and_then(|value| parse_perspective_origin(value, lengths))
+}
+
+/// Whether the style declares `transform-style: preserve-3d`, as declared: the value a grouping
+/// property overrides (the used one) is `Self::used_preserve_3d`'s concern, not a context's.
+pub(crate) fn declared_preserve_3d(style: &StyleDesc) -> Option<bool> {
+    style.transform_style.as_deref().and_then(parse_transform_style)
+}
+
+pub(crate) fn declared_backface_hidden(style: &StyleDesc) -> Option<bool> {
+    style.backface_visibility.as_deref().and_then(parse_backface_visibility)
+}
+
+/// Whether the element is a stacking context and the containing block of its absolute and fixed
+/// descendants for any property of the transform: a transform ([`is_active`]), a `perspective`
+/// other than `none`, or `transform-style: preserve-3d`. Chromium counts the declared
+/// `transform-style` here even where a grouping property makes the used value `flat`
+/// (`ComputedStyle::CalculateIsStackingContextWithoutContainment` and
+/// `LayoutObject::ComputeIsFixedContainer`), and `backface-visibility` makes neither.
+pub(crate) fn forms_context(style: &StyleDesc, lengths: &LengthContext) -> bool {
+    is_active(style, lengths)
+        || perspective_of(style, lengths).is_some_and(|perspective| perspective.is_some())
+        || declared_preserve_3d(style) == Some(true)
+}
+
+/// [`forms_context`] for a style that declares a valid value of one of the properties: `Some(false)`
+/// where every such value is `none` or `flat`, which a state style needs in order to clear the flag
+/// of the style under it.
+pub(crate) fn forms_context_if_declared(style: &StyleDesc, lengths: &LengthContext) -> Option<bool> {
+    let transform = is_active_if_declared(style, lengths);
+    let perspective = perspective_of(style, lengths).map(|perspective| perspective.is_some());
+    let preserve_3d = declared_preserve_3d(style);
+    if transform.is_none() && perspective.is_none() && preserve_3d.is_none() {
+        return None;
+    }
+    Some(transform == Some(true) || perspective == Some(true) || preserve_3d == Some(true))
+}
+
 fn declares(style: &StyleDesc) -> bool {
     style.transform.is_some()
         || style.motion_transform.is_some()
@@ -299,8 +426,12 @@ fn declares(style: &StyleDesc) -> bool {
 /// Whether the style has a key of Motion's transform. `originX` and `originY` are not one: they
 /// place a transform and are none.
 pub(crate) fn has_motion_keys(style: &StyleDesc) -> bool {
-    [&style.x, &style.y, &style.translate_x, &style.translate_y].into_iter().any(Option::is_some)
+    [&style.x, &style.y, &style.z, &style.translate_x, &style.translate_y, &style.translate_z, &style.transform_perspective]
+        .into_iter()
+        .any(Option::is_some)
         || [
+            style.rotate_x,
+            style.rotate_y,
             style.motion_scale,
             style.scale_x,
             style.scale_y,
@@ -342,12 +473,9 @@ fn parse_function(token: &str, lengths: &LengthContext, out: &mut Vec<TransformF
         ("translatex", [x]) => out.push(TransformFunction::Translate(length(x)?, zero)),
         ("translatey", [y]) => out.push(TransformFunction::Translate(zero, length(y)?)),
         ("translate3d", [x, y, z]) => {
-            parse_length(z, lengths)?;
-            out.push(TransformFunction::Translate(length(x)?, length(y)?));
+            out.push(TransformFunction::Translate3d(length(x)?, length(y)?, depth(z, lengths)?));
         }
-        ("translatez", [z]) => {
-            parse_length(z, lengths)?;
-        }
+        ("translatez", [z]) => out.push(TransformFunction::Translate3d(zero, zero, depth(z, lengths)?)),
         ("scale", [x]) => {
             let x = scale_factor(x)?;
             out.push(TransformFunction::Scale(x, x));
@@ -356,13 +484,21 @@ fn parse_function(token: &str, lengths: &LengthContext, out: &mut Vec<TransformF
         ("scalex", [x]) => out.push(TransformFunction::Scale(scale_factor(x)?, 1.0)),
         ("scaley", [y]) => out.push(TransformFunction::Scale(1.0, scale_factor(y)?)),
         ("scale3d", [x, y, z]) => {
-            scale_factor(z)?;
-            out.push(TransformFunction::Scale(scale_factor(x)?, scale_factor(y)?));
+            out.push(TransformFunction::Scale3d(scale_factor(x)?, scale_factor(y)?, scale_factor(z)?));
         }
-        ("scalez", [z]) => {
-            scale_factor(z)?;
-        }
+        ("scalez", [z]) => out.push(TransformFunction::Scale3d(1.0, 1.0, scale_factor(z)?)),
         ("rotate" | "rotatez", [angle]) => out.push(TransformFunction::Rotate(parse_angle(angle)?)),
+        ("rotatex", [angle]) => out.push(TransformFunction::Rotate3d(1.0, 0.0, 0.0, parse_angle(angle)?)),
+        ("rotatey", [angle]) => out.push(TransformFunction::Rotate3d(0.0, 1.0, 0.0, parse_angle(angle)?)),
+        ("rotate3d", [x, y, z, angle]) => out.push(TransformFunction::Rotate3d(
+            finite_number(x)? as f32,
+            finite_number(y)? as f32,
+            finite_number(z)? as f32,
+            parse_angle(angle)?,
+        )),
+        ("perspective", [distance]) => out.push(TransformFunction::Perspective(
+            if distance.eq_ignore_ascii_case("none") { None } else { Some(parse_non_negative_length(distance, lengths)? as f32) },
+        )),
         ("skew", [x]) => out.push(TransformFunction::Skew(parse_angle(x)?, 0.0)),
         ("skew", [x, y]) => out.push(TransformFunction::Skew(parse_angle(x)?, parse_angle(y)?)),
         ("skewx", [x]) => out.push(TransformFunction::SkewX(parse_angle(x)?)),
@@ -379,6 +515,13 @@ fn parse_function(token: &str, lengths: &LengthContext, out: &mut Vec<TransformF
             }
             out.push(TransformFunction::Matrix(values));
         }
+        ("matrix3d", values) if values.len() == 16 => {
+            let mut numbers = [0.0f32; 16];
+            for (slot, arg) in numbers.iter_mut().zip(values) {
+                *slot = finite_number(arg)? as f32;
+            }
+            out.push(TransformFunction::Matrix3d(numbers));
+        }
         _ => return None,
     }
     Some(())
@@ -388,6 +531,11 @@ fn parse_function(token: &str, lengths: &LengthContext, out: &mut Vec<TransformF
 /// animation hands its style to the renderer as text, and the list in the middle of a blend between lists
 /// that do not pair up has to survive that. `-gpuix-interpolated(<progress>, <from list>, <to list>)`.
 const INTERPOLATED: &str = "-gpuix-interpolated";
+
+/// A distance along z: a length, which a percentage of the box could not be.
+fn depth(token: &str, lengths: &LengthContext) -> Option<f32> {
+    parse_length(token, lengths).map(|px| px as f32)
+}
 
 fn translate_length(token: &str, lengths: &LengthContext) -> Option<TransformLength> {
     Some(match parse_length_percentage(token, lengths)? {
@@ -416,8 +564,7 @@ fn parse_angle(token: &str) -> Option<f32> {
     parse_degrees(token).map(|degrees| degrees.to_radians() as f32)
 }
 
-/// `none | <length-percentage> [<length-percentage> <length>?]?`. The length along z does nothing,
-/// as in `translate3d()`.
+/// `none | <length-percentage> [<length-percentage> <length>?]?`.
 fn parse_translate_uncached(value: &str, lengths: &LengthContext) -> Option<Value> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
@@ -428,37 +575,43 @@ fn parse_translate_uncached(value: &str, lengths: &LengthContext) -> Option<Valu
         [x] => TransformFunction::Translate(translate_length(x, lengths)?, zero),
         [x, y] => TransformFunction::Translate(translate_length(x, lengths)?, translate_length(y, lengths)?),
         [x, y, z] => {
-            parse_length(z, lengths)?;
-            TransformFunction::Translate(translate_length(x, lengths)?, translate_length(y, lengths)?)
+            TransformFunction::Translate3d(translate_length(x, lengths)?, translate_length(y, lengths)?, depth(z, lengths)?)
         }
         _ => return None,
     };
     Some(Value::List(vec![function]))
 }
 
-/// `none | <angle> | [x | y | z | <number>{3}] && <angle>`. Only the rotation about z is drawn,
-/// so the axes `x` and `y` make the value invalid.
+/// `none | <angle> | [x | y | z | <number>{3}] && <angle>`. The rotation about z is the 2D one.
 fn parse_rotate_uncached(value: &str) -> Option<Value> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
         return Some(Value::None);
     }
-    let angle = match split_whitespace(value).as_slice() {
-        [angle] => parse_angle(angle)?,
-        [axis, angle] | [angle, axis] if axis.eq_ignore_ascii_case("z") => parse_angle(angle)?,
+    let function = match split_whitespace(value).as_slice() {
+        [angle] => TransformFunction::Rotate(parse_angle(angle)?),
+        [axis, angle] | [angle, axis] if axis.eq_ignore_ascii_case("z") => TransformFunction::Rotate(parse_angle(angle)?),
+        [axis, angle] | [angle, axis] if axis.eq_ignore_ascii_case("x") => {
+            TransformFunction::Rotate3d(1.0, 0.0, 0.0, parse_angle(angle)?)
+        }
+        [axis, angle] | [angle, axis] if axis.eq_ignore_ascii_case("y") => {
+            TransformFunction::Rotate3d(0.0, 1.0, 0.0, parse_angle(angle)?)
+        }
         [x, y, z, angle] => {
             let (x, y, z) = (finite_number(x)?, finite_number(y)?, finite_number(z)?);
-            if x != 0.0 || y != 0.0 || z == 0.0 {
-                return None;
+            let angle = parse_angle(angle)?;
+            if x == 0.0 && y == 0.0 && z != 0.0 {
+                TransformFunction::Rotate(angle * z.signum() as f32)
+            } else {
+                TransformFunction::Rotate3d(x as f32, y as f32, z as f32, angle)
             }
-            parse_angle(angle)? * z.signum() as f32
         }
         _ => return None,
     };
-    Some(Value::List(vec![TransformFunction::Rotate(angle)]))
+    Some(Value::List(vec![function]))
 }
 
-/// `none | [<number> | <percentage>]{1,3}`. The third, along z, does nothing.
+/// `none | [<number> | <percentage>]{1,3}`.
 fn parse_scale_uncached(value: &str) -> Option<Value> {
     let value = value.trim();
     if value.eq_ignore_ascii_case("none") {
@@ -470,10 +623,7 @@ fn parse_scale_uncached(value: &str) -> Option<Value> {
             TransformFunction::Scale(factor, factor)
         }
         [x, y] => TransformFunction::Scale(scale_factor(x)?, scale_factor(y)?),
-        [x, y, z] => {
-            scale_factor(z)?;
-            TransformFunction::Scale(scale_factor(x)?, scale_factor(y)?)
-        }
+        [x, y, z] => TransformFunction::Scale3d(scale_factor(x)?, scale_factor(y)?, scale_factor(z)?),
         _ => return None,
     };
     Some(Value::List(vec![function]))
@@ -530,6 +680,7 @@ pub(crate) fn format_translate(functions: &[TransformFunction]) -> String {
     match functions {
         [] => "none".to_string(),
         [TransformFunction::Translate(x, y)] => format!("{} {}", format_length(x), format_length(y)),
+        [TransformFunction::Translate3d(x, y, z)] => format!("{} {} {z}px", format_length(x), format_length(y)),
         other => unreachable!("translate was given {other:?}"),
     }
 }
@@ -539,6 +690,7 @@ pub(crate) fn format_rotate(functions: &[TransformFunction]) -> String {
     match functions {
         [] => "none".to_string(),
         [TransformFunction::Rotate(angle)] => format!("{angle}rad"),
+        [TransformFunction::Rotate3d(x, y, z, angle)] => format!("{x} {y} {z} {angle}rad"),
         other => unreachable!("rotate was given {other:?}"),
     }
 }
@@ -548,13 +700,18 @@ pub(crate) fn format_scale(functions: &[TransformFunction]) -> String {
     match functions {
         [] => "none".to_string(),
         [TransformFunction::Scale(x, y)] => format!("{x} {y}"),
+        [TransformFunction::Scale3d(x, y, z)] => format!("{x} {y} {z}"),
         other => unreachable!("scale was given {other:?}"),
     }
 }
 
 /// The `transform-origin` text that [`parse_origin`] reads back as `origin`.
 pub(crate) fn format_origin(origin: &Origin) -> String {
-    format!("{} {}", format_length(&origin.0), format_length(&origin.1))
+    if origin.z == 0.0 {
+        format!("{} {}", format_length(&origin.x), format_length(&origin.y))
+    } else {
+        format!("{} {} {}px", format_length(&origin.x), format_length(&origin.y), origin.z)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -600,16 +757,23 @@ impl Position {
     }
 }
 
-/// One or two positions, and a length along z that does nothing. One position names the
-/// horizontal side, or the vertical one when it is `top` or `bottom`; two may come in either
-/// order when a keyword says which is which.
+/// One or two positions, and a length along z. One position names the horizontal side, or the
+/// vertical one when it is `top` or `bottom`; two may come in either order when a keyword says which
+/// is which.
 fn parse_origin_uncached(value: &str, lengths: &LengthContext) -> Option<Origin> {
     let tokens = split_whitespace(value.trim());
-    if tokens.len() == 3 {
-        parse_length(tokens[2], lengths)?;
-    }
+    let (position, z) = match tokens.as_slice() {
+        [_, _, z] => (&tokens[..2], depth(z, lengths)?),
+        _ => (tokens.as_slice(), 0.0),
+    };
+    let (x, y) = parse_position(position, lengths)?;
+    Some(Origin { x, y, z })
+}
+
+/// One or two positions of a `<position>`.
+fn parse_position(tokens: &[&str], lengths: &LengthContext) -> Option<Position2d> {
     let center = TransformLength::fraction(0.5);
-    match tokens.as_slice() {
+    match tokens {
         [only] => {
             let only = Position::parse(only, lengths)?;
             match (only.horizontal(), only.vertical()) {
@@ -618,7 +782,7 @@ fn parse_origin_uncached(value: &str, lengths: &LengthContext) -> Option<Origin>
                 (None, None) => None,
             }
         }
-        [first, second] | [first, second, _] => {
+        [first, second] => {
             let (first, second) = (Position::parse(first, lengths)?, Position::parse(second, lengths)?);
             if let (Some(x), Some(y)) = (first.horizontal(), second.vertical()) {
                 return Some((x, y));
@@ -739,17 +903,66 @@ mod tests {
     }
 
     #[test]
-    fn the_functions_along_z_do_nothing() {
+    fn the_functions_along_z_and_about_x_and_y_are_3d() {
+        let zero = TransformLength::default();
         assert_eq!(
             list("translate3d(1px, 2px, 3px) scale3d(2, 3, 4) translateZ(5px) scaleZ(2)"),
             [
-                TransformFunction::Translate(px(1.0), px(2.0)),
-                TransformFunction::Scale(2.0, 3.0),
+                TransformFunction::Translate3d(px(1.0), px(2.0), 3.0),
+                TransformFunction::Scale3d(2.0, 3.0, 4.0),
+                TransformFunction::Translate3d(zero, zero, 5.0),
+                TransformFunction::Scale3d(1.0, 1.0, 2.0),
             ]
         );
-        assert_eq!(parse_transform("translateZ(0)", &lengths()), Some(Value::List(Vec::new())));
-        for value in ["rotateX(10deg)", "rotateY(10deg)", "perspective(100px)", "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"] {
+        let quarter = std::f32::consts::FRAC_PI_2;
+        assert_eq!(
+            list("rotateX(90deg) rotateY(-90deg) rotate3d(1, 2, 3, 90deg) rotateZ(90deg)"),
+            [
+                TransformFunction::Rotate3d(1.0, 0.0, 0.0, quarter),
+                TransformFunction::Rotate3d(0.0, 1.0, 0.0, -quarter),
+                TransformFunction::Rotate3d(1.0, 2.0, 3.0, quarter),
+                TransformFunction::Rotate(quarter),
+            ]
+        );
+        assert_eq!(
+            list("perspective(400px) perspective(none) perspective(0) perspective(calc(100px * 2))"),
+            [
+                TransformFunction::Perspective(Some(400.0)),
+                TransformFunction::Perspective(None),
+                TransformFunction::Perspective(Some(0.0)),
+                TransformFunction::Perspective(Some(200.0)),
+            ]
+        );
+        let numbers = "1,0,0,0, 0,1,0,0, 0,0,1,-0.002, 5,6,7,1";
+        assert_eq!(
+            list(&format!("matrix3d({numbers})")),
+            [TransformFunction::Matrix3d([1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., -0.002, 5., 6., 7., 1.])]
+        );
+        assert_eq!(parse_transform("translateZ(0)", &lengths()), Some(Value::List(vec![TransformFunction::Translate3d(zero, zero, 0.0)])));
+        for value in [
+            "translate3d(1px, 2px, 50%)",
+            "translateZ(5)",
+            "rotate3d(1, 0, 0)",
+            "rotateX(1px)",
+            "perspective(-1px)",
+            "perspective(50%)",
+            "perspective()",
+            "scale3d(1, 2)",
+            "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0)",
+        ] {
             assert!(parse_transform(value, &lengths()).is_none(), "{value}");
+        }
+    }
+
+    #[test]
+    fn the_3d_functions_read_back_as_they_are_written() {
+        for value in [
+            "translate3d(10px, 50%, -3px) scale3d(1, 2, 3) rotate3d(1, 0.5, 0, 30deg) perspective(300px) matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 5,6,7,1)",
+            "perspective(none) rotate3d(0, 1, 0, 1turn)",
+            "translateZ(4px) scaleZ(0.5) rotateX(20deg) rotateY(-10deg)",
+        ] {
+            let parsed = list(value);
+            assert_eq!(list(&format_list(&parsed)), parsed, "{value}");
         }
     }
 
@@ -794,8 +1007,9 @@ mod tests {
         );
         assert_eq!(
             parse_translate("10px 20px 30px", &lengths),
-            Some(Value::List(vec![TransformFunction::Translate(px(10.0), px(20.0))]))
+            Some(Value::List(vec![TransformFunction::Translate3d(px(10.0), px(20.0), 30.0)]))
         );
+        assert!(parse_translate("10px 20px 30%", &lengths).is_none());
         assert_eq!(
             parse_translate("10px", &lengths),
             Some(Value::List(vec![TransformFunction::Translate(px(10.0), TransformLength::default())]))
@@ -805,12 +1019,17 @@ mod tests {
         assert_eq!(parse_rotate("90deg z"), parse_rotate("90deg"));
         assert_eq!(parse_rotate("0 0 1 90deg"), parse_rotate("90deg"));
         assert_eq!(parse_rotate("0 0 -1 90deg"), parse_rotate("-90deg"));
-        assert!(parse_rotate("x 90deg").is_none());
-        assert!(parse_rotate("1 0 0 90deg").is_none());
+        let quarter = std::f32::consts::FRAC_PI_2;
+        assert_eq!(parse_rotate("x 90deg"), Some(Value::List(vec![TransformFunction::Rotate3d(1.0, 0.0, 0.0, quarter)])));
+        assert_eq!(parse_rotate("90deg y"), Some(Value::List(vec![TransformFunction::Rotate3d(0.0, 1.0, 0.0, quarter)])));
+        assert_eq!(parse_rotate("1 1 0 90deg"), Some(Value::List(vec![TransformFunction::Rotate3d(1.0, 1.0, 0.0, quarter)])));
+        assert_eq!(parse_rotate("0 0 0 90deg"), Some(Value::List(vec![TransformFunction::Rotate3d(0.0, 0.0, 0.0, quarter)])));
+        assert!(parse_rotate("1 0 0").is_none());
+        assert!(parse_rotate("w 90deg").is_none());
         assert!(parse_rotate("90").is_none());
         assert_eq!(parse_scale("2"), Some(Value::List(vec![TransformFunction::Scale(2.0, 2.0)])));
         assert_eq!(parse_scale("2 50%"), Some(Value::List(vec![TransformFunction::Scale(2.0, 0.5)])));
-        assert_eq!(parse_scale("2 3 4"), Some(Value::List(vec![TransformFunction::Scale(2.0, 3.0)])));
+        assert_eq!(parse_scale("2 3 4"), Some(Value::List(vec![TransformFunction::Scale3d(2.0, 3.0, 4.0)])));
         assert!(parse_scale("2px").is_none());
         assert!(parse_scale("1 2 3 4").is_none());
         assert!(parse_translate("10", &lengths).is_none());
@@ -818,7 +1037,7 @@ mod tests {
 
     #[test]
     fn the_origin_takes_keywords_and_lengths_in_either_order() {
-        let origin = |value: &str| parse_origin(value, &lengths());
+        let origin = |value: &str| parse_origin(value, &lengths()).map(|origin| (origin.x, origin.y));
         let (left, center, right) = (fraction(0.0), fraction(0.5), fraction(1.0));
         assert_eq!(origin("left"), Some((left, center)));
         assert_eq!(origin("bottom"), Some((center, right)));
@@ -835,7 +1054,15 @@ mod tests {
         assert_eq!(origin("10px left"), Some((left, px(10.0))));
         assert_eq!(origin("50% 50% 10px"), Some((center, center)));
         assert_eq!(origin("LEFT TOP"), Some((left, left)));
-        for value in ["", "left right", "top bottom", "left left", "10", "1px 2px 3px 4px", "50% 50% 10%", "nowhere"] {
+        let z = |value: &str| parse_origin(value, &lengths()).map(|origin| origin.z);
+        assert_eq!(z("50% 50% 10px"), Some(10.0));
+        assert_eq!(z("left top -4px"), Some(-4.0));
+        assert_eq!(z("left top 0"), Some(0.0));
+        assert_eq!(z("left top"), Some(0.0));
+        assert_eq!(parse_perspective_origin("20px 30%", &lengths()), Some((px(20.0), fraction(0.3))));
+        assert_eq!(parse_perspective_origin("bottom", &lengths()), Some((center, right)));
+        assert!(parse_perspective_origin("0 0 10px", &lengths()).is_none());
+        for value in ["", "left right", "top bottom", "left left", "10", "1px 2px 3px 4px", "50% 50% 10%", "nowhere", "left 10px 5px 5px"] {
             assert!(origin(value).is_none(), "{value:?}");
         }
     }
@@ -865,7 +1092,8 @@ mod tests {
 
     #[test]
     fn the_origin_defaults_to_the_middle_and_alone_makes_no_transform() {
-        assert_eq!(of(&style(r#"{"rotate":"1deg"}"#), &lengths()).unwrap().origin, DEFAULT_ORIGIN);
+        let default = of(&style(r#"{"rotate":"1deg"}"#), &lengths()).unwrap();
+        assert_eq!((default.origin, default.origin_z), ((DEFAULT_ORIGIN.x, DEFAULT_ORIGIN.y), 0.0));
         assert_eq!(of(&style(r#"{"transformOrigin":"0 0"}"#), &lengths()), None);
         assert_eq!(of(&style("{}"), &lengths()), None);
     }
@@ -994,7 +1222,40 @@ mod tests {
             ]
         );
         assert!(!is_active(&style(r#"{"originX":0.5}"#), &lengths()));
-        assert!(!is_active(&style(r#"{"z":4,"rotateX":10}"#), &lengths()));
+        assert!(is_active(&style(r#"{"z":4}"#), &lengths()));
+        assert!(is_active(&style(r#"{"rotateX":10}"#), &lengths()));
+        assert!(!is_active(&style(r#"{"z":0,"rotateX":0,"transformPerspective":0,"translateZ":"0px"}"#), &lengths()));
+    }
+
+    #[test]
+    fn motions_depth_keys_come_in_motions_order() {
+        let transform = of(
+            &style(
+                r#"{"rotateY":-30,"rotateX":"0.1turn","motionRotate":20,"scaleX":2,"translateZ":"7px","translateX":5,"z":40,"y":20,"x":10,
+                    "transformPerspective":600,"rotateZ":10}"#,
+            ),
+            &lengths(),
+        )
+        .unwrap();
+        let zero = TransformLength::default();
+        assert_eq!(
+            transform.functions,
+            [
+                TransformFunction::Perspective(Some(600.0)),
+                TransformFunction::Translate(px(10.0), zero),
+                TransformFunction::Translate(zero, px(20.0)),
+                TransformFunction::Translate3d(zero, zero, 40.0),
+                TransformFunction::Translate(px(5.0), zero),
+                TransformFunction::Translate3d(zero, zero, 7.0),
+                TransformFunction::Scale(2.0, 1.0),
+                TransformFunction::Rotate(20f32.to_radians()),
+                TransformFunction::Rotate3d(1.0, 0.0, 0.0, 36f32.to_radians()),
+                TransformFunction::Rotate3d(0.0, 1.0, 0.0, -30f32.to_radians()),
+                TransformFunction::Rotate(10f32.to_radians()),
+            ]
+        );
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"z":"50%"}"#).is_err());
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"transformPerspective":-5}"#).is_err());
     }
 
     #[test]

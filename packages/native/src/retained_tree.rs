@@ -1494,6 +1494,10 @@ impl RetainedTree {
                 }
                 clipped = true;
             }
+            // A back turned to the viewer hides what is in it as a clip would: gpui paints it under an empty mask.
+            if resolved.backface_hidden && bounds.faces_away {
+                clipped = true;
+            }
         }
 
         let none = match resolved.pointer_events {

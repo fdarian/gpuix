@@ -106,6 +106,21 @@ pub(crate) fn has_effect_group(style: &StyleDesc, colors: &ColorContext, lengths
             .is_some_and(|clip_path| clip_path.is_some())
 }
 
+/// Whether a grouping property makes the used `transform-style` of the element `flat` whatever it
+/// declares: what is in the element has to be flattened onto its plane before the property can be applied
+/// to the whole. This is Chromium's `ComputedStyle::HasGroupingPropertyForUsedTransformStyle3D`
+/// (third_party/blink/renderer/core/style/computed_style.h): `opacity` below 1 (or an animation of it), a
+/// `filter`, a `clip-path`, a mask, a `backdrop-filter`, and `overflow` other than `visible` on either
+/// axis, `clip` included. Chromium also lists `isolation`, `mix-blend-mode`, a view transition name,
+/// a box reflection and a `clip` on an out-of-flow box, none of which gpuix has; `contain: paint` is not in
+/// its list.
+pub(crate) fn groups_descendants(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> bool {
+    let overflow = crate::scroll::Axes::of(style);
+    has_effect_group(style, colors, lengths)
+        || overflow.x != crate::scroll::Overflow::Visible
+        || overflow.y != crate::scroll::Overflow::Visible
+}
+
 /// Puts the `z-index` of a lifted element on it, and asks zed to lift it when it is not
 /// positioned. zed reads it only from an element it was put on, and every styled element
 /// carries it, a `virtual-list` or an `<img>` as well as a `Div`. `style.flex_or_grid_item`
@@ -412,6 +427,58 @@ mod tests {
         assert!(!context_of(&with(|s| s.translate = Some("none".into()))));
         assert!(!context_of(&with(|s| s.scale = Some("2px".into()))));
         assert!(!context_of(&with(|s| s.transform_origin = Some("0 0".into()))));
+    }
+
+    #[test]
+    fn a_perspective_or_preserve_3d_is_a_context_where_chromium_makes_one() {
+        for set in [
+            |s: &mut StyleDesc| s.perspective = Some("400px".into()),
+            |s: &mut StyleDesc| s.perspective = Some("0px".into()),
+            |s: &mut StyleDesc| s.transform_style = Some("preserve-3d".into()),
+            |s: &mut StyleDesc| {
+                // A grouping property makes the used value flat, and the declared one is the context.
+                s.transform_style = Some("preserve-3d".into());
+                s.overflow = Some("hidden".into());
+            },
+        ] {
+            let deep = with(set);
+            assert!(context_of(&deep));
+            assert_eq!(lift_of(&deep, false), Some(0));
+        }
+        for set in [
+            |s: &mut StyleDesc| s.perspective = Some("none".into()),
+            |s: &mut StyleDesc| s.perspective = Some("-1px".into()),
+            |s: &mut StyleDesc| s.perspective = Some("50%".into()),
+            |s: &mut StyleDesc| s.perspective_origin = Some("0 0".into()),
+            |s: &mut StyleDesc| s.transform_style = Some("flat".into()),
+            |s: &mut StyleDesc| s.transform_style = Some("bogus".into()),
+            |s: &mut StyleDesc| s.backface_visibility = Some("hidden".into()),
+        ] {
+            assert!(!context_of(&with(set)));
+        }
+    }
+
+    #[test]
+    fn a_grouping_property_makes_the_used_transform_style_flat() {
+        let (colors, lengths) = (ColorContext::root(crate::color::Scheme::Light), LengthContext::initial(0.0, 0.0));
+        let groups = |style: &StyleDesc| groups_descendants(style, &colors, &lengths);
+        assert!(!groups(&StyleDesc::default()));
+        assert!(!groups(&with(|s| s.opacity = Some(1.0))));
+        assert!(!groups(&with(|s| s.overflow = Some("visible".into()))));
+        assert!(!groups(&with(|s| s.filter = Some("none".into()))));
+        for set in [
+            |s: &mut StyleDesc| s.overflow = Some("hidden".into()),
+            |s: &mut StyleDesc| s.overflow = Some("clip".into()),
+            |s: &mut StyleDesc| s.overflow_x = Some("auto".into()),
+            |s: &mut StyleDesc| s.opacity = Some(0.99),
+            |s: &mut StyleDesc| s.filter = Some("blur(1px)".into()),
+            |s: &mut StyleDesc| s.backdrop_filter = Some("blur(1px)".into()),
+            |s: &mut StyleDesc| s.clip_path = Some("inset(0)".into()),
+            |s: &mut StyleDesc| s.mask_image = Some("linear-gradient(black, black)".into()),
+            |s: &mut StyleDesc| s.animating_opacity = true,
+        ] {
+            assert!(groups(&with(set)));
+        }
     }
 
     #[test]

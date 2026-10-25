@@ -581,7 +581,7 @@ fn transform_write(slot: &mut Option<String>, value: AnimValue, format: fn(&[Tra
 
 fn origin_value(origin: &Origin) -> AnimValue {
     let part = |length: &TransformLength| (f64::from(length.px), f64::from(length.fraction));
-    AnimValue::ellipse(part(&origin.0), part(&origin.1))
+    AnimValue::ellipse(part(&origin.x), part(&origin.y))
 }
 
 fn origin_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
@@ -593,7 +593,8 @@ fn origin_write(slot: &mut Option<String>, value: AnimValue) {
         .as_ellipse()
         .unwrap_or_else(|| unreachable!("a transform origin field was given {value:?}"));
     let part = |px: f64, fraction: f64| TransformLength { px: px as f32, fraction: fraction as f32 };
-    *slot = Some(format_origin(&(part(x_px, x_fraction), part(y_px, y_fraction))));
+    // The z of the origin is not animated, a blend of two origins has none.
+    *slot = Some(format_origin(&Origin { x: part(x_px, x_fraction), y: part(y_px, y_fraction), z: 0.0 }));
 }
 
 fn integer_write(slot: &mut Option<f64>, value: AnimValue) {
@@ -898,12 +899,17 @@ properties! {
     // which `AnimProp::from_name` maps; the names here are the ones of the style.
     X "x" Length None Number(0.0), x;
     Y "y" Length None Number(0.0), y;
+    Z "z" Length None Number(0.0), z;
     TranslateX "translateX" Length None Number(0.0), translate_x;
     TranslateY "translateY" Length None Number(0.0), translate_y;
+    TranslateZ "translateZ" Length None Number(0.0), translate_z;
+    TransformPerspective "transformPerspective" Length NonNegative Number(0.0), transform_perspective;
     MotionScale "motionScale" Number None Number(1.0), motion_scale;
     ScaleX "scaleX" Number None Number(1.0), scale_x;
     ScaleY "scaleY" Number None Number(1.0), scale_y;
     MotionRotate "motionRotate" Angle None Number(0.0), motion_rotate;
+    RotateX "rotateX" Angle None Number(0.0), rotate_x;
+    RotateY "rotateY" Angle None Number(0.0), rotate_y;
     RotateZ "rotateZ" Angle None Number(0.0), rotate_z;
     Skew "skew" Angle None Number(0.0), skew;
     SkewX "skewX" Angle None Number(0.0), skew_x;
@@ -955,8 +961,13 @@ impl AnimProp {
             self,
             Self::X
                 | Self::Y
+                | Self::Z
                 | Self::TranslateX
                 | Self::TranslateY
+                | Self::TranslateZ
+                | Self::TransformPerspective
+                | Self::RotateX
+                | Self::RotateY
                 | Self::MotionScale
                 | Self::ScaleX
                 | Self::ScaleY
@@ -1251,12 +1262,6 @@ impl AnimProp {
         Self::from_css_name(name).filter(|prop| !prop.is_discrete())
     }
 
-    /// Motion's keys that move or turn an element in depth. Nothing draws them, which is what they do
-    /// without a perspective, so a motion component takes them and leaves them out.
-    pub(super) fn is_depth_key(name: &str) -> bool {
-        matches!(name, "z" | "translateZ" | "rotateX" | "rotateY" | "transformPerspective")
-    }
-
     /// What the property is called in a motion description and in an error.
     pub(super) fn name(self) -> &'static str {
         match self {
@@ -1334,6 +1339,9 @@ impl AnimProp {
                 | Self::BorderLeftWidth
                 | Self::OutlineWidth
                 | Self::OutlineOffset
+                | Self::Z
+                | Self::TranslateZ
+                | Self::TransformPerspective
         )
     }
 
@@ -1780,7 +1788,10 @@ mod tests {
 
     #[test]
     fn motions_transform_keys_are_named_for_motion_and_not_for_css() {
-        for name in ["x", "y", "translateX", "translateY", "scaleX", "scaleY", "rotateZ", "skew", "skewX", "skewY", "originX", "originY"] {
+        for name in [
+            "x", "y", "z", "translateX", "translateY", "translateZ", "transformPerspective", "scaleX", "scaleY", "rotateX",
+            "rotateY", "rotateZ", "skew", "skewX", "skewY", "originX", "originY",
+        ] {
             let prop = AnimProp::from_name(name).unwrap();
             assert_eq!(prop.name(), name);
             assert!(prop.paints_only() && prop.is_positional() && prop.is_motion_only(), "{name}");
@@ -1794,9 +1805,6 @@ mod tests {
         assert!(AnimProp::from_name("motionScale").is_none() && AnimProp::from_name("motionRotate").is_none());
         assert_eq!(AnimProp::from_css_name("scale"), Some(AnimProp::Scale));
         assert_eq!(AnimProp::from_css_name("rotate"), Some(AnimProp::Rotate));
-        for name in ["z", "translateZ", "rotateX", "rotateY", "transformPerspective"] {
-            assert!(AnimProp::from_name(name).is_none() && AnimProp::is_depth_key(name), "{name}");
-        }
         assert!(!AnimProp::OriginX.is_transform() && AnimProp::X.is_transform() && !AnimProp::Opacity.is_transform());
     }
 
@@ -1922,6 +1930,10 @@ mod tests {
             (AnimProp::Translate, "12px 30%"),
             (AnimProp::Rotate, "1.25rad"),
             (AnimProp::Scale, "1.5 2"),
+            (AnimProp::Scale, "1.5 2 3"),
+            (AnimProp::Rotate, "y 20deg"),
+            (AnimProp::Rotate, "1 2 0 20deg"),
+            (AnimProp::Translate, "10px 20% 30px"),
         ] {
             let parsed = prop.parse(&json(text), &colors).unwrap();
             let mut style = StyleDesc::default();
@@ -1933,7 +1945,7 @@ mod tests {
         assert_eq!(style.transform.as_deref(), Some("none"));
         assert_eq!(AnimProp::Transform.read(&style, &colors), Some(AnimValue::Transform(Vec::new())));
         assert!(AnimProp::Transform.parse(&json("rotate(90)"), &colors).is_err());
-        assert!(AnimProp::Rotate.parse(&json("1 0 0 20deg"), &colors).is_err());
+        assert!(AnimProp::Rotate.parse(&json("w 20deg"), &colors).is_err());
         assert_eq!(AnimProp::Rotate.parse(&serde_json::json!(90), &colors), AnimProp::Rotate.parse(&json("90deg"), &colors));
         assert_eq!(AnimProp::Scale.parse(&serde_json::json!(2), &colors), AnimProp::Scale.parse(&json("2 2"), &colors));
     }

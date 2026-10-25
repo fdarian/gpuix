@@ -251,8 +251,6 @@ impl Transitions {
                 }
             } else if let Some(prop) = PropKey::from_name(target, &key) {
                 per_prop.insert(prop, transition);
-            } else if target == Target::Style && AnimProp::is_depth_key(&key) {
-                continue;
             } else {
                 return Err(format!("unknown motion transition key: {key}"));
             }
@@ -1710,8 +1708,6 @@ fn parse_goals(
             }
         } else if let Some(prop) = PropKey::from_name(target, key) {
             goals.insert(prop, parse_goal(prop, value, colors)?);
-        } else if target == Target::Style && AnimProp::is_depth_key(key) {
-            continue;
         } else {
             return Err(match target {
                 Target::Style => format!(

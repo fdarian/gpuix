@@ -12505,6 +12505,22 @@ fn apply_styles_taking_borders_from<E: gpui::Styled>(
     if let Some(transform) = crate::css::transform::of(style, lengths) {
         el.style().transform = Some(transform);
     }
+    // The depth properties are not inherited and a state style is folded into this style, so only what
+    // is declared needs setting: `none`, `flat` and `visible` are what the style starts as.
+    if let Some(distance) = crate::css::transform::perspective_of(style, lengths).flatten() {
+        el.style().perspective = Some(distance);
+    }
+    if let Some(origin) = crate::css::transform::perspective_origin_of(style, lengths) {
+        el.style().perspective_origin = Some(origin);
+    }
+    if crate::css::transform::declared_preserve_3d(style) == Some(true)
+        && !crate::layout::stacking::groups_descendants(style, colors, lengths)
+    {
+        el.style().transform_style_preserve_3d = Some(true);
+    }
+    if crate::css::transform::declared_backface_hidden(style) == Some(true) {
+        el.style().backface_hidden = Some(true);
+    }
     // Some(empty) is `none`, which a state style needs in order to clear the base filter.
     if let Some(filters) = style
         .filter

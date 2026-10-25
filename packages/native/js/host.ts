@@ -221,8 +221,9 @@ export type MotionStyleTargets = Pick<
 export type MotionLength = DimensionValue
 
 /**
- * Motion's transform keys, composed in Motion's order (`x`, `y`, `translateX`, `translateY`, `scale`,
- * `scaleX`, `scaleY`, `rotate`, `rotateZ`, `skew`, `skewX`, `skewY`) around the origin. They replace
+ * Motion's transform keys, composed in Motion's order (`transformPerspective`, `x`, `y`, `z`, `translateX`,
+ * `translateY`, `translateZ`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateX`, `rotateY`, `rotateZ`,
+ * `skew`, `skewX`, `skewY`) around the origin. They replace
  * `transform`, as Motion's do, and the element is a stacking context and the containing block of its
  * absolute and fixed descendants whenever one is set. On a `motion.*` component `scale` and `rotate`
  * are these and not the CSS properties of the same names. They animate with tweens, springs and
@@ -250,11 +251,15 @@ export interface MotionTransformKeys {
   /** A number is a fraction of the border box (`0.5` is the middle, the default); a string is a CSS length. */
   originX?: number | string
   originY?: number | string
-  /** Accepted and ignored: nothing draws in depth. */
+  /** Along z, toward the viewer: a number is px; a string is a CSS length without `%`. Seen with a
+   *  `perspective` on the parent, or `transformPerspective` here. */
   z?: MotionLength
   translateZ?: MotionLength
+  /** A number is degrees; a string is a CSS angle. */
   rotateX?: number | string
   rotateY?: number | string
+  /** `perspective(<n>px)` first in the list, so this element's own transform is seen from `n` px. A
+   *  number is px. Not the CSS `perspective` property, which is the style `perspective`. */
   transformPerspective?: number
   /**
    * A CSS transform list or `none`. Animating it blends the two lists as a CSS transition does
@@ -897,25 +902,47 @@ export interface StyleDesc {
    *  hit testing and `getBoundingClientRect()` included, around `transformOrigin`; layout is
    *  not affected. Translations take lengths (`px`, `em`, `rem`, `vw`, `vh`, `calc()`) and
    *  percentages of the element's own border box; angles are `deg`, `rad`, `grad` or `turn`
-   *  (or a bare `0`). The z forms (`translate3d()`, `scale3d()`, `translateZ()`, `scaleZ()`,
-   *  `rotateZ()`) are accepted and draw in 2D; `rotateX()`, `rotateY()`, `perspective()` and
-   *  `matrix3d()` are invalid. An invalid string is ignored, as in CSS.
+   *  (or a bare `0`). The 3D forms are CSS Transforms 2's: `translate3d()`, `translateZ()`,
+   *  `scale3d()`, `scaleZ()`, `rotateX()`, `rotateY()`, `rotate3d()`, `perspective()` and
+   *  `matrix3d()` (`rotateZ()` is `rotate()`); see `perspective`. An invalid string is ignored, as
+   *  in CSS.
    *
-   *  A transform other than `none` makes the element a stacking context and the containing
-   *  block of its absolute and fixed descendants. It does nothing to a non-atomic inline
+   *  A transform other than `none` (and a `perspective`, and `transformStyle: "preserve-3d"`) makes
+   *  the element a stacking context and the containing block of its absolute and fixed descendants. It does nothing to a non-atomic inline
    *  element (a `<span>` in a line of text). A pure translation keeps text sharp; rotated and
    *  scaled text is resampled and may look softer. */
   transform?: string
   /** CSS `translate`, `rotate` and `scale`: the individual transform properties, applied
    *  around `transformOrigin` as translate, then rotate, then scale, then `transform`.
    *  `translate` is one or two lengths or percentages; `rotate` an angle (a number is
-   *  degrees); `scale` one or two numbers or percentages (a number is the factor). */
+   *  degrees, or `x`, `y`, `z` or three numbers for an axis, then the angle); `scale` one to
+   *  three numbers or percentages (a number is the factor). `translate` takes a length along z
+   *  as a third value. */
   translate?: string
   rotate?: number | string
   scale?: number | string
   /** CSS `transform-origin`: one or two of `left`, `center`, `right`, `top`, `bottom`, lengths
-   *  and percentages, `50% 50%` by default. */
+   *  and percentages, `50% 50%` by default, and a length along z. */
   transformOrigin?: string
+  /** CSS `perspective`: `"none"` or a length from 0 up (a number is px). The children are seen from
+   *  that far in front of this element's plane, so a `rotateX()`, `rotateY()` or `translateZ()` of
+   *  theirs shows in depth. Not inherited: it reaches the children, not their descendants, unless
+   *  `transformStyle` is `preserve-3d`. A perspective makes the element a stacking context and the
+   *  containing block of its absolute and fixed descendants. */
+  perspective?: number | string
+  /** CSS `perspective-origin`: where the viewer looks at the box, like `transformOrigin` without z.
+   *  `50% 50%` by default. */
+  perspectiveOrigin?: string
+  /** CSS `transform-style`: `"preserve-3d"` makes the children planes of the same 3D rendering
+   *  context as this element, so their depth accumulates through it; `"flat"` (the default)
+   *  flattens them onto the element. A grouping property makes the used value `flat`: `overflow` other
+   *  than `visible`, `opacity` below 1, `filter`, `backdropFilter`, `clipPath` and a mask. Planes
+   *  are painted in tree order, not sorted by depth, and are not cut where they intersect.
+   *  `preserve-3d` makes a stacking context and a containing block even where it is overridden. */
+  transformStyle?: "flat" | "preserve-3d"
+  /** CSS `backface-visibility`: `"hidden"` draws and hits nothing of the element, and what is in
+   *  it, while its back faces the viewer. */
+  backfaceVisibility?: "visible" | "hidden"
   /** One to four line styles, like `borderColor`: `"dotted"`, `"dotted dashed"` (top-bottom,
    *  left-right), ... A `none` or `hidden` side has no width. One invalid keyword ignores the
    *  whole value. A side that no `border*` value gives a style is `none`, as in CSS:

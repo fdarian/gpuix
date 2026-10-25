@@ -98,6 +98,10 @@ fn deserialize_degrees<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Opt
     text_or_number(deserializer, "deg")
 }
 
+fn deserialize_pixels<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    text_or_number(deserializer, "px")
+}
+
 fn deserialize_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
     text_or_number(deserializer, "")
 }
@@ -232,6 +236,19 @@ length_field!(
     "a CSS length without %, or thin, medium or thick",
     crate::css::border::parse_width
 );
+length_field!(
+    deserialize_depth,
+    "depth",
+    "a CSS length without %",
+    crate::css::dimension::parse_definite_length
+);
+/// A distance from 0 up, in px or a CSS length without `%`.
+fn deserialize_perspective_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LinearLength>, D::Error> {
+    match deserialize_depth(deserializer)? {
+        Some(length) if length.is_negative() => Err(serde::de::Error::custom("invalid perspective: expected a length from 0 up")),
+        other => Ok(other),
+    }
+}
 length_field!(
     deserialize_outline_offset,
     "outline offset",
@@ -887,25 +904,50 @@ pub struct StyleDesc {
     /// optional reference box, or `none`. An invalid string is ignored.
     pub clip_path: Option<String>,
     /// CSS `transform`: a list of `translate()`, `scale()`, `rotate()`, `skew()` and `matrix()`
-    /// functions (and their `X`/`Y`/`Z`/`3d` forms, whose z does nothing), or `none`. An invalid
+    /// functions, their `X`/`Y`/`Z`/`3d` forms, `perspective()` and `matrix3d()`, or `none`. An invalid
     /// string is ignored.
     pub transform: Option<String>,
-    /// CSS `translate`: `none` or one or two lengths or percentages.
+    /// CSS `translate`: `none` or one or two lengths or percentages and a length along z.
     pub translate: Option<String>,
-    /// CSS `rotate`: `none` or an angle. A number is degrees.
+    /// CSS `rotate`: `none`, an angle, or an axis (`x`, `y`, `z` or three numbers) and an angle. A number
+    /// is degrees.
     #[serde(default, deserialize_with = "deserialize_degrees")]
     pub rotate: Option<String>,
-    /// CSS `scale`: `none` or one or two numbers or percentages. A number is the factor.
+    /// CSS `scale`: `none` or one to three numbers or percentages. A number is the factor.
     #[serde(default, deserialize_with = "deserialize_factor")]
     pub scale: Option<String>,
-    /// CSS `transform-origin`: one or two keywords, lengths or percentages. `50% 50%` by default.
+    /// CSS `transform-origin`: one or two keywords, lengths or percentages and a length along z.
+    /// `50% 50%` by default.
     pub transform_origin: Option<String>,
+    /// CSS `perspective`: `none` or a length from 0 up, the distance of the viewer in front of this
+    /// element's plane, who sees its children through it. A number is px. An element with one is a
+    /// stacking context and the containing block of its absolute and fixed descendants.
+    #[serde(default, deserialize_with = "deserialize_pixels")]
+    pub perspective: Option<String>,
+    /// CSS `perspective-origin`: the point of the border box the viewer looks at, like `transform-origin`
+    /// without z. `50% 50%` by default.
+    pub perspective_origin: Option<String>,
+    /// CSS `transform-style`: `flat` or `preserve-3d`, which makes the children planes of the same 3D
+    /// rendering context. A grouping property (`overflow` other than `visible`, `opacity` below 1, a
+    /// filter, a mask, a clip path, `backdrop-filter`) makes the used value `flat`. `preserve-3d` is a
+    /// stacking context and a containing block as declared.
+    pub transform_style: Option<String>,
+    /// CSS `backface-visibility`: `hidden` draws nothing, and hits nothing, of the element and what is in it
+    /// while its back faces the viewer.
+    pub backface_visibility: Option<String>,
     /// Motion's transform keys, sent by `motion.*` components only (see `css/transform.rs`): a
     /// number is px, a string a CSS length (`%` is of the border box).
     pub x: Option<LinearLength>,
     pub y: Option<LinearLength>,
     pub translate_x: Option<LinearLength>,
     pub translate_y: Option<LinearLength>,
+    /// Motion's `z` and `translateZ`, in px and not a percentage; `transformPerspective`, a length from 0 up.
+    #[serde(default, deserialize_with = "deserialize_depth")]
+    pub z: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_depth")]
+    pub translate_z: Option<LinearLength>,
+    #[serde(default, deserialize_with = "deserialize_perspective_length")]
+    pub transform_perspective: Option<LinearLength>,
     /// Motion's `scale` and `rotate`, under other names so that they do not meet the CSS `scale`
     /// and `rotate` above. The motion components rename the keys of their style.
     #[serde(default, deserialize_with = "deserialize_scale_factor")]
@@ -917,6 +959,10 @@ pub struct StyleDesc {
     /// An angle: a number is degrees, a string a CSS angle.
     #[serde(default, deserialize_with = "deserialize_angle")]
     pub motion_rotate: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub rotate_x: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_angle")]
+    pub rotate_y: Option<f64>,
     #[serde(default, deserialize_with = "deserialize_angle")]
     pub rotate_z: Option<f64>,
     #[serde(default, deserialize_with = "deserialize_angle")]
@@ -1265,9 +1311,10 @@ impl StyleDesc {
     /// so a window whose layout was current stays current after the change (see
     /// `RetainedTree::take_dirty`). The keys are those of `AnimProp::paints_only`, which is the
     /// list of what no layout, text measure, scroll overflow or box position reads, and the
-    /// shorthand `borderColor`, which is four colours and nothing else. The `border` and `outline`
-    /// shorthands carry widths, so they are not here. The transform keys (CSS and Motion's) are paint
-    /// while the element keeps or lacks a transform, because having one makes it a containing block.
+    /// shorthand `borderColor`, which is four colours and nothing else, and `backfaceVisibility`. The
+    /// `border` and `outline` shorthands carry widths, so they are not here. The transform keys (CSS and
+    /// Motion's, `perspective` and `transformStyle` too) are paint while the element keeps or lacks a
+    /// transform context, because having one makes it a containing block.
     ///
     /// Every other field, a state style (`hover`, ...) and a custom property included, is compared
     /// whole: a key that is added to the struct is a layout key until it is listed here.
@@ -1286,12 +1333,21 @@ impl StyleDesc {
         painted.text_decoration_color = other.text_decoration_color.clone();
         painted.scrollbar_color = other.scrollbar_color.clone();
         painted.selection_color = other.selection_color.clone();
+        painted.backface_visibility = other.backface_visibility.clone();
         // Having a transform makes the element a containing block, which layout reads: only the
         // values of one that stays on or off are paint. Whether a text with a `var()` is a
         // transform is not known until the custom properties substitute it.
-        let has_transform = |style: &Self| crate::css::transform::is_active(style, &LengthContext::initial(0.0, 0.0));
+        let has_transform = |style: &Self| crate::css::transform::forms_context(style, &LengthContext::initial(0.0, 0.0));
         let reads_vars = crate::css::transform::reads_vars(self) || crate::css::transform::reads_vars(other);
         if !reads_vars && has_transform(self) == has_transform(other) {
+            painted.perspective = other.perspective.clone();
+            painted.perspective_origin = other.perspective_origin.clone();
+            painted.transform_style = other.transform_style.clone();
+            painted.z = other.z;
+            painted.translate_z = other.translate_z;
+            painted.transform_perspective = other.transform_perspective;
+            painted.rotate_x = other.rotate_x;
+            painted.rotate_y = other.rotate_y;
             painted.transform = other.transform.clone();
             painted.translate = other.translate.clone();
             painted.rotate = other.rotate.clone();
@@ -1757,6 +1813,15 @@ mod tests {
         assert!(!paint_only("{}", r#"{"x":9}"#));
         assert!(!paint_only(r#"{"motionRotate":3}"#, "{}"));
         assert!(paint_only("{}", r#"{"originX":1}"#));
+        // The depth properties: a change of perspective moves only what the children paint; the flips that
+        // make or end a stacking context and a containing block are layout, as a transform's are.
+        assert!(paint_only(r#"{"perspective":"200px"}"#, r#"{"perspective":"900px","perspectiveOrigin":"0 0"}"#));
+        assert!(!paint_only("{}", r#"{"perspective":"200px"}"#));
+        assert!(!paint_only(r#"{"perspective":"none"}"#, r#"{"perspective":0}"#));
+        assert!(!paint_only(r#"{"transformStyle":"flat"}"#, r#"{"transformStyle":"preserve-3d"}"#));
+        assert!(paint_only(r#"{"transformStyle":"preserve-3d"}"#, r#"{"transformStyle":"preserve-3d","transform":"rotateY(9deg)"}"#));
+        assert!(paint_only("{}", r#"{"backfaceVisibility":"hidden"}"#));
+        assert!(paint_only(r#"{"z":1,"rotateX":3}"#, r#"{"z":9,"rotateY":3,"transformPerspective":9}"#));
     }
 
     #[test]
