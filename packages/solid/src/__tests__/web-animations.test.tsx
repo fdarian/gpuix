@@ -107,6 +107,157 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Web animations", () => {
     app.unmount()
   })
 
+  describe("the playback interface", () => {
+    /** A window that draws only where a browser would have a frame: `frame()`. */
+    const stage = (animation: string) => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      app.renderer.setInlineDraws(false)
+      let box!: HostElement
+      app.render(() => (
+        <div ref={(element) => (box = element)} testId="box" style={{ width: 50, height: 20, animation }} />
+      ))
+      app.renderer.getElementBounds(app.renderer.findByTestId("box")!.id)
+      const frame = () => {
+        app.renderer.clockFastForward(16)
+        app.renderer.drawFrame()
+        app.renderer.dispatchNativeEvents()
+      }
+      return { app, frame, animations: () => box.getAnimations() }
+    }
+
+    it("is pending until the first frame, which resolves ready and sets the start time", async () => {
+      const { app, frame, animations } = stage("solid-wa-grow 1s linear")
+      const [animation] = animations()
+      expect(animation.pending).toBe(true)
+      expect(animation.startTime).toBeNull()
+      expect(animation.timeline.currentTime).toBeGreaterThanOrEqual(0)
+      const ready = animation.ready
+      let resolved = false
+      void ready.then(() => (resolved = true))
+      await Promise.resolve()
+      expect(resolved).toBe(false)
+      frame()
+      await expect(ready).resolves.toBe(animation)
+      expect(animation.pending).toBe(false)
+      expect(animation.startTime).toBe(animation.timeline.currentTime)
+      expect(animation.ready).toBe(ready)
+      app.unmount()
+    })
+
+    it("cancels: idle, unlisted, finished rejected at once, the event with the next frame, and not started again by the style", async () => {
+      const { app, frame, animations } = stage("solid-wa-grow 1s linear")
+      const [animation] = animations()
+      frame()
+      const heard: string[] = []
+      animation.oncancel = (event) => heard.push(`oncancel ${event.currentTime} ${event.timelineTime! < animation.timeline.currentTime}`)
+      animation.addEventListener("cancel", (event) => heard.push(`cancel ${event.type}`))
+      const finished = animation.finished
+      animation.currentTime = 300
+      animation.cancel()
+      expect(animation.playState).toBe("idle")
+      expect(animation.currentTime).toBeNull()
+      expect(animation.startTime).toBeNull()
+      expect(animations()).toEqual([])
+      await expect(finished).rejects.toMatchObject({ name: "AbortError" })
+      expect(heard).toEqual([])
+      frame()
+      expect(heard).toEqual(["oncancel null true", "cancel cancel"])
+      frame()
+      expect(animation.playState).toBe("idle")
+      expect(animations()).toEqual([])
+
+      animation.play()
+      expect(animation.playState).toBe("running")
+      expect(animation.currentTime).toBe(0)
+      expect(animation.pending).toBe(true)
+      expect(animations()).toEqual([animation])
+      frame()
+      expect(animation.pending).toBe(false)
+      app.unmount()
+    })
+
+    it("finishes at the end and fires finish once with the time it was at; at a rate of 0 it throws", async () => {
+      const { app, frame, animations } = stage("solid-wa-grow 1s linear forwards")
+      const [animation] = animations()
+      frame()
+      const heard: string[] = []
+      animation.onfinish = (event) => heard.push(`onfinish ${event.currentTime}`)
+      const finished = animation.finished
+      animation.finish()
+      expect(animation.playState).toBe("finished")
+      expect(animation.currentTime).toBe(1000)
+      await expect(finished).resolves.toBe(animation)
+      expect(heard).toEqual([])
+      frame()
+      expect(heard).toEqual(["onfinish 1000"])
+      frame()
+      expect(heard).toEqual(["onfinish 1000"])
+
+      animation.play()
+      animation.playbackRate = 0
+      expect(() => animation.finish()).toThrow(DOMException)
+      try {
+        animation.finish()
+      } catch (error) {
+        expect((error as DOMException).name).toBe("InvalidStateError")
+      }
+      app.unmount()
+    })
+
+    it("reverses at the next frame, keeping the time, with a new ready", async () => {
+      const { app, frame, animations } = stage("solid-wa-grow 1s linear both")
+      const [animation] = animations()
+      frame()
+      animation.currentTime = 300
+      const ready = animation.ready
+      animation.reverse()
+      expect(animation.playbackRate).toBe(1)
+      expect(animation.pending).toBe(true)
+      expect(animation.ready).not.toBe(ready)
+      const reversed = animation.ready
+      frame()
+      await expect(reversed).resolves.toBe(animation)
+      expect(animation.playbackRate).toBe(-1)
+      // The time ran on at the old rate for the 16 ms until the frame that flipped it.
+      expect(animation.currentTime).toBeCloseTo(316, 3)
+      app.unmount()
+    })
+
+    it("sets the start time to seek, and null to hold the time", () => {
+      const { app, frame, animations } = stage("solid-wa-grow 1s linear both")
+      const [animation] = animations()
+      frame()
+      const now = animation.timeline.currentTime
+      animation.startTime = now - 300
+      expect(animation.currentTime).toBe(300)
+      expect(animation.startTime).toBe(now - 300)
+      animation.startTime = null
+      expect(animation.playState).toBe("paused")
+      expect(animation.currentTime).toBe(300)
+      expect(animation.startTime).toBeNull()
+      expect(() => (animation.startTime = Number.NaN)).toThrow(TypeError)
+      app.unmount()
+    })
+
+    it("updates the playback rate at the next frame when running and at once when paused", () => {
+      const { app, frame, animations } = stage("solid-wa-grow 1s linear both")
+      const [animation] = animations()
+      frame()
+      animation.updatePlaybackRate(2)
+      expect(animation.playbackRate).toBe(1)
+      expect(animation.pending).toBe(true)
+      frame()
+      expect(animation.playbackRate).toBe(2)
+      animation.pause()
+      frame()
+      animation.updatePlaybackRate(3)
+      expect(animation.playbackRate).toBe(3)
+      expect(animation.pending).toBe(false)
+      app.unmount()
+    })
+  })
+
   it("has no animations for an element that is not mounted", () => {
     const app = createTestRoot()
     let box!: HostElement

@@ -105,6 +105,7 @@ function calls(r, ids) {
     getDebugFrameOverlayStats: () => r.getDebugFrameOverlayStats(),
     getElement: () => r.getElement(ids.box),
     getElementBounds: () => r.getElementBounds(ids.box),
+    getAnimationTimelineTime: () => r.getAnimationTimelineTime(),
     getBuiltElementBounds: () => r.getBuiltElementBounds(ids.box),
     getElementsAt: () => r.getElementsAt(5, 5),
     getFocusedElementId: () => r.getFocusedElementId(),
@@ -137,6 +138,10 @@ function calls(r, ids) {
     isMotionValueAnimating: () => r.isMotionValueAnimating(910),
     jumpMotionValue: () => r.jumpMotionValue(910, 2),
     pauseAnimation: () => r.pauseAnimation(r.getAnimations(ids.box)[0].id),
+    finishAnimation: () => r.finishAnimation(r.getAnimations(ids.box)[0].id),
+    reverseAnimation: () => r.reverseAnimation(r.getAnimations(ids.box)[0].id),
+    updateAnimationPlaybackRate: () => r.updateAnimationPlaybackRate(r.getAnimations(ids.box)[0].id, 2),
+    setAnimationStartTime: () => r.setAnimationStartTime(r.getAnimations(ids.box)[0].id, null),
     pauseMotionValue: () => r.pauseMotionValue(910),
     playAnimation: () => r.playAnimation(r.getAnimations(ids.box)[0].id),
     playMotionValue: () => r.playMotionValue(910),
@@ -192,6 +197,8 @@ function calls(r, ids) {
     takeSimulatedWindowActions: () => r.takeSimulatedWindowActions(),
     toJSON: () => r.toJSON(),
     writeClipboardText: () => r.writeClipboardText("x"),
+    // Last: a cancelled animation is not listed, which the calls above read.
+    cancelAnimation: () => r.cancelAnimation(r.getAnimations(ids.box)[0].id),
   }
 }
 

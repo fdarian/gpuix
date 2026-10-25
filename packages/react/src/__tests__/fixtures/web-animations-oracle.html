@@ -1,20 +1,54 @@
 <!doctype html>
 <!--
   Oracle for web-animations.test.tsx: what headless Chrome reports through `element.getAnimations()` for CSS
-  transitions and CSS animations. A case is an element with a style, optionally a second style that starts
-  transitions, and steps run on the animations `getAnimations()` returned right after that (the "tracked" ones,
-  by index). Every step records what Chrome shows at that point: the width and height of the element, and for
-  each tracked animation its class, name, `playState`, `currentTime`, `playbackRate` and which `finished` promise
-  object it holds (0 is the first one it had, 1 the one that replaced it). A `list` step records what
-  `getAnimations()` returns then. Steps run in one task, so no frame
-  passes between them; Chrome's own timeline time stays at the first frame and a running animation reads 0.
-  Changing only the playbackRate does not make Chrome sample the effect again, so a value or list read right
-  after one is the old direction's: the cases move the time after it.
-  `settle` waits two frames and records how every `finished` promise each animation held stands: a cancel
-  rejects the promise held and leaves a new pending one. Keyframes: `grow` is the width from
-  100px to 200px, `tall` the height from 10px to 30px. Regenerate with
+  transitions and CSS animations, and what the Animation API does to them. Regenerate with
 
     sh web-animations-oracle.sh
+
+  The page holds three kinds of case, run in two ways.
+
+  1. `cases` (the first kind), run by `--virtual-time-budget --dump-dom`. A case is an element with a style,
+  optionally a second style that starts transitions, and steps run on the animations `getAnimations()` returned right
+  after that (the "tracked" ones, by index). Every step records what Chrome shows at that point: the width and height
+  of the element, and for each tracked animation its class, name, `playState`, `currentTime`, `playbackRate` and which
+  `finished` promise object it holds (0 is the first one it had, 1 the one that replaced it). A `list` step records
+  what `getAnimations()` returns then. Steps run in one task, so no frame passes between them; Chrome's own timeline
+  time stays at the first frame and a running animation reads 0. Changing only the playbackRate does not make Chrome
+  sample the effect again, so a value or list read right after one is the old direction's: the cases move the time
+  after it. `settle` waits two frames and records how every `finished` promise each animation held stands: a cancel
+  rejects the promise held and leaves a new pending one. Keyframes: `grow` is the width from 100px to 200px, `tall`
+  the height from 10px to 30px.
+
+  2. `apiCases`, the same record format with more steps and fields, and 3. `treeCases`, several elements. Both are run
+  by web-animations-oracle.mjs, in a headless Chrome of its own, in real time and at 60Hz: the virtual time run draws
+  one frame and no more, so no event, no `ready` and no start time ever arrives in it. Real frames take real time,
+  so `settle` stops the clock: it records `currentTime` as it was when it began (a running or paused animation is put
+  back to it afterwards), and so the numbers are what a page on a clock that does not run between frames would show.
+  A finished animation is left alone. The time between two frames is never recorded.
+
+  Steps of `apiCases` (index = the tracked animation), on top of pause, play, seek, rate, style, remove, list, settle:
+    cancel i, finish i, reverse i, updateRate i r (updatePlaybackRate), startTime i v (a number, null, or "now",
+    "now-300", "now+100": relative to document.timeline.currentTime), updateTiming i {..} ("Infinity" for the number),
+    track (adds the animations getAnimations() lists now that are not tracked yet, at the end of the animations
+    array), keyframes i, timing i, computed i (getKeyframes(), getTiming(), getComputedTiming()), sample i [t..] (sets
+    currentTime to each t and records the computed timing and the width there). A step that throws records `threw`.
+  Fields of a record, besides the first kind's: `events` (everything logged since the last record, in order: DOM events
+  of the element "animationstart name elapsed=.. pseudo=", Animation events "a0.finish currentTime=.. timelineTime=before"
+  where timelineTime is only said to be before, now or after the timeline's time at dispatch, "(handler)" for
+  onfinish/oncancel/onremove set before the listener, and promise settlements "a0.finished rejected:AbortError",
+  "a0.ready resolved"), `listIndex` (for `list`: which tracked animation each listed one is, -1 for none), `keyframes`,
+  `timing`, `computedTiming`, `samples`, `threw`, `ready` (like `finished`, for the `ready` promises, on `settle`).
+  Per animation, besides the first kind's: `pending`, `readyGeneration` (like finishedGeneration), `hasStartTime`,
+  `startTimeAge` (timeline time minus startTime, for a running animation only; null otherwise or at a rate of 0),
+  `effectTarget` (element | null | other | noeffect), `timelineIsDocument`. Numbers are rounded to 3 decimals,
+  and Infinity is the string "Infinity". A microtask checkpoint runs after each step, so a promise settled by
+  a step is logged under it.
+
+  Steps of `treeCases` (a tree of divs `r` > `a`, `b`, ..., an id each; the animations are named `kind:name@id` with
+  the pseudo-element after it): list (records the lists at once), styles {id: style} (one style flush for all),
+  classes {id: className}, cancel id i, finish id i, play id i (the animation cancel or finish took), add parent node
+  before, remove id, move id parent before, settle. A record has `own` (id -> element.getAnimations()), `subtree`
+  (id -> getAnimations({subtree: true})) and `document` (document.getAnimations()).
 -->
 <html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
@@ -26,7 +60,25 @@ const KEYFRAMES = {
   tall: { from: { height: 10 }, to: { height: 30 } },
 };
 const BASE = { width: '50px', height: '20px', marginLeft: '0px', marginTop: '0px' };
-const css = Object.entries(KEYFRAMES).map(([name, frames]) =>
+// The keyframes the second and third kinds of case add; `KEYFRAMES` above is all the first kind uses.
+const RICH_KEYFRAMES = {
+  mid: '50%{width:150px}',
+  onlyfrom: 'from{width:100px}',
+  onlyto: 'to{width:200px}',
+  pop: '0%{width:100px}50%{width:150px;animation-timing-function:ease-in}100%{width:200px}',
+  multi: '0%{width:100px;height:10px}30%{width:120px}100%{width:200px;height:30px;margin-left:20px}',
+  comp: '0%{width:10px;animation-composition:add}100%{width:20px}',
+  rel: 'from{width:50%;background-color:red;margin-left:1em}to{width:calc(10px + 20%);background-color:#00f;margin-left:calc(1em + 2px)}',
+  twice: '0%{width:100px}50%{width:120px}50%{height:30px}100%{width:200px}',
+  unordered: '100%{width:200px}0%{width:100px}50%{width:150px}',
+};
+const PSEUDO_CSS = [
+  '.pb::before{content:"";display:block;width:10px;height:10px;animation:grow 1s linear}',
+  '.pa::after{content:"";display:block;width:10px;height:10px;animation:tall 1s linear}',
+  '.pt::before{content:"";display:block;margin-top:0;transition:margin-top 1s}',
+  '.pt2::before{margin-top:10px}',
+].join('');
+const css = Object.entries(RICH_KEYFRAMES).map(([name, body]) => `@keyframes ${name}{${body}}`).join('') + PSEUDO_CSS + Object.entries(KEYFRAMES).map(([name, frames]) =>
   `@keyframes ${name}{${Object.entries(frames).map(([k, v]) =>
     `${k}{${Object.entries(v).map(([p, n]) => `${p}:${n}px`).join(';')}}`).join('')}}`).join('');
 const sheet = document.createElement('style'); sheet.textContent = css; document.head.appendChild(sheet);
@@ -174,6 +226,482 @@ const cases = [
     [['same']]],
 ];
 
+// Cases of the second kind: the Animation API on the same animations. They run on the `runApi` below, whose steps and
+// record fields are listed in the header. [name, style, change, steps]
+const API = (() => {
+  const G = 'grow 1s linear';
+  const T = { transition: 'width 1s linear' };
+  const W = { width: '150px' };
+  const cases = [];
+  const add = (name, style, change, steps) => cases.push([name, style, change, steps]);
+
+  // cancel()
+  add('cancel a running animation', { animation: G }, null,
+    [['seek', 0, 300], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel an animation with a delay and a forwards fill', { animation: 'grow 1s linear 500ms forwards' }, null,
+    [['pause', 0], ['seek', 0, 700], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['settle']]);
+  add('cancel an animation that finished', { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['settle'], ['cancel', 0], ['list'], ['settle'], ['cancel', 0], ['settle']]);
+  add('cancel a paused animation', { animation: G }, null,
+    [['pause', 0], ['seek', 0, 400], ['cancel', 0], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel an animation at a rate of -1', { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 600], ['rate', 0, -1], ['cancel', 0], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel an animation of three alternate iterations', { animation: 'grow 1s linear 3 alternate' }, null,
+    [['seek', 0, 1500], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('cancel an infinite animation', { animation: 'grow 1s linear infinite' }, null,
+    [['seek', 0, 2500], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('cancel twice cancels once', { animation: G }, null,
+    [['cancel', 0], ['cancel', 0], ['settle']]);
+  add('cancel a pending animation before its first frame', { animation: G }, null,
+    [['cancel', 0], ['settle'], ['list']]);
+  add('a style change after a cancel that changes the animation', { animation: G }, null,
+    [['cancel', 0], ['settle'], ['style', { animationDuration: '2s' }], ['list'], ['track'], ['settle']]);
+  add('a style change after a cancel that leaves the animation alone', { animation: G }, null,
+    [['cancel', 0], ['settle'], ['style', { height: '30px' }], ['list'], ['track'], ['settle']]);
+  add('the name removed and set again after a cancel', { animation: G }, null,
+    [['cancel', 0], ['settle'], ['style', { animation: 'none' }], ['list'], ['settle'], ['style', { animation: G }], ['list'], ['track'], ['settle']]);
+  add('the name set again to the same value after a cancel', { animation: G }, null,
+    [['cancel', 0], ['settle'], ['style', { animation: G }], ['list'], ['track'], ['settle']]);
+  add('a cancelled animation among two', { animation: 'grow 1s linear, tall 1s linear' }, null,
+    [['cancel', 0], ['list'], ['settle'], ['style', { animationDuration: '2s, 2s' }], ['list'], ['track'], ['settle']]);
+  add('cancel a running transition', T, W,
+    [['seek', 0, 300], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel a transition with a delay', { transition: 'width 1s linear 500ms' }, W,
+    [['pause', 0], ['seek', 0, 700], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel a transition that finished', T, W,
+    [['seek', 0, 1000], ['settle'], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel a paused transition', T, W,
+    [['pause', 0], ['seek', 0, 400], ['cancel', 0], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel a transition at a rate of -1', T, W,
+    [['pause', 0], ['seek', 0, 600], ['rate', 0, -1], ['cancel', 0], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('cancel a transition and change the property to a new value', T, W,
+    [['cancel', 0], ['settle'], ['style', { width: '90px' }], ['list'], ['track'], ['settle']]);
+  add('cancel a transition and change the property to the same value', T, W,
+    [['cancel', 0], ['settle'], ['style', { width: '150px' }], ['list'], ['track'], ['settle']]);
+  add('cancel a transition and change the property back', T, W,
+    [['cancel', 0], ['settle'], ['style', { width: '50px' }], ['list'], ['track'], ['settle']]);
+  add('cancel a transition twice', T, W,
+    [['cancel', 0], ['cancel', 0], ['settle']]);
+
+  // finish()
+  add('finish a running animation', { animation: G }, null,
+    [['seek', 0, 300], ['finish', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('finish an animation with a forwards fill', { animation: 'grow 1s linear forwards' }, null,
+    [['finish', 0], ['list'], ['settle'], ['finish', 0], ['settle']]);
+  add('finish an animation at a rate of -1', { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 600], ['rate', 0, -1], ['finish', 0], ['list'], ['settle']]);
+  add('finish an animation at a rate of 0', { animation: G }, null,
+    [['seek', 0, 300], ['rate', 0, 0], ['finish', 0], ['settle']]);
+  add('finish an infinite animation', { animation: 'grow 1s linear infinite' }, null,
+    [['seek', 0, 300], ['finish', 0], ['settle']]);
+  add('finish an infinite animation at a rate of -1', { animation: 'grow 1s linear infinite both' }, null,
+    [['seek', 0, 300], ['rate', 0, -1], ['finish', 0], ['list'], ['settle']]);
+  add('finish an animation with a delay and iterations', { animation: 'grow 1s linear 500ms 2 alternate forwards' }, null,
+    [['finish', 0], ['list'], ['settle']]);
+  add('finish an animation of 2.5 iterations', { animation: 'grow 1s linear 2.5 forwards' }, null,
+    [['finish', 0], ['settle']]);
+  add('finish an animation with a negative delay', { animation: 'grow 1s linear -300ms forwards' }, null,
+    [['finish', 0], ['settle']]);
+  add('finish a paused animation', { animation: G }, null,
+    [['pause', 0], ['seek', 0, 300], ['finish', 0], ['list'], ['settle']]);
+  add('finish a cancelled animation', { animation: 'grow 1s linear forwards' }, null,
+    [['cancel', 0], ['settle'], ['finish', 0], ['list'], ['settle']]);
+  add('finish an animation with a zero duration', { animation: 'grow 0s linear forwards' }, null,
+    [['finish', 0], ['settle']]);
+  add('finish a running transition', T, W,
+    [['seek', 0, 300], ['finish', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('finish a transition at a rate of -1', T, W,
+    [['rate', 0, -1], ['seek', 0, 600], ['finish', 0], ['list'], ['settle']]);
+  add('finish a transition at a rate of 0', T, W,
+    [['seek', 0, 300], ['rate', 0, 0], ['finish', 0], ['settle']]);
+  add('finish a transition with a delay', { transition: 'width 1s linear 500ms' }, W,
+    [['finish', 0], ['list'], ['settle']]);
+  add('finish a paused transition', T, W,
+    [['pause', 0], ['seek', 0, 300], ['finish', 0], ['list'], ['settle']]);
+  add('finish a cancelled transition', T, W,
+    [['cancel', 0], ['settle'], ['finish', 0], ['list'], ['settle']]);
+
+  // reverse()
+  add('reverse a running animation', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 300], ['reverse', 0], ['list'], ['settle'], ['reverse', 0], ['settle']]);
+  add('reverse a paused animation', { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 300], ['reverse', 0], ['settle'], ['pause', 0], ['settle']]);
+  add('reverse a finished animation', { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['settle'], ['reverse', 0], ['list'], ['settle']]);
+  add('reverse a cancelled animation', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 300], ['cancel', 0], ['settle'], ['reverse', 0], ['list'], ['settle']]);
+  add('reverse an animation at its start', { animation: 'grow 1s linear both' }, null,
+    [['reverse', 0], ['list'], ['settle']]);
+  add('reverse an animation at its end that has not finished', { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 1000], ['reverse', 0], ['settle']]);
+  add('reverse an animation with a delay', { animation: 'grow 1s linear 500ms both' }, null,
+    [['seek', 0, 700], ['reverse', 0], ['list'], ['settle'], ['seek', 0, 0], ['reverse', 0], ['settle']]);
+  add('reverse an animation of several iterations', { animation: 'grow 1s linear 3 alternate both' }, null,
+    [['seek', 0, 1500], ['reverse', 0], ['settle'], ['seek', 0, 0], ['reverse', 0], ['settle']]);
+  add('reverse an infinite animation', { animation: 'grow 1s linear infinite both' }, null,
+    [['seek', 0, 300], ['reverse', 0], ['settle'], ['reverse', 0], ['settle']]);
+  add('reverse an infinite animation at its start', { animation: 'grow 1s linear infinite both' }, null,
+    [['reverse', 0], ['settle']]);
+  add('reverse an animation at a rate of 2 and -0.5', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['rate', 0, 2], ['reverse', 0], ['settle'], ['rate', 0, -0.5], ['reverse', 0], ['settle']]);
+  add('reverse an animation at a rate of 0', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['rate', 0, 0], ['reverse', 0], ['settle']]);
+  add('reverse a running transition', T, W,
+    [['seek', 0, 300], ['reverse', 0], ['list'], ['settle'], ['reverse', 0], ['settle']]);
+  add('reverse a paused transition', T, W,
+    [['pause', 0], ['seek', 0, 300], ['reverse', 0], ['settle']]);
+  add('reverse a finished transition', T, W,
+    [['seek', 0, 1000], ['settle'], ['reverse', 0], ['list'], ['settle']]);
+  add('reverse a cancelled transition', T, W,
+    [['seek', 0, 300], ['cancel', 0], ['settle'], ['reverse', 0], ['list'], ['settle']]);
+  add('reverse a transition at its start', T, W,
+    [['reverse', 0], ['list'], ['settle'], ['list']]);
+  add('reverse a transition with a delay', { transition: 'width 1s linear 500ms' }, W,
+    [['seek', 0, 700], ['reverse', 0], ['list'], ['settle'], ['seek', 0, 0], ['reverse', 0], ['settle']]);
+
+  // updatePlaybackRate()
+  add('updatePlaybackRate on a running animation', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['updateRate', 0, 2], ['settle'], ['updateRate', 0, -1], ['settle']]);
+  add('updatePlaybackRate on a paused animation', { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 400], ['updateRate', 0, 2], ['settle'], ['play', 0], ['settle']]);
+  add('updatePlaybackRate on a cancelled animation', { animation: 'grow 1s linear both' }, null,
+    [['cancel', 0], ['settle'], ['updateRate', 0, 2], ['settle'], ['play', 0], ['settle']]);
+  add('updatePlaybackRate on a finished animation', { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['settle'], ['updateRate', 0, 2], ['settle'], ['updateRate', 0, -1], ['list'], ['settle']]);
+  add('updatePlaybackRate then the playbackRate', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['updateRate', 0, 2], ['rate', 0, 3], ['settle']]);
+  add('updatePlaybackRate twice', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['updateRate', 0, 2], ['updateRate', 0, 3], ['settle']]);
+  add('updatePlaybackRate then pause', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['updateRate', 0, 2], ['pause', 0], ['settle'], ['play', 0], ['settle']]);
+  add('updatePlaybackRate then seek', { animation: 'grow 1s linear both' }, null,
+    [['updateRate', 0, 2], ['seek', 0, 600], ['settle']]);
+  add('updatePlaybackRate to 0', { animation: 'grow 1s linear both' }, null,
+    [['seek', 0, 400], ['updateRate', 0, 0], ['settle'], ['updateRate', 0, 1], ['settle']]);
+  add('updatePlaybackRate on an animation that has not had its first frame', { animation: 'grow 1s linear both' }, null,
+    [['updateRate', 0, 2], ['settle']]);
+  add('updatePlaybackRate with a delay', { animation: 'grow 1s linear 500ms both' }, null,
+    [['seek', 0, 700], ['updateRate', 0, 2], ['settle']]);
+  add('updatePlaybackRate on a running transition', T, W,
+    [['seek', 0, 400], ['updateRate', 0, 2], ['settle'], ['updateRate', 0, -1], ['settle']]);
+  add('updatePlaybackRate on a paused transition', T, W,
+    [['pause', 0], ['seek', 0, 400], ['updateRate', 0, 2], ['settle'], ['play', 0], ['settle']]);
+  add('updatePlaybackRate on a cancelled transition', T, W,
+    [['cancel', 0], ['settle'], ['updateRate', 0, 2], ['settle'], ['play', 0], ['settle']]);
+  add('updatePlaybackRate on a finished transition', T, W,
+    [['seek', 0, 1000], ['settle'], ['updateRate', 0, -1], ['list'], ['settle']]);
+
+  // pending, ready
+  add('ready across play and pause of an animation', { animation: G }, null,
+    [['settle'], ['pause', 0], ['pause', 0], ['settle'], ['play', 0], ['play', 0], ['settle'], ['play', 0], ['settle']]);
+  add('ready across play and pause of a paused animation', { animation: G, animationPlayState: 'paused' }, null,
+    [['settle'], ['play', 0], ['settle'], ['pause', 0], ['settle']]);
+  add('ready across a finish and a cancel', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['finish', 0], ['settle'], ['play', 0], ['settle'], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('ready across a seek and a rate', { animation: G }, null,
+    [['settle'], ['seek', 0, 300], ['settle'], ['rate', 0, 2], ['settle'], ['updateRate', 0, 1], ['settle']]);
+  add('ready across play and pause of a transition', T, W,
+    [['settle'], ['pause', 0], ['pause', 0], ['settle'], ['play', 0], ['play', 0], ['settle'], ['play', 0], ['settle']]);
+  add('ready across a cancel of a transition', T, W,
+    [['settle'], ['cancel', 0], ['settle'], ['play', 0], ['settle'], ['finish', 0], ['settle'], ['play', 0], ['settle']]);
+
+  // startTime
+  add('startTime of an animation through pause and play', { animation: G }, null,
+    [['settle'], ['pause', 0], ['settle'], ['seek', 0, 300], ['play', 0], ['settle'], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('startTime of a transition through pause and play', T, W,
+    [['settle'], ['pause', 0], ['settle'], ['seek', 0, 300], ['play', 0], ['settle'], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('set the startTime of a running animation', { animation: 'grow 1s linear both' }, null,
+    [['settle'], ['startTime', 0, 'now-300'], ['list'], ['startTime', 0, 'now+300'], ['startTime', 0, 'now'], ['settle']]);
+  add('set the startTime of a paused animation', { animation: 'grow 1s linear both' }, null,
+    [['pause', 0], ['seek', 0, 400], ['settle'], ['startTime', 0, 'now-100'], ['settle'], ['pause', 0], ['settle']]);
+  add('set the startTime of an animation to null', { animation: 'grow 1s linear both' }, null,
+    [['settle'], ['seek', 0, 300], ['startTime', 0, null], ['settle'], ['play', 0], ['settle']]);
+  add('set the startTime of a cancelled animation', { animation: 'grow 1s linear both' }, null,
+    [['cancel', 0], ['settle'], ['startTime', 0, 'now-300'], ['settle'], ['startTime', 0, null], ['settle']]);
+  add('set the startTime of an animation that has not had its first frame', { animation: 'grow 1s linear both' }, null,
+    [['startTime', 0, 'now-300'], ['settle']]);
+  add('set the startTime of an animation at a rate of 2 and -1', { animation: 'grow 1s linear both' }, null,
+    [['settle'], ['rate', 0, 2], ['startTime', 0, 'now-300'], ['rate', 0, -1], ['startTime', 0, 'now+300'], ['settle']]);
+  add('set the startTime of an animation past its end', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['startTime', 0, 'now-2000'], ['list'], ['settle'], ['startTime', 0, 'now-500'], ['list'], ['settle']]);
+  add('set the startTime of an animation with a delay', { animation: 'grow 1s linear 500ms both' }, null,
+    [['settle'], ['startTime', 0, 'now-300'], ['startTime', 0, 'now+100'], ['settle']]);
+  add('set the startTime of a finished animation', { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['settle'], ['startTime', 0, 'now-300'], ['settle']]);
+  add('set the startTime of a running transition', T, W,
+    [['settle'], ['startTime', 0, 'now-300'], ['list'], ['startTime', 0, 'now+300'], ['startTime', 0, 'now-2000'], ['settle']]);
+  add('set the startTime of a paused transition', T, W,
+    [['pause', 0], ['seek', 0, 400], ['settle'], ['startTime', 0, 'now-100'], ['settle']]);
+  add('set the startTime of a cancelled transition', T, W,
+    [['cancel', 0], ['settle'], ['startTime', 0, 'now-300'], ['list'], ['settle']]);
+  add('set the startTime of a transition to null', T, W,
+    [['settle'], ['seek', 0, 300], ['startTime', 0, null], ['settle'], ['play', 0], ['settle']]);
+
+  // effect: target, getKeyframes()
+  add('getKeyframes of an animation', { animation: G }, null, [['keyframes', 0]]);
+  add('getKeyframes of an animation with only a middle keyframe', { animation: 'mid 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes of an animation with only from', { animation: 'onlyfrom 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes of an animation with only to', { animation: 'onlyto 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes with a timing function on a keyframe', { animation: 'pop 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes with a timing function on the animation', { animation: 'pop 1s ease-in-out' }, null, [['keyframes', 0]]);
+  add('getKeyframes with a timing function on the animation and a step function', { animation: 'pop 1s steps(3, jump-end)' }, null, [['keyframes', 0]]);
+  add('getKeyframes of several properties and offsets', { animation: 'multi 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes with a composition', { animation: 'comp 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes with an animation composition', { animation: 'pop 1s linear', animationComposition: 'add' }, null, [['keyframes', 0]]);
+  add('getKeyframes with relative units and colours', { animation: 'rel 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes with two keyframes at one offset', { animation: 'twice 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes of keyframes given out of order', { animation: 'unordered 1s linear' }, null, [['keyframes', 0]]);
+  add('getKeyframes of two animations', { animation: 'pop 1s linear, tall 2s ease' }, null, [['keyframes', 0], ['keyframes', 1]]);
+  add('getKeyframes of a cancelled animation', { animation: 'pop 1s linear' }, null, [['cancel', 0], ['keyframes', 0]]);
+  add('getKeyframes of a transition', T, W, [['keyframes', 0]]);
+  add('getKeyframes of a transition with an easing and a delay', { transition: 'width 1s ease-in 200ms' }, W, [['keyframes', 0]]);
+  add('getKeyframes of a transition with a step easing', { transition: 'width 1s steps(4, jump-start)' }, W, [['keyframes', 0]]);
+  add('getKeyframes of a transition of a colour', { transition: 'background-color 1s linear', backgroundColor: 'rgb(255, 0, 0)' },
+    { backgroundColor: 'blue' }, [['keyframes', 0]]);
+  add('getKeyframes of a transition started mid-way', T, W,
+    [['seek', 0, 500], ['style', { width: '90px' }], ['track'], ['keyframes', 1], ['keyframes', 0]]);
+  add('getKeyframes of a transition of a length given in other units', { transition: 'margin-left 1s linear' }, { marginLeft: '2em' }, [['keyframes', 0]]);
+  add('getKeyframes of a cancelled transition', T, W, [['cancel', 0], ['keyframes', 0]]);
+
+  // effect: getTiming(), getComputedTiming()
+  add('getTiming of an animation', { animation: G }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of an animation with all the timing properties',
+    { animation: 'grow 2s cubic-bezier(0.2, 0.4, 0.6, 0.8) 300ms 3 alternate-reverse both' }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of an infinite animation', { animation: 'grow 2s ease infinite reverse backwards' }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of an animation of 2.5 iterations with a negative delay', { animation: 'grow 2s steps(2) -500ms 2.5 forwards' }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of an animation with no duration', { animation: 'grow 0s linear 1s both' }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of an animation with no iterations', { animation: 'grow 1s linear 0 both' }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of an animation with the longhands', { animationName: 'grow', animationDuration: '1500ms', animationDelay: '250ms', animationIterationCount: '1.5',
+    animationDirection: 'alternate', animationFillMode: 'both', animationTimingFunction: 'ease-out' }, null, [['timing', 0], ['computed', 0]]);
+  add('getTiming of two animations with lists of different lengths', { animation: 'grow 1s, tall 2s', animationDelay: '100ms', animationFillMode: 'forwards, backwards' }, null,
+    [['timing', 0], ['timing', 1]]);
+  add('getTiming of a transition', T, W, [['timing', 0], ['computed', 0]]);
+  add('getTiming of a transition with a delay and an easing', { transition: 'width 2s steps(3, jump-end) 500ms' }, W, [['timing', 0], ['computed', 0]]);
+  add('getTiming of a transition with a negative delay', { transition: 'width 2s linear -500ms' }, W, [['timing', 0], ['computed', 0]]);
+  add('getTiming of a transition with a cubic-bezier easing', { transition: 'width 1s cubic-bezier(0.1, 0.7, 1, 0.1)' }, W, [['timing', 0]]);
+  add('getTiming of a transition started mid-way', T, W,
+    [['seek', 0, 500], ['style', { width: '90px' }], ['track'], ['timing', 1], ['computed', 1]]);
+  add('getComputedTiming of an animation at sampled times', { animation: 'grow 1s linear 500ms 2 alternate' }, null,
+    [['pause', 0], ['sample', 0, [0, 250, 500, 750, 1000, 1499, 1500, 2000, 2499, 2500, 2501, 3000]]]);
+  add('getComputedTiming of an animation with a fill at sampled times', { animation: 'grow 1s linear 500ms 2 alternate both' }, null,
+    [['pause', 0], ['sample', 0, [0, 250, 500, 750, 1000, 1499, 1500, 2000, 2499, 2500, 2501, 3000]]]);
+  add('getComputedTiming of an animation of 2.5 iterations', { animation: 'grow 1s linear 2.5 reverse both' }, null,
+    [['pause', 0], ['sample', 0, [0, 500, 999, 1000, 1500, 2000, 2250, 2500, 2501]]]);
+  add('getComputedTiming of an animation with a negative delay', { animation: 'grow 1s linear -300ms 2 both' }, null,
+    [['pause', 0], ['sample', 0, [0, 300, 700, 999, 1000, 1700, 1701]]]);
+  add('getComputedTiming of an animation with an easing', { animation: 'grow 1s ease-in 2 both' }, null,
+    [['pause', 0], ['sample', 0, [0, 250, 500, 750, 1000, 1250, 2000]]]);
+  add('getComputedTiming of an infinite animation', { animation: 'grow 1s linear infinite alternate' }, null,
+    [['pause', 0], ['sample', 0, [0, 500, 1000, 1500, 2500, 100000]]]);
+  add('getComputedTiming of an animation at a negative rate', { animation: 'grow 1s linear 500ms both' }, null,
+    [['pause', 0], ['rate', 0, -1], ['sample', 0, [1500, 1000, 500, 250, 0]]]);
+  add('getComputedTiming of a cancelled animation', { animation: 'grow 1s linear both' }, null,
+    [['cancel', 0], ['computed', 0], ['play', 0], ['pause', 0], ['sample', 0, [0, 500]]]);
+  add('getComputedTiming of a transition at sampled times', { transition: 'width 1s linear 500ms' }, W,
+    [['pause', 0], ['sample', 0, [0, 250, 500, 750, 1000, 1499, 1500, 2000]]]);
+  add('getComputedTiming of a transition with an easing', { transition: 'width 1s ease-in' }, W,
+    [['pause', 0], ['sample', 0, [0, 250, 500, 750, 1000, 1500]]]);
+  add('getComputedTiming of a cancelled transition', T, W, [['cancel', 0], ['computed', 0]]);
+
+  // updateTiming()
+  add('updateTiming on an animation then a style change of the same property', { animation: G }, null,
+    [['updateTiming', 0, { duration: 2000 }], ['timing', 0], ['style', { animationDuration: '3s' }], ['timing', 0],
+     ['style', { animation: 'grow 4s linear' }], ['timing', 0], ['settle']]);
+  add('updateTiming on an animation then a style change of another property', { animation: G }, null,
+    [['updateTiming', 0, { duration: 2000 }], ['style', { animationDelay: '500ms' }], ['timing', 0], ['computed', 0],
+     ['style', { animationIterationCount: '3' }], ['timing', 0]]);
+  add('updateTiming of the delay and fill then a style change of the shorthand', { animation: G }, null,
+    [['updateTiming', 0, { delay: 200, fill: 'both' }], ['style', { animation: 'grow 2s linear 1s forwards' }], ['timing', 0], ['list'], ['track']]);
+  add('updateTiming of the easing and direction then a style change', { animation: 'grow 1s linear alternate' }, null,
+    [['updateTiming', 0, { easing: 'ease-in', direction: 'reverse' }], ['style', { animationTimingFunction: 'ease-out', animationDirection: 'normal' }], ['timing', 0]]);
+  add('updateTiming of the iterations then a style change', { animation: G }, null,
+    [['updateTiming', 0, { iterations: 3 }], ['seek', 0, 2500], ['list'], ['style', { animationIterationCount: '1' }], ['timing', 0], ['computed', 0]]);
+  add('updateTiming of the iterations to infinity', { animation: G }, null,
+    [['updateTiming', 0, { iterations: 'Infinity' }], ['seek', 0, 5000], ['timing', 0], ['computed', 0], ['finish', 0]]);
+  add('updateTiming of the duration of a finished animation', { animation: 'grow 1s linear forwards' }, null,
+    [['seek', 0, 1000], ['updateTiming', 0, { duration: 2000 }], ['list'], ['settle']]);
+  add('updateTiming of the endDelay and iterationStart', { animation: G }, null,
+    [['updateTiming', 0, { endDelay: 500, iterationStart: 0.5 }], ['timing', 0], ['computed', 0], ['seek', 0, 1200], ['computed', 0]]);
+  add('updateTiming with a value that is not valid', { animation: G }, null,
+    [['updateTiming', 0, { duration: -1 }], ['updateTiming', 0, { iterations: -1 }], ['updateTiming', 0, { easing: 'nope' }],
+     ['updateTiming', 0, { fill: 'nope' }], ['updateTiming', 0, { duration: 'auto' }], ['timing', 0]]);
+  add('updateTiming with nothing', { animation: G }, null, [['updateTiming', 0, {}], ['timing', 0]]);
+  add('updateTiming of one of two animations then a style change', { animation: 'grow 1s linear, tall 1s linear' }, null,
+    [['updateTiming', 0, { duration: 2000 }], ['style', { animationDuration: '3s, 3s' }], ['timing', 0], ['timing', 1]]);
+  add('updateTiming on a cancelled animation then the same style', { animation: G }, null,
+    [['cancel', 0], ['updateTiming', 0, { duration: 2000 }], ['style', { animationDuration: '3s' }], ['list'], ['track'], ['timing', 0]]);
+  add('updateTiming on a transition then a style change of the same property', T, W,
+    [['updateTiming', 0, { duration: 2000 }], ['timing', 0], ['style', { transitionDuration: '3s' }], ['timing', 0],
+     ['style', { transition: 'width 4s linear' }], ['timing', 0], ['settle']]);
+  add('updateTiming on a transition then a style change of the target', T, W,
+    [['updateTiming', 0, { duration: 2000, delay: 100 }], ['style', { width: '90px' }], ['list'], ['track'], ['timing', 0], ['timing', 1]]);
+  add('updateTiming of the easing of a transition', T, W,
+    [['updateTiming', 0, { easing: 'ease-in' }], ['timing', 0], ['pause', 0], ['sample', 0, [0, 250, 500, 1000]]]);
+  add('updateTiming of the delay of a transition', T, W,
+    [['updateTiming', 0, { delay: 500 }], ['timing', 0], ['computed', 0], ['pause', 0], ['sample', 0, [0, 500, 1000, 1500]]]);
+  add('updateTiming of the iterations of a transition', T, W,
+    [['updateTiming', 0, { iterations: 2, direction: 'alternate' }], ['timing', 0], ['pause', 0], ['sample', 0, [0, 500, 1000, 1500, 2000]], ['list']]);
+  add('updateTiming of the duration of a finished transition', T, W,
+    [['seek', 0, 1000], ['updateTiming', 0, { duration: 2000 }], ['list'], ['settle']]);
+  add('updateTiming of a transition with a style change of the duration afterwards', T, W,
+    [['updateTiming', 0, { duration: 2000 }], ['style', { transitionDuration: '5s', width: '150px' }], ['timing', 0], ['list']]);
+
+  // effect.target, timeline
+  add('the target and timeline of an animation and a transition', { animation: G, transition: 'margin-top 1s' }, { marginTop: '10px' },
+    [['settle'], ['list']]);
+  add('the target of an animation after the element is removed', { animation: 'grow 1s linear forwards', transition: 'margin-top 1s' }, { marginTop: '10px' },
+    [['remove'], ['settle'], ['keyframes', 0], ['timing', 1]]);
+  // The same on an animation that has already had its first frames, which is where the DOM events come from.
+  add('cancel an animation that has started', { animation: G }, null,
+    [['settle'], ['seek', 0, 300], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('cancel an animation that is in its delay', { animation: 'grow 1s linear 500ms' }, null,
+    [['settle'], ['cancel', 0], ['settle']]);
+  add('cancel an animation that has ended', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['finish', 0], ['settle'], ['cancel', 0], ['settle']]);
+  add('cancel an animation after its first iteration', { animation: 'grow 1s linear 3' }, null,
+    [['settle'], ['seek', 0, 1500], ['settle'], ['cancel', 0], ['settle']]);
+  add('cancel a transition that has started', T, W,
+    [['settle'], ['seek', 0, 300], ['cancel', 0], ['settle'], ['play', 0], ['settle']]);
+  add('cancel a transition that is in its delay', { transition: 'width 1s linear 500ms' }, W,
+    [['settle'], ['cancel', 0], ['settle']]);
+  add('cancel a transition that has ended', T, W,
+    [['settle'], ['finish', 0], ['settle'], ['cancel', 0], ['settle']]);
+  add('the animation name removed after the animation started', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['seek', 0, 400], ['settle'], ['style', { animation: 'none' }], ['list'], ['settle']]);
+  add('the animation name removed after the animation ended', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['finish', 0], ['settle'], ['style', { animation: 'none' }], ['list'], ['settle']]);
+  add('the transition property removed after the transition started', T, W,
+    [['settle'], ['seek', 0, 400], ['settle'], ['style', { transitionProperty: 'none' }], ['list'], ['settle']]);
+  add('the transition target changed after the transition started', T, W,
+    [['settle'], ['seek', 0, 400], ['settle'], ['style', { width: '90px' }], ['list'], ['track'], ['settle']]);
+  add('the element removed after the animation started', { animation: G }, null,
+    [['settle'], ['remove'], ['settle']]);
+  add('the element removed after the transition started', T, W,
+    [['settle'], ['remove'], ['settle']]);
+  add('a cancelled animation when another name is added', { animation: G }, null,
+    [['cancel', 0], ['settle'], ['style', { animation: 'grow 1s linear, tall 1s linear' }], ['list'], ['track'], ['settle']]);
+  add('finish an animation that has started', { animation: G }, null,
+    [['settle'], ['finish', 0], ['settle']]);
+  add('finish an animation of several iterations that has started', { animation: 'grow 1s linear 3 alternate forwards' }, null,
+    [['settle'], ['finish', 0], ['settle']]);
+  add('finish an animation with a delay that has started', { animation: 'grow 1s linear 500ms forwards' }, null,
+    [['settle'], ['finish', 0], ['settle']]);
+  add('finish an animation at a rate of -1 that has started', { animation: 'grow 1s linear both' }, null,
+    [['settle'], ['seek', 0, 600], ['rate', 0, -1], ['finish', 0], ['settle']]);
+  add('finish a transition that has started', T, W,
+    [['settle'], ['finish', 0], ['settle']]);
+  add('finish a transition with a delay that has started', { transition: 'width 1s linear 500ms' }, W,
+    [['settle'], ['finish', 0], ['settle']]);
+  add('a style change of the timing of a running animation', { animation: G }, null,
+    [['settle'], ['style', { animationDuration: '2s' }], ['timing', 0], ['style', { animationDelay: '100ms' }], ['timing', 0],
+     ['style', { animationIterationCount: '2' }], ['timing', 0], ['style', { animationFillMode: 'both', animationDirection: 'alternate' }], ['timing', 0],
+     ['style', { animationTimingFunction: 'ease-in' }], ['timing', 0], ['keyframes', 0], ['computed', 0]]);
+  add('a style change of the timing of a running transition', T, W,
+    [['settle'], ['style', { transitionDuration: '2s' }], ['timing', 0], ['style', { transitionDelay: '100ms' }], ['timing', 0],
+     ['style', { transitionTimingFunction: 'ease-in' }], ['timing', 0], ['list']]);
+  return cases;
+})();
+
+// Cases of the third kind: several elements. A node is [id, style, change, children, className]; `style` is applied
+// when the node is added, `change` in a second flush right after it (it starts transitions). [name, tree, steps]
+const TREES = (() => {
+  const cases = [];
+  const add = (name, tree, steps) => cases.push([name, tree, steps]);
+  const node = (id, style, change, children, className) => [id, style, change || null, children || [], className || null];
+  const MT = { transition: 'margin-top 1s' };
+  const ML = { transition: 'margin-left 1s' };
+
+  add('transitions come before animations across elements',
+    node('r', { animation: 'tall 1s linear' }, null, [
+      node('a', { animation: 'grow 1s linear' }),
+      node('b', MT, { marginTop: '10px' }),
+    ]),
+    [['list']]);
+  add('a child animation, a parent animation and a sibling transition',
+    node('r', {}, null, [
+      node('a', { animation: 'grow 1s linear' }, null, [node('a1', { animation: 'tall 1s linear' })]),
+      node('b', ML, { marginLeft: '10px' }),
+    ]),
+    [['list']]);
+  add('animations of one element in the order of the names',
+    node('r', { animation: 'tall 1s linear, grow 1s linear, mid 1s linear' }),
+    [['list'], ['styles', { r: { animation: 'mid 1s linear, tall 1s linear, grow 1s linear' } }], ['list']]);
+  add('transitions and animations of one element',
+    node('r', { transition: 'margin-top 1s, margin-left 1s', animation: 'tall 1s linear, grow 1s linear' }, { marginTop: '10px', marginLeft: '10px' }),
+    [['list']]);
+  add('transitions started in the order b then a',
+    node('r', {}, null, [node('a', MT), node('b', MT)]),
+    [['styles', { b: { marginTop: '10px' } }], ['list'], ['styles', { a: { marginTop: '10px' } }], ['list']]);
+  add('transitions started in one flush on b then a',
+    node('r', {}, null, [node('a', MT), node('b', MT)]),
+    [['styles', { b: { marginTop: '10px' }, a: { marginTop: '10px' } }], ['list']]);
+  add('transitions of the child then the parent in one flush',
+    node('r', MT, null, [node('a', MT)]),
+    [['styles', { a: { marginTop: '10px' }, r: { marginTop: '10px' } }], ['list']]);
+  add('transitions of the parent then the child in separate flushes',
+    node('r', MT, null, [node('a', MT)]),
+    [['styles', { r: { marginTop: '10px' } }], ['list'], ['styles', { a: { marginTop: '10px' } }], ['list']]);
+  add('a transition started on the first element after one on the second',
+    node('r', {}, null, [node('a', MT), node('b', MT), node('c', MT)]),
+    [['styles', { b: { marginTop: '10px' } }], ['styles', { c: { marginTop: '10px' } }], ['styles', { a: { marginTop: '10px' } }], ['list']]);
+  add('two properties on two elements',
+    node('r', {}, null, [
+      node('a', { transition: 'margin-top 1s, margin-left 1s' }),
+      node('b', { transition: 'margin-top 1s, margin-left 1s' }),
+    ]),
+    [['styles', { b: { marginLeft: '10px', marginTop: '10px' } }], ['styles', { a: { marginTop: '10px', marginLeft: '10px' } }], ['list']]);
+  add('a transition replaced by another change keeps the place of its element',
+    node('r', {}, null, [node('a', MT), node('b', MT)]),
+    [['styles', { a: { marginTop: '10px' } }], ['styles', { b: { marginTop: '10px' } }], ['list'], ['styles', { a: { marginTop: '20px' } }], ['list']]);
+  add('a cancelled transition played again',
+    node('r', {}, null, [node('a', MT), node('b', MT)]),
+    [['styles', { a: { marginTop: '10px' } }], ['styles', { b: { marginTop: '10px' } }], ['cancel', 'a', 0], ['list'], ['play', 'a', 0], ['list']]);
+  add('an animation cancelled and played again among others',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear' }), node('b', { animation: 'tall 1s linear' }), node('c', { animation: 'grow 1s linear' })]),
+    [['cancel', 'a', 0], ['list'], ['play', 'a', 0], ['list'], ['cancel', 'b', 0], ['play', 'b', 0], ['list']]);
+  add('an element added later among earlier ones',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear' }), node('c', { animation: 'grow 1s linear' })]),
+    [['add', 'r', node('b', { animation: 'tall 1s linear' }), 'c'], ['list'], ['add', 'r', node('d', { animation: 'tall 1s linear' }), null], ['list']]);
+  add('an element removed from the middle',
+    node('r', {}, null, [
+      node('a', { animation: 'grow 1s linear' }, null, [node('a1', { animation: 'tall 1s linear' })]),
+      node('b', MT, { marginTop: '10px' }),
+      node('c', { animation: 'grow 1s linear' }),
+    ]),
+    [['list'], ['remove', 'a'], ['list'], ['remove', 'b'], ['list']]);
+  add('the animations of a removed element that was cancelled first',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear forwards' }), node('b', { animation: 'tall 1s linear' })]),
+    [['cancel', 'a', 0], ['remove', 'a'], ['list']]);
+  add('an element moved to another parent',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear' }), node('b', { animation: 'tall 1s linear' })]),
+    [['list'], ['move', 'a', 'b', null], ['list'], ['move', 'a', 'r', 'b'], ['list']]);
+  add('an animation name removed on the middle element',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear' }), node('b', { animation: 'tall 1s linear' }), node('c', { animation: 'grow 1s linear' })]),
+    [['styles', { b: { animation: 'none' } }], ['list'], ['styles', { b: { animation: 'tall 1s linear' } }], ['list']]);
+  add('an animation duration changed on the first element',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear' }), node('b', { animation: 'tall 1s linear' })]),
+    [['styles', { a: { animationDuration: '2s' } }], ['list'], ['styles', { a: { animation: 'grow 2s linear, mid 1s linear' } }], ['list']]);
+  add('a finished animation with a forwards fill among others',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear forwards' }), node('b', { animation: 'tall 1s linear' })]),
+    [['finish', 'a', 0], ['list'], ['settle'], ['list']]);
+  add('a pseudo-element animation',
+    node('r', { animation: 'tall 1s linear' }, null, [
+      node('a', { animation: 'grow 1s linear' }, null, [], 'pb'),
+      node('b', MT, { marginTop: '10px' }),
+    ]),
+    [['list']]);
+  add('pseudo-elements before and after with animations of the element',
+    node('r', {}, null, [node('a', { animation: 'grow 1s linear' }, null, [], 'pb pa'), node('b', { animation: 'tall 1s linear' }, null, [], 'pa')]),
+    [['list']]);
+  add('a pseudo-element transition',
+    node('r', {}, null, [node('a', {}, null, [], 'pt')]),
+    [['list'], ['classes', { a: 'pt pt2' }], ['list']]);
+  add('document.getAnimations() with no animations',
+    node('r', {}, null, [node('a', {}), node('b', {})]),
+    [['list']]);
+  return cases;
+})();
+
 // A page with nothing animating may get no frames in headless Chrome, so the wait gives up after 100ms.
 const frames = () => Promise.race([
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
@@ -188,7 +716,208 @@ const apply = (el, style) => { for (const [k, v] of Object.entries(style)) el.st
 const flush = (el) => getComputedStyle(el).width;
 const pixels = (value) => (value === 'auto' ? null : parseFloat(value));
 
+const R = (x) => (typeof x === 'number' ? (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : String(x)) : x);
+const clean = (value) => JSON.parse(JSON.stringify(value, (key, v) => (typeof v === 'number' ? R(v) : v)));
+const microtasks = async () => { for (let i = 0; i < 5; i++) await null; };
+// Real frames, 60Hz: events, `ready` and the start time of a pending animation come with them.
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+const settleFrames = async () => { await nextFrame(); await nextFrame(); await nextFrame(); };
+const nameOf = (a) => (a instanceof CSSAnimation ? a.animationName : a instanceof CSSTransition ? a.transitionProperty : 'other');
+const DOM_EVENTS = ['animationstart', 'animationiteration', 'animationend', 'animationcancel',
+  'transitionrun', 'transitionstart', 'transitionend', 'transitioncancel'];
+
+async function runApi([name, style, change, steps]) {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  const log = [];
+  // The event carries the timeline time of the frame before it was queued, so how far back is real time: only the side is stable.
+  const sinceTimeline = (t) => (t === null ? null : t < document.timeline.currentTime ? 'before' : t === document.timeline.currentTime ? 'now' : 'after');
+  for (const type of DOM_EVENTS) {
+    el.addEventListener(type, (e) => log.push(`${type} ${e.animationName ?? e.propertyName} elapsed=${R(e.elapsedTime)} pseudo=${e.pseudoElement}`));
+  }
+  apply(el, BASE);
+  apply(el, style);
+  flush(el);
+  if (change) { apply(el, change); flush(el); }
+  const tracked = [];
+  const finishedSeen = [];
+  const readySeen = [];
+  const watch = (seen, which, index, promise) => {
+    if (seen.includes(promise)) return;
+    seen.push(promise);
+    promise.then(() => log.push(`a${index}.${which} resolved`), (e) => log.push(`a${index}.${which} rejected:${e.name}`));
+  };
+  const track = () => {
+    for (const a of el.getAnimations()) {
+      if (tracked.includes(a)) continue;
+      const index = tracked.length;
+      tracked.push(a);
+      finishedSeen.push([]);
+      readySeen.push([]);
+      const describe = (e) => `a${index}.${e.type} currentTime=${R(e.currentTime)} timelineTime=${sinceTimeline(e.timelineTime)}`;
+      a.oncancel = (e) => log.push(`${describe(e)} (handler)`);
+      a.onfinish = (e) => log.push(`${describe(e)} (handler)`);
+      a.onremove = (e) => log.push(`${describe(e)} (handler)`);
+      for (const type of ['cancel', 'finish', 'remove']) a.addEventListener(type, (e) => log.push(describe(e)));
+    }
+  };
+  track();
+  const standingOf = (promise, animation) => Promise.race([
+    promise.then((value) => (value === animation ? 'resolved' : 'resolved-other'),
+      (error) => `rejected:${error instanceof DOMException ? error.name : String(error)}`),
+    new Promise((resolve) => setTimeout(() => resolve('pending'), 0)),
+  ]);
+  const read = () => ({
+    width: el.isConnected ? pixels(getComputedStyle(el).width) : null,
+    height: el.isConnected ? pixels(getComputedStyle(el).height) : null,
+    animations: tracked.map((a, index) => {
+      watch(finishedSeen[index], 'finished', index, a.finished);
+      watch(readySeen[index], 'ready', index, a.ready);
+      return {
+        kind: a.constructor.name,
+        name: nameOf(a),
+        playState: a.playState,
+        currentTime: R(a.currentTime),
+        playbackRate: a.playbackRate,
+        finishedGeneration: finishedSeen[index].indexOf(a.finished),
+        pending: a.pending,
+        readyGeneration: readySeen[index].indexOf(a.ready),
+        hasStartTime: a.startTime !== null,
+        // Only a running animation's start time is a function of its time; a finished one's is when it started.
+        startTimeAge: a.playState === 'running' && !a.pending && a.startTime !== null && a.playbackRate !== 0 ? Math.round(document.timeline.currentTime - a.startTime) : null,
+        effectTarget: a.effect === null ? 'noeffect' : a.effect.target === el ? 'element' : a.effect.target === null ? 'null' : 'other',
+        timelineIsDocument: a.timeline === document.timeline,
+      };
+    }),
+  });
+  const revive = (value) => Object.fromEntries(Object.entries(value).map(([k, v]) => [k, v === 'Infinity' ? Infinity : v]));
+  const relative = (value) => {
+    if (typeof value !== 'string') return value;
+    const m = /^now([+-]\d+)?$/.exec(value);
+    return document.timeline.currentTime + (m[1] ? Number(m[1]) : 0);
+  };
+  const records = [{ step: ['start'], ...read(), events: log.splice(0) }];
+  for (const step of steps) {
+    const [op, a, value] = step;
+    const record = { step };
+    try {
+      if (op === 'pause') tracked[a].pause();
+      else if (op === 'play') tracked[a].play();
+      else if (op === 'seek') tracked[a].currentTime = value;
+      else if (op === 'rate') tracked[a].playbackRate = value;
+      else if (op === 'cancel') tracked[a].cancel();
+      else if (op === 'finish') tracked[a].finish();
+      else if (op === 'reverse') tracked[a].reverse();
+      else if (op === 'updateRate') tracked[a].updatePlaybackRate(value);
+      else if (op === 'startTime') tracked[a].startTime = relative(value);
+      else if (op === 'updateTiming') tracked[a].effect.updateTiming(revive(value));
+      else if (op === 'style') { apply(el, a); flush(el); }
+      else if (op === 'remove') el.remove();
+      else if (op === 'track') track();
+      else if (op === 'settle') {
+        const held = tracked.map((x) => x.currentTime);
+        await settleFrames();
+        record.finished = await Promise.all(tracked.map((x, index) => Promise.all(finishedSeen[index].map((p) => standingOf(p, x)))));
+        record.ready = await Promise.all(tracked.map((x, index) => Promise.all(readySeen[index].map((p) => standingOf(p, x)))));
+        // Frames take real time, so a running animation moved on and a pending pause held a frame later. The page being
+        // replayed stops the clock for a frame, so put each back to the time it had when the frames began. A finished
+        // animation stays as it is (its start time ages, which nothing here reads unless it runs again: the cases that
+        // extend a finished animation do it in the step after the finish).
+        tracked.forEach((x, index) => {
+          const was = held[index];
+          if (x.pending || was === null || x.playState === 'finished' || x.playState === 'idle') return;
+          if (Math.abs(x.currentTime - was) > 1e-6) x.currentTime = was;
+        });
+      }
+      if (op === 'list') {
+        const listed = el.getAnimations();
+        record.list = listed.map((x) => [x.constructor.name, nameOf(x)]);
+        record.listIndex = listed.map((x) => tracked.indexOf(x));
+      }
+      if (op === 'keyframes') record.keyframes = clean(tracked[a].effect.getKeyframes());
+      if (op === 'timing') record.timing = clean(tracked[a].effect.getTiming());
+      if (op === 'computed') record.computedTiming = clean(tracked[a].effect.getComputedTiming());
+      if (op === 'sample') {
+        record.samples = value.map((t) => {
+          tracked[a].currentTime = t;
+          const c = tracked[a].effect.getComputedTiming();
+          return clean({ t, localTime: c.localTime, progress: c.progress, currentIteration: c.currentIteration, endTime: c.endTime,
+            activeDuration: c.activeDuration, width: pixels(getComputedStyle(el).width) });
+        });
+      }
+    } catch (e) { record.threw = e instanceof DOMException ? e.name : `${e.name}`; }
+    await microtasks();
+    Object.assign(record, read());
+    await microtasks();
+    record.events = log.splice(0);
+    records.push(record);
+  }
+  el.remove();
+  return { name, style, change, steps, records };
+}
+
+async function runTree([name, tree, steps]) {
+  const els = {};
+  const ids = new Map();
+  const build = (n, parent, before) => {
+    const [id, style, , children, className] = n;
+    const e = document.createElement('div');
+    apply(e, BASE);
+    apply(e, style);
+    if (className) e.className = className;
+    els[id] = e;
+    ids.set(e, id);
+    parent.insertBefore(e, before);
+    for (const child of children) build(child, e, null);
+  };
+  const changes = (n, list) => { if (n[2]) list.push([n[0], n[2]]); for (const child of n[3]) changes(child, list); return list; };
+  build(tree, document.body, null);
+  flush(els[tree[0]]);
+  for (const [id, change] of changes(tree, [])) apply(els[id], change);
+  flush(els[tree[0]]);
+  const label = (a) => `${a.constructor.name}:${nameOf(a)}@${ids.get(a.effect.target)}${a.effect.pseudoElement ?? ''}`;
+  const held = {};
+  const read = () => ({
+    own: Object.fromEntries(Object.entries(els).map(([id, e]) => [id, e.getAnimations().map(label)])),
+    subtree: Object.fromEntries(Object.entries(els).map(([id, e]) => [id, e.getAnimations({ subtree: true }).map(label)])),
+    document: document.getAnimations().map(label),
+  });
+  const records = [{ step: ['start'], ...read() }];
+  for (const step of steps) {
+    const [op, a, b, c] = step;
+    const record = { step };
+    try {
+      if (op === 'styles') { for (const [id, style] of Object.entries(a)) apply(els[id], style); flush(els.r); }
+      else if (op === 'classes') { for (const [id, className] of Object.entries(a)) els[id].className = className; flush(els.r); }
+      else if (op === 'cancel') { held[`${a}:${b}`] = els[a].getAnimations()[b]; held[`${a}:${b}`].cancel(); }
+      else if (op === 'finish') { held[`${a}:${b}`] = els[a].getAnimations()[b]; held[`${a}:${b}`].finish(); }
+      else if (op === 'play') held[`${a}:${b}`].play();
+      else if (op === 'add') {
+        build(b, els[a], c ? els[c] : null);
+        flush(els.r);
+        for (const [id, change] of changes(b, [])) apply(els[id], change);
+        flush(els.r);
+      } else if (op === 'remove') els[a].remove();
+      else if (op === 'move') { els[b].insertBefore(els[a], c ? els[c] : null); flush(els.r); }
+      else if (op === 'settle') await settleFrames();
+    } catch (e) { record.threw = e instanceof DOMException ? e.name : `${e.name}`; }
+    await microtasks();
+    Object.assign(record, read());
+    records.push(record);
+  }
+  els[tree[0]].remove();
+  return { name, tree, steps, records };
+}
+
+const apiOracle = new Promise((resolve, reject) => { window.resolveApi = resolve; window.rejectApi = reject; });
 (async () => { try {
+  if (location.hash === '#api') {
+    // Real frames, driven by web-animations-oracle.mjs, which reads `window.apiOracle`.
+    const api = { richKeyframes: RICH_KEYFRAMES, apiCases: [], treeCases: [] };
+    for (const c of API) api.apiCases.push(await runApi(c));
+    for (const c of TREES) api.treeCases.push(await runTree(c));
+    return window.resolveApi(JSON.stringify(api));
+  }
   const out = { keyframes: KEYFRAMES, base: BASE, cases: [] };
   for (const [name, style, change, steps] of cases) {
     const el = document.createElement('div');
@@ -245,5 +974,5 @@ const pixels = (value) => (value === 'auto' ? null : parseFloat(value));
   const holder = document.createElement('div');
   holder.setAttribute('data-oracle', JSON.stringify(out));
   document.body.appendChild(holder);
-} catch (e) { const h = document.createElement('div'); h.setAttribute('data-error', String(e && e.stack)); document.body.appendChild(h); } })();
+} catch (e) { if (window.rejectApi) rejectApi(String(e && e.stack)); const h = document.createElement('div'); h.setAttribute('data-error', String(e && e.stack)); document.body.appendChild(h); } })();
 </script></body></html>
