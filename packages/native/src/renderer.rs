@@ -562,7 +562,11 @@ pub(crate) fn read_after_layout<R>(
     // A transform written since the boxes were captured leaves the layout current, and the boxes read
     // through the old one.
     let lay_out = if relevance.transforms_stale(&path) { gpui::Window::draw_for_transforms } else { lay_out };
-    let shared = relevance.forced_by_last_read(window.layout_stamp(), window, &known, &path);
+    let view = window.root::<GpuixView>().flatten();
+    // The instant a pass laid out now would sample: the one of the last draw, which the pass of a read
+    // that built something running sampled too if no frame has been built since.
+    let instant = view.as_ref().and_then(|view| view.read(cx).frame_instant);
+    let shared = relevance.forced_by_last_read(window.layout_stamp(), window, &known, &path, instant);
     let mut forcing = shared.clone().unwrap_or_default();
     // A window nothing happened to since the forced pass has nothing to lay out but the content
     // that pass did not force.
@@ -575,7 +579,7 @@ pub(crate) fn read_after_layout<R>(
             forcing.push(ancestor);
         }
     }
-    let view = window.root::<GpuixView>().flatten().map(|view| view.entity_id());
+    let view = view.map(|view| view.entity_id());
     let no_view = || Error::from_reason("the window has no view to lay out");
     if !forcing.is_empty() {
         // A clean window lays nothing out, and the ancestors are not forced in a pass that is not run.
@@ -9893,7 +9897,7 @@ fn animate_style(
     ctx.css_animations.rewind(animations, ctx.now);
     ctx.css_transitions.rewind(transitions);
     if animated.dynamic != 0 {
-        ctx.tree.relevance.note_timed_read();
+        ctx.tree.relevance.note_timed_read(ctx.now);
     }
     // The build is not dynamic for the frames that skip it.
     animated.dynamic &= crate::retain::Dynamic::Motion as u8 | crate::retain::Dynamic::MotionValues as u8;

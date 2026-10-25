@@ -470,6 +470,31 @@ describeNative("a read of an animation in skipped content", () => {
   }
 
   for (const mode of ["hidden", "auto"] as const) {
+    it(`shares a pass between the reads of an instant, beside a loop in the content, and runs another after a frame (${mode})`, () => {
+      const mounted = mountScene(mode, { target: { animation: "skipped-read-kf 1000ms linear infinite" } })
+      try {
+        mounted.frames(3)
+        const start = mounted.passes()
+        const first = mounted.rect("target")
+        for (let read = 0; read < 9; read++) {
+          expect(mounted.rect(read % 2 ? "mid" : "target").length).toBe(4)
+        }
+        expect(mounted.rects().target, "the same instant").toEqual(first)
+        expect(mounted.passes() - start, "ten reads in one task run one pass").toBe(1)
+        mounted.renderer.clockAdvance(300)
+        mounted.frames(1)
+        const later = mounted.rect("target")
+        expect(apart(later, first), "a frame moves the value").toBe(true)
+        expect(mounted.passes() - start, "and the read after it runs another pass").toBe(2)
+        mounted.rect("target")
+        expect(mounted.passes() - start, "that the next read shares").toBe(2)
+      } finally {
+        mounted.unmount()
+      }
+    }, SLOW)
+  }
+
+  for (const mode of ["hidden", "auto"] as const) {
     for (const [name, animation] of [
       ["a loop", "skipped-read-kf 1000ms linear infinite"],
       ["a run that ends between the reads", "skipped-read-kf 600ms linear both"],

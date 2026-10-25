@@ -320,9 +320,9 @@ struct Known {
     chain: Vec<u64>,
     /// The last forced layout pass of a read, while nothing has happened to the window since.
     forced_read: Option<ForcedRead>,
-    /// The pass being run for a read built an element that runs something, whose values follow the
-    /// clock (`note_timed_read`).
-    read_timed: bool,
+    /// The instant at which the pass being run for a read built an element that runs something, whose
+    /// values follow the clock (`note_timed_read`).
+    read_timed: Option<web_time::Instant>,
     layout_runs: LayoutRuns,
     transform_writes: TransformWrites,
     /// The focused element and its ancestors, which hold the focus.
@@ -337,9 +337,9 @@ struct Known {
 struct ForcedRead {
     forced: Vec<u64>,
     stamp: gpui::LayoutStamp,
-    /// The pass built an element that runs an animation, a transition or a motion: its boxes are those
-    /// of the instant of the pass, and the next read is another instant.
-    timed: bool,
+    /// The instant of the pass if it built an element that runs an animation, a transition or a motion:
+    /// its boxes are those of that instant, and a read at another one is not answered by them.
+    timed: Option<web_time::Instant>,
     hosts: FxHashMap<u64, HostPlace>,
     /// [`LayoutRuns::clock`] right after the pass.
     runs_at: u64,
@@ -595,7 +595,7 @@ impl Relevance {
     /// [`Relevance::end_read_chain`].
     pub(crate) fn force_for_read(&self, forced: Vec<u64>, chain: Vec<u64>) {
         let mut known = self.0.lock();
-        known.read_timed = false;
+        known.read_timed = None;
         self.0.chain.store(chain.len(), Ordering::Relaxed);
         known.chain = chain;
         known.forced = forced;
@@ -645,6 +645,9 @@ impl Relevance {
     /// element on `chain` (the one read and what is above it) ran, or stopped running, an animation
     /// that can change its layout: a font size reflows the content without moving a box.
     ///
+    /// A pass that built an element running something is the answer of the instant it sampled
+    /// (`instant` is the one a pass would sample now), and no other.
+    ///
     /// A read of an element no skipped content holds has no such ancestor to ask, and needs
     /// the stamp to be the same. A frame that skips the elements again moves no box, and the boxes of
     /// a forced pass outlast it; a mutation, a scroll write, a resize or a frame in which an
@@ -655,9 +658,12 @@ impl Relevance {
         window: &gpui::Window,
         skipped: &[u64],
         chain: &[u64],
+        instant: Option<web_time::Instant>,
     ) -> Option<Vec<u64>> {
         let known = self.0.lock();
-        let read = known.forced_read.as_ref().filter(|read| !read.timed && read.stamp.same_invalidations(&now))?;
+        let read = known.forced_read.as_ref().filter(|read| {
+            read.timed.is_none_or(|sampled| Some(sampled) == instant) && read.stamp.same_invalidations(&now)
+        })?;
         // A transform written on the element read or above it moves the boxes the pass captured, with no
         // box moved: the host's own is seen below, and the ones inside it are not built by the frames.
         if known.transform_writes.since(read.transforms_at, chain) {
@@ -684,14 +690,14 @@ impl Relevance {
         let mut known = self.0.lock();
         let runs_at = known.layout_runs.clock;
         let transforms_at = known.transform_writes.clock;
-        let timed = std::mem::take(&mut known.read_timed);
+        let timed = known.read_timed.take();
         known.forced_read = Some(ForcedRead { forced, stamp, timed, hosts, runs_at, transforms_at });
     }
 
     /// Notes that the pass of a read built an element in forced content that runs something whose
     /// values follow the clock, so that the boxes it publishes are not the ones of the next read.
-    pub(crate) fn note_timed_read(&self) {
-        self.0.lock().read_timed = true;
+    pub(crate) fn note_timed_read(&self, at: web_time::Instant) {
+        self.0.lock().read_timed = Some(at);
     }
 
     /// Notes that the transform of the element `id` was written in a way that moves no box.
