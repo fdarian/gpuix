@@ -383,6 +383,58 @@ thread_local! {
     static BOUNDS: RefCell<FxHashMap<WindowId, WindowBounds>> = RefCell::new(FxHashMap::default());
 }
 
+thread_local! {
+    /// The layout node of the window's engine each host element was last painted with, for
+    /// [`HostBox`]. A host in the engine of an atomic inline has none.
+    static HOST_NODES: RefCell<FxHashMap<WindowId, FxHashMap<u64, gpui::LayoutId>>> = RefCell::new(FxHashMap::default());
+}
+
+/// Where a host element stands in the window's layout, as far as a later reading can tell whether
+/// it has moved or changed size.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostBox {
+    /// The stamp of its node in the window's engine: it follows the box of the node and those of the
+    /// nodes above it, not a box elsewhere.
+    Node(gpui::LayoutId, u64),
+    /// Its node is not in the window's engine, or was not seen, so any box that moved may be its own.
+    Anywhere,
+}
+
+impl HostBox {
+    /// Where `id` stands now, by the layout node its last paint reported. `Anywhere` for a host that
+    /// reported none or whose node the engine freed since.
+    pub(crate) fn of(window: &gpui::Window, id: u64) -> Self {
+        let node = HOST_NODES.with(|nodes| nodes.borrow().get(&window.window_handle().window_id())?.get(&id).copied());
+        match node.and_then(|node| Some((node, window.box_stamp(node)?))) {
+            Some((node, stamp)) => Self::Node(node, stamp),
+            None => Self::Anywhere,
+        }
+    }
+
+    /// Whether the host is where it was when `self` was taken, given that the window's boxes
+    /// are `same_boxes` as they were then.
+    pub(crate) fn unmoved(self, window: &gpui::Window, same_boxes: bool) -> bool {
+        match self {
+            Self::Node(node, stamp) => window.box_stamp(node) == Some(stamp),
+            Self::Anywhere => same_boxes,
+        }
+    }
+}
+
+/// Notes the layout node a host was painted (or published) with, if it is the window's own.
+fn note_host_node(window: &gpui::Window, id: u64, node: gpui::LayoutId) {
+    let window_id = window.window_handle().window_id();
+    HOST_NODES.with(|nodes| {
+        let mut nodes = nodes.borrow_mut();
+        let nodes = nodes.entry(window_id).or_default();
+        if window.is_window_layout_engine() {
+            nodes.insert(id, node);
+        } else {
+            nodes.remove(&id);
+        }
+    });
+}
+
 /// The roots that `live` replays put back have the boxes they were built with, moved by the
 /// replay: see [`WindowBounds`].
 pub(crate) fn publish(window: WindowId, live: &crate::tape::Live) {
@@ -418,6 +470,12 @@ pub fn bounds_frame_reset() -> impl IntoElement {
 
 /// Forgets the boxes of the elements of `window` that `keep` says are destroyed.
 pub(crate) fn retain_bounds(window: WindowId, keep: impl FnMut(u64) -> bool) {
+    let mut keep = keep;
+    HOST_NODES.with(|nodes| {
+        if let Some(nodes) = nodes.borrow_mut().get_mut(&window) {
+            nodes.retain(|id, _| keep(*id));
+        }
+    });
     BOUNDS.with(|cell| {
         if let Some(bounds) = cell.borrow_mut().get_mut(&window) {
             bounds.retain(keep);
@@ -567,6 +625,7 @@ where
     el.on_painted_layout(move |bounds, layout_id, window, cx| {
         let insets = window.layout_insets(layout_id);
         let window_id = window.window_handle().window_id();
+        note_host_node(window, id, layout_id);
         record_bounds(window_id, id, LaidOut { collapsed_table, ..laid_out.get() }, bounds.origin, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {

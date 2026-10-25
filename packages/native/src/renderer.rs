@@ -553,13 +553,14 @@ pub(crate) fn read_after_layout<R>(
         lay_out(window, cx);
         return Ok(read(window_id));
     }
-    let relevance = tree.lock().unwrap().relevance.clone();
-    let shared = relevance.forced_by_last_read(window.layout_stamp());
-    let mut forcing = shared.clone().unwrap_or_default();
-    let (known, chain) = {
+    let (relevance, known, chain) = {
         let tree = tree.lock().unwrap();
-        (skipped_ancestors(&tree, id), ancestors_of(&tree, id))
+        (tree.relevance.clone(), skipped_ancestors(&tree, id), ancestors_of(&tree, id))
     };
+    let mut path = chain.clone();
+    path.push(id);
+    let shared = relevance.forced_by_last_read(window.layout_stamp(), window, &known, &path);
+    let mut forcing = shared.clone().unwrap_or_default();
     // A window nothing happened to since the forced pass has nothing to lay out but the content
     // that pass did not force.
     if shared.is_some() && known.iter().all(|ancestor| forcing.contains(ancestor)) {
@@ -607,7 +608,7 @@ pub(crate) fn read_after_layout<R>(
     if laid_out {
         crate::automation::keep_bounds(window_id);
         keep_scroll_state();
-        relevance.remember_forced_read(forcing, window.layout_stamp());
+        relevance.remember_forced_read(forcing, window.layout_stamp(), window);
     }
     Ok(read)
 }
@@ -10280,14 +10281,18 @@ fn build_element_unpumped(
     ctx.retain.measurement(animated.measurement.as_ref());
     ctx.retain.dynamic_bits(animated.dynamic);
     if animated.dynamic & crate::retain::Dynamic::OWN != 0 {
-        ctx.retain.paints_only(runs_paint_only(
+        let paints_only = runs_paint_only(
             tree,
             element,
             ctx.css_animations,
             ctx.css_transitions,
             ctx.motion_states,
             ctx.keyframes,
-        ));
+        );
+        ctx.retain.paints_only(paints_only);
+        tree.relevance.note_layout_run(id, !paints_only);
+    } else {
+        tree.relevance.note_layout_run(id, false);
     }
     if layout_source.is_some() {
         ctx.retain.exclude(crate::retain::Exclusion::LayoutAnimation);

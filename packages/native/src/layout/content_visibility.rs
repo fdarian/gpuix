@@ -41,6 +41,7 @@ use rustc_hash::FxHashMap;
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::automation::HostBox;
 use crate::css::length::LengthContext;
 use crate::layout::containing_block::Position;
 use crate::retained_tree::{RetainedElement, RetainedTree};
@@ -285,6 +286,9 @@ struct Shared {
     forced: AtomicUsize,
     /// How many ancestors of the element a read is about are registered, for the same reason.
     chain: AtomicUsize,
+    /// How many elements run an animation of the layout of their content, and how many have: see [`LayoutRuns`].
+    runs_running: AtomicUsize,
+    runs_tracked: AtomicUsize,
     /// Whether a frame with something in it has been drawn before the one being swept: an element
     /// that is there at the first frame is told differently from one that comes after it.
     drawn: AtomicBool,
@@ -311,6 +315,7 @@ struct Known {
     chain: Vec<u64>,
     /// The last forced layout pass of a read, while nothing has happened to the window since.
     forced_read: Option<ForcedRead>,
+    layout_runs: LayoutRuns,
     /// The focused element and its ancestors, which hold the focus.
     focus_within: Arc<[u64]>,
     /// The `auto` elements around the active match of a text search, which find-in-page activates.
@@ -319,10 +324,26 @@ struct Known {
 }
 
 /// A layout pass that a read forced the content of `forced` for, and the window's state right
-/// after it, trailing invalidation included.
+/// after it, trailing invalidation included, with where each forced element stood.
 struct ForcedRead {
     forced: Vec<u64>,
     stamp: gpui::LayoutStamp,
+    hosts: FxHashMap<u64, HostBox>,
+    /// [`LayoutRuns::clock`] right after the pass.
+    runs_at: u64,
+}
+
+/// Which elements run an animation that can change the layout of what is inside them, and when
+/// that last changed. An animation of an inherited property (`font-size`) reflows the content of
+/// a skipped element without moving a box, which the box stamps do not see.
+#[derive(Default)]
+struct LayoutRuns {
+    /// Moves whenever an element is built running such an animation, or no longer running it.
+    clock: u64,
+    running: rustc_hash::FxHashSet<u64>,
+    /// The clock when each element last ran one or stopped running one: the frame that settles an
+    /// animation changes the layout too.
+    last: FxHashMap<u64, u64>,
 }
 
 #[derive(Default)]
@@ -576,24 +597,81 @@ impl Relevance {
     }
 
     /// The elements the last forced pass of a read laid out the content of, if the window is as
-    /// that read left it: nothing invalidated it and no box moved or changed size since, so the boxes
-    /// it published are still the window's (Chrome's locked subtree stays clean while nothing
-    /// dirties it). A frame that skips them again moves no box, and the boxes of a forced pass
-    /// outlast it; a mutation, a scroll write, a resize or a frame in which an animation moved a box
-    /// ends it.
-    pub(crate) fn forced_by_last_read(&self, now: gpui::LayoutStamp) -> Option<Vec<u64>> {
+    /// that read left it for a read below `skipped`, the skipped ancestors of the element it reads:
+    /// nothing invalidated the window and the outermost of them did not move or change size since, so the boxes
+    /// the pass published for what is inside them are still the window's (Chrome's locked subtree
+    /// stays clean while nothing dirties it). A box that moved elsewhere, in an animation that has
+    /// nothing to do with them, leaves it, and so do the frames of animations (they count in
+    /// the stamp apart from the invalidations). What ends it is a frame since the pass in which an
+    /// element on `chain` (the one read and what is above it) ran, or stopped running, an animation
+    /// that can change its layout: a font size reflows the content without moving a box.
+    ///
+    /// A read of an element no skipped content holds has no such ancestor to ask, and needs
+    /// the stamp to be the same. A frame that skips the elements again moves no box, and the boxes of
+    /// a forced pass outlast it; a mutation, a scroll write, a resize or a frame in which an
+    /// animation moved their box or one above it ends it.
+    pub(crate) fn forced_by_last_read(
+        &self,
+        now: gpui::LayoutStamp,
+        window: &gpui::Window,
+        skipped: &[u64],
+        chain: &[u64],
+    ) -> Option<Vec<u64>> {
         let known = self.0.lock();
-        known.forced_read.as_ref().filter(|read| read.stamp == now).map(|read| read.forced.clone())
+        let read = known.forced_read.as_ref().filter(|read| read.stamp.same_invalidations(&now))?;
+        let same_boxes = read.stamp.same_boxes(&now);
+        let unmoved = if skipped.is_empty() {
+            read.stamp == now
+        } else {
+            let runs = &known.layout_runs;
+            let reflowed = chain.iter().any(|id| runs.last.get(id).is_some_and(|last| *last > read.runs_at));
+            // Only the outermost one: a skipped host inside another is parked while the frames skip the
+            // outer one, with no parent to put its box in, and its stamp then is not the one it had in
+            // the pass. The outer one is where all of the content below it is placed from.
+            !reflowed && skipped.first().and_then(|id| read.hosts.get(id)).is_none_or(|before| before.unmoved(window, same_boxes))
+        };
+        unmoved.then(|| read.forced.clone())
     }
 
     /// Records the pass that forced `forced`, with the stamp of the window after the read made
     /// it skip them again.
-    pub(crate) fn remember_forced_read(&self, forced: Vec<u64>, stamp: gpui::LayoutStamp) {
-        self.0.lock().forced_read = Some(ForcedRead { forced, stamp });
+    pub(crate) fn remember_forced_read(&self, forced: Vec<u64>, stamp: gpui::LayoutStamp, window: &gpui::Window) {
+        let hosts = forced.iter().map(|id| (*id, HostBox::of(window, *id))).collect();
+        let mut known = self.0.lock();
+        let runs_at = known.layout_runs.clock;
+        known.forced_read = Some(ForcedRead { forced, stamp, hosts, runs_at });
+    }
+
+    /// Notes that the element being built runs an animation that can change the layout of its
+    /// content (`running`), or does not. See [`LayoutRuns`].
+    pub(crate) fn note_layout_run(&self, id: u64, running: bool) {
+        if !running && self.0.runs_running.load(Ordering::Relaxed) == 0 {
+            return;
+        }
+        let mut known = self.0.lock();
+        let runs = &mut known.layout_runs;
+        if running {
+            runs.running.insert(id);
+        } else if !runs.running.remove(&id) {
+            return;
+        }
+        runs.clock += 1;
+        let clock = runs.clock;
+        runs.last.insert(id, clock);
+        self.0.runs_running.store(runs.running.len(), Ordering::Relaxed);
+        self.0.runs_tracked.store(runs.last.len(), Ordering::Relaxed);
     }
 
     /// Drops what is known of elements the tree no longer has.
     pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
+        if self.0.runs_tracked.load(Ordering::Relaxed) != 0 {
+            let mut known = self.0.lock();
+            let runs = &mut known.layout_runs;
+            runs.running.retain(|id| keep(*id));
+            runs.last.retain(|id, _| keep(*id));
+            self.0.runs_running.store(runs.running.len(), Ordering::Relaxed);
+            self.0.runs_tracked.store(runs.last.len(), Ordering::Relaxed);
+        }
         if self.is_empty() {
             return;
         }

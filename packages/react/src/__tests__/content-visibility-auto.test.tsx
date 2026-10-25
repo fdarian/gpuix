@@ -1422,6 +1422,253 @@ describeNative("consecutive reads and a change that moves no box", { timeout: 12
   })
 })
 
+describeNative("consecutive reads and a layout animation that does not move the held element", { timeout: 120_000 }, () => {
+  type Box = NonNullable<ReturnType<TestRenderer["getElementBounds"]>>
+  const HELD = { contentVisibility: "hidden", containIntrinsicSize: "30px", flexShrink: 0 } as CSSProperties
+  const TEXT = { fontSize: 16, lineHeight: "20px", fontFamily: "Menlo", color: "#000000", width: 360 } as const
+
+  /** Runs `frames` frames of the animation, reads `target` after each and gives the passes that read cost. */
+  function rounds(renderer: TestRenderer, frames: number, target: () => Box, check: (box: Box) => void) {
+    const costs: number[] = []
+    for (let frame = 0; frame < frames; frame++) {
+      renderer.clockAdvance(200)
+      renderer.drawFrame()
+      const before = renderer.getLayoutPassCount()
+      const box = target()
+      costs.push(renderer.getLayoutPassCount() - before)
+      check(box)
+    }
+    return costs
+  }
+
+  it("keeps the shared pass while a sibling subtree grows, and a read there stays one pass", () => {
+    const grow = motionValue(20)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <div testId="held" style={HELD}>
+            <div testId="held-child" style={{ height: 70, width: 40, margin: 5 }} />
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            <motion.div testId="growing" style={{ width: 20, height: grow, flexShrink: 0 }} />
+          </div>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let step = 0; step < 3; step++) renderer.drawFrame()
+      const child = renderer.getElementBounds(ids.get("held-child")!)!
+      const controls = animate(grow, 120, { duration: 2, ease: "linear" })
+      renderer.drawFrame()
+      renderer.clockAdvance(200)
+      renderer.drawFrame()
+      renderer.getElementBounds(ids.get("held-child")!)
+      let height = 20
+      const costs = rounds(renderer, 4, () => renderer.getElementBounds(ids.get("held-child")!)!, (box) => {
+        expect(box, "the held element is where it was").toEqual(child)
+        const now = renderer.getBuiltElementBounds(ids.get("growing")!)!.height
+        expect(now, "the animation runs").toBeGreaterThan(height)
+        height = now
+      })
+      expect(costs, "the box that grows is after the held element: it moves nothing the pass laid out").toEqual([0, 0, 0, 0])
+      controls.stop()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("ends the shared pass when the animation moves the held element, an ancestor of it, or resizes it", () => {
+    const above = motionValue(20)
+    const margin = motionValue(0)
+    const width = motionValue(60)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <motion.div testId="above" style={{ width: 20, height: above, flexShrink: 0 }} />
+          <motion.div testId="wrapper" style={{ marginLeft: margin, flexShrink: 0 }}>
+            <motion.div testId="held" style={{ ...HELD, width }}>
+              <div testId="held-child" style={{ height: 70, width: 40, margin: 5 }} />
+            </motion.div>
+          </motion.div>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let step = 0; step < 3; step++) renderer.drawFrame()
+      const child = renderer.getElementBounds(ids.get("held-child")!)!
+      const held = renderer.getElementBounds(ids.get("held")!)!
+
+      const animated = (value: ReturnType<typeof motionValue<number>>, to: number) => animate(value, to, { duration: 2, ease: "linear" })
+      const aboveRun = animated(above, 120)
+      renderer.drawFrame()
+      let costs = rounds(renderer, 3, () => renderer.getElementBounds(ids.get("held-child")!)!, (moved) => {
+        expect(moved.y - child.y, "the held element moved down with the box above it").toBeCloseTo(renderer.getBuiltElementBounds(ids.get("above")!)!.height - 20, 1)
+      })
+      expect(costs, "a box above it moved it: every read is fresh").toEqual([1, 1, 1])
+      aboveRun.stop()
+      above.set(above.get())
+      renderer.drawFrame()
+      const settled = renderer.getElementBounds(ids.get("held-child")!)!
+
+      const wrapper = animated(margin, 80)
+      renderer.drawFrame()
+      costs = rounds(renderer, 3, () => renderer.getElementBounds(ids.get("held-child")!)!, (moved) => {
+        expect(moved.x - settled.x, "an ancestor of the held element moved it").toBeCloseTo(margin.get(), 1)
+        expect(margin.get()).toBeGreaterThan(0)
+      })
+      expect(costs, "an ancestor of it moved: every read is fresh").toEqual([1, 1, 1])
+      wrapper.stop()
+      margin.set(margin.get())
+      renderer.drawFrame()
+
+      const own = animated(width, 200)
+      renderer.drawFrame()
+      costs = rounds(renderer, 3, () => renderer.getElementBounds(ids.get("held-child")!)!, (now) => {
+        expect(now.x - settled.x, "the child is as far from the left").toBeCloseTo(margin.get(), 1)
+        expect(renderer.getElementBounds(ids.get("held")!)!.width, "the held element is as wide as the animation made it").toBeGreaterThan(held.width)
+      })
+      expect(costs, "the held element is resized: every read is fresh").toEqual([1, 1, 1])
+      own.stop()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("is fresh after a change inside an inline-block that moves the held element in it", () => {
+    const grow = motionValue(10)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <text style={TEXT}>
+            {"Before the box "}
+            <div testId="inline" style={{ display: "inline-block", width: 200, height: 160, flexDirection: "column" }}>
+              <motion.div testId="growing" style={{ width: 20, height: grow, flexShrink: 0 }} />
+              <div testId="held" style={HELD}>
+                <div testId="held-child" style={{ height: 70, width: 40, margin: 5 }} />
+              </div>
+            </div>
+            {" and after it"}
+          </text>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let step = 0; step < 3; step++) renderer.drawFrame()
+      const child = renderer.getElementBounds(ids.get("held-child")!)!
+      renderer.drawFrame()
+      const controls = animate(grow, 100, { duration: 2, ease: "linear" })
+      renderer.drawFrame()
+      const costs = rounds(renderer, 4, () => renderer.getElementBounds(ids.get("held-child")!)!, (moved) => {
+        const height = renderer.getBuiltElementBounds(ids.get("growing")!)!.height
+        expect(height, "the animation runs").toBeGreaterThan(10)
+        expect(moved.y - child.y, "the held element sits under the box that grows in the inline-block").toBeCloseTo(height - 10, 1)
+      })
+      expect(costs, "the inline-block laid out another box in its own engine: every read is fresh").toEqual([1, 1, 1, 1])
+      controls.stop()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("is fresh while an ancestor animates the font size, which reflows the held content and moves no box", () => {
+    const size = motionValue(16)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <motion.div testId="wrapper" style={{ fontFamily: "Menlo", fontSize: size, width: 400, height: 200, flexShrink: 0, overflow: "hidden" }}>
+            <div testId="held" style={HELD}>
+              <div testId="label" style={{ alignSelf: "flex-start" }}>
+                <text>Hello world</text>
+              </div>
+            </div>
+            <div testId="control" style={{ alignSelf: "flex-start" }}>
+              <text>Hello world</text>
+            </div>
+          </motion.div>
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let step = 0; step < 3; step++) renderer.drawFrame()
+      const first = renderer.getElementBounds(ids.get("label")!)!
+      const controls = animate(size, 48, { duration: 2, ease: "linear" })
+      renderer.drawFrame()
+      let height = first.height
+      const costs = rounds(renderer, 4, () => renderer.getElementBounds(ids.get("label")!)!, (label) => {
+        const control = renderer.getBuiltElementBounds(ids.get("control")!)!
+        expect(label.height, "the held text is as tall as a text of the same font size that is not held").toBeCloseTo(control.height, 1)
+        expect(label.height, "and the font size grows").toBeGreaterThan(height)
+        height = label.height
+      })
+      expect(costs, "no box moved, and every read is a fresh layout").toEqual([1, 1, 1, 1])
+      controls.stop()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+
+  it("shares a pass forced for one held element while an animation elsewhere moves boxes that are not above it", () => {
+    const grow = motionValue(20)
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.setInlineDraws(false)
+      renderer.clockPause()
+      root.render(
+        <Page>
+          <div testId="held-a" style={HELD}>
+            <div testId="child-a" style={{ height: 70, width: 40, margin: 5 }} />
+          </div>
+          <div testId="held-b" style={HELD}>
+            <div testId="child-b" style={{ height: 50, width: 30, margin: 5 }} />
+          </div>
+          <motion.div testId="elsewhere" style={{ width: 20, height: grow, flexShrink: 0 }} />
+        </Page>
+      )
+      renderer.flush()
+      const ids = idsOf(renderer)
+      for (let step = 0; step < 3; step++) renderer.drawFrame()
+      const passes = () => renderer.getLayoutPassCount()
+      const start = passes()
+      const a = renderer.getElementBounds(ids.get("child-a")!)!
+      expect(passes() - start, "the first read forces the held element").toBe(1)
+      const controls = animate(grow, 120, { duration: 2, ease: "linear" })
+      renderer.drawFrame()
+      renderer.clockAdvance(200)
+      renderer.drawFrame()
+      renderer.getElementBounds(ids.get("child-a")!)
+      const costs = rounds(renderer, 3, () => renderer.getElementBounds(ids.get("child-a")!)!, (box) => expect(box).toEqual(a))
+      expect(costs, "the animation is below both held elements").toEqual([0, 0, 0])
+      const b = renderer.getElementBounds(ids.get("child-b")!)!
+      expect(b.height).toBe(50)
+      controls.stop()
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+    } finally {
+      root.unmount()
+    }
+  })
+})
+
 describeNative("a read of geometry below a skipped element, for what else it could change", { timeout: 120_000 }, () => {
   it("remembers no size, starts no animation and tells nothing, for an auto and a hidden element", () => {
     const seen: string[] = []
