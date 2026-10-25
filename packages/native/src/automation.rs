@@ -244,13 +244,15 @@ impl ElementBounds {
             format!(" perspective({g:.6}, {h:.6}, {i:.3})")
         };
         format!(
-            "{} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3}){perspective}",
-            self.described_apart_from_transform()
+            "{} matrix({a:.3}, {b:.3}, {c:.3}, {d:.3}, {e:.3}, {f:.3}){perspective} faces_away={}",
+            self.described_apart_from_transform(),
+            self.faces_away
         )
     }
 
     fn described_apart_from_transform(self) -> String {
-        format!("{:?}", Self { culled: false, to_window: TransformationMatrix::unit(), ..self })
+        // Which way a box faces moves with its matrix, and a patch publishes it with the matrix.
+        format!("{:?}", Self { culled: false, to_window: TransformationMatrix::unit(), faces_away: false, ..self })
     }
 
     /// The box `offset` away, in the single precision it is measured in, which is what painting

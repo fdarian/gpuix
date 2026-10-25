@@ -20,6 +20,7 @@ import path from "path"
 import React from "react"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
+import { motion } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { elementsOf } from "./oracle-boxes.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
@@ -255,5 +256,47 @@ describeNative("a card flip paints the face that turns toward the viewer", () =>
   it("keeps the front of a flat card, mirrored: its faces are flattened into it before it turns", () => {
     expect(pixels(180, false)(200, 200)).toEqual(RED)
     expect(pixels(0, false)(200, 200)).toEqual(RED)
+  }, SLOW)
+})
+
+describeNative("a card that a Motion tween turns hides the face that turns away on the ticks that are patched", () => {
+  it("hits the front before the card is edge on and the back after", () => {
+    const { render, renderer, unmount } = createTestRoot({ width: 400, height: 400 })
+    try {
+      renderer.clockPause()
+      const face = (testId: string, style: object) => (
+        <div testId={testId} style={{ position: "absolute", left: 0, top: 0, width: 150, height: 150, backfaceVisibility: "hidden", ...style }} />
+      )
+      render(
+        <div style={{ position: "absolute", left: 100, top: 100, width: 200, height: 200, perspective: 600 }}>
+          <motion.div
+            testId="card"
+            style={{ position: "absolute", left: 25, top: 25, width: 150, height: 150, transformStyle: "preserve-3d" }}
+            initial={{ rotateY: 0 }}
+            animate={{ rotateY: 180 }}
+            transition={{ duration: 1, ease: "linear" }}
+          >
+            {face("front", {})}
+            {face("back", { transform: "rotateY(180deg)" })}
+          </motion.div>
+        </div>
+      )
+      renderer.flush()
+      const faceAt = () => {
+        const hit = renderer.getElementsAt(200, 200)[0]
+        return hit === undefined ? null : renderer.findByTestId("front")?.id === hit ? "front" : renderer.findByTestId("back")?.id === hit ? "back" : "other"
+      }
+      expect(faceAt()).toBe("front")
+      const seen: (string | null)[] = []
+      for (let tick = 0; tick < 60; tick++) {
+        renderer.clockAdvance(16)
+        renderer.drawFrame()
+        if (tick === 15) seen.push(faceAt())
+        if (tick === 50) seen.push(faceAt())
+      }
+      expect(seen).toEqual(["front", "back"])
+    } finally {
+      unmount()
+    }
   }, SLOW)
 })
