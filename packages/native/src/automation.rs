@@ -698,6 +698,23 @@ pub(crate) fn publish_captured_bounds(data: &dyn std::any::Any, offset: Point<Pi
     insert_bounds(*window, *id, bounds.translated(offset));
 }
 
+/// Gives the box of `id` the scrollable overflow a patch measured for it (`content`, in logical
+/// pixels), which the transforms that ticked changed without a frame that records the box.
+pub(crate) fn republish_scroll_content(window: WindowId, id: u64, content: gpui::Size<Pixels>, scale: f32) {
+    let Some(bounds) = BOUNDS.with(|cell| cell.borrow().get(&window).and_then(|bounds| bounds.get(id))) else {
+        return;
+    };
+    insert_bounds(
+        window,
+        id,
+        ElementBounds {
+            content_width: layout_units(content.width, scale),
+            content_height: layout_units(content.height, scale),
+            ..bounds
+        },
+    );
+}
+
 fn bounds_write(data: &dyn std::any::Any) -> &(WindowId, u64, ElementBounds) {
     data.downcast_ref().expect("a write of the bounds registry holds a window, an element and its box")
 }

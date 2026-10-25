@@ -277,6 +277,9 @@ scenes["into-view"] = {
     ["e15", "", abs("c", 200, 150, 100, 50, "transform:scale(0.25)")],
     ["e16", "", abs("c", 0, 0, 100, 50, "transform:scale(0)")],
     ["e17", "padding:10px 20px 15px 5px;", abs("c", 0, 0, 200, 100)],
+    // The end of a transition of translateX(400px) in a box that hides its overflow, and in one that scrolls it.
+    ["e18", "overflow:hidden;", abs("c", 0, 0, 50, 30, "transform:translateX(400px)")],
+    ["e19", "", abs("c", 0, 0, 50, 30, "transform:translateX(400px)")],
   ];
   scenes["extent"] = {
     html: extents

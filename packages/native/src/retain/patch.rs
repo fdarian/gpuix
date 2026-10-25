@@ -98,8 +98,18 @@ impl GpuixView {
             let accepted = move |_: &mut gpui::Window, _: &mut gpui::App| {
                 scratch.iter().all(|(id, tape)| tapes.same_as_recorded(*id, tape))
             };
-            if window.repaint_in_place(built.units, app, accepted).is_err() {
+            let Ok(outcome) = window.repaint_in_place(built.units, app, accepted) else {
                 return false;
+            };
+            // A scroller around the units is not painted again, and its range follows the
+            // transforms that moved below it.
+            let window_id = window.window_handle().window_id();
+            let scale = window.scale_factor();
+            for change in &outcome.scroll_extents {
+                let scrolled = view.read(app).scroll_handles.iter().find(|(_, handle)| **handle == change.handle).map(|(id, _)| *id);
+                if let Some(id) = scrolled {
+                    crate::automation::republish_scroll_content(window_id, id, change.content, scale);
+                }
             }
             // The boxes are the one write that a transform that moves changes without a build.
             for (_, tape) in &captured {
