@@ -1,0 +1,51 @@
+<!doctype html>
+<!--
+  Oracle for flow-root.test.tsx: the boxes (`[x, y, width, height]` relative to the 300px case box) of every element
+  with an `id` that headless Chrome lays out for a `display: flow-root` box, next to the same page with `display: block`.
+  A flow-root box is the root of a formatting context of its own: the margins of its children do not collapse with its
+  own margins or leave it (they stay inside, and make it tall), and the margins of the box do not collapse through it
+  when it is empty. It still collapses with its siblings. Regenerate (`flow-root-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh flow-root
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+#case{position:absolute;left:0;top:0;width:300px}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const cases = {};
+const add = (name, build) => { if (cases[name]) throw new Error('duplicate ' + name); cases[name] = build; };
+const box = (id, style = '') => `<div id="${id}" style="${style}"></div>`;
+
+const DISPLAYS = { 'block': 'display:block;', 'flow-root': 'display:flow-root;' };
+for (const [kind, display] of Object.entries(DISPLAYS)) {
+  add(`${kind}, margin-top -30 of the child`, () =>
+    `<div id="p" style="height:100px"><div id="w" style="${display}"><div id="x" style="margin-top:-30px;height:20px"></div></div>${box('n', 'height:5px')}</div>`);
+  add(`${kind}, margin-top 15 of the child`, () =>
+    `<div id="p" style="height:100px"><div id="w" style="${display}"><div id="x" style="margin-top:15px;height:20px"></div></div>${box('n', 'height:5px')}</div>`);
+  add(`${kind}, margin-bottom 20 of the child`, () =>
+    `<div id="p"><div id="w" style="${display}"><div id="x" style="margin-bottom:20px;height:20px"></div></div>${box('n', 'height:5px')}</div>`);
+  add(`${kind}, margin-top 10 of the box and 20 of the child`, () =>
+    `<div id="p" style="height:100px"><div id="w" style="${display}margin-top:10px"><div id="x" style="margin-top:20px;height:10px"></div></div></div>`);
+  add(`${kind}, margin-top -30 of the child in a box with a height`, () =>
+    `<div id="p" style="height:100px"><div id="w" style="${display}height:10px"><div id="x" style="margin-top:-30px;height:20px"></div></div>${box('n', 'height:5px')}</div>`);
+  add(`${kind}, empty between margins`, () =>
+    `<div id="p">${box('a', 'height:10px;margin-bottom:20px')}<div id="w" style="${display}margin:10px 0"></div>${box('n', 'height:5px')}</div>`);
+  add(`${kind}, margin-top 30 below a margin-bottom 20`, () =>
+    `<div id="p">${box('a', 'height:10px;margin-bottom:20px')}<div id="w" style="${display}margin-top:30px"><div id="x" style="height:10px"></div></div></div>`);
+  add(`${kind}, margin-top -30 of the child in a flex row`, () =>
+    `<div id="p" style="display:flex"><div id="w" style="${display}"><div id="x" style="height:10px"><div id="y" style="margin-top:-30px;height:20px"></div></div></div></div>`);
+}
+
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, build] of Object.entries(cases)) {
+  const html = build();
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+</script></body></html>

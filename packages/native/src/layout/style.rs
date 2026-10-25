@@ -133,6 +133,7 @@ pub(crate) fn apply<E: Styled>(
         Some("flex") => el = el.flex(),
         Some("grid") => el = el.grid(),
         Some("block") => el = el.block(),
+        Some("flow-root") => el = el.flow_root(),
         Some("none") => el = el.hidden(),
         Some(display) => match super::table::part_of(display) {
             Some(super::table::Part::Table) => el = el.table(),

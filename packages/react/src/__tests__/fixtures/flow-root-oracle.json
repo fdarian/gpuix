@@ -1,0 +1,454 @@
+{
+ "block, margin-top -30 of the child": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:block;\"><div id=\"x\" style=\"margin-top:-30px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    -30,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    -30,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    -30,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    -10,
+    300,
+    5
+   ]
+  }
+ },
+ "block, margin-top 15 of the child": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:block;\"><div id=\"x\" style=\"margin-top:15px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    15,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    15,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    15,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    35,
+    300,
+    5
+   ]
+  }
+ },
+ "block, margin-bottom 20 of the child": {
+  "html": "<div id=\"p\"><div id=\"w\" style=\"display:block;\"><div id=\"x\" style=\"margin-bottom:20px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    45
+   ],
+   "w": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    40,
+    300,
+    5
+   ]
+  }
+ },
+ "block, margin-top 10 of the box and 20 of the child": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:block;margin-top:10px\"><div id=\"x\" style=\"margin-top:20px;height:10px\"></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    20,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    20,
+    300,
+    10
+   ],
+   "x": [
+    0,
+    20,
+    300,
+    10
+   ]
+  }
+ },
+ "block, margin-top -30 of the child in a box with a height": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:block;height:10px\"><div id=\"x\" style=\"margin-top:-30px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    -30,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    -30,
+    300,
+    10
+   ],
+   "x": [
+    0,
+    -30,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    -20,
+    300,
+    5
+   ]
+  }
+ },
+ "block, empty between margins": {
+  "html": "<div id=\"p\"><div id=\"a\" style=\"height:10px;margin-bottom:20px\"></div><div id=\"w\" style=\"display:block;margin:10px 0\"></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    35
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    10
+   ],
+   "w": [
+    0,
+    30,
+    300,
+    0
+   ],
+   "n": [
+    0,
+    30,
+    300,
+    5
+   ]
+  }
+ },
+ "block, margin-top 30 below a margin-bottom 20": {
+  "html": "<div id=\"p\"><div id=\"a\" style=\"height:10px;margin-bottom:20px\"></div><div id=\"w\" style=\"display:block;margin-top:30px\"><div id=\"x\" style=\"height:10px\"></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    50
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    10
+   ],
+   "w": [
+    0,
+    40,
+    300,
+    10
+   ],
+   "x": [
+    0,
+    40,
+    300,
+    10
+   ]
+  }
+ },
+ "block, margin-top -30 of the child in a flex row": {
+  "html": "<div id=\"p\" style=\"display:flex\"><div id=\"w\" style=\"display:block;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px;height:20px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "w": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "x": [
+    0,
+    -30,
+    0,
+    10
+   ],
+   "y": [
+    0,
+    -30,
+    0,
+    20
+   ]
+  }
+ },
+ "flow-root, margin-top -30 of the child": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:flow-root;\"><div id=\"x\" style=\"margin-top:-30px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "x": [
+    0,
+    -30,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    0,
+    300,
+    5
+   ]
+  }
+ },
+ "flow-root, margin-top 15 of the child": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:flow-root;\"><div id=\"x\" style=\"margin-top:15px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    0,
+    300,
+    35
+   ],
+   "x": [
+    0,
+    15,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    35,
+    300,
+    5
+   ]
+  }
+ },
+ "flow-root, margin-bottom 20 of the child": {
+  "html": "<div id=\"p\"><div id=\"w\" style=\"display:flow-root;\"><div id=\"x\" style=\"margin-bottom:20px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    45
+   ],
+   "w": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    40,
+    300,
+    5
+   ]
+  }
+ },
+ "flow-root, margin-top 10 of the box and 20 of the child": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:flow-root;margin-top:10px\"><div id=\"x\" style=\"margin-top:20px;height:10px\"></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    10,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    10,
+    300,
+    30
+   ],
+   "x": [
+    0,
+    30,
+    300,
+    10
+   ]
+  }
+ },
+ "flow-root, margin-top -30 of the child in a box with a height": {
+  "html": "<div id=\"p\" style=\"height:100px\"><div id=\"w\" style=\"display:flow-root;height:10px\"><div id=\"x\" style=\"margin-top:-30px;height:20px\"></div></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    100
+   ],
+   "w": [
+    0,
+    0,
+    300,
+    10
+   ],
+   "x": [
+    0,
+    -30,
+    300,
+    20
+   ],
+   "n": [
+    0,
+    10,
+    300,
+    5
+   ]
+  }
+ },
+ "flow-root, empty between margins": {
+  "html": "<div id=\"p\"><div id=\"a\" style=\"height:10px;margin-bottom:20px\"></div><div id=\"w\" style=\"display:flow-root;margin:10px 0\"></div><div id=\"n\" style=\"height:5px\"></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    45
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    10
+   ],
+   "w": [
+    0,
+    30,
+    300,
+    0
+   ],
+   "n": [
+    0,
+    40,
+    300,
+    5
+   ]
+  }
+ },
+ "flow-root, margin-top 30 below a margin-bottom 20": {
+  "html": "<div id=\"p\"><div id=\"a\" style=\"height:10px;margin-bottom:20px\"></div><div id=\"w\" style=\"display:flow-root;margin-top:30px\"><div id=\"x\" style=\"height:10px\"></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    50
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    10
+   ],
+   "w": [
+    0,
+    40,
+    300,
+    10
+   ],
+   "x": [
+    0,
+    40,
+    300,
+    10
+   ]
+  }
+ },
+ "flow-root, margin-top -30 of the child in a flex row": {
+  "html": "<div id=\"p\" style=\"display:flex\"><div id=\"w\" style=\"display:flow-root;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px;height:20px\"></div></div></div></div>",
+  "boxes": {
+   "p": [
+    0,
+    0,
+    300,
+    0
+   ],
+   "w": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "x": [
+    0,
+    -30,
+    0,
+    10
+   ],
+   "y": [
+    0,
+    -30,
+    0,
+    20
+   ]
+  }
+ }
+}
