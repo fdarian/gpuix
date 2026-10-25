@@ -44,6 +44,12 @@
   and Infinity is the string "Infinity". A microtask checkpoint runs after each step, so a promise settled by
   a step is logged under it.
 
+  4. `effectCases`, run with the second and third kind: what `getKeyframes()` and `getTiming()` read for one CSS
+  animation or transition of each kind of value gpuix animates (lengths, numbers, colours of every syntax, shadows,
+  transform lists and the transform properties, `font-variation-settings`, `aspect-ratio`, keywords, shorthands, SVG
+  lengths, paints, dash lists and paths) and each form of easing. See `EFFECTS` below; `#effects` in the URL runs only
+  these, in the virtual time run, for a quick look.
+
   Steps of `treeCases` (a tree of divs `r` > `a`, `b`, ..., an id each; the animations are named `kind:name@id` with
   the pseudo-element after it): list (records the lists at once), styles {id: style} (one style flush for all),
   classes {id: className}, cancel id i, finish id i, play id i (the animation cancel or finish took), add parent node
@@ -702,6 +708,355 @@ const TREES = (() => {
   return cases;
 })();
 
+// Cases of the fourth kind: what `getKeyframes()` and `getTiming()` read for one CSS animation or transition, whatever
+// kind of value it animates. A spec is {name, tag, attrs, style, keyframes, animation, change, attrChange, update}:
+// `tag` is the element (a div unless it is an SVG one, which is put in an <svg>); `attrs` are its attributes (camelCase
+// JS spelling); `style` is applied first; `keyframes` is the body of a @keyframes rule the element animates by
+// (`animation` is what follows its name, `1s linear` unless said); `change` is a second style that starts transitions
+// and `attrChange` a second set of attributes; `update` is an updateTiming() argument applied to every animation after
+// the first reads. `animation` may hold `$KF` where the name of the keyframes goes. Every animation of the element is recorded in the order getAnimations() lists them, with its
+// keyframes and timing, and after the update its timing again.
+const EFFECTS = (() => {
+  const cases = [];
+  const camel = (name) => name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  const add = (name, spec) => cases.push({ name, ...spec });
+  // One property from one value to another, animated by keyframes and by a transition.
+  const both = (label, prop, from, to, extra = {}) => {
+    const style = extra.style || {};
+    add(`animation: ${label}`, { ...extra, keyframes: `from{${prop}:${from}}to{${prop}:${to}}` });
+    if (extra.only === 'animation') return;
+    add(`transition: ${label}`, { ...extra, style: { ...style, [camel(prop)]: from, transition: `${prop} 1s linear${extra.discrete ? ' allow-discrete' : ''}` }, change: { [camel(prop)]: to } });
+  };
+  // The same for an SVG shape, whose transition is of the attribute.
+  const shape = (label, tag, prop, from, to, attrs = {}, extra = {}) => {
+    add(`animation: ${label}`, { tag, attrs, ...extra, keyframes: `from{${prop}:${from}}to{${prop}:${to}}` });
+    if (extra.only === 'animation') return;
+    add(`transition: ${label}`, { tag, attrs: { ...attrs, [camel(prop)]: from }, ...extra, style: { transition: `${prop} 1s linear` }, attrChange: { [camel(prop)]: to } });
+  };
+  const em = { fontSize: '20px' };
+
+  // Lengths and percentages.
+  both('width in px', 'width', '100px', '200px');
+  both('width in percent', 'width', '10%', '50%');
+  both('width in calc()', 'width', 'calc(10px + 10%)', 'calc(100% - 20px)');
+  both('width in em', 'width', '5em', '10em', { style: em });
+  both('width in rem', 'width', '2rem', '8rem');
+  both('width from auto', 'width', 'auto', '200px');
+  both('width to min-content', 'width', '100px', 'min-content');
+  both('width to fit-content', 'width', '100px', 'fit-content');
+  both('width in calc() with em and a division', 'width', 'calc(1em + 2px)', 'calc((100% - 4px) / 2)', { style: em });
+  both('height in px', 'height', '50px', '100px');
+  both('height in percent', 'height', '10%', '50%');
+  both('min-width', 'min-width', '0px', '50px');
+  both('min-height from auto', 'min-height', 'auto', '50px');
+  both('max-width from none', 'max-width', 'none', '300px');
+  both('max-height', 'max-height', '100px', '200px');
+  both('margin-left in em', 'margin-left', '0px', '1em', { style: em });
+  both('margin-left in calc()', 'margin-left', 'calc(1em + 2px)', 'calc(10% + 4px)', { style: em, only: 'animation' });
+  both('margin-top from auto', 'margin-top', 'auto', '10px');
+  both('margin-right negative', 'margin-right', '-10px', '10px');
+  both('margin-bottom in percent', 'margin-bottom', '5%', '10%', { only: 'animation' });
+  both('padding-left', 'padding-left', '4px', '2em', { style: em });
+  both('padding-top in percent', 'padding-top', '10%', '20px', { only: 'animation' });
+  both('padding-right in calc()', 'padding-right', 'calc(2px + 1%)', '8px', { only: 'animation' });
+  both('padding-bottom', 'padding-bottom', '0px', '10px');
+  both('top', 'top', '10px', '50%', { style: { position: 'relative' } });
+  both('left from auto', 'left', 'auto', '20px', { style: { position: 'relative' } });
+  both('right', 'right', '1px', '2px', { style: { position: 'relative' } });
+  both('bottom in calc()', 'bottom', 'calc(10px + 2%)', '0px', { style: { position: 'relative' } });
+  both('row-gap', 'row-gap', '0px', '10px', { style: { display: 'flex' } });
+  both('column-gap from normal', 'column-gap', 'normal', '10px', { style: { display: 'flex' } });
+  both('column-gap in percent', 'column-gap', '5%', '10px', { style: { display: 'flex' } });
+  both('flex-basis from auto', 'flex-basis', 'auto', '100px');
+  both('flex-basis in percent', 'flex-basis', '20%', '50%');
+  both('flex-basis to content', 'flex-basis', '10px', 'content');
+  both('flex-grow', 'flex-grow', '0', '2.5');
+  both('flex-shrink', 'flex-shrink', '1', '0.5');
+  both('border-top-width', 'border-top-width', '1px', '5px', { style: { borderTopStyle: 'solid' } });
+  both('border-left-width keywords', 'border-left-width', 'thin', 'thick', { style: { borderLeftStyle: 'solid' } });
+  both('border-right-width with no style', 'border-right-width', '1px', '5px');
+  both('border-bottom-width in em', 'border-bottom-width', '1px', '0.25em', { style: { borderBottomStyle: 'solid', ...em } });
+  both('border-top-left-radius', 'border-top-left-radius', '0px', '10px');
+  both('border-top-right-radius in percent', 'border-top-right-radius', '0%', '50%');
+  both('border-bottom-left-radius elliptical', 'border-bottom-left-radius', '5px 10px', '20% 30%');
+  both('border-bottom-right-radius in em', 'border-bottom-right-radius', '1em', '2em 1em', { style: em });
+  both('outline-width', 'outline-width', '1px', '5px', { style: { outlineStyle: 'solid' } });
+  both('outline-offset', 'outline-offset', '0px', '-3px', { style: { outlineStyle: 'solid' } });
+  both('font-size in px', 'font-size', '12px', '24px', { only: 'animation' });
+  both('font-size in em', 'font-size', '1em', '2em', { only: 'animation' });
+  both('font-size in percent', 'font-size', '100%', '150%', { only: 'animation' });
+  both('font-size keywords', 'font-size', 'small', 'large', { only: 'animation' });
+  both('font-size in calc()', 'font-size', 'calc(10px + 1em)', '30px', { only: 'animation' });
+  both('line-height as a number', 'line-height', '1', '2');
+  both('line-height in px', 'line-height', '20px', '30px');
+  both('line-height in percent', 'line-height', '100%', '200%');
+  both('line-height from normal', 'line-height', 'normal', '2');
+  both('text-underline-offset', 'text-underline-offset', '2px', '8px');
+  both('text-underline-offset from auto', 'text-underline-offset', 'auto', '4px');
+  both('text-underline-offset in em', 'text-underline-offset', '0.1em', '0.3em', { style: em });
+  both('text-decoration-thickness', 'text-decoration-thickness', '1px', '3px');
+  both('text-decoration-thickness from auto', 'text-decoration-thickness', 'auto', '4px');
+  both('text-decoration-thickness from from-font', 'text-decoration-thickness', 'from-font', '2px');
+  both('text-decoration-thickness in percent', 'text-decoration-thickness', '10%', '20%');
+  both('border-spacing', 'border-spacing', '0px', '10px 5px', { only: 'animation' });
+  both('border-spacing in em', 'border-spacing', '1em', '2em 1em', { style: em, only: 'animation' });
+  both('vertical-align', 'vertical-align', '0px', '10px');
+  both('vertical-align from a keyword', 'vertical-align', 'baseline', '5px');
+  both('vertical-align in percent', 'vertical-align', '10%', '50%');
+  both('z-index', 'z-index', '0', '5', { style: { position: 'relative' } });
+  both('z-index from auto', 'z-index', 'auto', '3', { style: { position: 'relative' } });
+  both('z-index negative', 'z-index', '-2', '2', { style: { position: 'relative' } });
+  both('aspect-ratio as a number', 'aspect-ratio', '1', '2');
+  both('aspect-ratio as a ratio', 'aspect-ratio', '16 / 9', '4 / 3');
+  both('aspect-ratio from auto', 'aspect-ratio', 'auto', '1');
+  both('aspect-ratio with auto and a ratio', 'aspect-ratio', 'auto 16 / 9', '2');
+  
+  // Numbers.
+  both('opacity', 'opacity', '0', '1');
+  both('opacity in the middle', 'opacity', '0.25', '0.75');
+  both('opacity in percent', 'opacity', '50%', '100%');
+  both('opacity with many digits', 'opacity', '0.333333333', '0.7');
+  both('font-weight as numbers', 'font-weight', '400', '700', { only: 'animation' });
+  both('font-weight as keywords', 'font-weight', 'normal', 'bold', { only: 'animation' });
+  both('font-weight between', 'font-weight', '100', '850.5', { only: 'animation' });
+  both('font-weight relative', 'font-weight', 'lighter', 'bolder', { only: 'animation' });
+  both('font-variation-settings', 'font-variation-settings', '"wght" 100', '"wght" 900', { only: 'animation' });
+  both('font-variation-settings of two axes', 'font-variation-settings', '"wght" 100, "wdth" 50', '"wght" 900, "wdth" 150', { only: 'animation' });
+  both('font-variation-settings from normal', 'font-variation-settings', 'normal', '"wght" 500', { only: 'animation' });
+  both('font-variation-settings with single quotes', 'font-variation-settings', "'wght' 100.5", "'wght' 900", { only: 'animation' });
+
+  // Colours, in every syntax.
+  const colours = ['#f00', '#ff0000', '#ff000080', '#f008', 'red', 'RED', 'rebeccapurple', 'transparent',
+    'rgb(255, 0, 0)', 'rgb(255 0 0)', 'rgba(0, 0, 0, 0.5)', 'rgb(255 0 0 / 50%)', 'rgb(10% 20% 30%)', 'rgb(255 0 0 / 0.333)',
+    'rgb(300 -5 0)', 'rgb(0.5 128.7 255)',
+    'hsl(120, 100%, 50%)', 'hsl(120deg 100% 50%)', 'hsla(120, 100%, 50%, 0.3)', 'hsl(0.5turn 50% 50% / 0.5)',
+    'hwb(120 10% 20%)', 'hwb(120 10% 20% / 0.5)',
+    'lab(50% 40 59)', 'lab(50% 40 59 / 0.5)', 'lch(50% 80 30)', 'lch(50% 80 30deg / 0.4)',
+    'oklab(0.6 0.1 0.1)', 'oklab(60% 0.1 0.1 / 0.5)', 'oklch(0.7 0.1 200)', 'oklch(70% 0.1 200 / 0.5)', 'oklch(0.7 0.1 200deg)', 'oklch(0.123456 0.0123456 12.3456)',
+    'color(srgb 1 0 0)', 'color(srgb 0.5 0.25 0.1 / 0.5)', 'color(srgb-linear 0.5 0.5 0.5)', 'color(display-p3 1 0 0)', 'color(display-p3 0.5 0.2 0.1 / 0.5)',
+    'color(a98-rgb 1 0 0)', 'color(prophoto-rgb 1 0 0)', 'color(rec2020 1 0 0)', 'color(xyz 0.2 0.3 0.4)', 'color(xyz-d50 0.2 0.3 0.4)',
+    'color-mix(in srgb, red, blue)', 'color-mix(in oklch, red 30%, blue)', 'color-mix(in srgb, red 50%, transparent)', 'color-mix(in srgb, #f00, #00f 25%)',
+    'color-mix(in hsl, red, blue)', 'color-mix(in hwb, red, blue)', 'color-mix(in lab, red, blue)', 'color-mix(in oklab, red, blue)', 'color-mix(in lch longer hue, red, blue)',
+    'color-mix(in xyz, red, blue)', 'color-mix(in display-p3, red, blue)', 'color-mix(in srgb, red 30%, blue 20%)',
+    'light-dark(red, blue)', 'light-dark(oklch(0.7 0.1 200), blue)', 'currentcolor', 'currentColor',
+    'oklch(0.7 0.1 400)', 'oklch(0.7 0.1 -30)', 'lch(120% 200 30)', 'oklab(2 0.5 0.5)', 'color(srgb 2 -1 0.5)', 'color(display-p3 2 -1 0.5)', 'lab(50% 100% -100%)',
+    'oklch(50% 50% 30)', 'rgb(255 0 0 / 0)', 'color(srgb 1 0 0 / 150%)', 'hsl(400 50% 50%)', 'hsl(-30 50% 50%)', 'rgb(1e2 2e1 0)'];
+  for (const c of colours) both(`background-color ${c}`, 'background-color', c, '#00f');
+  for (const c of ['red', 'oklch(0.7 0.1 200)', 'currentcolor', 'rgb(1 2 3 / 0.5)']) both(`background-color to ${c}`, 'background-color', '#00f', c);
+  add('animation: background-color with only a to keyframe', { style: { backgroundColor: 'oklch(0.7 0.1 200)' }, keyframes: 'to{background-color:red}' });
+  add('animation: background-color with only a from keyframe', { style: { backgroundColor: '#336699' }, keyframes: 'from{background-color:red}' });
+  add('animation: background-color with only a from keyframe over currentcolor', { style: { color: '#123456', backgroundColor: 'currentcolor' }, keyframes: 'from{background-color:red}' });
+  for (const prop of ['color', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color', 'outline-color', 'text-decoration-color']) {
+    both(prop, prop, '#f00', 'rgba(0, 0, 255, 0.5)', prop.startsWith('border') ? { style: { borderStyle: 'solid' } } : prop === 'outline-color' ? { style: { outlineStyle: 'solid' } } : {});
+  }
+  both('color currentcolor', 'color', 'currentcolor', 'oklch(0.7 0.1 200)');
+  both('border-top-color currentcolor', 'border-top-color', 'currentcolor', '#00f', { style: { borderTopStyle: 'solid', color: '#123456' } });
+  both('outline-color from the default', 'outline-color', 'currentcolor', 'lab(50% 40 59)', { style: { outlineStyle: 'solid' } });
+
+  // Shadows.
+  both('box-shadow from none', 'box-shadow', 'none', '0 0 5px red');
+  both('box-shadow to none', 'box-shadow', '2px 3px 4px 5px rgba(0, 0, 0, 0.5)', 'none');
+  both('box-shadow with and without blur', 'box-shadow', '2px 2px red', '4px 4px 8px 2px #00f');
+  both('box-shadow inset', 'box-shadow', '0 0 10px blue', 'inset 0 0 20px blue');
+  both('box-shadow with an inset first', 'box-shadow', 'inset 2px 2px 4px 1px #123', '2px 2px 4px 1px #123');
+  both('box-shadow lists', 'box-shadow', '0 0 2px red, 0 0 4px blue', '0 0 10px green');
+  both('box-shadow lists of three', 'box-shadow', '1px 1px red, 2px 2px green, 3px 3px blue', '4px 4px red, inset 5px 5px blue');
+  both('box-shadow without a colour', 'box-shadow', '2px 2px', '4px 4px 4px');
+  both('box-shadow with currentcolor', 'box-shadow', '0 0 2px currentcolor', '0 0 4px oklch(0.7 0.1 200)', { style: { color: '#123456' } });
+  both('box-shadow with a modern colour', 'box-shadow', '0 0 2px oklch(0.7 0.1 200)', '0 0 2px color(display-p3 1 0 0)');
+  both('box-shadow with a colour first', 'box-shadow', 'red 1px 2px 3px 4px', 'blue 5px 6px');
+  both('box-shadow with fractions', 'box-shadow', '0.5px 0.25px 1.5px rgba(10, 20, 30, 0.333)', '1px 1px 1px #fff');
+  add('animation: box-shadow with only a to keyframe', { keyframes: 'to{box-shadow:0 0 5px red}' });
+  add('animation: box-shadow with only a from keyframe', { style: { boxShadow: '1px 2px 3px #00f' }, keyframes: 'from{box-shadow:none}' });
+
+  // Transforms.
+  const transforms = [
+    ['none', 'rotate(45deg)'], ['rotate(0deg)', 'rotate(90deg)'], ['rotate(0.5turn)', 'rotate(1rad)'], ['rotate(100grad)', 'rotate(-45deg)'],
+    ['translateX(10px)', 'translateX(50px)'], ['translateY(10px)', 'translateY(50%)'], ['translate(10px, 20px)', 'translate(30px, 40px)'],
+    ['translate(10px)', 'translate(50%, 20px)'], ['translate(0)', 'translate(calc(10px + 5%), 1em)'], ['translateX(1em)', 'translateX(calc(2em + 3px))'],
+    ['translateZ(0)', 'translateZ(10px)'], ['translate3d(1px, 2px, 3px)', 'translate3d(4px, 5px, 6px)'],
+    ['scale(1)', 'scale(2)'], ['scale(1)', 'scale(2, 3)'], ['scaleX(1)', 'scaleX(2)'], ['scaleY(1)', 'scaleY(2)'], ['scale(0.5)', 'scale(150%)'], ['scale3d(1, 1, 1)', 'scale3d(2, 3, 4)'],
+    ['skew(10deg)', 'skew(20deg, 5deg)'], ['skewX(10deg)', 'skewX(50deg)'], ['skewY(10deg)', 'skewY(50deg)'],
+    ['matrix(1, 0, 0, 1, 0, 0)', 'matrix(0, 1, -1, 0, 50, 20)'], ['matrix(1, 0, 0, 1, 0, 0)', 'matrix(1.5, 0.25, -0.25, 1.5, 10.5, 20.25)'],
+    ['translate(10px, 20px) rotate(0deg)', 'translate(50px, 60px) rotate(90deg) scale(2)'],
+    ['scale(1, 3) rotate(30deg)', 'scale(3, 1) translate(40px)'], ['rotate(30deg) translate(10px)', 'scale(2) translate(110px)'],
+    ['translateX(10px) rotate(45deg) scaleY(2)', 'translateX(20px) rotate(90deg) scaleY(3)'],
+    ['rotate(1deg)', 'rotate(2.123456789deg)'], ['rotate(1.5707963rad)', 'rotate(3.14159265rad)'],
+    ['rotateZ(10deg)', 'rotateZ(20deg)'],
+      ];
+  for (const [from, to] of transforms) both(`transform ${from} to ${to}`, 'transform', from, to, { style: em });
+  add('animation: transform with only a to keyframe', { keyframes: 'to{transform:rotate(90deg)}' });
+  add('animation: transform with only a from keyframe', { style: { transform: 'scale(2)' }, keyframes: 'from{transform:rotate(90deg)}' });
+  add('animation: transform with three keyframes', { keyframes: '0%{transform:translateX(0)}50%{transform:translateX(100px) rotate(45deg)}100%{transform:none}' });
+  both('translate', 'translate', 'none', '10px 20px');
+  both('translate of one value', 'translate', '10px', '5% 10px');
+  both('translate of three values', 'translate', '10px 20px 30px', '1px 2px 3px');
+  both('translate in em and calc()', 'translate', '1em', 'calc(10px + 5%) 2em', { style: em });
+  both('translate to none', 'translate', '10px 20px', 'none');
+  both('rotate', 'rotate', 'none', '45deg');
+  both('rotate in other units', 'rotate', '45deg', '0.5turn');
+  both('rotate in rad and grad', 'rotate', '1rad', '100grad');
+  both('rotate to none', 'rotate', '45deg', 'none');
+  both('rotate about an axis', 'rotate', 'z 10deg', 'z 20deg');
+  both('rotate about x', 'rotate', 'x 10deg', 'x 20deg');
+  both('scale', 'scale', 'none', '2');
+  both('scale of two values', 'scale', '1', '2 3');
+  both('scale in percent', 'scale', '50%', '150% 100%');
+  both('scale of three values', 'scale', '1 1 1', '2 3 4');
+  both('scale to none', 'scale', '2', 'none');
+  both('transform-origin', 'transform-origin', 'center', '10px 20px');
+  both('transform-origin keywords', 'transform-origin', 'left top', 'right bottom');
+  both('transform-origin in percent', 'transform-origin', '50% 50%', '0 0');
+  both('transform-origin of one value', 'transform-origin', '10px', '50%');
+  both('transform-origin with a z', 'transform-origin', '10px 20px 5px', '1px 2px 3px');
+  both('transform-origin in em and calc()', 'transform-origin', '1em 2em', 'calc(10px + 5%) 0', { style: em });
+  both('transform-origin of one keyword', 'transform-origin', 'left', 'bottom');
+
+  // Keywords, which only a transition that allows discrete changes runs; visibility runs without.
+  both('visibility', 'visibility', 'visible', 'hidden');
+  for (const [prop, from, to] of [['display', 'block', 'none'], ['position', 'static', 'relative'], ['overflow-x', 'visible', 'hidden'],
+    ['overflow-y', 'visible', 'scroll'], ['pointer-events', 'auto', 'none'], ['table-layout', 'auto', 'fixed'], ['border-collapse', 'separate', 'collapse'],
+    ['caption-side', 'top', 'bottom'], ['empty-cells', 'show', 'hide'], ['flex-direction', 'row', 'column'], ['flex-wrap', 'nowrap', 'wrap'],
+    ['align-items', 'stretch', 'flex-start'], ['align-self', 'auto', 'center'], ['align-content', 'normal', 'space-between'],
+    ['justify-content', 'normal', 'flex-end'], ['justify-items', 'normal', 'center'], ['justify-self', 'auto', 'end']]) {
+    both(prop, prop, from, to, { discrete: true, style: { display: 'flex' } });
+  }
+  add('animation: display in keyframes', { keyframes: 'from{display:block}to{display:none}' });
+  add('animation: overflow in keyframes', { keyframes: 'from{overflow-x:visible}to{overflow-x:hidden}' });
+  add('animation: pointer-events in keyframes', { keyframes: 'from{pointer-events:auto}to{pointer-events:none}' });
+  add('animation: visibility in keyframes', { keyframes: 'from{visibility:visible}to{visibility:hidden}' });
+
+  // Shorthands.
+  both('margin of one value', 'margin', '0px', '10px');
+  both('margin of two values', 'margin', '0px', '10px 20px');
+  both('margin of four values', 'margin', '1px 2px 3px 4px', '5px 6px 7px 8px');
+  both('margin with auto', 'margin', '10px auto', '10px');
+  both('padding of three values', 'padding', '0px', '1px 2px 3px');
+  both('padding in em', 'padding', '1em', '2em 1em', { style: em });
+  both('inset', 'inset', '0px', '10px', { style: { position: 'absolute' } });
+  both('inset of two values', 'inset', '0px', '10px 20px', { style: { position: 'absolute' } });
+  both('inset with auto', 'inset', 'auto', '10px 5%', { style: { position: 'absolute' } });
+  both('border-radius of one value', 'border-radius', '0px', '10px');
+  both('border-radius of four values', 'border-radius', '1px 2px 3px 4px', '5px 6px 7px 8px');
+  both('border-radius with a slash', 'border-radius', '0px', '10px 20px / 5px 15px');
+  both('border-radius in percent', 'border-radius', '0%', '50%');
+  both('border-width', 'border-width', '1px', '5px', { style: { borderStyle: 'solid' } });
+  both('border-width of two values', 'border-width', '1px', '2px 4px', { style: { borderStyle: 'solid' } });
+  both('border-color', 'border-color', 'red', 'blue green', { style: { borderStyle: 'solid' } });
+  both('gap', 'gap', '0px', '10px', { style: { display: 'flex' } });
+  both('gap of two values', 'gap', '0px', '10px 20px', { style: { display: 'flex' } });
+  both('flex', 'flex', '0 1 auto', '1 2 10px');
+  both('flex of one number', 'flex', '1', '2');
+  both('flex with a percent basis', 'flex', '1 1 0%', '2 2 50%');
+  both('outline', 'outline', '1px solid red', '3px solid blue');
+  both('border', 'border', '1px solid red', '3px solid blue');
+  both('border-top', 'border-top', '1px solid red', '3px solid blue');
+  both('background', 'background', 'red', 'blue');
+  both('text-decoration', 'text-decoration', 'underline red', 'underline blue 3px');
+  both('overflow', 'overflow', 'visible', 'hidden', { discrete: true });
+  both('place-items', 'place-items', 'start', 'center', { discrete: true, style: { display: 'flex' } });
+
+  // SVG shapes and the <svg> itself.
+  shape('circle r', 'circle', 'r', '5px', '25px', { cx: 50, cy: 50, r: 10 });
+  shape('circle cx and cy', 'circle', 'cx', '20px', '80px', { cx: 50, cy: 50, r: 10 });
+  shape('circle cy', 'circle', 'cy', '20px', '80px', { cx: 50, cy: 50, r: 10 });
+  shape('circle r in em', 'circle', 'r', '1em', '2em', { cx: 50, cy: 50, r: 10 }, { style: em, only: 'animation' });
+  shape('rect x', 'rect', 'x', '10px', '50px', { x: 0, y: 0, width: 10, height: 10 });
+  shape('rect y', 'rect', 'y', '10px', '50px', { x: 0, y: 0, width: 10, height: 10 });
+  shape('rect width', 'rect', 'width', '10px', '60px', { x: 0, y: 0, width: 10, height: 10 });
+  shape('rect height', 'rect', 'height', '10px', '60px', { x: 0, y: 0, width: 10, height: 10 });
+  shape('rect rx', 'rect', 'rx', '0px', '8px', { x: 0, y: 0, width: 50, height: 50 });
+  shape('rect rx from auto', 'rect', 'rx', 'auto', '8px', { x: 0, y: 0, width: 50, height: 50 }, { only: 'animation' });
+  shape('rect ry', 'rect', 'ry', '2px', '8px', { x: 0, y: 0, width: 50, height: 50 });
+  shape('ellipse rx', 'ellipse', 'rx', '10px', '40px', { cx: 50, cy: 50, rx: 20, ry: 10 });
+  shape('ellipse ry', 'ellipse', 'ry', '30px', '10px', { cx: 50, cy: 50, rx: 20, ry: 10 });
+  shape('rect width from auto', 'rect', 'width', 'auto', '50px', { x: 0, y: 0, width: 10, height: 10 }, { only: 'animation' });
+  shape('fill', 'circle', 'fill', '#ff0000', '#0000ff', { cx: 50, cy: 50, r: 10 });
+  shape('fill in a modern colour', 'circle', 'fill', 'oklch(0.7 0.1 200)', 'color(display-p3 1 0 0)', { cx: 50, cy: 50, r: 10 });
+  shape('fill to none', 'circle', 'fill', '#ff0000', 'none', { cx: 50, cy: 50, r: 10 });
+  shape('fill from none', 'circle', 'fill', 'none', '#ff0000', { cx: 50, cy: 50, r: 10 });
+  shape('fill with currentcolor', 'circle', 'fill', 'currentcolor', '#ff0000', { cx: 50, cy: 50, r: 10 });
+  shape('fill with rgb() and an alpha', 'circle', 'fill', 'rgb(1 2 3 / 0.5)', 'hsl(120 100% 50%)', { cx: 50, cy: 50, r: 10 });
+  shape('stroke', 'circle', 'stroke', '#ff0000', '#0000ff', { cx: 50, cy: 50, r: 10 });
+  shape('stroke from none', 'circle', 'stroke', 'none', '#000000', { cx: 50, cy: 50, r: 10 });
+  shape('stroke to none', 'circle', 'stroke', 'rgb(0, 128, 0)', 'none', { cx: 50, cy: 50, r: 10 });
+  shape('stroke in a modern colour', 'circle', 'stroke', 'lab(50% 40 59)', 'color-mix(in srgb, red, blue)', { cx: 50, cy: 50, r: 10 });
+  shape('stroke-width', 'circle', 'stroke-width', '2px', '10px', { cx: 50, cy: 50, r: 10, stroke: '#000000' });
+  shape('stroke-width as a number', 'circle', 'stroke-width', '2', '10.5', { cx: 50, cy: 50, r: 10, stroke: '#000000' });
+  shape('stroke-dashoffset', 'path', 'stroke-dashoffset', '180px', '0px', { d: 'M10 50 L190 50', stroke: '#000000', strokeDasharray: 180 });
+  shape('stroke-dashoffset as a number', 'path', 'stroke-dashoffset', '7', '-3.5', { d: 'M10 50 L190 50', stroke: '#000000', strokeDasharray: 180 });
+  shape('stroke-dasharray', 'path', 'stroke-dasharray', '4 2', '8 4', { d: 'M10 50 L190 50', stroke: '#000000' });
+  shape('stroke-dasharray of different lengths', 'path', 'stroke-dasharray', '4', '8 2', { d: 'M10 50 L190 50', stroke: '#000000' });
+  shape('stroke-dasharray from none', 'path', 'stroke-dasharray', 'none', '8 2', { d: 'M10 50 L190 50', stroke: '#000000' });
+  shape('stroke-dasharray with commas', 'path', 'stroke-dasharray', '4px, 2px', '8px, 4px, 1px', { d: 'M10 50 L190 50', stroke: '#000000' });
+  shape('stroke-dasharray with fractions', 'path', 'stroke-dasharray', '1.5 2.25', '3 0.5', { d: 'M10 50 L190 50', stroke: '#000000' });
+  shape('stroke-opacity', 'circle', 'stroke-opacity', '1', '0.2', { cx: 50, cy: 50, r: 10, stroke: '#000000' });
+  shape('fill-opacity', 'circle', 'fill-opacity', '1', '0.4', { cx: 50, cy: 50, r: 10 });
+  shape('opacity', 'circle', 'opacity', '1', '0.5', { cx: 50, cy: 50, r: 10 });
+  shape('stroke-miterlimit', 'path', 'stroke-miterlimit', '1', '10', { d: 'M10 10 L50 50', stroke: '#000000' });
+  shape('d', 'path', 'd', 'path("M10 10 L50 10 L50 50")', 'path("M10 50 L90 10 L50 90")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d with relative commands', 'path', 'd', 'path("M10 10 l40 0 l0 40")', 'path("M10 50 L90 10 L50 90")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d with curves', 'path', 'd', 'path("M10 10 C 20 0 30 0 40 10 S 60 20 70 10 Q 80 0 90 10 T 100 10")', 'path("M10 20 C 20 10 30 10 40 20 S 60 30 70 20 Q 80 10 90 20 T 100 20")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d with arcs', 'path', 'd', 'path("M10 10 A 20 20 0 0 1 50 10")', 'path("M10 10 A 30 10 45 1 0 50 10")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d with H V and Z', 'path', 'd', 'path("M10 10 H 50 V 50 H 10 Z")', 'path("M20 20 H 60 V 60 H 20 Z")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d of different commands', 'path', 'd', 'path("M10 10 L50 10")', 'path("M10 50 L90 10 L50 90")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d from none', 'path', 'd', 'none', 'path("M10 50 L90 10")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('d with fractions', 'path', 'd', 'path("M10.5 10.25 L50.125 10")', 'path("M1e1 20 L5e1 10")', { d: 'M0 0 L1 1' }, { only: 'animation' });
+  shape('text font-size', 'text', 'font-size', '10px', '30px', { x: 10, y: 50 }, { only: 'animation' });
+  shape('text font-size in em', 'text', 'font-size', '1em', '2em', { x: 10, y: 50 }, { style: em, only: 'animation' });
+  shape('text letter-spacing', 'text', 'letter-spacing', '0px', '4px', { x: 10, y: 50 });
+  shape('text letter-spacing from normal', 'text', 'letter-spacing', 'normal', '4px', { x: 10, y: 50 });
+  shape('text letter-spacing in em', 'text', 'letter-spacing', '0.1em', '0.3em', { x: 10, y: 50 });
+  shape('stop-color', 'stop', 'stop-color', '#ff0000', '#0000ff', { offset: 0 });
+  shape('stop-opacity', 'stop', 'stop-opacity', '1', '0.2', { offset: 0 });
+  add('animation: svg opacity', { tag: 'svg', attrs: { width: 100, height: 100 }, keyframes: 'from{opacity:1}to{opacity:0.5}' });
+  add('animation: svg width', { tag: 'svg', attrs: { width: 100, height: 100 }, keyframes: 'from{width:100px}to{width:200px}' });
+  add('animation: svg fill', { tag: 'svg', attrs: { width: 100, height: 100 }, keyframes: 'from{fill:#f00}to{fill:#00f}' });
+  add('animation: svg stroke-width', { tag: 'svg', attrs: { width: 100, height: 100 }, keyframes: 'from{stroke-width:1px}to{stroke-width:5px}' });
+  add('animation: circle with only a to keyframe', { tag: 'circle', attrs: { cx: 50, cy: 50, r: 10 }, keyframes: 'to{r:30px}' });
+  add('animation: circle with only a from keyframe', { tag: 'circle', attrs: { cx: 50, cy: 50, r: 10 }, keyframes: 'from{r:30px}' });
+  add('animation: circle fill with only a to keyframe', { tag: 'circle', attrs: { cx: 50, cy: 50, r: 10, fill: '#336699' }, keyframes: 'to{fill:red}' });
+  add('animation: circle stroke-dasharray with only a to keyframe', { tag: 'circle', attrs: { cx: 50, cy: 50, r: 10 }, keyframes: 'to{stroke-dasharray:4 2}' });
+  add('animation: path d with only a to keyframe', { tag: 'path', attrs: { d: 'M10 10 L50 50' }, keyframes: 'to{d:path("M10 20 L50 60")}' });
+  add('animation: circle with several properties', { tag: 'circle', attrs: { cx: 50, cy: 50, r: 10 }, keyframes: 'from{r:5px;fill:#f00;stroke-width:2px}to{r:25px;fill:#00f;stroke-width:4px}' });
+
+  // Easings, which a CSS animation gives its keyframes and a CSS transition its effect.
+  const easings = ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'EASE-IN', 'cubic-bezier(0.25, 0.1, 0.25, 1)', 'cubic-bezier(.25,.1,.25,1)',
+    'cubic-bezier(0.42, 0, 1, 1)', 'cubic-bezier(0, 0, 0.58, 1)', 'cubic-bezier(0.42, 0, 0.58, 1)', 'cubic-bezier(0, 0, 1, 1)', 'cubic-bezier(0.1, -0.5, 0.9, 1.5)',
+    'cubic-bezier(0.33333, 0.123456789, 0.5, 1)', 'cubic-bezier(1, 0, 0, 1)', 'cubic-bezier(0, 1, 1, 0)', 'cubic-bezier(.5,0,.5,1)', 'cubic-bezier(0.5, 0.5, 0.5, 0.5)',
+    'steps(4)', 'steps(4, end)', 'steps(4, jump-end)', 'steps(4, start)', 'steps(4, jump-start)', 'steps(4, jump-none)', 'steps(3, jump-both)', 'steps(1)', 'steps(1, start)', 'steps( 2 , END )',
+    'step-start', 'step-end',
+    'linear(0, 1)', 'linear(0, 0.25 50%, 1)', 'linear(0, 0.5 25% 75%, 1)', 'linear(0 0%, 1 100%)', 'linear(1, 0)', 'linear(0, 1.5, 1)', 'linear(0, 0.2 20%, 0.8 80%, 1)',
+    'linear(0, 0.5 7%, 1)', 'linear(0, 0.5 14.7%, 1)', 'linear(0, 0.5 58%, 1)', 'linear(0, 0.5 33.3333333%, 1)', 'linear(0, 0.5 0.0001%, 1)', 'linear(0, 0.1234567891234, 1)', 'linear(0, 1e-7 50%, 1)',
+    'cubic-bezier(0.1, 0.2, 0.3, 4)', 'cubic-bezier(0.000001, 0, 1, 1)', 'cubic-bezier(0.1, 1e-7, 0.9, 1)', 'cubic-bezier(0.1, 0.123456789012, 0.9, 1)',
+    'linear(0, 0.5, 1)', 'linear(0, 1 50%, 0, 1)', 'linear(0 10%, 1 90%)', 'linear(0 30%, 0.5 20%, 1)', 'linear(0, 0.333333333, 1)', 'linear(-0.5, 1.5)', 'linear(0, 0.25 25% 50%, 1)', 'linear(0.5)'];
+  for (const easing of easings) {
+    add(`animation easing ${easing}`, { keyframes: 'from{width:100px}to{width:200px}', animation: `1s ${easing}` });
+    add(`transition easing ${easing}`, { style: { width: '100px', transition: `width 1s ${easing}` }, change: { width: '200px' } });
+    add(`keyframe easing ${easing}`, { keyframes: `from{width:100px;animation-timing-function:${easing}}to{width:200px}` });
+    add(`updateTiming easing ${easing}`, { keyframes: 'from{width:100px}to{width:200px}', update: { easing } });
+  }
+  add('keyframes with an easing each', { keyframes: '0%{width:100px;animation-timing-function:ease-in}50%{width:150px;animation-timing-function:steps(2, end)}100%{width:200px;animation-timing-function:linear(0, 1)}' });
+  add('an animation and keyframe easing together', { keyframes: '0%{width:100px;animation-timing-function:ease-in}100%{width:200px}', animation: '1s ease-out' });
+  add('animation-timing-function in a style of its own', { keyframes: 'from{width:100px}to{width:200px}', animation: '1s', style: { animationTimingFunction: 'cubic-bezier(0.1, 0.7, 1, 0.1)' } });
+  add('transition-timing-function in a style of its own', { style: { width: '100px', transitionProperty: 'width', transitionDuration: '1s', transitionTimingFunction: 'steps(5, start)' }, change: { width: '200px' } });
+  add('a list of timing functions', { style: { width: '100px', height: '10px', transition: 'width 1s ease-in, height 1s steps(3)' }, change: { width: '200px', height: '30px' } });
+
+  // The timing besides the easing.
+  add('timing of a delayed alternating animation', { keyframes: 'from{width:100px}to{width:200px}', animation: '2s ease-in 500ms 3 alternate both' });
+  add('timing of an infinite animation', { keyframes: 'from{width:100px}to{width:200px}', animation: '1s linear infinite reverse forwards' });
+  add('timing of a transition with a delay', { style: { width: '100px', transition: 'width 2s ease-out 500ms' }, change: { width: '200px' } });
+  add('timing of a transition with a negative delay', { style: { width: '100px', transition: 'width 2s linear -500ms' }, change: { width: '200px' } });
+  add('timing of a transition with a zero duration', { style: { width: '100px', transition: 'width 0s linear 1s' }, change: { width: '200px' } });
+  add('timing of an animation with a fractional count', { keyframes: 'from{width:100px}to{width:200px}', animation: '1.5s linear 2.5' });
+  add('timing of an animation with no duration', { keyframes: 'from{width:100px}to{width:200px}', animation: '0s linear 1s' });
+  add('timing of a paused animation', { keyframes: 'from{width:100px}to{width:200px}', animation: '1s linear paused' });
+  add('timing with a long fractional duration', { keyframes: 'from{width:100px}to{width:200px}', animation: '0.333s linear 0.1666s' });
+  add('timing updated', { keyframes: 'from{width:100px}to{width:200px}', update: { delay: 100, duration: 2000, endDelay: 50, fill: 'both', iterationStart: 0.5, iterations: 3, direction: 'alternate', easing: 'ease-in' } });
+  add('timing updated to infinity', { keyframes: 'from{width:100px}to{width:200px}', update: { iterations: 'Infinity', duration: 'auto' } });
+  return cases;
+})();
+
 // A page with nothing animating may get no frames in headless Chrome, so the wait gives up after 100ms.
 const frames = () => Promise.race([
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
@@ -909,13 +1264,81 @@ async function runTree([name, tree, steps]) {
   return { name, tree, steps, records };
 }
 
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const kebab = (name) => name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+// What one animation's effect reads, and what it throws.
+const effectOf = (a) => {
+  const read = (call) => { try { return clean(call()); } catch (e) { return { threw: e instanceof DOMException ? e.name : String(e.name) }; } };
+  return { kind: a.constructor.name, name: nameOf(a), keyframes: read(() => a.effect.getKeyframes()), timing: read(() => a.effect.getTiming()) };
+};
+
+function runEffect(spec, index) {
+  const keyframes = `ef${index}`;
+  if (spec.keyframes) {
+    const sheet = document.createElement('style');
+    sheet.textContent = `@keyframes ${keyframes}{${spec.keyframes}}`;
+    document.head.appendChild(sheet);
+  }
+  const tag = spec.tag || 'div';
+  let el;
+  let host;
+  if (tag === 'div') host = el = document.createElement('div');
+  else if (tag === 'svg') host = el = document.createElementNS(SVG_NS, 'svg');
+  else {
+    host = document.createElementNS(SVG_NS, 'svg');
+    host.setAttribute('width', '200');
+    host.setAttribute('height', '100');
+    host.setAttribute('viewBox', '0 0 200 100');
+    el = document.createElementNS(SVG_NS, tag);
+    host.appendChild(el);
+  }
+  document.body.appendChild(host);
+  if (tag === 'div') apply(el, BASE);
+  const setAttrs = (attrs) => { for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k === 'text' ? 'data-text' : kebab(k), String(v)); };
+  setAttrs(spec.attrs);
+  if (tag === 'text') el.textContent = 'hello';
+  const style = {};
+  if (spec.keyframes) {
+    const animation = spec.animation || '1s linear';
+    style.animation = animation.includes('$KF') ? animation.replaceAll('$KF', keyframes) : `${keyframes} ${animation}`;
+  }
+  Object.assign(style, spec.style);
+  apply(el, style);
+  flush(el);
+  if (spec.change) { apply(el, spec.change); flush(el); }
+  if (spec.attrChange) { setAttrs(spec.attrChange); flush(el); }
+  const animations = el.getAnimations().map(effectOf);
+  let updated = null;
+  if (spec.update) {
+    const update = Object.fromEntries(Object.entries(spec.update).map(([k, v]) => [k, v === 'Infinity' ? Infinity : v]));
+    updated = el.getAnimations().map((a) => {
+      try { a.effect.updateTiming(update); } catch (e) { return { threw: e.name }; }
+      return clean(a.effect.getTiming());
+    });
+  }
+  host.remove();
+  return {
+    name: spec.name, tag, attrs: spec.attrs || {}, style, keyframesName: spec.keyframes ? keyframes : null, keyframes: spec.keyframes || null,
+    change: spec.change || null, attrChange: spec.attrChange || null, update: spec.update || null, animations, updated,
+  };
+}
+
 const apiOracle = new Promise((resolve, reject) => { window.resolveApi = resolve; window.rejectApi = reject; });
 (async () => { try {
+  if (location.hash === '#effects') {
+    // The fourth kind alone, which needs no frames: the page below dumps it for a quick look.
+    const holder = document.createElement('div');
+    holder.setAttribute('data-oracle', JSON.stringify({ effectCases: EFFECTS.map(runEffect) }));
+    document.body.appendChild(holder);
+    return;
+  }
   if (location.hash === '#api') {
     // Real frames, driven by web-animations-oracle.mjs, which reads `window.apiOracle`.
     const api = { richKeyframes: RICH_KEYFRAMES, apiCases: [], treeCases: [] };
     for (const c of API) api.apiCases.push(await runApi(c));
     for (const c of TREES) api.treeCases.push(await runTree(c));
+    api.effectCases = EFFECTS.map(runEffect);
     return window.resolveApi(JSON.stringify(api));
   }
   const out = { keyframes: KEYFRAMES, base: BASE, cases: [] };
