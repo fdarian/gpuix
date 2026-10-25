@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  Oracle for transform-motion-context.test.tsx: whether an element whose CSS animation or transition of `transform`
+  is running is a stacking context and the containing block of its fixed descendants, at the values of the run that
+  are `none` or the identity, and once the run is over. A case is a red box (100 x 100 at (100, 100),
+  holding a fixed child at left/top 5px) and a later blue box overlapping its lower half; the context shows as red
+  being the element at (150, 175), the containing block as the child's rectangle. Regenerate with
+
+    sh transform-run-context-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+html, body { margin: 0; padding: 0; }
+* { box-sizing: border-box; }
+#scene { position: absolute; left: 0; top: 0; width: 800px; height: 600px; padding: 100px 0 0 100px; }
+.red { width: 100px; height: 100px; background: #f00; }
+.blue { width: 100px; height: 100px; margin-top: -50px; background: #00f; }
+.fixed { position: fixed; left: 5px; top: 5px; width: 20px; height: 20px; background: #0f0; }
+@keyframes identity { 0% { transform: translateX(0px) } 100% { transform: translateX(0px) } }
+</style></head><body>
+<div id="scene"></div>
+<script>
+const scene = document.getElementById("scene");
+// [name, css before, css after (a transition), time of the run in seconds, finish the run]
+const transitions = [
+  ["transition none to translateX(100px)", "transform: none", "transform: translateX(100px)", 0.5, false],
+  ["transition translateX(0px) to none", "transform: translateX(0px)", "transform: none", 0.5, false],
+  ["transition none to translateX(0px)", "transform: none", "transform: translateX(0px)", 0.5, false],
+  ["transition translateX(100px) to none, running", "transform: translateX(100px)", "transform: none", 0.5, false],
+  ["transition translateX(100px) to none, finished", "transform: translateX(100px)", "transform: none", 0.5, true],
+  ["transition rotate 0deg to 0deg via none", "rotate: none", "rotate: 0deg", 0.5, false],
+];
+const animations = [
+  ["animation of identity keyframes, running", "animation: identity 1s linear paused; animation-delay: -0.5s"],
+  ["animation of identity keyframes, ended", "animation: identity 1s linear paused; animation-delay: -2s"],
+  ["animation of identity keyframes, ended with fill forwards", "animation: identity 1s linear paused forwards; animation-delay: -2s"],
+];
+const statics = [
+  ["static none", "transform: none"],
+  ["static translateX(0px)", "transform: translateX(0px)"],
+];
+
+function build(css) {
+  scene.replaceChildren();
+  const red = document.createElement("div");
+  red.className = "red";
+  red.style.cssText = css;
+  const fixed = document.createElement("div");
+  fixed.className = "fixed";
+  red.appendChild(fixed);
+  const blue = document.createElement("div");
+  blue.className = "blue";
+  scene.append(red, blue);
+  return { red, fixed, blue };
+}
+
+function read(parts, extra) {
+  const hit = document.elementFromPoint(150, 175);
+  const rect = parts.fixed.getBoundingClientRect();
+  return { redOnTop: hit === parts.red, fixed: [rect.x, rect.y], ...extra };
+}
+
+const out = {};
+for (const [name, css] of statics) out[name] = read(build(css), {});
+for (const [name, css] of animations) {
+  const parts = build(css);
+  out[name] = read(parts, { running: parts.red.getAnimations().length });
+}
+for (const [name, before, after, time, finish] of transitions) {
+  const parts = build(`transition: all 1s linear; ${before}`);
+  parts.red.getBoundingClientRect();
+  parts.red.style.cssText = `transition: all 1s linear; ${after}`;
+  const runs = parts.red.getAnimations();
+  if (runs.length) {
+    runs[0].pause();
+    if (finish) runs[0].finish();
+    else runs[0].currentTime = time * 1000;
+  }
+  out[name] = read(parts, { running: runs.length, finished: finish });
+}
+document.body.setAttribute("data-oracle", JSON.stringify(out));
+</script>
+</body></html>

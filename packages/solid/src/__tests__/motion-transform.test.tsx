@@ -82,4 +82,23 @@ describe.skipIf(!hasNativeTestRenderer)("Solid motion transform keys", () => {
     app.renderer.flush()
     expectBox(boundsOf(app.renderer), second)
   })
+
+  it("is a containing block for a fixed child off its defaults only: Motion writes `none` at them", () => {
+    const fixedAt = (motionKeys: Record<string, number>) => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      app.render(() => (
+        <div style={{ display: "flex" }}>
+          <motion.div style={{ ...box, marginLeft: 100, marginTop: 100, ...motionKeys }}>
+            <div testId="child" style={{ position: "fixed", left: 5, top: 5, width: 20, height: 20 }} />
+          </motion.div>
+        </div>
+      ))
+      const bounds = app.renderer.getElementBounds(app.renderer.findByTestId("child")!.id)!
+      app.unmount()
+      return [bounds.x, bounds.y]
+    }
+    expect(fixedAt({ x: 0, scale: 1, rotate: 0 })).toEqual([5, 5])
+    expect(fixedAt({ x: 10 })).toEqual([115, 105])
+  })
 })
