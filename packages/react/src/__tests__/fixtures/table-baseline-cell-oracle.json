@@ -13055,6 +13055,1198 @@
    ]
   }
  },
+ "text in a short box: alone": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "r": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "x": [
+    0,
+    0,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box: next to text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "a": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "as": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box: inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    20,
+    10
+   ],
+   "r": [
+    40,
+    0,
+    20,
+    10
+   ],
+   "v": [
+    40,
+    0,
+    20,
+    10
+   ],
+   "x": [
+    40,
+    0,
+    20,
+    10
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "text in a short box: flex row": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "t": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "r": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box: next to big text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;font-size:40px;line-height:40px;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    60,
+    40
+   ],
+   "r": [
+    0,
+    0,
+    60,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "as": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "v": [
+    40,
+    0,
+    20,
+    40
+   ],
+   "x": [
+    40,
+    20,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box: after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    20,
+    0,
+    20,
+    20
+   ],
+   "as": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "text in a short box: next to text, inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    40,
+    20
+   ],
+   "r": [
+    40,
+    0,
+    40,
+    20
+   ],
+   "a": [
+    40,
+    0,
+    20,
+    20
+   ],
+   "as": [
+    40,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    60,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    60,
+    0,
+    20,
+    10
+   ],
+   "q": [
+    80,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "text in a short box: next to a cell with a height": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;height:60px\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    60
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    20,
+    60
+   ],
+   "as": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    60
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box: spanning two rows": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\" rowspan=\"2\" style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\">A</div></td><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td></tr><tr id=\"r2\"><td id=\"b\"  style=\"vertical-align:baseline;\"><span id=\"bs\">A</span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "a": [
+    20,
+    0,
+    20,
+    20
+   ],
+   "as": [
+    20,
+    0,
+    20,
+    20
+   ],
+   "r2": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "b": [
+    20,
+    20,
+    20,
+    20
+   ],
+   "bs": [
+    20,
+    20,
+    20,
+    20
+   ]
+  }
+ },
+ "text in a short box with padding and border: alone": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    24
+   ],
+   "r": [
+    0,
+    0,
+    20,
+    24
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    24
+   ],
+   "x": [
+    0,
+    4,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box with padding and border: next to text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    24
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    24
+   ],
+   "a": [
+    0,
+    0,
+    20,
+    24
+   ],
+   "as": [
+    0,
+    4,
+    20,
+    20
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    24
+   ],
+   "x": [
+    20,
+    4,
+    20,
+    10
+   ]
+  }
+ },
+ "text in a short box with padding and border: inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    24
+   ],
+   "p": [
+    0,
+    4,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    20,
+    24
+   ],
+   "r": [
+    40,
+    0,
+    20,
+    24
+   ],
+   "v": [
+    40,
+    0,
+    20,
+    24
+   ],
+   "x": [
+    40,
+    4,
+    20,
+    10
+   ],
+   "q": [
+    60,
+    4,
+    40,
+    20
+   ]
+  }
+ },
+ "text in a short box with padding and border: flex row": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\">A</div></td></tr></table></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    24
+   ],
+   "p": [
+    0,
+    4,
+    20,
+    20
+   ],
+   "t": [
+    20,
+    0,
+    20,
+    24
+   ],
+   "r": [
+    20,
+    0,
+    20,
+    24
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    24
+   ],
+   "x": [
+    20,
+    4,
+    20,
+    10
+   ]
+  }
+ },
+ "text above the box: alone": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    0
+   ],
+   "r": [
+    0,
+    0,
+    20,
+    0
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    0
+   ],
+   "x": [
+    0,
+    -30,
+    20,
+    10
+   ],
+   "y": [
+    0,
+    -30,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box: next to text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    30
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    30
+   ],
+   "a": [
+    0,
+    0,
+    20,
+    30
+   ],
+   "as": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    30
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box: inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    30,
+    20,
+    0
+   ],
+   "r": [
+    40,
+    30,
+    20,
+    0
+   ],
+   "v": [
+    40,
+    30,
+    20,
+    0
+   ],
+   "x": [
+    40,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    40,
+    0,
+    20,
+    20
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "text above the box: flex row": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "t": [
+    20,
+    30,
+    20,
+    0
+   ],
+   "r": [
+    20,
+    30,
+    20,
+    0
+   ],
+   "v": [
+    20,
+    30,
+    20,
+    0
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box: next to big text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;font-size:40px;line-height:40px;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    60,
+    50
+   ],
+   "r": [
+    0,
+    0,
+    60,
+    50
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    50
+   ],
+   "as": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "v": [
+    40,
+    0,
+    20,
+    50
+   ],
+   "x": [
+    40,
+    20,
+    20,
+    10
+   ],
+   "y": [
+    40,
+    20,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box: after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    30
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    30
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    30
+   ],
+   "x": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "a": [
+    20,
+    0,
+    20,
+    30
+   ],
+   "as": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box: next to text, inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    40,
+    30
+   ],
+   "r": [
+    40,
+    0,
+    40,
+    30
+   ],
+   "a": [
+    40,
+    0,
+    20,
+    30
+   ],
+   "as": [
+    40,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    60,
+    0,
+    20,
+    30
+   ],
+   "x": [
+    60,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    60,
+    0,
+    20,
+    20
+   ],
+   "q": [
+    80,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "text above the box: next to a cell with a height": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;height:60px\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    60
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    20,
+    60
+   ],
+   "as": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    60
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box: spanning two rows": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\" rowspan=\"2\" style=\"vertical-align:baseline;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td></tr><tr id=\"r2\"><td id=\"b\"  style=\"vertical-align:baseline;\"><span id=\"bs\">A</span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "a": [
+    20,
+    0,
+    20,
+    20
+   ],
+   "as": [
+    20,
+    0,
+    20,
+    20
+   ],
+   "r2": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "b": [
+    20,
+    20,
+    20,
+    20
+   ],
+   "bs": [
+    20,
+    20,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box with padding and border: alone": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    20,
+    14
+   ],
+   "r": [
+    0,
+    0,
+    20,
+    14
+   ],
+   "v": [
+    0,
+    0,
+    20,
+    14
+   ],
+   "x": [
+    0,
+    -26,
+    20,
+    10
+   ],
+   "y": [
+    0,
+    -26,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box with padding and border: next to text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"a\"  style=\"vertical-align:baseline;\"><span id=\"as\">A</span></td><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    20,
+    40
+   ],
+   "as": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "v": [
+    20,
+    0,
+    20,
+    40
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "text above the box with padding and border: inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    26,
+    20,
+    14
+   ],
+   "r": [
+    40,
+    26,
+    20,
+    14
+   ],
+   "v": [
+    40,
+    26,
+    20,
+    14
+   ],
+   "x": [
+    40,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    40,
+    0,
+    20,
+    20
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "text above the box with padding and border: flex row": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;padding-top:4px;padding-bottom:7px;border-bottom-width:3px;border-bottom-style:solid;\"><div id=\"x\" style=\"height:10px\"><div id=\"y\" style=\"margin-top:-30px\">A</div></div></td></tr></table></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "t": [
+    20,
+    26,
+    20,
+    14
+   ],
+   "r": [
+    20,
+    26,
+    20,
+    14
+   ],
+   "v": [
+    20,
+    26,
+    20,
+    14
+   ],
+   "x": [
+    20,
+    0,
+    20,
+    10
+   ],
+   "y": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
  "floated box: alone": {
   "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate;\"><tr id=\"r\"><td id=\"v\"  style=\"vertical-align:baseline;\"><div id=\"x\" style=\"float:left;width:10px;height:30px\"></div></td></tr></table>",
   "boxes": {

@@ -52,6 +52,8 @@ const VARIANTS = {
   'overflow hidden block': '<div id="x" style="overflow:hidden;height:30px"></div>',
   'overflow hidden block with text': `<div id="x" style="overflow:hidden;height:10px">A</div>`,
   'overflow hidden block over text': `<div id="x" style="overflow:hidden;height:30px"><div id="y" style="height:50px">A</div></div>`,
+  'text in a short box': '<div id="x" style="height:10px">A</div>',
+  'text above the box': '<div id="x" style="height:10px"><div id="y" style="margin-top:-30px">A</div></div>',
   'floated box': '<div id="x" style="float:left;width:10px;height:30px"></div>',
   'positioned box': '<div id="x" style="position:absolute;width:10px;height:30px"></div>',
   'nested table with text': `<table id="x" style="border-spacing:0"><tr><td id="y" style="${BASE}">A</td></tr></table>`,
