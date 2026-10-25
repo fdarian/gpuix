@@ -38,7 +38,13 @@ interface Scene {
   clientHeight: number
   /** The width of the border on each side, top first. */
   border: [number, number, number, number]
-  steps: { scroll: number; scrollTop: number; rows: Rect[] }[]
+  steps: { scroll: number; scrollTop: number; rows: Rect[]; probes?: Probe[] }[]
+}
+/** A point near a corner of the padding box and what `elementFromPoint` finds there: a row's index, the list or nothing of it. */
+interface Probe {
+  x: number
+  y: number
+  hit: number | "list" | "outside"
 }
 
 const SCALES = [1, 2] as const
@@ -67,7 +73,14 @@ const rectOf = (instance: PublicInstance): Rect => {
 const RED = "#ff0000"
 const BLUE = "#0000ff"
 
-function mount(scene: Scene, scale: Scale, colored = false) {
+/** What the last pointer move was aimed at: a row's index, the list, or nothing of it. */
+interface Aim {
+  target: number | "list" | null
+}
+
+function mount(scene: Scene, scale: Scale, colored = false, aim?: Aim) {
+  const aimAt = (target: number | "list") =>
+    aim ? { onPointerMove: (event: { target: unknown; currentTarget: unknown }) => { if (event.target === event.currentTarget) aim.target = target } } : {}
   const root = createTestRoot({ width: 600, height: 400, scaleFactor: scale })
   const rows: (PublicInstance | null)[] = []
   let list: PublicInstance | null = null
@@ -77,6 +90,7 @@ function mount(scene: Scene, scale: Scale, colored = false) {
         list = instance
       }}
       style={{ ...listStyle(scene.spec.list), ...(colored ? { backgroundColor: "#ffffff" } : {}) } as never}
+      {...aimAt("list")}
     >
       {scene.spec.rows.map((row, index) => (
         <div
@@ -85,6 +99,7 @@ function mount(scene: Scene, scale: Scale, colored = false) {
             rows[index] = instance
           }}
           style={{ ...styleOf(row.style), ...(colored ? { backgroundColor: index % 2 === 0 ? RED : BLUE } : {}) } as never}
+          {...aimAt(index)}
         >
           {row.text}
         </div>
@@ -173,6 +188,53 @@ describeNative("the rows of a <virtual-list> paint as Chrome paints a scroller o
               return r > 200 && g < 60 && b < 60 ? "red" : b > 200 && r < 60 && g < 60 ? "blue" : r > 240 && g > 240 && b > 240 ? "white" : `#${[r, g, b].join(",")}`
             })
             expect(painted, `device pixel rows at scrollTop ${step.scroll}`).toEqual(expectedRuns(scene, step, scale))
+          }
+        } finally {
+          mounted.root.unmount()
+        }
+      })
+    }
+  }
+})
+
+/** A list with a `border-radius` clips its rows, painted and hit, by its padding box with the corners rounded by the
+ *  radius less the border width on each axis, as a scroller of divs does. The oracle records `elementFromPoint` at points
+ *  just inside (0.85 of the corner ellipse) and just outside (1.1) of each corner ellipse of the padding box: the row is
+ *  hit inside and what is under it outside. The rows are painted where they are hit. */
+describeNative("the rows of a rounded <virtual-list> are clipped at its corners as Chrome clips a scroller of divs", () => {
+  for (const scale of SCALES) {
+    for (const [name, scene] of Object.entries(ORACLE[scale])) {
+      if (!scene.steps[0]!.probes) continue
+      it(`${name} at scale ${scale}`, () => {
+        const aim: Aim = { target: null }
+        const mounted = mount(scene, scale, true, aim)
+        try {
+          const list = mounted.list()
+          for (const step of scene.steps) {
+            list.scrollTop = step.scroll
+            mounted.root.renderer.dispatchNativeEvents()
+            const file = path.join(SHOTS_DIR, `virtual-list-rounded-${name.replace(/\W+/g, "-")}-x${scale}-${step.scroll}.png`)
+            mounted.root.renderer.captureScreenshot(file)
+            const pixels = readPixels(file)
+            const wrong: string[] = []
+            for (const probe of step.probes!) {
+              // A probe within a pixel of the edge between two rows is Chrome's call on which row, by its own snapping.
+              if (step.rows.some(([, y, , height]) => [y, y + height].some((edge) => Math.abs(edge - probe.y) < 1))) continue
+              const at = `(${probe.x.toFixed(1)}, ${probe.y.toFixed(1)}) at scrollTop ${step.scroll}`
+              aim.target = null
+              mounted.root.renderer.nativeSimulateMouseMove(probe.x, probe.y)
+              // The border ring is the list's own hit area and its edge is the border box's arc, which a probe 1.1 times
+              // out in a thick border lies close to: what is asked here is whether a row is hit.
+              const hit = typeof aim.target === "number" ? aim.target : "not a row"
+              const want = typeof probe.hit === "number" ? probe.hit : "not a row"
+              if (hit !== want) wrong.push(`hit ${at}: got ${hit} Chrome ${want}`)
+
+              const [r, g, b] = pixels.at(Math.floor(probe.x * scale), Math.floor(probe.y * scale))
+              const painted = r > 200 && g < 60 && b < 60 ? "red" : b > 200 && r < 60 && g < 60 ? "blue" : "other"
+              const paintedWant = typeof probe.hit === "number" ? (probe.hit % 2 === 0 ? "red" : "blue") : "other"
+              if (painted !== paintedWant) wrong.push(`paint ${at}: got ${painted} Chrome ${paintedWant}`)
+            }
+            expect(wrong).toEqual([])
           }
         } finally {
           mounted.root.unmount()

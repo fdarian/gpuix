@@ -12,6 +12,12 @@
   rows }] } }` (`border` is the computed width of each side, top first) with every box `[x, y, width, height]` relative to the holder (at 0, 0): the scroller's
   getBoundingClientRect, and for each offset the offset it was set to, the one Chrome scrolled to (a device pixel) and
   the box of every row. A row can show only in the top padding of a scrolled list (`a row in the top padding` scenes).
+
+  A scene with a `radius` list (the `rounded` scenes) also records `probes` at every step: points near each corner of
+  the padding box, on the diagonal of its corner ellipse (the border radius less the border width, per axis), at 0.85
+  and 1.1 times the ellipse. `hit` is what `document.elementFromPoint` returns there: a row's index, `list` (the border)
+  or `outside` (nothing of the list). Chrome clips the rows, painted and hit, by the rounded padding box, so a row is
+  hit at 0.85 and not at 1.1.
   Regenerate with
 
     sh dsf-oracle.sh virtual-list
@@ -77,6 +83,38 @@
       scrolls: [0, 10.5, 1000],
     },
     'a few rows': { list: LIST, rows: fixed(3, 20.3), scrolls: [0, 1000] },
+    'a rounded list': { list: `${LIST};border-radius:30px`, rows: fixed(12, 40), scrolls: [0, 25, 1000], rounded: true },
+    'a rounded list with a border': { list: `${LIST};border:4px solid #000;border-radius:30px`, rows: fixed(12, 40), scrolls: [0, 25, 1000], rounded: true },
+    'a rounded list with a border and padding': { list: `${LIST};border:3px solid #000;border-radius:24px;padding:5px 8px`, rows: fixed(12, 40), scrolls: [0, 25, 1000], rounded: true },
+    'a list with elliptical percent radii': { list: `${LIST};border:3px solid #000;border-radius:20% / 50%`, rows: fixed(12, 40), scrolls: [0, 25, 1000], rounded: true },
+    'a list with a radius for each corner': { list: `${LIST};border:2px solid #000;border-radius:40px 10px 30px 20px / 20px 30px 10px 40px`, rows: fixed(12, 40), scrolls: [0, 25, 1000], rounded: true },
+  }
+
+  /** The corner ellipses of the padding box and the points on their diagonals, in the holder's space. */
+  const probesOf = (list, origin) => {
+    const style = getComputedStyle(list)
+    const rect = list.getBoundingClientRect()
+    const border = { top: parseFloat(style.borderTopWidth), right: parseFloat(style.borderRightWidth), bottom: parseFloat(style.borderBottomWidth), left: parseFloat(style.borderLeftWidth) }
+    const length = (token, of) => (token.endsWith('%') ? (parseFloat(token) / 100) * of : parseFloat(token))
+    const corners = [
+      ['TopLeft', 1, 1, border.left, border.top],
+      ['TopRight', -1, 1, border.right, border.top],
+      ['BottomRight', -1, -1, border.right, border.bottom],
+      ['BottomLeft', 1, -1, border.left, border.bottom],
+    ]
+    const points = []
+    for (const [corner, sx, sy, borderX, borderY] of corners) {
+      const tokens = style[`border${corner}Radius`].split(' ')
+      const rx = Math.max(0, length(tokens[0], rect.width) - borderX)
+      const ry = Math.max(0, length(tokens[1] ?? tokens[0], rect.height) - borderY)
+      const x = sx === 1 ? rect.left + borderX : rect.right - borderX
+      const y = sy === 1 ? rect.top + borderY : rect.bottom - borderY
+      const centre = [x + sx * rx, y + sy * ry]
+      for (const k of [0.85, 1.1]) {
+        points.push([centre[0] - sx * Math.SQRT1_2 * rx * k - origin.x, centre[1] - sy * Math.SQRT1_2 * ry * k - origin.y])
+      }
+    }
+    return points
   }
 
   const box = (element, origin) => {
@@ -106,7 +144,14 @@
     const steps = []
     for (const scroll of scene.scrolls) {
       list.scrollTop = scroll
-      steps.push({ scroll, scrollTop: list.scrollTop, rows: [...list.children].map((row) => box(row, origin)) })
+      const step = { scroll, scrollTop: list.scrollTop, rows: [...list.children].map((row) => box(row, origin)) }
+      if (scene.rounded) {
+        step.probes = probesOf(list, origin).map(([x, y]) => {
+          const hit = document.elementFromPoint(x + origin.x, y + origin.y)
+          return { x, y, hit: hit === list ? 'list' : hit?.parentElement === list ? [...list.children].indexOf(hit) : 'outside' }
+        })
+      }
+      steps.push(step)
     }
     out[name] = {
       spec: { parent: scene.parent ?? null, list: scene.list, rows: scene.rows, scrolls: scene.scrolls },
