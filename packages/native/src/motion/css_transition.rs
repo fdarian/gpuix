@@ -928,7 +928,7 @@ impl ElementState {
         let colors_changed = colors != previous_colors;
         let style_changed = self.previous != *after;
         if style_changed || config_changed || colors_changed {
-            let props: Vec<AnimProp> = if style_changed || colors_changed {
+            let mut props: Vec<AnimProp> = if style_changed || colors_changed {
                 AnimProp::ALL
                     .iter()
                     .copied()
@@ -942,6 +942,8 @@ impl ElementState {
                     .copied()
                     .collect()
             };
+            // The order the transitions are listed in, which the events of one time follow.
+            props.sort_by_key(|prop| kebab_case(prop.name()));
             for prop in props {
                 self.restyle(
                     id,
@@ -1029,6 +1031,10 @@ impl ElementState {
                 events.tell(id, *prop, running, now);
             }
         }
+        // Events come in the order of the times they are scheduled at.
+        finished.sort_by(|first, second| {
+            self.running[first].end_time().total_cmp(&self.running[second].end_time())
+        });
         for prop in finished {
             let Some(running) = self.running.get_mut(&prop) else {
                 continue;
@@ -4559,6 +4565,31 @@ mod tests {
         // Finished ones are gone; the later one stays.
         clock.frame(1200, &declare(100.0, 0.5, 50.0));
         assert_eq!(names(&clock, 1200), ["height"]);
+    }
+
+    #[test]
+    fn the_events_of_one_time_come_in_the_order_of_the_transitions_and_ends_by_their_time() {
+        let mut clock = Clock::new();
+        let declare = |width: f64, opacity: f64| {
+            style(&format!(
+                r#"{{ "width": {width}, "opacity": {opacity}, "transition": "width 1s linear, opacity 2s linear" }}"#
+            ))
+        };
+        clock.frame(0, &declare(0.0, 1.0));
+        clock.frame(100, &declare(100.0, 0.5));
+        let event = |kind, name: &str, elapsed| (kind, name.to_string(), elapsed);
+        assert_eq!(
+            clock.events(),
+            [
+                event(Run, "opacity", 0.0),
+                event(Start, "opacity", 0.0),
+                event(Run, "width", 0.0),
+                event(Start, "width", 0.0),
+            ],
+            "each starts right after its run, in the order of their names"
+        );
+        clock.frame(3100, &declare(100.0, 0.5));
+        assert_eq!(clock.events(), [event(End, "width", 1.0), event(End, "opacity", 2.0)]);
     }
 
     #[test]
