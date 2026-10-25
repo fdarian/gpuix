@@ -29,6 +29,7 @@ import {
 import type {
   Animation,
   ElementMethods,
+  GetAnimationsOptions,
   BoundingClientRect,
   ElementType,
   EventHandlerMap,
@@ -235,11 +236,12 @@ export class HostElement {
   /**
    * The CSS transitions, then the CSS animations, that are running, paused or
    * in effect through a fill, as `Animation` objects. An element that is not
-   * mounted has none. See `Animation`.
+   * mounted has none. With `{ subtree: true }` the elements below are listed
+   * too. See `Animation`.
    */
-  getAnimations(): Animation[] {
+  getAnimations(options?: GetAnimationsOptions): Animation[] {
     if (!this.root || !this.mounted) return []
-    return this.methods().getAnimations.call(this)
+    return this.methods().getAnimations.call(this, options)
   }
 
   [HOST_MOUNT](listener: () => void): () => void {

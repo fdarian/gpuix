@@ -12,16 +12,22 @@
 /// has a frame: the page reads in a step force a layout and no more, and `settle` draws three frames, 16 ms apart,
 /// delivering what each queued. Chrome's frames take real time, so its `settle` puts a running animation back to the
 /// time it had when the frames began; so does this one.
+///
+/// `treeCases` are trees of elements: what `getAnimations()`, `getAnimations({ subtree: true })` and
+/// `document.getAnimations()` list after each step, in Chrome's order. The three that need `::before` or `::after`
+/// are skipped, gpuix has no pseudo-elements.
 
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
+import type { ReactElement } from "react"
 import { describe, expect, it } from "vitest"
 import {
   Animation,
   CSSAnimation,
   CSSTransition,
   defineKeyframes,
+  document,
   type HostAnimationEvent,
   type HostTransitionEvent,
   type PublicInstance,
@@ -88,6 +94,20 @@ interface ApiSnapshot {
   computedTiming?: unknown
   samples?: Sample[]
 }
+/** `[id, style, change, children, className]`: a change is applied after the first layout, a class stands for a pseudo-element. */
+type TreeNode = [string, Record<string, unknown>, Record<string, unknown> | null, TreeNode[], string | null]
+interface TreeSnapshot {
+  step: Step
+  own: Record<string, string[]>
+  subtree: Record<string, string[]>
+  document: string[]
+}
+interface TreeCase {
+  name: string
+  tree: TreeNode
+  steps: Step[]
+  records: TreeSnapshot[]
+}
 interface ApiCase {
   name: string
   style: Record<string, unknown>
@@ -101,6 +121,7 @@ const ORACLE: {
   base: Record<string, string>
   cases: Case[]
   apiCases: ApiCase[]
+  treeCases: TreeCase[]
 } = JSON.parse(
   fs.readFileSync(
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/web-animations-oracle.json"),
@@ -604,6 +625,150 @@ describeNative("Web animations playback against Chrome", () => {
   }
 })
 
+/** gpuix has no `::before` or `::after`: a class in a tree case stands for one. */
+const usesPseudoElements = (scenario: TreeCase): boolean => {
+  const classed = (node: TreeNode): boolean => node[4] !== null || node[3].some(classed)
+  return (
+    classed(scenario.tree) ||
+    scenario.steps.some((step) => step[0] === "classes" || (step[0] === "add" && classed(step[2] as TreeNode)))
+  )
+}
+
+interface Node {
+  id: string
+  style: Record<string, unknown>
+  children: Node[]
+}
+
+/** Replays a `treeCases` case: what `getAnimations()`, with and without `subtree`, and `document.getAnimations()` list. */
+async function replayTree(scenario: TreeCase): Promise<TreeSnapshot[]> {
+  const { render, renderer, unmount } = createTestRoot()
+  renderer.clockPause()
+  renderer.setInlineDraws(false)
+  const nodes = new Map<string, Node>()
+  const changes: [string, Record<string, unknown>][] = []
+  const build = (source: TreeNode): Node => {
+    const node: Node = { id: source[0], style: { ...ORACLE.base, ...source[1] }, children: source[3].map(build) }
+    nodes.set(node.id, node)
+    if (source[2]) changes.push([node.id, source[2]])
+    return node
+  }
+  const applyChanges = () => {
+    for (const [id, change] of changes.splice(0)) nodes.get(id)!.style = { ...nodes.get(id)!.style, ...change }
+  }
+  const root = build(scenario.tree)
+  const instances = new Map<string, PublicInstance>()
+  const ids = new Map<PublicInstance, string>()
+  const view = (node: Node): ReactElement => (
+    <div
+      key={node.id}
+      testId={node.id}
+      ref={(instance: PublicInstance | null) => {
+        if (!instance) return
+        instances.set(node.id, instance)
+        ids.set(instance, node.id)
+      }}
+      style={toStyle(node.style)}
+    >
+      {node.children.map(view)}
+    </div>
+  )
+  const show = () => {
+    render(view(root))
+    renderer.getElementBounds(instances.get(root.id)!.id)
+  }
+  const parentOf = (id: string): Node => {
+    for (const node of nodes.values()) if (node.children.some((child) => child.id === id)) return node
+    throw new Error(`${id} has no parent`)
+  }
+  const place = (parent: Node, node: Node, before: string | null) => {
+    const at = before === null ? parent.children.length : parent.children.findIndex((child) => child.id === before)
+    parent.children.splice(at, 0, node)
+  }
+  const label = (animation: Animation): string => {
+    const target = animation.effect.target
+    return `${animation.constructor.name}:${nameOf(animation)}@${ids.get(target as PublicInstance)}`
+  }
+  const held = new Map<string, Animation>()
+  const read = (): Omit<TreeSnapshot, "step"> => ({
+    own: Object.fromEntries([...instances].map(([id, instance]) => [id, instance.getAnimations().map(label)])),
+    subtree: Object.fromEntries(
+      [...instances].map(([id, instance]) => [id, instance.getAnimations({ subtree: true }).map(label)])
+    ),
+    document: document.getAnimations().map(label),
+  })
+  try {
+    show()
+    applyChanges()
+    show()
+    const records: TreeSnapshot[] = [{ step: ["start"], ...read() }]
+    for (const step of scenario.steps) {
+      const [op, first, second, third] = step as [string, ...unknown[]]
+      const record = { step } as TreeSnapshot
+      if (op === "styles") {
+        for (const [id, style] of Object.entries(first as Record<string, Record<string, unknown>>)) {
+          nodes.get(id)!.style = { ...nodes.get(id)!.style, ...style }
+        }
+        show()
+      } else if (op === "cancel" || op === "finish") {
+        const animation = instances.get(first as string)!.getAnimations()[second as number]
+        held.set(`${first}:${second}`, animation)
+        if (op === "cancel") animation.cancel()
+        else animation.finish()
+      } else if (op === "play") held.get(`${first}:${second}`)!.play()
+      else if (op === "add") {
+        place(nodes.get(first as string)!, build(second as TreeNode), third as string | null)
+        show()
+        applyChanges()
+        show()
+      } else if (op === "remove") {
+        const parent = parentOf(first as string)
+        parent.children = parent.children.filter((child) => child.id !== first)
+        show()
+      } else if (op === "move") {
+        const node = nodes.get(first as string)!
+        const parent = parentOf(first as string)
+        parent.children = parent.children.filter((child) => child !== node)
+        place(nodes.get(second as string)!, node, third as string | null)
+        show()
+      } else if (op === "settle") {
+        for (let frame = 0; frame < 3; frame++) {
+          renderer.clockFastForward(16)
+          renderer.drawFrame()
+          renderer.dispatchNativeEvents()
+        }
+      } else if (op !== "list") throw new Error(`Unknown step ${op}`)
+      await microtasks()
+      records.push({ ...record, ...read() })
+    }
+    return records
+  } finally {
+    unmount()
+  }
+}
+
+describeNative("Which animations getAnimations() lists, and in what order, against Chrome", () => {
+  for (const scenario of ORACLE.treeCases) {
+    // The `::before` and `::after` cases: gpuix has no pseudo-elements.
+    const run = usesPseudoElements(scenario) ? it.skip : it
+    run(scenario.name, { timeout: 30_000 }, async () => {
+      const got = await replayTree(scenario)
+      expect(got.length).toBe(scenario.records.length)
+      scenario.records.forEach((want, index) => {
+        const where = `${scenario.name}, after ${JSON.stringify(want.step)}`
+        expect(got[index].step, where).toEqual(want.step)
+        expect(got[index].document, `${where}: document.getAnimations()`).toEqual(want.document)
+        for (const [id, listed] of Object.entries(want.own)) {
+          expect(got[index].own[id], `${where}: ${id}.getAnimations()`).toEqual(listed)
+        }
+        for (const [id, listed] of Object.entries(want.subtree)) {
+          expect(got[index].subtree[id], `${where}: ${id}.getAnimations({ subtree: true })`).toEqual(listed)
+        }
+      })
+    })
+  }
+})
+
 describeNative("Web animations beyond what Chrome can pin on a paused page", () => {
   const widthOf = (renderer: ReturnType<typeof createTestRoot>["renderer"]) => {
     renderer.dispatchNativeEvents()
@@ -612,6 +777,27 @@ describeNative("Web animations beyond what Chrome can pin on a paused page", () 
   const grower = (animation: string, ref: (node: PublicInstance | null) => void) => (
     <div testId="box" ref={ref} style={{ width: 50, height: 20, animation }} />
   )
+
+  it("lists the animations below a display: contents element and gives the same objects as the elements do", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    renderer.clockPause()
+    const parent: { current: PublicInstance | null } = { current: null }
+    const child: { current: PublicInstance | null } = { current: null }
+    render(
+      <div testId="parent" ref={(node: PublicInstance | null) => (parent.current = node)} style={{ display: "contents" }}>
+        {grower("grow 1s linear", (node) => (child.current = node))}
+      </div>
+    )
+    renderer.clockFastForward(0)
+    const [own] = child.current!.getAnimations()
+    expect(parent.current!.getAnimations()).toEqual([])
+    const [below] = parent.current!.getAnimations({ subtree: true })
+    expect(below).toBe(own)
+    expect(below.effect.target).toBe(child.current)
+    const [listed] = document.getAnimations()
+    expect(listed).toBe(own)
+    unmount()
+  })
 
   it("runs time at the playbackRate on the test clock and finishes when it gets to the end", async () => {
     const { render, renderer, unmount } = createTestRoot()

@@ -698,6 +698,21 @@ impl RetainedTree {
         }
     }
 
+    /// `root`, or the root of the tree, and everything below it in the order of the DOM: parents
+    /// before children, children in `children` order (not CSS `order`). Empty for an element
+    /// that is not in the tree.
+    pub(crate) fn document_order(&self, root: Option<u64>) -> Vec<u64> {
+        let mut order = Vec::new();
+        let mut pending: Vec<u64> = root.or(self.root_id).filter(|id| self.elements.contains_key(id)).into_iter().collect();
+        while let Some(next) = pending.pop() {
+            order.push(next);
+            if let Some(element) = self.elements.get(&next) {
+                pending.extend(element.children.iter().rev());
+            }
+        }
+        order
+    }
+
     pub fn set_root(&mut self, id: u64) {
         if self.root_id != Some(id) {
             self.root_id = Some(id);
@@ -1774,6 +1789,21 @@ mod tests {
             tree.elements[&1].subtree_revision > before,
             "destroying a child must invalidate a subtree_revision cache on the parent"
         );
+    }
+
+    #[test]
+    fn document_order_is_parents_first_then_children_in_order() {
+        let mut tree = RetainedTree::new();
+        for id in 1..=6 {
+            tree.create_element(id, "div".to_string());
+        }
+        tree.set_root(1);
+        for (parent, child) in [(1, 2), (1, 3), (2, 4), (2, 5), (3, 6)] {
+            tree.append_child(parent, child);
+        }
+        assert_eq!(tree.document_order(None), vec![1, 2, 4, 5, 3, 6]);
+        assert_eq!(tree.document_order(Some(2)), vec![2, 4, 5]);
+        assert_eq!(tree.document_order(Some(99)), Vec::<u64>::new());
     }
 
     #[test]

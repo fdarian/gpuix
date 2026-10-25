@@ -1,4 +1,5 @@
 import type {
+  ElementWebAnimationInfo,
   EventPayload,
   WebAnimationEffectInfo,
   WebAnimationInfo,
@@ -7,7 +8,13 @@ import type {
 } from "../index.js"
 import { flushPendingMutations } from "./bounds.js"
 import { EVENT_PHASE_AT_TARGET, EVENT_PHASE_NONE, reportUncaught, type DomEvent } from "./events/dispatch.js"
-import { GpuixEventTarget, type AddEventListenerOptions, type WindowEventListener } from "./events/window-target.js"
+import {
+  elementOf,
+  GpuixEventTarget,
+  setDocumentAnimations,
+  type AddEventListenerOptions,
+  type WindowEventListener,
+} from "./events/window-target.js"
 import type { NativeRenderer } from "./host.js"
 
 export type AnimationPlayState = "idle" | "running" | "paused" | "finished"
@@ -17,6 +24,8 @@ export type WebAnimationHost = Required<
   Pick<
     NativeRenderer,
     | "getAnimations"
+    | "getSubtreeAnimations"
+    | "getDocumentAnimations"
     | "getAnimation"
     | "pauseAnimation"
     | "playAnimation"
@@ -37,6 +46,8 @@ export type WebAnimationHost = Required<
 
 const HOST_METHODS = [
   "getAnimations",
+  "getSubtreeAnimations",
+  "getDocumentAnimations",
   "getAnimation",
   "pauseAnimation",
   "playAnimation",
@@ -931,18 +942,66 @@ function adopt(
   return animation
 }
 
+export interface GetAnimationsOptions {
+  /** Also the animations of the elements below, in document order. */
+  subtree?: boolean
+}
+
 /**
  * `element.getAnimations()`: the CSS transitions, then the CSS animations,
  * that are running, paused or in effect through a fill, in composite order.
+ * With `subtree`, those of the element and everything below it: every
+ * transition of the elements in document order, then every animation.
  * Pending mutations are sent first, so a style just set is seen.
  */
-export function getElementAnimations(renderer: NativeRenderer, elementId: number, target: object): Animation[] {
+export function getElementAnimations(
+  renderer: NativeRenderer,
+  elementId: number,
+  target: object,
+  options?: GetAnimationsOptions
+): Animation[] {
   const host = hostOf(renderer)
   flushPendingMutations(renderer)
   const registry = registryOf(renderer)
   const timeline = (registry.timeline ??= new DocumentTimeline(host))
-  return host.getAnimations(elementId).map((info) => adopt(registry, host, timeline, target, elementId, info))
+  if (!options?.subtree) {
+    return host.getAnimations(elementId).map((info) => adopt(registry, host, timeline, target, elementId, info))
+  }
+  return host
+    .getSubtreeAnimations(elementId)
+    .map((listed) => adoptListed(registry, host, timeline, renderer, listed, elementId, target))
 }
+
+/** `document.getAnimations()` of one renderer: the animations of its window, in document order. */
+function getRendererAnimations(renderer: NativeRenderer): Animation[] {
+  const host = hostOf(renderer)
+  flushPendingMutations(renderer)
+  const registry = registryOf(renderer)
+  const timeline = (registry.timeline ??= new DocumentTimeline(host))
+  return host
+    .getDocumentAnimations()
+    .map((listed) => adoptListed(registry, host, timeline, renderer, listed, undefined, undefined))
+}
+
+function adoptListed(
+  registry: Registry,
+  host: WebAnimationHost,
+  timeline: DocumentTimeline,
+  renderer: NativeRenderer,
+  listed: ElementWebAnimationInfo,
+  readOn: number | undefined,
+  readOnTarget: object | undefined
+): Animation {
+  const known = registry.byId.get(listed.info.id)
+  if (known) return known
+  const target = listed.elementId === readOn ? readOnTarget : elementOf(renderer, listed.elementId)
+  if (target === undefined) {
+    throw new Error(`Element ${listed.elementId} has an animation but its root has no element for it`)
+  }
+  return adopt(registry, host, timeline, target, listed.elementId, listed.info)
+}
+
+setDocumentAnimations((renderer) => getRendererAnimations(renderer as NativeRenderer))
 
 /** The cancel of an animation: its promises, as `cancel()` and a style that stops naming it leave them. */
 function abort(state: State, wasPending: boolean): void {

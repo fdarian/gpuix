@@ -9,6 +9,7 @@ import type {
   EventHandlerMap,
   FocusableElement,
   FormMethods,
+  GetAnimationsOptions,
   FormProps as NativeFormProps,
   HostBinding,
   HostProps,
@@ -258,9 +259,10 @@ export interface Instance extends Partial<FocusableElement> {
   getBoundingClientRect?(): BoundingClientRect
   /**
    * The CSS transitions, then the CSS animations, that are running, paused or
-   * in effect through a fill, as `Animation` objects. See `Animation`.
+   * in effect through a fill, as `Animation` objects. With `{ subtree: true }`
+   * the elements below are listed too. See `Animation`.
    */
-  getAnimations?(): Animation[]
+  getAnimations?(options?: GetAnimationsOptions): Animation[]
   [HOST_BINDING]?(): HostBinding | undefined
 }
 

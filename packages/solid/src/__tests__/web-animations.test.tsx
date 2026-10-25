@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js"
 import { describe, expect, it } from "bun:test"
-import { CSSAnimation, CSSTransition, defineKeyframes } from "../index.js"
+import { CSSAnimation, CSSTransition, defineKeyframes, document } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { HostElement } from "../host.js"
 
@@ -337,6 +337,60 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Web animations", () => {
       expect(transition.effect.getComputedTiming().endTime).toBe(1000)
       app.unmount()
     })
+  })
+
+  it("lists the animations of the subtree, transitions first, in document order", () => {
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    const [margin, setMargin] = createSignal(0)
+    let parent!: HostElement
+    let child!: HostElement
+    let sibling!: HostElement
+    app.render(() => (
+      <div ref={(element) => (parent = element)} testId="parent" style={{ width: 50, height: 20, animation: "solid-wa-tall 1s linear" }}>
+        <div ref={(element) => (child = element)} style={{ width: 50, height: 20, animation: "solid-wa-grow 1s linear" }} />
+        <div
+          ref={(element) => (sibling = element)}
+          style={{ width: 50, height: 20, marginTop: margin(), transition: "margin-top 1s linear" }}
+        />
+      </div>
+    ))
+    setMargin(10)
+    app.flushSync(() => {})
+    app.renderer.clockFastForward(0)
+    const names = (animations: ReturnType<HostElement["getAnimations"]>) =>
+      animations.map((animation) => (animation instanceof CSSTransition ? animation.transitionProperty : (animation as CSSAnimation).animationName))
+    expect(names(parent.getAnimations())).toEqual(["solid-wa-tall"])
+    const subtree = parent.getAnimations({ subtree: true })
+    expect(names(subtree)).toEqual(["margin-top", "solid-wa-tall", "solid-wa-grow"])
+    expect(subtree.map((animation) => animation.effect.target)).toEqual([sibling, parent, child])
+    expect(subtree[1]).toBe(parent.getAnimations()[0])
+    expect(subtree[2]).toBe(child.getAnimations()[0])
+    expect(names(child.getAnimations({ subtree: true }))).toEqual(["solid-wa-grow"])
+    expect(sibling.getAnimations({ subtree: false })).toHaveLength(1)
+    expect(sibling.getAnimations({ subtree: false })[0]).toBe(subtree[0])
+    app.unmount()
+  })
+
+  it("lists the animations of the window in document.getAnimations(), the objects the elements give", () => {
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    let first!: HostElement
+    let second!: HostElement
+    app.render(() => (
+      <div>
+        <div ref={(element) => (first = element)} style={{ width: 50, height: 20, animation: "solid-wa-grow 1s linear" }} />
+        <div ref={(element) => (second = element)} style={{ width: 50, height: 20, animation: "solid-wa-tall 1s linear" }} />
+      </div>
+    ))
+    app.renderer.clockFastForward(0)
+    const listed = document.getAnimations()
+    expect(listed).toHaveLength(2)
+    expect(listed[0]).toBe(first.getAnimations()[0])
+    expect(listed[1]).toBe(second.getAnimations()[0])
+    expect(listed[1].effect.target).toBe(second)
+    app.unmount()
+    expect(document.getAnimations()).toHaveLength(0)
   })
 
   it("has no animations for an element that is not mounted", () => {

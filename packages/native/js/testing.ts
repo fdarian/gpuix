@@ -14,6 +14,7 @@ import {
   TestGpuixRenderer,
   measureMotionAnimation,
   validateKeyframes,
+  type ElementWebAnimationInfo,
   type EventPayload,
   type MediaFeatures,
   type MotionValuePlayback,
@@ -260,6 +261,8 @@ interface NativeTestRendererApi
   hasPointerCapture(elementId: number, pointerId: number): boolean
   clickElement(elementId: number): void
   getAnimations(elementId: number): WebAnimationInfo[]
+  getSubtreeAnimations(elementId: number): ElementWebAnimationInfo[]
+  getDocumentAnimations(): ElementWebAnimationInfo[]
   getSvgMarkup(elementId: number): string | null
   getAnimation(animationId: number): WebAnimationInfo
   releaseAnimation(animationId: number): void
@@ -1478,6 +1481,14 @@ export class TestRenderer implements NativeRenderer {
 
   getAnimations(elementId: number): WebAnimationInfo[] {
     return this.native.getAnimations(elementId)
+  }
+
+  getSubtreeAnimations(elementId: number): ElementWebAnimationInfo[] {
+    return this.native.getSubtreeAnimations(elementId)
+  }
+
+  getDocumentAnimations(): ElementWebAnimationInfo[] {
+    return this.native.getDocumentAnimations()
   }
 
   /**

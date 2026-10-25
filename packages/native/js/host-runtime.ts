@@ -11,7 +11,7 @@ import type {
   WindowInsetsHost,
   WindowSizeHost,
 } from "./host.js"
-import { getElementAnimations, type Animation } from "./web-animations.js"
+import { getElementAnimations, type Animation, type GetAnimationsOptions } from "./web-animations.js"
 
 /**
  * `setPointerCapture`, `releasePointerCapture` and `hasPointerCapture` for one
@@ -57,11 +57,13 @@ export interface ElementMethods extends PointerCaptureMethods {
    * running, paused or in effect through a fill, in composite order. The same
    * `Animation` object stands for a run every time. See `Animation` for what
    * it has and what is not built. Animations of the motion engine
-   * (`motion`, `animate`) are not listed, and there is no `subtree` option.
+   * (`motion`, `animate`) are not listed. With `{ subtree: true }` those of the
+   * elements below are listed too: every transition of the element and its
+   * descendants in document order, then every animation, like Chrome.
    * Pending changes are sent first. An element that is not in the tree has none.
    * Call it on the element: that is the `target` of the effects it returns.
    */
-  getAnimations(): Animation[]
+  getAnimations(options?: GetAnimationsOptions): Animation[]
 }
 
 export function createElementMethods(
@@ -88,8 +90,8 @@ export function createElementMethods(
     hasPointerCapture: (pointerId) => supported("hasPointerCapture")(elementId, pointerId),
     click: () => supported("clickElement")(elementId),
     requestPointerLock: () => supported("requestPointerLock")(elementId),
-    getAnimations(this: object) {
-      return getElementAnimations(renderer, elementId, this)
+    getAnimations(this: object, options?: GetAnimationsOptions) {
+      return getElementAnimations(renderer, elementId, this, options)
     },
   }
 }

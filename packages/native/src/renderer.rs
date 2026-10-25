@@ -3319,6 +3319,23 @@ impl GpuixRenderer {
         self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations(id, now)))
     }
 
+    /// `getAnimations({ subtree: true })` of an element: the CSS transitions, then the CSS
+    /// animations, of the element and the elements below it, each in document order of the
+    /// elements, with the element each is of. Throws for an element id that is not valid; an
+    /// element that is not in the tree has none.
+    #[napi]
+    pub fn get_subtree_animations(&self, element_id: f64) -> Result<Vec<ElementWebAnimationInfo>> {
+        let id = to_element_id(element_id)?;
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations_below(Some(id), now)))
+    }
+
+    /// `document.getAnimations()` of this renderer's window: as `getSubtreeAnimations` for the
+    /// root of the tree.
+    #[napi]
+    pub fn get_document_animations(&self) -> Result<Vec<ElementWebAnimationInfo>> {
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations_below(None, now)))
+    }
+
     /// One CSS animation or transition by the id `getAnimations` gave. A run
     /// that finished or was cancelled answers as it ended until
     /// `releaseAnimation` says JS consumed its `webanimationfinish` or
@@ -6385,6 +6402,30 @@ impl GpuixView {
             .into_iter()
             .chain(animations)
             .map(|info| WebAnimationInfo::at(info, &self.clock))
+            .collect()
+    }
+
+    /// The Web Animations of `root` and the elements below it, as `Element.getAnimations({ subtree: true })`
+    /// lists them: every transition, then every animation, each kind in document order of the
+    /// elements and in composite order within one. `None` for the root of the renderer lists the
+    /// whole document. The elements are walked by `children`, the order of the DOM, not by `order`.
+    pub(crate) fn web_animations_below(&self, root: Option<u64>, now: web_time::Instant) -> Vec<ElementWebAnimationInfo> {
+        let order = self.tree.lock().unwrap().document_order(root);
+        let mut listed = Vec::new();
+        for element in &order {
+            let Some(at) = self.api_instant(Some(*element), now) else { continue };
+            listed.extend(self.css_transitions.list(*element, at).into_iter().map(|info| (*element, info)));
+        }
+        for element in &order {
+            let Some(at) = self.api_instant(Some(*element), now) else { continue };
+            listed.extend(self.css_animations.list(*element, at).into_iter().map(|info| (*element, info)));
+        }
+        listed
+            .into_iter()
+            .map(|(element, info)| ElementWebAnimationInfo {
+                element_id: element as f64,
+                info: WebAnimationInfo::at(info, &self.clock),
+            })
             .collect()
     }
 
@@ -13556,6 +13597,14 @@ pub struct ElementBounds {
     /// pixels as the DOM does.
     pub client_left: f64,
     pub client_top: f64,
+}
+
+/// A [`WebAnimationInfo`] with the element the run is of, for a read that spans elements.
+#[derive(Debug, Clone)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct ElementWebAnimationInfo {
+    pub element_id: f64,
+    pub info: WebAnimationInfo,
 }
 
 fn unknown_web_animation(id: u64) -> String {

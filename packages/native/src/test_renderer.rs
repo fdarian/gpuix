@@ -2677,6 +2677,19 @@ impl TestGpuixRenderer {
         self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations(id, now)))
     }
 
+    /// `getAnimations({ subtree: true })` of an element. See `GpuixRenderer.getSubtreeAnimations`.
+    #[napi]
+    pub fn get_subtree_animations(&self, element_id: f64) -> Result<Vec<crate::renderer::ElementWebAnimationInfo>> {
+        let id = to_element_id(element_id)?;
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations_below(Some(id), now)))
+    }
+
+    /// `document.getAnimations()` of this renderer. See `GpuixRenderer.getDocumentAnimations`.
+    #[napi]
+    pub fn get_document_animations(&self) -> Result<Vec<crate::renderer::ElementWebAnimationInfo>> {
+        self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations_below(None, now)))
+    }
+
     /// The SVG an `<svg>` element with shape children painted in the last
     /// frame, as the XML its shapes were written to, or `null` when it painted
     /// none. Animated attributes are in it as the frame had them.

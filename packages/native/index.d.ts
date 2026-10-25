@@ -274,6 +274,18 @@ export declare class GpuixRenderer {
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
   /**
+   * `getAnimations({ subtree: true })` of an element: the CSS transitions, then the CSS
+   * animations, of the element and the elements below it, each in document order of the
+   * elements, with the element each is of. Throws for an element id that is not valid; an
+   * element that is not in the tree has none.
+   */
+  getSubtreeAnimations(elementId: number): Array<ElementWebAnimationInfo>
+  /**
+   * `document.getAnimations()` of this renderer's window: as `getSubtreeAnimations` for the
+   * root of the tree.
+   */
+  getDocumentAnimations(): Array<ElementWebAnimationInfo>
+  /**
    * One CSS animation or transition by the id `getAnimations` gave. A run
    * that finished or was cancelled answers as it ended until
    * `releaseAnimation` says JS consumed its `webanimationfinish` or
@@ -1201,6 +1213,10 @@ export declare class TestGpuixRenderer {
    * running, paused or in effect through a fill. See `GpuixRenderer.getAnimations`.
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
+  /** `getAnimations({ subtree: true })` of an element. See `GpuixRenderer.getSubtreeAnimations`. */
+  getSubtreeAnimations(elementId: number): Array<ElementWebAnimationInfo>
+  /** `document.getAnimations()` of this renderer. See `GpuixRenderer.getDocumentAnimations`. */
+  getDocumentAnimations(): Array<ElementWebAnimationInfo>
   /**
    * The SVG an `<svg>` element with shape children painted in the last
    * frame, as the XML its shapes were written to, or `null` when it painted
@@ -1427,6 +1443,12 @@ export interface ElementBounds {
    */
   clientLeft: number
   clientTop: number
+}
+
+/** A [`WebAnimationInfo`] with the element the run is of, for a read that spans elements. */
+export interface ElementWebAnimationInfo {
+  elementId: number
+  info: WebAnimationInfo
 }
 
 export interface EventModifiers {

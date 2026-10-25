@@ -2707,6 +2707,8 @@ export type NativeRenderer = MutationHost &
       | "hasPointerCapture"
       | "clickElement"
       | "getAnimations"
+      | "getSubtreeAnimations"
+      | "getDocumentAnimations"
       | "getAnimation"
       | "pauseAnimation"
       | "playAnimation"
