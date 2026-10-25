@@ -1689,6 +1689,11 @@ export interface FrameWorkCounters {
    */
   boundsInserts: number
   /**
+   * Glyphs rasterized because the atlas did not have them. A glyph of a patched root that the
+   * clip hides is not rasterized until it shows.
+   */
+  rasterizedGlyphs: number
+  /**
    * Frame callbacks that carried the animations of culled content on without drawing
    * (`GpuixView::dormant_tick`).
    */
