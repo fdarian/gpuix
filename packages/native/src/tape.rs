@@ -247,10 +247,13 @@ impl Entries {
         self.lines_by(|effect, offset| effect.describe(offset))
     }
 
-    /// [`Self::lines`] with the boxes described apart from the transforms around them.
+    /// [`Self::lines`] with the boxes, texts and start regions described apart from the transforms
+    /// around them.
     fn lines_apart_from_transforms(&self) -> Vec<(bool, String)> {
         self.lines_by(|effect, offset| match effect.kind() {
             Kind::Bounds => crate::automation::describe_apart_from_transform(effect.data(), offset),
+            Kind::Text => crate::text::describe_text_apart_from_transform(effect.data()),
+            Kind::StartRegion => crate::text::describe_start_region_apart_from_transform(effect.data(), offset),
             _ => effect.describe(offset),
         })
     }
@@ -352,13 +355,18 @@ impl<T> Layered<T> {
     /// Every write, in order. `from` makes one from the data of a write of `kind` and how far from
     /// where it was made it is made.
     pub(crate) fn all(&mut self, kind: Kind, from: impl Fn(&dyn Any, Point<Pixels>) -> T) -> &[T] {
+        self.all_mut(kind, from)
+    }
+
+    /// [`Self::all`] for a registry whose entries a patch changes in place.
+    pub(crate) fn all_mut(&mut self, kind: Kind, from: impl Fn(&dyn Any, Point<Pixels>) -> T) -> &mut [T] {
         for slot in self.pending.drain(..) {
             match slot {
                 Slot::One(value) => self.read.push(value),
                 Slot::Live(live) => live.each(kind, |data, offset| self.read.push(from(data, offset))),
             }
         }
-        &self.read
+        &mut self.read
     }
 }
 
@@ -404,9 +412,9 @@ impl Tape {
             && self.lifted.iter().zip(&other.lifted).all(|(left, right)| left.lines() == right.lines())
     }
 
-    /// [`Self::same_writes`] where the boxes of the elements may differ in the transforms around
-    /// them. A patch of a transform that moves paints the same, and the boxes it publishes are the
-    /// ones of [`Self::each_bounds`].
+    /// [`Self::same_writes`] where the boxes of the elements, and the matrices of their texts and
+    /// start regions, may differ in the transforms around them. A patch of a transform that moves
+    /// paints the same, and what it publishes of them is what [`Self::each`] reads.
     pub(crate) fn same_writes_apart_from_transforms(&self, other: &Tape) -> bool {
         self.prepaint.lines_apart_from_transforms() == other.prepaint.lines_apart_from_transforms()
             && self.paint.lines_apart_from_transforms() == other.paint.lines_apart_from_transforms()
@@ -418,12 +426,12 @@ impl Tape {
                 .all(|(left, right)| left.lines_apart_from_transforms() == right.lines_apart_from_transforms())
     }
 
-    /// Calls `visit` with the data of every write to the registry of boxes, and how far from where
+    /// Calls `visit` with the data of every write to the registry of `kind`, and how far from where
     /// it was made it is made now (none).
-    pub(crate) fn each_bounds(&self, visit: &mut dyn FnMut(&dyn Any, Point<Pixels>)) {
+    pub(crate) fn each(&self, kind: Kind, visit: &mut dyn FnMut(&dyn Any, Point<Pixels>)) {
         for entries in [&self.prepaint, &self.paint].into_iter().chain(&self.lifted) {
             entries.walk(Point::default(), false, &mut |effect, offset| {
-                if effect.kind() == Kind::Bounds {
+                if effect.kind() == kind {
                     visit(effect.data(), offset);
                 }
             });
@@ -1061,7 +1069,7 @@ mod tests {
         assert!(!tapes.same_as_recorded(1, &wider), "a box that is another size is not the same");
 
         let mut published = 0;
-        later.borrow().each_bounds(&mut |data, offset| {
+        later.borrow().each(Kind::Bounds, &mut |data, offset| {
             published += 1;
             crate::automation::publish_captured_bounds(data, offset);
         });

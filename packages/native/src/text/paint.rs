@@ -96,16 +96,25 @@ pub(crate) fn publish(window: WindowId, live: &crate::tape::Live) {
 
 impl Frame {
     fn registry(&mut self) -> &[RegEntry] {
-        self.registry.all(Kind::Text, |data, offset| {
+        self.registry_mut()
+    }
+
+    fn registry_mut(&mut self) -> &mut [RegEntry] {
+        self.registry.all_mut(Kind::Text, |data, offset| {
             let entry = &data.downcast_ref::<(WindowId, RegEntry)>().expect("a text write holds its entry").1;
             RegEntry { to_window: moved_matrix(entry.to_window, offset), ..entry.clone() }
         })
     }
 
     fn start_regions(&mut self) -> &[StartRegion] {
-        self.start_regions.all(Kind::StartRegion, |data, offset| {
-            let (_, bounds, selectable, to_window) = data.downcast_ref::<StartRegionWrite>().expect("a start region write holds its box");
+        self.start_regions_mut()
+    }
+
+    fn start_regions_mut(&mut self) -> &mut [StartRegion] {
+        self.start_regions.all_mut(Kind::StartRegion, |data, offset| {
+            let (_, id, bounds, selectable, to_window) = data.downcast_ref::<StartRegionWrite>().expect("a start region write holds its box");
             StartRegion {
+                id: *id,
                 bounds: Bounds::new(bounds.origin + offset, bounds.size),
                 selectable: *selectable,
                 to_window: moved_matrix(*to_window, offset),
@@ -126,13 +135,15 @@ impl Frame {
 /// so a same-row nearest-text clamp cannot steal their press. An explicit
 /// `userSelect: "text"` island registers `true` and can override an ancestor.
 struct StartRegion {
+    /// The element whose box it is.
+    id: u64,
     bounds: Bounds<gpui::Pixels>,
     selectable: bool,
     /// From the space `bounds` is in to the window.
     to_window: TransformationMatrix,
 }
 
-type StartRegionWrite = (WindowId, Bounds<gpui::Pixels>, bool, TransformationMatrix);
+type StartRegionWrite = (WindowId, u64, Bounds<gpui::Pixels>, bool, TransformationMatrix);
 
 /// One highlight wash painted this frame, with the boxes it actually drew.
 ///
@@ -214,21 +225,78 @@ pub fn selection_frame_reset(
 ///
 /// Only `track_host_bounds` calls this, so a start region is
 /// always the same box automation already uses. Last painted region that contains the point wins.
-pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool, to_window: TransformationMatrix) {
+pub fn record_start_region(window: WindowId, id: u64, bounds: Bounds<gpui::Pixels>, selectable: bool, to_window: TransformationMatrix) {
     crate::tape::write(
         Kind::StartRegion,
-        (window, bounds, selectable, to_window),
-        |(window, bounds, selectable, to_window)| push_start_region(*window, *bounds, *selectable, *to_window),
-        |(_, bounds, selectable, to_window), offset| {
-            format!("start region {:?} {selectable} {:?}", Bounds::new(bounds.origin + offset, bounds.size), moved_matrix(*to_window, offset))
+        (window, id, bounds, selectable, to_window),
+        |(window, id, bounds, selectable, to_window)| push_start_region(*window, *id, *bounds, *selectable, *to_window),
+        |(_, id, bounds, selectable, to_window), offset| {
+            format!(
+                "start region {id} {:?} {selectable} {:?}",
+                Bounds::new(bounds.origin + offset, bounds.size),
+                moved_matrix(*to_window, offset)
+            )
         },
     );
 }
 
-fn push_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool, to_window: TransformationMatrix) {
+fn push_start_region(window: WindowId, id: u64, bounds: Bounds<gpui::Pixels>, selectable: bool, to_window: TransformationMatrix) {
     with_frame(window, |frame| {
-        frame.start_regions.push(StartRegion { bounds, selectable, to_window })
+        frame.start_regions.push(StartRegion { id, bounds, selectable, to_window })
     });
+}
+
+/// What a [`record_start_region`] write says, apart from the transforms around the element.
+pub(crate) fn describe_start_region_apart_from_transform(data: &dyn std::any::Any, offset: gpui::Point<gpui::Pixels>) -> String {
+    let (_, id, bounds, selectable, _) = data.downcast_ref::<StartRegionWrite>().expect("a start region write holds its box");
+    format!("start region {id} {:?} {selectable}", Bounds::new(bounds.origin + offset, bounds.size))
+}
+
+/// Gives the start region that a patch painted again the matrix it was painted through, which an
+/// animation of a transform changes at every tick without a build.
+pub(crate) fn publish_captured_start_region(data: &dyn std::any::Any, offset: gpui::Point<gpui::Pixels>) {
+    let (window, id, _, _, to_window) = data.downcast_ref::<StartRegionWrite>().expect("a start region write holds its box");
+    let to_window = moved_matrix(*to_window, offset);
+    with_frame(*window, |frame| {
+        for region in frame.start_regions_mut().iter_mut().filter(|region| region.id == *id) {
+            region.to_window = to_window;
+        }
+    });
+}
+
+/// What a text write says, apart from the transforms around the element.
+pub(crate) fn describe_text_apart_from_transform(data: &dyn std::any::Any) -> String {
+    describe_text(&text_write(data).1, false)
+}
+
+/// Gives the text that a patch painted again the matrix it was painted through, as for
+/// [`publish_captured_start_region`].
+pub(crate) fn publish_captured_text(data: &dyn std::any::Any, offset: gpui::Point<gpui::Pixels>) {
+    let (window, painted) = text_write(data);
+    let to_window = moved_matrix(painted.to_window, offset);
+    with_frame(*window, |frame| {
+        for entry in frame.registry_mut().iter_mut().filter(|entry| entry.key == painted.key) {
+            entry.to_window = to_window;
+        }
+    });
+}
+
+fn text_write(data: &dyn std::any::Any) -> &(WindowId, RegEntry) {
+    data.downcast_ref().expect("a text write holds its entry")
+}
+
+fn describe_text(entry: &RegEntry, with_matrix: bool) -> String {
+    let matrix = if with_matrix { format!(" {:?}", entry.to_window) } else { String::new() };
+    format!(
+        "text {} {:?} {:?} {:?} {:?} {:?} {:?}{matrix}",
+        entry.key,
+        entry.doc,
+        entry.text,
+        entry.layout.bounds(),
+        entry.group,
+        entry.line,
+        entry.cell,
+    )
 }
 
 /// Last painted start region that contains `position`.
@@ -616,19 +684,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     (window_id, entry),
                     // Its layout is moved by the frame, with the subtree.
                     |(window, entry)| with_frame(*window, |frame| frame.registry.push(entry.clone())),
-                    |(_, entry), _| {
-                        format!(
-                            "text {} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
-                            entry.key,
-                            entry.doc,
-                            entry.text,
-                            entry.layout.bounds(),
-                            entry.group,
-                            entry.line,
-                            entry.cell,
-                            entry.to_window
-                        )
-                    },
+                    |(_, entry), _| describe_text(entry, true),
                 );
             }
             log_painted_text(window_id, text.clone());
@@ -1364,6 +1420,7 @@ mod tests {
         });
         record_start_region(
             window,
+            1,
             Bounds::new(point(px(0.0), px(0.0)), size(px(10.0), px(10.0))),
             false,
             TransformationMatrix::unit(),

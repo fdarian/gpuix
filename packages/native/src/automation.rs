@@ -700,7 +700,7 @@ where
         record_bounds(window_id, id, laid_out, bounds.origin, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
-            crate::text::record_start_region(window_id, bounds, selectable, to_window);
+            crate::text::record_start_region(window_id, id, bounds, selectable, to_window);
         }
         if let Some(report) = &report {
             report(bounds, insets, window, cx);

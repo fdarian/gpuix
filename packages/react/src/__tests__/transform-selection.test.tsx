@@ -8,6 +8,7 @@
 
 import React from "react"
 import { describe, expect, it } from "vitest"
+import { defineKeyframes } from "../index"
 import type { PublicInstance } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
@@ -197,5 +198,95 @@ describeNative("a selection dragged to the edge of a transformed list", () => {
   it("selects only what the pointer is over where it is not at an edge", () => {
     // y = 150 is 100 in the list at a scale of 1.5: inside, away from the edge zone.
     expect(rowsOf(selectedByDragging(1.5, [60, 150]))).toBeLessThanOrEqual(4)
+  }, SLOW)
+})
+
+defineKeyframes("tselect-slide", { from: { translate: "0px 0px" }, to: { translate: "200px 150px" } })
+
+describeNative("text selection after patched ticks of a moving transform", () => {
+  const TICKS = 30
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  /** The page the other patch counters run on: rows of text beside the sentence that slides. */
+  function Slide({ animation }: { animation?: string }) {
+    return (
+      <div style={{ position: "relative", width: 700, height: 560, overflow: "hidden" }}>
+        <div style={{ display: "flex", flexDirection: "column", width: 200 }}>
+          {Array.from({ length: 40 }, (_, row) => (
+            <div key={row} style={{ borderWidth: 1, borderColor: "#cccccc", padding: 2 }}>
+              <text style={{ fontSize: 11, color: "#333333" }}>{`row ${row}`}</text>
+            </div>
+          ))}
+        </div>
+        <div testId="slide" style={{ position: "absolute", left: 260, top: 20, animation }}>
+          <text style={{ fontSize: 20, lineHeight: "24px", color: "#000000" }}>{SENTENCE}</text>
+        </div>
+      </div>
+    )
+  }
+
+  async function settle(renderer: Renderer) {
+    for (let frame = 0; frame < 12; frame++) {
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      await sleep(8)
+    }
+  }
+
+  const SLIDE_AT = 260
+
+  async function dragAfter(animation: string | undefined, ticks: number) {
+    const root = createTestRoot({ width: 760, height: 620 })
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(<Slide animation={animation} />)
+      await settle(renderer)
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      for (let warm = 0; warm < 12; warm++) {
+        renderer.clockAdvance(16)
+        renderer.drawFrame()
+      }
+      const before = renderer.getPatchCounters().patchedFrames
+      for (let tick = 0; tick < ticks; tick++) {
+        renderer.clockAdvance(16)
+        renderer.drawFrame()
+      }
+      const patched = renderer.getPatchCounters().patchedFrames - before
+      // Reading the box is after the ticks: the next draw would be whole, and the press comes before it.
+      const rect = renderer.getElementBounds(renderer.findByTestId("slide").id)
+      return { rect, patched, renderer, root }
+    } catch (error) {
+      root.unmount()
+      throw error
+    }
+  }
+
+  it("presses where the patched ticks drew the text and selects what the same drag selects before it moved", async () => {
+    const still = await dragAfter(undefined, 0)
+    let reference: string | null
+    try {
+      const y = still.rect.y + still.rect.height / 2
+      still.renderer.dragSelect(still.rect.x + still.rect.width * 0.2, y, still.rect.x + still.rect.width * 0.7, y)
+      reference = still.renderer.getSelectedText()
+    } finally {
+      still.root.unmount()
+    }
+    expect(reference).not.toBeNull()
+    expect(reference!.length).toBeGreaterThan(3)
+
+    const moved = await dragAfter("tselect-slide 1s linear infinite", TICKS)
+    try {
+      if (process.env.GPUIX_RETAIN_OFF === undefined && process.env.GPUIX_PATCH_OFF === undefined) {
+        expect(moved.patched, "the ticks were patched").toBeGreaterThanOrEqual(TICKS - 2)
+      }
+      expect(moved.rect.x, "the sentence slid").toBeGreaterThan(SLIDE_AT + 40)
+      const y = moved.rect.y + moved.rect.height / 2
+      moved.renderer.dragSelect(moved.rect.x + moved.rect.width * 0.2, y, moved.rect.x + moved.rect.width * 0.7, y)
+      expect(moved.renderer.getSelectedText()).toBe(reference)
+    } finally {
+      moved.root.unmount()
+    }
   }, SLOW)
 })

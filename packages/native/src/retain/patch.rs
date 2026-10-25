@@ -111,9 +111,13 @@ impl GpuixView {
                     crate::automation::republish_scroll_content(window_id, id, change.content, scale);
                 }
             }
-            // The boxes are the one write that a transform that moves changes without a build.
+            // The boxes, and the matrices of the texts and start regions that a press is mapped through,
+            // are what a transform that moves changes without a build.
             for (_, tape) in &captured {
-                tape.borrow().each_bounds(&mut crate::automation::publish_captured_bounds);
+                let tape = tape.borrow();
+                tape.each(crate::tape::Kind::Bounds, &mut crate::automation::publish_captured_bounds);
+                tape.each(crate::tape::Kind::Text, &mut crate::text::publish_captured_text);
+                tape.each(crate::tape::Kind::StartRegion, &mut crate::text::publish_captured_start_region);
             }
             view.read(app).tree.lock().unwrap().relevance.note_transforms_captured();
             view.update(app, |view, cx| view.continue_after_patch(window, &built.stepped, cx));
