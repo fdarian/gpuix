@@ -17,7 +17,7 @@ import path from "path"
 import type { CSSProperties } from "react"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
-import { defineKeyframes, motion, motionValue } from "../index"
+import { animate, defineKeyframes, motion, motionValue } from "../index"
 import type { MotionValue } from "../index"
 import { flushSync } from "../reconciler/reconciler"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
@@ -99,7 +99,10 @@ function abs(left: number, top: number, width: number, height: number): CSSPrope
 /** What an animation tells, by element: `mid:start`. */
 type Told = (event: string) => void
 
-function sceneOf(mode: Mode, styles: Styles, ref: (id: Chain) => (node: unknown) => void, told?: Told) {
+/** Props of the `motion` elements of a scene, by element. */
+type Motion = Partial<Record<Chain, Record<string, unknown>>>
+
+function sceneOf(mode: Mode, styles: Styles, ref: (id: Chain) => (node: unknown) => void, told?: Told, moves: Motion = {}) {
   const tells = (id: Chain) =>
     told && {
       onAnimationStart: () => told(`${id}:start`),
@@ -108,7 +111,10 @@ function sceneOf(mode: Mode, styles: Styles, ref: (id: Chain) => (node: unknown)
       onTransitionEnd: () => told(`${id}:transitionend`),
     }
   // Motion values bind through a `motion` element.
-  const Anc = Object.values(styles.anc ?? {}).some((value) => typeof value === "object") ? motion.div : "div"
+  const tag = (id: Chain) => (moves[id] || Object.values(styles[id] ?? {}).some((value) => typeof value === "object") ? motion.div : "div")
+  const Anc = tag("anc")
+  const Mid = tag("mid")
+  const Target = tag("target")
   return (
     <div style={abs(0, 0, 800, 600)}>
       <div testId="elsewhere" style={{ ...abs(500, 300, 50, 50), ...styles.elsewhere } as CSSProperties} />
@@ -124,9 +130,9 @@ function sceneOf(mode: Mode, styles: Styles, ref: (id: Chain) => (node: unknown)
             } as CSSProperties
           }
         >
-          <div testId="mid" ref={ref("mid")} {...tells("mid")} style={{ ...abs(10, 5, 80, 40), ...styles.mid } as CSSProperties}>
-            <div testId="target" ref={ref("target")} {...tells("target")} style={{ ...abs(5, 5, 30, 20), ...styles.target } as CSSProperties} />
-          </div>
+          <Mid testId="mid" ref={ref("mid")} {...tells("mid")} {...moves.mid} style={{ ...abs(10, 5, 80, 40), ...styles.mid } as CSSProperties}>
+            <Target testId="target" ref={ref("target")} {...tells("target")} {...moves.target} style={{ ...abs(5, 5, 30, 20), ...styles.target } as CSSProperties} />
+          </Mid>
         </div>
       </Anc>
     </div>
@@ -134,7 +140,7 @@ function sceneOf(mode: Mode, styles: Styles, ref: (id: Chain) => (node: unknown)
 }
 
 /** A window with a scene in it, three frames old, and the ways to write to it and read from it. */
-function mountScene(mode: Mode, initial: Styles, told?: Told) {
+function mountScene(mode: Mode, initial: Styles, told?: Told, moves?: Motion) {
   const mounted = createTestRoot(WINDOW)
   const renderer = mounted.renderer
   renderer.clockPause()
@@ -147,7 +153,7 @@ function mountScene(mode: Mode, initial: Styles, told?: Told) {
   // A window invalidates at the commit, as the commit says, which is what `flushIfDirty` of the native renderer does.
   const invalidate = () => (renderer as unknown as { native: { flushIfDirty(): void } }).native.flushIfDirty()
   let styles = initial
-  mounted.render(sceneOf(mode, styles, ref, told))
+  mounted.render(sceneOf(mode, styles, ref, told, moves))
   const frames = (count: number) => {
     for (let frame = 0; frame < count; frame++) renderer.drawFrame()
   }
@@ -167,7 +173,7 @@ function mountScene(mode: Mode, initial: Styles, told?: Told) {
     /** Commits a change of style, which a window invalidates at once, and returns without a frame. */
     write(on: Id, change: Style) {
       styles = { ...styles, [on]: { ...styles[on], ...change } }
-      flushSync(() => mounted.root.render(sceneOf(mode, styles, ref, told)))
+      flushSync(() => mounted.root.render(sceneOf(mode, styles, ref, told, moves)))
       invalidate()
     },
     rect(id: Id): Rect {
@@ -479,6 +485,41 @@ describeNative("a read of an animation in skipped content", () => {
         expect(read.dormantTicks, "the frames after the reads tick no more than frames with none").toBe(alone.dormantTicks)
         expect(read.told, "and tell nothing").toEqual(alone.told)
         expect(read.told, "the frames tell nothing while it is skipped").toEqual([])
+      }, SLOW)
+    }
+  }
+})
+
+describeNative("a native motion and a motion value that run in skipped content", () => {
+  const linear = { duration: 1, ease: "linear" } as const
+
+  /** The target after each quarter of a second of what runs on it, read once before the first. */
+  function reads(mode: Mode, how: "motion" | "value"): Rect[] {
+    const x = motionValue(0)
+    const mounted =
+      how === "motion"
+        ? mountScene(mode, {}, undefined, { target: { initial: { x: 0 }, animate: { x: 100 }, transition: linear } })
+        : mountScene(mode, { target: { x } })
+    try {
+      mounted.rect("target")
+      if (how === "value") animate(x, 100, linear)
+      return [250, 250, 250].map((elapsed) => {
+        mounted.renderer.clockAdvance(elapsed)
+        mounted.renderer.drawFrame()
+        return mounted.rect("target")
+      })
+    } finally {
+      mounted.unmount()
+    }
+  }
+
+  for (const how of ["motion", "value"] as const) {
+    for (const mode of ["hidden", "auto"] as const) {
+      it(`reads the target where a visible one is: ${how === "motion" ? "a native motion" : "an animated motion value"} (${mode})`, () => {
+        const want = reads(CONTROL[mode], how)
+        const got = reads(mode, how)
+        expect(got.filter((rect, index) => apart(rect, want[index]!)), `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`).toEqual([])
+        expect(apart(want[0]!, want[2]!), "and it moves the target").toBe(true)
       }, SLOW)
     }
   }
