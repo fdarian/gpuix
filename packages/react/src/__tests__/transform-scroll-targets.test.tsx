@@ -73,8 +73,7 @@ describeNative("a selection dragged to the edge of a transformed list", () => {
   it("scrolls it at the bottom edge it is drawn with at a scale of 0.5", () => {
     const { renderer, scrollTop, unmount } = mount(<ScaledList factor={0.5} />)
     try {
-      // The list is drawn 100 x 80, and y = 75 is 150 in it, inside the edge zone that starts at 133. A press starts a
-      // selection where the text is laid out, so it is aimed there.
+      // The list is drawn 100 x 80, and y = 75 is 150 in it, inside the edge zone that starts at 133.
       drag(renderer, [8, 20], [30, 75])
       expect(scrollTop("list")).toBeGreaterThan(40)
       renderer.nativeSimulateMouseUp(30, 75)

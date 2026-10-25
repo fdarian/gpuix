@@ -185,8 +185,7 @@ impl ElementBounds {
 
     /// [`Self::to_local`] for a point of the window as gpui has it.
     pub fn to_local_point(&self, position: Point<Pixels>) -> Option<Point<Pixels>> {
-        let (x, y) = self.to_local(f64::from(f32::from(position.x)), f64::from(f32::from(position.y)))?;
-        Some(point(px(x as f32), px(y as f32)))
+        window_point_in(&self.to_window, position)
     }
 
     /// Whether the window point `(x, y)` is inside the border box, tested through the inverse of the
@@ -264,6 +263,18 @@ impl ElementBounds {
     }
 }
 
+/// The window point `position` in the space `to_window` maps into the window, or `None` where the
+/// transform flattens the plane or puts the point at the horizon or behind the eye, and nothing is
+/// hit.
+pub(crate) fn window_point_in(to_window: &TransformationMatrix, position: Point<Pixels>) -> Option<Point<Pixels>> {
+    if to_window.is_identity() {
+        return Some(position);
+    }
+    let inverse = to_window.inverse()?;
+    let (x, y) = apply(&inverse, f64::from(f32::from(position.x)), f64::from(f32::from(position.y)))?;
+    Some(point(px(x as f32), px(y as f32)))
+}
+
 /// `(x, y)` after the matrix, or `None` where a matrix with perspective puts it at the horizon or
 /// behind the eye.
 fn apply(matrix: &TransformationMatrix, x: f64, y: f64) -> Option<(f64, f64)> {
@@ -279,7 +290,7 @@ fn apply(matrix: &TransformationMatrix, x: f64, y: f64) -> Option<(f64, f64)> {
 /// moved box where it put the box, moved by `offset`. A replay only moves a subtree by a whole
 /// offset where the transform around it is a translation, which `offset` is a move in the window
 /// of.
-fn moved_matrix(matrix: TransformationMatrix, offset: Point<Pixels>) -> TransformationMatrix {
+pub(crate) fn moved_matrix(matrix: TransformationMatrix, offset: Point<Pixels>) -> TransformationMatrix {
     if matrix.is_identity() {
         return matrix;
     }
@@ -684,10 +695,12 @@ where
         let insets = window.layout_insets(layout_id);
         let window_id = window.window_handle().window_id();
         note_host_node(window, id, layout_id);
-        record_bounds(window_id, id, LaidOut { collapsed_table, ..laid_out.get() }, bounds.origin, insets);
+        let laid_out = LaidOut { collapsed_table, ..laid_out.get() };
+        let to_window = laid_out.to_window;
+        record_bounds(window_id, id, laid_out, bounds.origin, insets);
         let visible = window.visibility() == gpui::Visibility::Visible;
         if let Some(selectable) = selection_start.filter(|_| visible) {
-            crate::text::record_start_region(window_id, bounds, selectable);
+            crate::text::record_start_region(window_id, bounds, selectable, to_window);
         }
         if let Some(report) = &report {
             report(bounds, insets, window, cx);

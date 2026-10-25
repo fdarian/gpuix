@@ -27,8 +27,10 @@ use parking_lot::Mutex;
 
 use gpui::{
     canvas, div, point, prelude::*, px, quad, size, BorderStyle, Bounds, Hsla, SharedString,
-    StyledText, TextLayout, TextRow, TextRun, Window, WindowId,
+    StyledText, TextLayout, TextRow, TextRun, TransformationMatrix, Window, WindowId,
 };
+
+use crate::automation::{moved_matrix, window_point_in};
 
 use super::selection::{self, SelectionState};
 use crate::tape::{Kind, Layered};
@@ -55,6 +57,22 @@ struct RegEntry {
     line: Option<Arc<str>>,
     /// See [`selection::RegisteredText::cell`].
     cell: Option<selection::TableCell>,
+    /// From the space `layout` is in to the window: a press hits the text where it is drawn.
+    to_window: TransformationMatrix,
+}
+
+impl RegEntry {
+    /// The window point in the space of `layout`, `None` where a transform flattens the text.
+    fn local(&self, position: gpui::Point<gpui::Pixels>) -> Option<gpui::Point<gpui::Pixels>> {
+        window_point_in(&self.to_window, position)
+    }
+
+    /// How much the transform scales a length, so that a distance in the space of `layout` can be
+    /// compared with one in another text's.
+    fn scale(&self) -> f32 {
+        let [[a, b], [c, d]] = self.to_window.linear();
+        (a * d - b * c).abs().sqrt()
+    }
 }
 
 /// A subtree that was replayed puts back what it wrote here: the registries keep it until they are
@@ -78,15 +96,20 @@ pub(crate) fn publish(window: WindowId, live: &crate::tape::Live) {
 
 impl Frame {
     fn registry(&mut self) -> &[RegEntry] {
-        self.registry.all(Kind::Text, |data, _| {
-            data.downcast_ref::<(WindowId, RegEntry)>().expect("a text write holds its entry").1.clone()
+        self.registry.all(Kind::Text, |data, offset| {
+            let entry = &data.downcast_ref::<(WindowId, RegEntry)>().expect("a text write holds its entry").1;
+            RegEntry { to_window: moved_matrix(entry.to_window, offset), ..entry.clone() }
         })
     }
 
     fn start_regions(&mut self) -> &[StartRegion] {
         self.start_regions.all(Kind::StartRegion, |data, offset| {
-            let (_, bounds, selectable) = data.downcast_ref::<(WindowId, Bounds<gpui::Pixels>, bool)>().expect("a start region write holds its box");
-            StartRegion { bounds: Bounds::new(bounds.origin + offset, bounds.size), selectable: *selectable }
+            let (_, bounds, selectable, to_window) = data.downcast_ref::<StartRegionWrite>().expect("a start region write holds its box");
+            StartRegion {
+                bounds: Bounds::new(bounds.origin + offset, bounds.size),
+                selectable: *selectable,
+                to_window: moved_matrix(*to_window, offset),
+            }
         })
     }
 
@@ -105,7 +128,11 @@ impl Frame {
 struct StartRegion {
     bounds: Bounds<gpui::Pixels>,
     selectable: bool,
+    /// From the space `bounds` is in to the window.
+    to_window: TransformationMatrix,
 }
+
+type StartRegionWrite = (WindowId, Bounds<gpui::Pixels>, bool, TransformationMatrix);
 
 /// One highlight wash painted this frame, with the boxes it actually drew.
 ///
@@ -187,18 +214,20 @@ pub fn selection_frame_reset(
 ///
 /// Only `track_host_bounds` calls this, so a start region is
 /// always the same box automation already uses. Last painted region that contains the point wins.
-pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
+pub fn record_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool, to_window: TransformationMatrix) {
     crate::tape::write(
         Kind::StartRegion,
-        (window, bounds, selectable),
-        |(window, bounds, selectable)| push_start_region(*window, *bounds, *selectable),
-        |(_, bounds, selectable), offset| format!("start region {:?} {selectable}", Bounds::new(bounds.origin + offset, bounds.size)),
+        (window, bounds, selectable, to_window),
+        |(window, bounds, selectable, to_window)| push_start_region(*window, *bounds, *selectable, *to_window),
+        |(_, bounds, selectable, to_window), offset| {
+            format!("start region {:?} {selectable} {:?}", Bounds::new(bounds.origin + offset, bounds.size), moved_matrix(*to_window, offset))
+        },
     );
 }
 
-fn push_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool) {
+fn push_start_region(window: WindowId, bounds: Bounds<gpui::Pixels>, selectable: bool, to_window: TransformationMatrix) {
     with_frame(window, |frame| {
-        frame.start_regions.push(StartRegion { bounds, selectable })
+        frame.start_regions.push(StartRegion { bounds, selectable, to_window })
     });
 }
 
@@ -209,7 +238,9 @@ fn start_region_at(window: WindowId, position: gpui::Point<gpui::Pixels>) -> Opt
             .start_regions()
             .iter()
             .rev()
-            .find(|region| region.bounds.contains(&position))
+            .find(|region| {
+                window_point_in(&region.to_window, position).is_some_and(|local| region.bounds.contains(&local))
+            })
             .map(|region| region.selectable)
     })
 }
@@ -578,6 +609,7 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     group,
                     line: line.clone(),
                     cell,
+                    to_window: window.transform(),
                 };
                 crate::tape::write(
                     Kind::Text,
@@ -586,14 +618,15 @@ pub fn selectable_text(opts: SelectableText) -> gpui::AnyElement {
                     |(window, entry)| with_frame(*window, |frame| frame.registry.push(entry.clone())),
                     |(_, entry), _| {
                         format!(
-                            "text {} {:?} {:?} {:?} {:?} {:?} {:?}",
+                            "text {} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
                             entry.key,
                             entry.doc,
                             entry.text,
                             entry.layout.bounds(),
                             entry.group,
                             entry.line,
-                            entry.cell
+                            entry.cell,
+                            entry.to_window
                         )
                     },
                 );
@@ -785,14 +818,25 @@ fn register_link_listener(
     });
 }
 
-/// `(element index, byte offset)` for a window position.
+/// Where a window position lands in the registry.
+struct RegistryHit {
+    /// The index into the registry, which is in paint order.
+    entry: usize,
+    /// The byte offset in the entry's text.
+    index: usize,
+    /// The position in the space of the entry's layout.
+    local: gpui::Point<gpui::Pixels>,
+}
+
+/// The text a window position lands in, and the byte offset in it.
 ///
-/// The index is into the registry, which is in paint order. Prefers the element whose full
-/// bounds contain the point, taking the LAST such element in paint order so an overlay wins over
-/// what it covers. Only
-/// when the point is outside every text does it fall back to the nearest by
-/// vertical then horizontal distance. `index_for_position` then clamps: left
-/// of a line is the line start, right of a line is the line end.
+/// Each text is hit through its own transform: the position is mapped into the space the text is
+/// laid out in, as Chrome does for `caretPositionFromPoint`, and a text a transform flattens is
+/// not hit. Prefers the text whose full bounds contain the point, taking the LAST such text in
+/// paint order so an overlay wins over what it covers. Only when the point is outside every
+/// text does it fall back to the nearest by vertical then horizontal distance, measured in the
+/// text's own space and scaled to the window's. `index_for_position` then clamps: left of a line
+/// is the line start, right of a line is the line end.
 ///
 /// Mouse-down uses [`registry_point_on_line`] so a press in a composer or
 /// titlebar does not start a selection on the nearest paragraph. The drag
@@ -806,22 +850,26 @@ fn register_link_listener(
 fn registry_point(
     window: WindowId,
     position: gpui::Point<gpui::Pixels>,
-) -> Option<(usize, usize)> {
+) -> Option<RegistryHit> {
     with_frame(window, |frame| {
         let reg = frame.registry();
-        let mut contained: Option<usize> = None;
-        let mut nearest: Option<(usize, (f32, f32))> = None;
+        let mut contained: Option<(usize, gpui::Point<gpui::Pixels>)> = None;
+        let mut nearest: Option<(usize, gpui::Point<gpui::Pixels>, (f32, f32))> = None;
 
         for (ei, entry) in reg.iter().enumerate() {
+            let Some(local) = entry.local(position) else {
+                continue;
+            };
             let b = entry.layout.bounds();
-            if b.contains(&position) {
-                contained = Some(ei);
+            if b.contains(&local) {
+                contained = Some((ei, local));
                 continue;
             }
-            let dy = if position.y < b.top() {
-                f32::from(b.top() - position.y)
-            } else if position.y > b.bottom() {
-                f32::from(position.y - b.bottom())
+            let scale = entry.scale();
+            let dy = if local.y < b.top() {
+                f32::from(b.top() - local.y)
+            } else if local.y > b.bottom() {
+                f32::from(local.y - b.bottom())
             } else {
                 0.0
             };
@@ -829,26 +877,24 @@ fn registry_point(
             // drag in the right-hand column does not snap to the left one.
             // Compared lexicographically: vertical distance dominates outright,
             // because a weighted sum lets a huge dx beat a 1px dy.
-            let dx = if position.x < b.left() {
-                f32::from(b.left() - position.x)
-            } else if position.x > b.right() {
-                f32::from(position.x - b.right())
+            let dx = if local.x < b.left() {
+                f32::from(b.left() - local.x)
+            } else if local.x > b.right() {
+                f32::from(local.x - b.right())
             } else {
                 0.0
             };
-            let distance = (dy, dx);
-            if nearest.is_none_or(|(_, best): (usize, (f32, f32))| {
-                (distance.0, distance.1) < (best.0, best.1)
-            }) {
-                nearest = Some((ei, distance));
+            let distance = (dy * scale, dx * scale);
+            if nearest.is_none_or(|(_, _, best): (usize, _, (f32, f32))| distance < best) {
+                nearest = Some((ei, local, distance));
             }
         }
 
-        let ei = contained.or(nearest.map(|(ei, _)| ei))?;
-        let ix = match reg[ei].layout.index_for_position(position) {
+        let (ei, local) = contained.or(nearest.map(|(ei, local, _)| (ei, local)))?;
+        let index = match reg[ei].layout.index_for_position(local) {
             Ok(ix) | Err(ix) => ix,
         };
-        Some((ei, ix))
+        Some(RegistryHit { entry: ei, index, local })
     })
 }
 
@@ -858,11 +904,11 @@ fn registry_point(
 fn registry_point_on_line(
     window: WindowId,
     position: gpui::Point<gpui::Pixels>,
-) -> Option<(usize, usize)> {
-    let (ei, ix) = registry_point(window, position)?;
+) -> Option<RegistryHit> {
+    let hit = registry_point(window, position)?;
     with_frame(window, |frame| {
-        let b = frame.registry().get(ei)?.layout.bounds();
-        (position.y >= b.top() && position.y <= b.bottom()).then_some((ei, ix))
+        let b = frame.registry().get(hit.entry)?.layout.bounds();
+        (hit.local.y >= b.top() && hit.local.y <= b.bottom()).then_some(hit)
     })
 }
 
@@ -895,7 +941,7 @@ pub(crate) fn update_drag_at(
     let Some(head) = registry_point(window, position) else {
         return false;
     };
-    resolve_drag(window, selection, head)
+    resolve_drag(window, selection, (head.entry, head.index))
 }
 
 /// One window-level mouse-down for the whole frame.
@@ -926,12 +972,12 @@ fn register_down_listener(window: &mut Window, selection: &SharedSelection) {
             window.refresh();
             return;
         }
-        let hit = registry_point_on_line(window_id, e.position).and_then(|(ei, ix)| {
+        let hit = registry_point_on_line(window_id, e.position).and_then(|hit| {
             with_frame(window_id, |frame| {
                 frame
                     .registry()
-                    .get(ei)
-                    .map(|entry| (entry.key.clone(), entry.text.clone(), ix))
+                    .get(hit.entry)
+                    .map(|entry| (entry.key.clone(), entry.text.clone(), hit.index))
             })
         });
         let mut sel = selection.lock();
@@ -1304,6 +1350,7 @@ mod tests {
                 group: None,
                 line: None,
                 cell: None,
+                to_window: TransformationMatrix::unit(),
             });
             frame.highlights.push(PaintedHighlight {
                 element_id: 1,
@@ -1319,6 +1366,7 @@ mod tests {
             window,
             Bounds::new(point(px(0.0), px(0.0)), size(px(10.0), px(10.0))),
             false,
+            TransformationMatrix::unit(),
         );
         log_painted_text(window, text);
     }
