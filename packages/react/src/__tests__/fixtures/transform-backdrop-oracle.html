@@ -1,0 +1,119 @@
+<!doctype html>
+<!--
+  Oracle for transform-backdrop.test.tsx: what headless Chrome paints for a `backdrop-filter` (and a `filter`) on a box
+  under a CSS transform. A cell is 300x300 CSS px; the box is centred at (150, 150), 100x60 with a 12px radius (200x120
+  with 24px in the case under a scale(0.5) parent, so it is the same size on screen). Regenerate with
+
+    sh transform-backdrop-oracle.sh
+
+  `shape` cells put `backdrop-filter: invert(1)` over a flat colour, so the inverted pixels are exactly the box's shape:
+  `points` are the inverted fraction (1 - red / 255) at pixels just inside and outside the edges and the corner arcs of the
+  transformed box, and just inside the corners of its bounding box (1.5 px in). `blur` cells put a blur over a hard edge (vertical for
+  `v`, horizontal for `h`) through the box's centre, and `filter` cells blur a white box on black: `lines` are the red
+  channel along a line across the edge, and `sigma` the standard deviation of the Gaussian-blurred step that fits it best.
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1600px;height:1650px;overflow:hidden;background:#fff}
+.cell{position:absolute;width:300px;height:300px;overflow:hidden}
+.wrap{position:absolute;left:0;top:0;width:300px;height:300px;transform-origin:150px 150px}
+.box{position:absolute}
+</style></head><body>
+<script>
+const FLAT = '#ff8000';
+const STEP_V = 'linear-gradient(to right, #000 150px, #fff 150px)';
+const STEP_H = 'linear-gradient(to bottom, #000 150px, #fff 150px)';
+// `own` is the transform of the box, `parent` the one of a wrapper around it; both act about the box's centre.
+const transforms = [
+  { id: 'none', own: 'none' },
+  { id: 'rotate30', own: 'rotate(30deg)' },
+  { id: 'scale2', own: 'scale(2)' },
+  { id: 'scale2x1', own: 'scale(2, 1)' },
+  { id: 'skewx20', own: 'skewX(20deg)' },
+  { id: 'rotate30-in-scale05', own: 'rotate(30deg)', parent: 'scale(0.5)', big: true },
+];
+const cells = [];
+for (const t of transforms) cells.push({ id: `shape-${t.id}`, kind: 'shape', ...t });
+for (const t of transforms) cells.push({ id: `blur-v-${t.id}`, kind: 'blur', edge: 'v', ...t });
+for (const t of transforms) cells.push({ id: `blur-h-${t.id}`, kind: 'blur', edge: 'h', ...t });
+for (const id of ['none', 'scale2', 'scale2x1']) {
+  cells.push({ id: `filter-${id}`, kind: 'filter', ...transforms.find((t) => t.id === id) });
+}
+
+const COLS = 5;
+for (const [index, cell] of cells.entries()) {
+  const w = cell.big ? 200 : 100, h = cell.big ? 120 : 60, radius = cell.big ? 24 : 12;
+  const blur = cell.big ? 8 : 4;
+  const x = (index % COLS) * 320 + 10, y = Math.floor(index / COLS) * 320 + 10;
+  const element = document.createElement('div');
+  element.className = 'cell';
+  element.style.left = x + 'px';
+  element.style.top = y + 'px';
+  element.style.background = cell.kind === 'shape' ? FLAT : cell.kind === 'filter' ? '#000' : cell.edge === 'v' ? STEP_V : STEP_H;
+  const wrap = document.createElement('div');
+  wrap.className = 'wrap';
+  if (cell.parent) wrap.style.transform = cell.parent;
+  const box = document.createElement('div');
+  box.className = 'box';
+  Object.assign(box.style, {
+    left: 150 - w / 2 + 'px', top: 150 - h / 2 + 'px', width: w + 'px', height: h + 'px',
+    borderRadius: radius + 'px', transform: cell.own,
+  });
+  if (cell.kind === 'shape') box.style.backdropFilter = 'invert(1)';
+  else if (cell.kind === 'blur') box.style.backdropFilter = `blur(${blur}px)`;
+  else { box.style.background = '#fff'; box.style.filter = `blur(${blur}px)`; }
+  wrap.append(box);
+  element.append(wrap);
+  document.body.append(element);
+
+  // Where a point of the box (relative to its centre) is in the cell.
+  const matrix = new DOMMatrix(cell.parent || 'none').multiply(new DOMMatrix(cell.own));
+  const place = (px, py) => {
+    const p = matrix.transformPoint(new DOMPoint(px, py));
+    return [150 + p.x, 150 + p.y];
+  };
+  cell.box = { x, y };
+  cell.matrix = [matrix.a, matrix.b, matrix.c, matrix.d];
+  cell.points = [];
+  cell.lines = [];
+  const point = (name, px, py) => {
+    const [cx, cy] = place(px, py);
+    cell.points.push({ name, x: cx, y: cy });
+  };
+  const line = (name, from, to) => {
+    // Pixels from `from` to `to` (exclusive) along x or y at a fixed other coordinate.
+    cell.lines.push({ name, ...from, ...to });
+  };
+  if (cell.kind === 'shape') {
+    const hw = w / 2, hh = h / 2;
+    for (const [name, dx, dy] of [['top', 0, -1], ['bottom', 0, 1], ['left', -1, 0], ['right', 1, 0]]) {
+      const ex = dx * hw, ey = dy * hh;
+      point(`edge-${name}-out`, ex + dx * 3, ey + dy * 3);
+      point(`edge-${name}-in`, ex - dx * 3, ey - dy * 3);
+    }
+    const arc = Math.SQRT1_2;
+    for (const [name, sx, sy] of [['tl', -1, -1], ['tr', 1, -1], ['br', 1, 1], ['bl', -1, 1]]) {
+      const ax = sx * (hw - radius + radius * arc), ay = sy * (hh - radius + radius * arc);
+      point(`arc-${name}-out`, ax + sx * arc * 2.5, ay + sy * arc * 2.5);
+      point(`arc-${name}-in`, ax - sx * arc * 2.5, ay - sy * arc * 2.5);
+    }
+    const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([cx, cy]) => place(cx, cy));
+    const low = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1]))];
+    const high = [Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
+    cell.points.push({ name: 'bbox-tl', x: low[0] + 1.5, y: low[1] + 1.5 });
+    cell.points.push({ name: 'bbox-tr', x: high[0] - 1.5, y: low[1] + 1.5 });
+    cell.points.push({ name: 'bbox-br', x: high[0] - 1.5, y: high[1] - 1.5 });
+    cell.points.push({ name: 'bbox-bl', x: low[0] + 1.5, y: high[1] - 1.5 });
+  } else if (cell.kind === 'blur') {
+    // Across the step through the centre, 24 px each way.
+    if (cell.edge === 'v') line('across', { x: 126, y: 150 }, { axis: 'x', count: 48, edge: 24 });
+    else line('across', { x: 150, y: 126 }, { axis: 'y', count: 48, edge: 24 });
+  } else {
+    // The left edge of the box on screen, and its top edge.
+    const half = place(-w / 2, 0)[0], top = place(0, -h / 2)[1];
+    line('left edge', { x: Math.round(half) - 24, y: 150 }, { axis: 'x', count: 48, edge: 24 });
+    line('top edge', { x: 150, y: Math.round(top) - 24 }, { axis: 'y', count: 48, edge: 24 });
+  }
+}
+document.body.dataset.oracle = JSON.stringify(cells);
+</script>
