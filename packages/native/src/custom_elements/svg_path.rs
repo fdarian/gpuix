@@ -13,7 +13,8 @@ const ACCURACY: f64 = 1e-3;
 
 /// A path command in its absolute form. `H`, `V`, `S`, `T` and `A` stay what
 /// they are, so two paths morph only when they were written with the same
-/// commands, as CSS requires.
+/// commands, as CSS requires. Arc flags do not decide it: they blend as the
+/// numbers 0 and 1 and round half up, so they swap halfway.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Command {
     MoveTo,
@@ -48,8 +49,8 @@ impl Command {
 #[derive(Clone, Debug, PartialEq)]
 struct Segment {
     command: Command,
-    /// Arc flags are not numbers to blend, so they live apart and take part in
-    /// the structure comparison instead.
+    /// The `large-arc` and `sweep` flags of an arc. They sit between the rotation and the end point,
+    /// and [`PathData::numbers`] lists them there as 0 and 1.
     flags: Option<(bool, bool)>,
     /// For an arc: `rx ry x-axis-rotation x y`.
     numbers: Vec<f64>,
@@ -57,7 +58,7 @@ struct Segment {
 
 impl Segment {
     fn same_structure(&self, other: &Self) -> bool {
-        self.command == other.command && self.flags == other.flags
+        self.command == other.command
     }
 }
 
@@ -179,8 +180,8 @@ impl PathData {
         Ok(Self { segments })
     }
 
-    /// Whether the two paths have the same commands (and arc flags), so every
-    /// number can be blended pairwise.
+    /// Whether the two paths have the same commands, so every number can be
+    /// blended pairwise.
     pub(crate) fn same_structure(&self, other: &Self) -> bool {
         self.segments.len() == other.segments.len()
             && self
@@ -191,27 +192,37 @@ impl PathData {
     }
 
     pub(crate) fn numbers(&self) -> Vec<f64> {
-        self.segments
-            .iter()
-            .flat_map(|segment| segment.numbers.iter().copied())
-            .collect()
+        let mut numbers = Vec::new();
+        for segment in &self.segments {
+            for (index, number) in segment.numbers.iter().enumerate() {
+                if let (3, Some((large_arc, sweep))) = (index, segment.flags) {
+                    numbers.extend([f64::from(u8::from(large_arc)), f64::from(u8::from(sweep))]);
+                }
+                numbers.push(*number);
+            }
+        }
+        numbers
     }
 
     /// The same commands with `numbers` in place of this path's, in the order
-    /// [`numbers`](Self::numbers) lists them.
+    /// [`numbers`](Self::numbers) lists them. An arc flag is set from 0.5 up.
     pub(crate) fn with_numbers(&self, numbers: &[f64]) -> Self {
         let mut remaining = numbers.iter().copied();
+        let mut next = || remaining.next().unwrap_or_default();
         Self {
             segments: self
                 .segments
                 .iter()
-                .map(|segment| Segment {
-                    numbers: segment
-                        .numbers
-                        .iter()
-                        .map(|_| remaining.next().unwrap_or_default())
-                        .collect(),
-                    ..segment.clone()
+                .map(|segment| {
+                    let mut flags = None;
+                    let mut written = Vec::with_capacity(segment.numbers.len());
+                    for index in 0..segment.numbers.len() {
+                        if let (3, Some(_)) = (index, segment.flags) {
+                            flags = Some((next() >= 0.5, next() >= 0.5));
+                        }
+                        written.push(next());
+                    }
+                    Segment { numbers: written, flags, command: segment.command }
                 })
                 .collect(),
         }
@@ -330,17 +341,32 @@ mod tests {
     }
 
     #[test]
-    fn arc_flags_stay_between_the_radii_and_the_end_point() {
-        let arc = parse("M0 0 a5 5 0 1 1 10 0");
-        assert_eq!(arc.to_data(), "M 0 0 A 5 5 0 1 1 10 0");
-        assert_eq!(arc.numbers(), vec![0.0, 0.0, 5.0, 5.0, 0.0, 10.0, 0.0]);
+    fn arc_flags_stay_between_the_rotation_and_the_end_point() {
+        let arc = parse("M0 0 a5 5 0 1 0 10 0");
+        assert_eq!(arc.to_data(), "M 0 0 A 5 5 0 1 0 10 0");
+        assert_eq!(arc.numbers(), vec![0.0, 0.0, 5.0, 5.0, 0.0, 1.0, 0.0, 10.0, 0.0]);
+    }
+
+    #[test]
+    fn arc_flags_are_set_from_half_up_when_blended() {
+        let arc = parse("M0 0 A5 5 0 0 1 10 0");
+        let at = |large: f64, sweep: f64| {
+            let mut numbers = arc.numbers();
+            numbers[5] = large;
+            numbers[6] = sweep;
+            arc.with_numbers(&numbers).to_data()
+        };
+        assert_eq!(at(0.49, 0.51), "M 0 0 A 5 5 0 0 1 10 0");
+        assert_eq!(at(0.5, 0.5), "M 0 0 A 5 5 0 1 1 10 0");
+        assert_eq!(at(-0.2, 1.2), "M 0 0 A 5 5 0 0 1 10 0");
     }
 
     #[test]
     fn same_commands_have_the_same_structure_whatever_their_case() {
         assert!(parse("M0 0 L10 10").same_structure(&parse("m5 5 l2 2")));
         assert!(!parse("M0 0 L10 10").same_structure(&parse("M0 0 H10")));
-        assert!(!parse("M0 0 A5 5 0 0 1 10 0").same_structure(&parse("M0 0 A5 5 0 1 1 10 0")));
+        assert!(parse("M0 0 A5 5 0 0 1 10 0").same_structure(&parse("M0 0 A5 5 0 1 0 10 0")));
+        assert!(!parse("M0 0 A5 5 0 0 1 10 0").same_structure(&parse("M0 0 L10 0")));
         assert!(!parse("M0 0 L10 10").same_structure(&parse("M0 0 L10 10 L20 0")));
     }
 

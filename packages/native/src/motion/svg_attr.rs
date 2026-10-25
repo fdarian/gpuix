@@ -239,13 +239,23 @@ impl SvgAttr {
         self.parse_css(attributes.get(self.name())?, colors).ok()
     }
 
-    /// [`parse`](Self::parse) for a CSS animation, where a paint of `none` stays
-    /// the keyword: CSS does not blend it with a colour, it swaps halfway.
+    /// [`parse`](Self::parse) for a CSS animation, where the keyword a property takes beside its values
+    /// (`none` for a paint, a dash list or a path, `auto` for a size or a radius) stays the keyword: CSS
+    /// does not blend it with a value, it swaps halfway.
     pub(super) fn parse_css(self, value: &Value, colors: &ColorContext) -> Result<AnimValue, String> {
-        if matches!(self.kind(), Kind::Colour) && value.as_str().is_some_and(|text| text.trim() == "none") {
-            return Ok(none_paint());
+        if let Some(keyword) = self.keyword().filter(|keyword| value.as_str().is_some_and(|text| text.trim() == *keyword)) {
+            return Ok(AnimValue::Keyword(Some(keyword.to_string())));
         }
         self.parse(value, colors)
+    }
+
+    /// The keyword CSS lets the property be instead of a value.
+    fn keyword(self) -> Option<&'static str> {
+        match (self.kind(), self.css_initial_rule()) {
+            (Kind::Colour, _) => Some("none"),
+            (_, CssInitial::Keyword(keyword)) => Some(keyword),
+            _ => None,
+        }
     }
 
     /// Whether `items` is one value of a list-valued attribute (a dash list)
@@ -318,10 +328,6 @@ impl SvgAttr {
             (_, value) => value,
         }
     }
-}
-
-fn none_paint() -> AnimValue {
-    AnimValue::Keyword(Some("none".to_string()))
 }
 
 /// The text of an animated value as an XML attribute.
@@ -473,6 +479,30 @@ mod tests {
         assert!(dashes(serde_json::json!("none")).is_err());
         assert!(dashes(serde_json::json!([])).is_err());
         assert!(dashes(serde_json::json!([-1])).is_err());
+    }
+
+    #[test]
+    fn the_keyword_a_property_takes_stays_the_keyword_in_keyframes() {
+        for (attr, keyword) in [
+            (SvgAttr::Fill, "none"),
+            (SvgAttr::Stroke, "none"),
+            (SvgAttr::StrokeDasharray, "none"),
+            (SvgAttr::D, "none"),
+            (SvgAttr::Width, "auto"),
+            (SvgAttr::Height, "auto"),
+            (SvgAttr::Rx, "auto"),
+            (SvgAttr::Ry, "auto"),
+        ] {
+            assert_eq!(
+                attr.parse_css(&serde_json::json!(keyword), &colors()).unwrap(),
+                AnimValue::Keyword(Some(keyword.to_string())),
+                "{attr:?}"
+            );
+        }
+        // Motion has no such keyword, and a property without one refuses the word.
+        assert!(SvgAttr::Width.parse(&serde_json::json!("auto"), &colors()).is_err());
+        assert!(SvgAttr::R.parse_css(&serde_json::json!("auto"), &colors()).is_err());
+        assert!(SvgAttr::StrokeWidth.parse_css(&serde_json::json!("none"), &colors()).is_err());
     }
 
     #[test]

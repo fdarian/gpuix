@@ -28,7 +28,7 @@ use super::measure::Measurement;
 use super::property::{AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
 use super::track::{Goal, Track};
-use super::value::{AnimValue, Colors, Interpolation, ParentValues};
+use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentValues};
 use super::web_animation::{next_seq, ApiEvent, Command, Info, Kind, Playback};
 use super::{needs_layout, resolve_keyframes, InterpolateSize, PropKey};
 use crate::color::ColorContext;
@@ -674,6 +674,9 @@ enum PropPlan {
     /// A length against a keyword, which swaps halfway through an interval
     /// unless `interpolate-size` allows keywords.
     Discrete { prop: AnimProp, stops: Vec<Stop> },
+    /// An SVG property some neighbouring keyframes of which cannot blend (`none` against a value, paths
+    /// of other commands). CSS decides each interval on its own: the others still blend.
+    Segments { key: PropKey, stops: Vec<Stop>, pairs: Vec<Pair> },
 }
 
 impl PropPlan {
@@ -704,6 +707,20 @@ impl PropPlan {
                     }
                 };
                 (PropKey::Style(*prop), value)
+            }
+            Self::Segments { key, stops, pairs } => {
+                let last = &stops[stops.len() - 1];
+                let value = if progress <= stops[0].offset {
+                    stops[0].value.clone()
+                } else if progress >= last.offset {
+                    last.value.clone()
+                } else {
+                    let index = stops.partition_point(|stop| stop.offset <= progress) - 1;
+                    let (from, to) = (&stops[index], &stops[index + 1]);
+                    let local = (progress - from.offset) / (to.offset - from.offset);
+                    Some(key.clamp_value(pairs[index].at(ease(local.clamp(0.0, 1.0), &from.timing))))
+                };
+                (*key, value)
             }
         }
     }
@@ -849,6 +866,22 @@ impl Planner<'_> {
             .iter()
             .map(|stop| stop.value.clone().expect("an unset size is discrete unless keywords are allowed"))
             .collect();
+        if matches!(key, PropKey::Svg(_)) {
+            let pairs: Result<Vec<Pair>, String> = literal
+                .windows(2)
+                .map(|window| pair_in(key.name(), &window[0], &window[1], Interpolation::Css))
+                .collect();
+            match pairs {
+                Ok(pairs) if pairs.iter().any(Pair::is_discrete) => {
+                    return Some(PropPlan::Segments { key, stops, pairs });
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::warn!("CSS animation cannot interpolate {}: {error}", key.name());
+                    return None;
+                }
+            }
+        }
         let resolved = if needs_layout(&literal) {
             let PropKey::Style(prop) = key else {
                 unreachable!("only a style property is auto");
@@ -4422,6 +4455,68 @@ mod tests {
             assert_eq!(attribute(&before, name), none, "before, {name}");
             assert_eq!(attribute(&after, name), value, "after, {name}");
         }
+    }
+
+    #[test]
+    fn a_keyword_written_in_a_keyframe_swaps_halfway_against_a_value() {
+        let mut frames = Frames::new();
+        frames.define(
+            "written",
+            r##"{
+                "from": { "strokeDasharray": "none", "d": "none", "width": "auto", "rx": "auto", "fill": "none" },
+                "to": { "strokeDasharray": [10, 4], "d": "M0 0 L10 10", "width": 20, "rx": 5, "fill": "#ff0000" }
+            }"##,
+        );
+        let declared = fading("written 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let before = frames.shape(499, &declared, &attrs(&[]), &[]);
+        let after = frames.shape(500, &declared, &attrs(&[]), &[]);
+        for (name, keyword, value) in [
+            ("stroke-dasharray", "none", "10 4"),
+            ("d", "none", "M 0 0 L 10 10"),
+            ("width", "auto", "20"),
+            ("rx", "auto", "5"),
+        ] {
+            assert_eq!(attribute(&before, name), keyword, "before, {name}");
+            assert_eq!(attribute(&after, name), value, "from 50%, {name}");
+        }
+        assert_eq!(attribute(&before, "fill"), "none");
+        assert!(attribute(&after, "fill").starts_with("rgba(255"), "{after:?}");
+    }
+
+    #[test]
+    fn each_interval_of_a_property_blends_or_swaps_on_its_own() {
+        let mut frames = Frames::new();
+        frames.define(
+            "mixed",
+            r##"{ "from": { "fill": "#ff0000", "d": "M0 0 L10 0" }, "50%": { "fill": "#0000ff", "d": "M0 0 H10" }, "to": { "fill": "none", "d": "M0 0 H30" } }"##,
+        );
+        let declared = fading("mixed 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        let first = frames.shape(250, &declared, &attrs(&[]), &[]);
+        assert!(attribute(&first, "fill").starts_with("rgba(127.5"), "the first interval blends: {first:?}");
+        assert_eq!(attribute(&first, "d"), "M 0 0 H 10", "the first path swaps halfway through its interval");
+        let before = frames.shape(740, &declared, &attrs(&[]), &[]);
+        let after = frames.shape(760, &declared, &attrs(&[]), &[]);
+        assert!(attribute(&before, "fill").starts_with("rgba(0.000, 0.000, 255"), "{before:?}");
+        assert_eq!(attribute(&after, "fill"), "none");
+        assert_eq!(attribute(&before, "d"), "M 0 0 H 19.6");
+        assert_eq!(attribute(&after, "d"), "M 0 0 H 20.4");
+    }
+
+    #[test]
+    fn arc_flags_swap_halfway_while_the_rest_of_the_path_blends() {
+        let mut frames = Frames::new();
+        frames.define(
+            "arc",
+            r#"{ "from": { "d": "M0 0 A10 10 0 0 1 20 20" }, "to": { "d": "M0 0 A20 30 0 1 0 40 40" } }"#,
+        );
+        let declared = fading("arc 1s linear");
+        frames.shape(0, &declared, &attrs(&[]), &[]);
+        assert_eq!(attribute(&frames.shape(250, &declared, &attrs(&[]), &[]), "d"), "M 0 0 A 12.5 15 0 0 1 25 25");
+        assert_eq!(attribute(&frames.shape(499, &declared, &attrs(&[]), &[]), "d"), "M 0 0 A 14.99 19.98 0 0 1 29.98 29.98");
+        assert_eq!(attribute(&frames.shape(500, &declared, &attrs(&[]), &[]), "d"), "M 0 0 A 15 20 0 1 1 30 30");
+        assert_eq!(attribute(&frames.shape(501, &declared, &attrs(&[]), &[]), "d"), "M 0 0 A 15.01 20.02 0 1 0 30.02 30.02");
     }
 
     #[test]

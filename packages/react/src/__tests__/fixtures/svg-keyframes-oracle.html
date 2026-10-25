@@ -18,6 +18,7 @@ body{font:16px/20px Menlo;color:#000}
 const LENGTHS = new Set(['strokeDashoffset', 'strokeWidth', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'width', 'height', 'fontSize', 'letterSpacing']);
 const kebab = (name) => name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
 const cssValue = (prop, value) => {
+  if (value === 'none' || value === 'auto') return value;
   if (prop === 'd') return /^path\(/.test(value) ? value : `path("${value}")`;
   if (prop === 'strokeDasharray' && Array.isArray(value)) return value.map((n) => n + 'px').join(' ');
   if (typeof value === 'number') return LENGTHS.has(prop) || prop === 'strokeDasharray' ? value + 'px' : String(value);
@@ -168,6 +169,108 @@ cases.push(
   { name: 'a missing endpoint of font-size is the one the group gives', keyframes: ['growFont'], nodes: [node('g', 'g', { fontSize: 20 }, [node('t', 'text', { x: 10, y: 50, text: 'hi' }, [], { animation: 'growFont 1s linear' })])], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'font-size', initial: '20px' }] },
   { name: 'a missing endpoint of stroke-dasharray is the one the group gives', keyframes: ['shrinkDashes'], nodes: [node('g', 'g', { strokeDasharray: '4 2' }, [path('t', { strokeDasharray: undefined }, { animation: 'shrinkDashes 1s linear' })])], animate: 't', times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'stroke-dasharray', initial: '4px, 2px' }] },
   { name: 'a missing endpoint of r is not the group\'s', keyframes: ['toRadius'], nodes: [node('g', 'g', { r: 40 }, [circle('t', { r: undefined }, { animation: 'toRadius 1s linear' })])], animate: 't', times: [0, 500, 999], reads: [{ node: 't', prop: 'r', initial: '0px' }] },
+);
+
+// `none` and `auto` written in a keyframe against a value, in both directions and in the middle of three. Chrome blends
+// the pair when the property has a value that blends with it and swaps the two halfway otherwise (`discrete`).
+const KEYWORD_TIMES = [0, 250, 490, 499, 500, 501, 510, 750, 999];
+const KEYWORDS = [
+  { prop: 'fill', tag: 'circle', keyword: 'none', value: '#ff0000', other: '#0000ff', initial: 'rgb(0, 0, 0)' },
+  { prop: 'stroke', tag: 'circle', keyword: 'none', value: '#ff0000', other: '#0000ff', initial: 'none' },
+  { prop: 'strokeDasharray', tag: 'circle', keyword: 'none', value: '10 4', other: '4 2', initial: 'none' },
+  { prop: 'd', tag: 'path', keyword: 'none', value: 'M10 10 L50 50', other: 'M10 50 L50 10', initial: 'none' },
+  { prop: 'width', tag: 'rect', keyword: 'auto', value: 20, other: 40, initial: '0px' },
+  { prop: 'height', tag: 'rect', keyword: 'auto', value: 20, other: 40, initial: '0px' },
+  { prop: 'rx', tag: 'rect', keyword: 'auto', value: 20, other: 10, initial: 'auto' },
+  { prop: 'ry', tag: 'rect', keyword: 'auto', value: 20, other: 10, initial: 'auto' },
+  { prop: 'rx', tag: 'ellipse', keyword: 'auto', value: 20, other: 10, initial: '0px' },
+  { prop: 'ry', tag: 'ellipse', keyword: 'auto', value: 20, other: 10, initial: '0px' },
+];
+const keywordShape = (entry, name) => {
+  const style = { animation: `${name} 1s linear` };
+  const without = (attrs) => Object.assign(attrs, { [entry.prop]: undefined });
+  return {
+    circle: () => circle('t', without({}), style),
+    rect: () => node('t', 'rect', without({ x: 10, y: 10, width: 50, height: 50 }), [], style),
+    ellipse: () => node('t', 'ellipse', without({ cx: 50, cy: 50, rx: 5, ry: 5 }), [], style),
+    path: () => node('t', 'path', without({ d: 'M10 10 L50 10 L50 50', stroke: '#000000', strokeWidth: 4 }), [], style),
+  }[entry.tag]();
+};
+for (const entry of KEYWORDS) {
+  const label = `${kebab(entry.prop)} of a ${entry.tag}`;
+  const stops = {
+    [`from ${entry.keyword}`]: { from: { [entry.prop]: entry.keyword }, to: { [entry.prop]: entry.value } },
+    [`${entry.keyword} at the end`]: { from: { [entry.prop]: entry.value }, to: { [entry.prop]: entry.keyword } },
+    [`${entry.keyword} in the middle`]: { from: { [entry.prop]: entry.value }, '50%': { [entry.prop]: entry.keyword }, to: { [entry.prop]: entry.other } },
+    [`${entry.keyword} on both ends`]: { from: { [entry.prop]: entry.keyword }, '50%': { [entry.prop]: entry.value }, to: { [entry.prop]: entry.keyword } },
+    [`${entry.keyword} after a blend`]: { from: { [entry.prop]: entry.value }, '50%': { [entry.prop]: entry.other }, to: { [entry.prop]: entry.keyword } },
+    [`${entry.keyword} before a blend`]: { from: { [entry.prop]: entry.keyword }, '50%': { [entry.prop]: entry.value }, to: { [entry.prop]: entry.other } },
+  };
+  for (const [what, frames] of Object.entries(stops)) {
+    const name = `keyword-${entry.tag}-${entry.prop}-${what.replace(/ /g, '-')}`;
+    KEYFRAMES[name] = frames;
+    cases.push({ name: `${label}: ${what}`, keyframes: [name], nodes: [keywordShape(entry, name)], animate: 't', times: what.includes('blend') ? [0, 125, 250, 375, 499, 500, 501, 625, 750, 875, 999] : KEYWORD_TIMES, reads: [{ node: 't', prop: kebab(entry.prop), initial: entry.initial }] });
+  }
+}
+
+// Paths: `d` blends when both have the same commands once Chrome has made them absolute and written out the implicit
+// repeats, and swaps halfway otherwise. H, V, S, T and A are commands of their own.
+const PATH_TIMES = [0, 250, 499, 500, 501, 750, 999];
+const PATHS = [
+  ['M10 10 L50 10 L50 50', 'M10 50 L90 10 L50 90'],
+  ['M10 10 l40 0 l0 40', 'm10 50 l80 -40 l-40 80'],
+  ['M10 10 H50', 'M10 10 L50 10'],
+  ['M10 10 H50 V50', 'M10 10 L50 10 L50 50'],
+  ['M10 10 H50 V50', 'M10 20 H90 V80'],
+  ['M10 10 h50 v40', 'M10 20 h90 v60'],
+  ['M10 10 H50', 'M10 20 h40'],
+  ['M0 0 C10 0 20 10 30 10 S50 20 60 20', 'M0 0 C10 0 20 10 30 10 C40 10 50 20 60 20'],
+  ['M0 0 C10 0 20 10 30 10 S50 20 60 20', 'M0 0 C10 0 20 10 30 10 S70 20 80 20'],
+  ['M0 0 C10 0 20 10 30 10 s20 10 30 10', 'M0 0 C10 0 20 10 30 10 S70 20 80 20'],
+  ['M0 0 Q10 0 20 10 T40 20', 'M0 0 Q10 0 20 10 Q30 20 40 20'],
+  ['M0 0 Q10 0 20 10 T40 20', 'M0 0 Q10 0 20 10 T60 30'],
+  ['M0 0 Q10 0 20 10 t20 10', 'M0 0 Q10 0 20 10 T60 30'],
+  ['M0 0 Q10 0 20 10', 'M0 0 C10 0 20 0 20 10'],
+  ['M0 0 L10 10', 'M0 0 C10 0 20 0 20 10'],
+  ['M0 0 A10 10 0 0 1 20 20', 'M0 0 A20 20 0 0 1 40 40'],
+  ['M0 0 A10 10 0 0 1 20 20', 'M0 0 A20 30 0 1 0 40 40'],
+  ['M0 0 A10 10 0 0 1 20 20', 'M0 0 A10 10 0 1 0 20 20'],
+  ['M0 0 A10 10 0 0 1 20 20', 'M0 0 A10 10 30 0 1 20 20'],
+  ['M0 0 A10 10 0 0 1 20 20', 'M0 0 a10 10 30 0 1 20 20'],
+  ['M0 0 A10 10 0 0 1 20 20', 'M0 0 L20 20'],
+  ['M10 10 L50 10', 'M10 10 L50 10 L50 50'],
+  ['M0 0 L10 0 L10 10 Z', 'M0 0 L10 0 L10 10 L0 0'],
+  ['M0 0 L10 0 L10 10 Z', 'M0 0 L20 0 L20 20 Z'],
+  ['M0 0 L10 0 L10 10 Z', 'M0 0 L20 0 L20 20 z'],
+  ['M0 0 L10 0 L10 10', 'M0 0 L20 0 L20 20 Z'],
+  ['M0 0 L10 0 Z M20 20 L30 30 Z', 'M0 0 L20 0 Z M40 40 L60 60 Z'],
+  ['M0 0 L10 0 Z M20 20 L30 30', 'M0 0 L20 0 Z M40 40 L60 60 Z'],
+  ['M0 0 L10 0 Z L5 5', 'M0 0 L20 0 Z L10 10'],
+  ['M0 0 L10 0 Z l5 5', 'M0 0 L20 0 Z L10 10'],
+  ['M10 10 L50 10 50 50', 'M10 10 L50 10 L50 50'],
+  ['M10 10 L50 10 50 50', 'M20 20 L60 20 60 60'],
+  ['m10 10 20 20 30 30', 'M10 10 L20 20 L30 30'],
+  ['M10 10', 'M20 20'],
+  ['M10 10 L20 20 M30 30 L40 40', 'M20 20 L30 30 M40 40 L50 50'],
+  ['M10 10 L20 20 M30 30 L40 40', 'M20 20 L30 30'],
+  ['M10 10 L20 20 l10 10', 'M10 10 l10 10 l30 30'],
+  ['M10 10 C20 20 30 30 40 40', 'M10 10 c20 20 30 30 40 40'],
+  ['M10 10 L50 10 50 50', 'M10 10 L50 10 L50 50 L10 50'],
+];
+PATHS.forEach(([from, to], index) => {
+  const name = `path-pair-${index}`;
+  KEYFRAMES[name] = { from: { d: from }, to: { d: to } };
+  cases.push({ name: `path ${from} against ${to}`, keyframes: [name], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: `${name} 1s linear` })], animate: 't', times: PATH_TIMES, reads: [{ node: 't', prop: 'd', initial: 'none' }] });
+});
+KEYFRAMES.pathThree = { from: { d: 'M10 10 L50 10 L50 50' }, '50%': { d: 'M10 10 H50 V50' }, to: { d: 'M10 50 L90 10 L50 90' } };
+KEYFRAMES.pathMixedFirst = { from: { d: 'M10 10 L50 10 L50 50' }, '50%': { d: 'M10 10 H50 V50' }, to: { d: 'M10 20 H90 V80' } };
+KEYFRAMES.pathMixedLast = { from: { d: 'M10 20 H90 V80' }, '50%': { d: 'M10 10 H50 V50' }, to: { d: 'M10 10 L50 10 L50 50' } };
+KEYFRAMES.pathThreeSame = { from: { d: 'M10 10 H50 V50' }, '50%': { d: 'M10 20 H90 V60' }, to: { d: 'M10 50 H20 V70' } };
+cases.push(
+  { name: 'three paths whose middle has other commands', keyframes: ['pathThree'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'pathThree 1s linear' })], animate: 't', times: [0, 125, 250, 499, 501, 625, 750, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
+  { name: 'three paths: the first interval swaps and the second blends', keyframes: ['pathMixedFirst'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'pathMixedFirst 1s linear' })], animate: 't', times: [0, 125, 250, 499, 501, 625, 750, 875, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
+  { name: 'three paths: the first interval blends and the second swaps', keyframes: ['pathMixedLast'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'pathMixedLast 1s linear' })], animate: 't', times: [0, 125, 250, 499, 501, 625, 750, 875, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
+  { name: 'three paths of the same commands blend in two intervals', keyframes: ['pathThreeSame'], nodes: [path('t', { d: 'M0 0 L1 1 L2 2' }, { animation: 'pathThreeSame 1s linear' })], animate: 't', times: [0, 125, 250, 499, 501, 625, 750, 999], reads: [{ node: 't', prop: 'd', initial: 'none' }] },
 );
 
 (async () => { try {
