@@ -4,7 +4,10 @@
   `transform`, `translate`, `rotate`, `scale` and `transform-origin`. A case is the keyframes of an element of
   100 x 50 at (200, 200) and a static style; the animation is paused at each of the fractions of its second (a
   negative delay on a paused animation) and the border box is read with `getBoundingClientRect`, the computed
-  transform as a matrix. Regenerate with
+  transform as a matrix. The cases with a `var()` in their keyframes set the custom properties on the element. After
+  them come the transitions of a `var()` transform: `--p` (or the custom properties named) change from one value to
+  another on the element or on its parent, the transition runs for a second, and it is paused at each of the fractions.
+  Regenerate with
 
     sh transform-animation-oracle.sh
 -->
@@ -89,7 +92,42 @@ const cases = [
   ["origin one value", "transform-origin", [[0, "left"], [1, "100px"]], "transform: scale(2);"],
   ["origin and transform", "transform", [[0, "rotate(0deg)"], [1, "rotate(90deg)"]], "transform-origin: 0 0;"],
   ["origin and transform together", "all", [[0, "transform: rotate(0deg); transform-origin: 0 0"], [1, "transform: rotate(90deg); transform-origin: 100% 100%"]]],
+  ["var keyframes translate", "transform", [[0, "translateX(calc(100% * var(--p)))"], [1, "translateX(calc(-100% * var(--p)))"]], "--p: 0.5;"],
+  ["var keyframes fallback", "transform", [[0, "translate(var(--x, 10px), 0)"], [1, "translate(var(--x, 10px), var(--y, 40px))"]], "--x: 30px;"],
+  ["var keyframes nested", "transform", [[0, "none"], [1, "rotate(var(--turn)) scale(var(--s))"]], "--turn: 0.25turn; --s: calc(var(--k) * 2); --k: 1.5;"],
+  ["var keyframes translate property", "translate", [[0, "var(--a) 0"], [1, "calc(var(--a) * 3) 20px"]], "--a: 10px;"],
+  ["var keyframes rotate property", "rotate", [[0, "0deg"], [1, "calc(var(--r) * 2)"]], "--r: 40deg;"],
+  ["var keyframes origin", "transform-origin", [[0, "var(--o)"], [1, "100% var(--o2, 0)"]], "transform: rotate(45deg); --o: 0 0;"],
+  ["var keyframes against the underlying value", "transform", [[0.5, "translateX(var(--d))"]], "transform: translateY(40px); --d: 80px;"],
+  ["var keyframes one that does not resolve", "transform", [[0, "translateX(var(--nope))"], [1, "translateX(100px)"]], "transform: translateX(20px);"],
 ];
+
+// A transition of a `var()` transform, driven by changing the custom properties named in `custom` from the first value
+// of each to the second (`null` removes the declaration). [name, property, its value, custom, where, extra]
+const transitions = [
+  ["transition translate", "transform", "translateX(calc(100% * var(--p)))", { "--p": [0, 1] }, "self"],
+  ["transition translate to a half", "transform", "translateX(calc(100% * var(--p)))", { "--p": [0.2, 0.7] }, "self"],
+  ["transition translate under a parent", "transform", "translateX(calc(100% * var(--p)))", { "--p": [0.2, 0.9] }, "parent"],
+  ["transition translate on the element", "transform", "translateY(calc(var(--p) * 1px))", { "--p": [10, 90] }, "self"],
+  ["transition rotate", "transform", "rotate(calc(90deg * var(--p)))", { "--p": [0, 1] }, "parent"],
+  ["transition rotate across", "transform", "rotate(var(--r))", { "--r": ["-60deg", "100deg"] }, "self"],
+  ["transition a whole value", "transform", "var(--t)", { "--t": ["translateX(100px)", "translateX(40px) rotate(90deg)"] }, "parent"],
+  ["transition a whole value that mismatches", "transform", "var(--t)", { "--t": ["rotate(30deg)", "translate(100px, 40px)"] }, "self"],
+  ["transition from none", "transform", "var(--t)", { "--t": ["none", "translate(100px, 50px) rotate(90deg)"] }, "self"],
+  ["transition to none", "transform", "var(--t)", { "--t": ["scale(2)", "none"] }, "parent"],
+  ["transition to a missing var", "transform", "translateX(var(--p))", { "--p": ["100px", null] }, "self"],
+  ["transition from a missing var", "transform", "translateX(var(--p))", { "--p": [null, "100px"] }, "self"],
+  ["transition with a fallback", "transform", "translateX(var(--p, 60px))", { "--p": [null, "-40px"] }, "self"],
+  ["transition scale", "transform", "scale(var(--s))", { "--s": [1, 2.5] }, "parent"],
+  ["transition translate property", "translate", "calc(100% * var(--p)) 10px", { "--p": [0, 1] }, "parent"],
+  ["transition rotate property", "rotate", "calc(var(--a) + 5deg)", { "--a": ["10deg", "100deg"] }, "self"],
+  ["transition scale property", "scale", "var(--s) 1", { "--s": [1, 3] }, "self"],
+  ["transition origin", "transform-origin", "var(--o)", { "--o": ["0 0", "100% 100%"] }, "self", "transform: rotate(45deg);"],
+  ["transition beside a transform", "rotate", "calc(var(--a) + 0deg)", { "--a": ["0deg", "90deg"] }, "self", "transform: translate(30px, 10px) scale(1.5);"],
+  ["transition a declared var of a var", "transform", "translateX(var(--b))", { "--a": ["0px", "100px"], "--b": ["var(--a)", "var(--a)"] }, "self"],
+  ["transition a var of the parent read by the child", "transform", "translateX(var(--b))", { "--b": ["10px", "90px"] }, "root"],
+];
+const TRANSITION_TIMES = [0, 0.25, 0.5, 0.75, 1];
 const TIMES = [0, 0.25, 0.37, 0.5, 0.81, 1];
 const style = document.createElement("style");
 document.head.appendChild(style);
@@ -114,6 +152,45 @@ cases.forEach(([name, property, frames, extra = ""], index) => {
   }
   out[name] = result;
 });
+for (const [name, property, value, custom, where, extra = ""] of transitions) {
+  const result = { kind: "transition", property, value, custom, where, extra, boxes: {}, matrices: {}, origins: {}, animations: {} };
+  for (const time of TRANSITION_TIMES) {
+    const outer = document.createElement("div");
+    const el = document.createElement("div");
+    el.id = "s";
+    el.style.cssText = `${extra} ${property}: ${value}; transition: ${property} 1s linear;`;
+    if (where === "root") {
+      const middle = document.createElement("div");
+      outer.appendChild(middle);
+      middle.appendChild(el);
+    } else {
+      outer.appendChild(el);
+    }
+    scene.appendChild(outer);
+    const target = where === "self" ? el : outer;
+    const set = (index) => {
+      for (const [property, values] of Object.entries(custom)) {
+        if (values[index] === null) target.style.removeProperty(property);
+        else target.style.setProperty(property, String(values[index]));
+      }
+    };
+    set(0);
+    el.getBoundingClientRect();
+    set(1);
+    const running = el.getAnimations().filter((animation) => animation.transitionProperty === property);
+    result.animations[time] = running.length;
+    for (const animation of running) {
+      animation.pause();
+      animation.currentTime = time * 1000;
+    }
+    const rect = el.getBoundingClientRect();
+    result.boxes[time] = [rect.x, rect.y, rect.width, rect.height];
+    result.matrices[time] = getComputedStyle(el).transform;
+    result.origins[time] = getComputedStyle(el).transformOrigin;
+    outer.remove();
+  }
+  out[name] = result;
+}
 document.body.setAttribute("data-oracle", JSON.stringify(out));
 </script>
 </body></html>

@@ -3809,6 +3809,7 @@ mod tests {
                 weight: 700.0,
                 variations: Default::default(),
                 inheritable: Default::default(),
+                custom: Default::default(),
             };
         }
 

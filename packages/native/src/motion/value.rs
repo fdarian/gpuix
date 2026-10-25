@@ -11,6 +11,7 @@ use crate::custom_elements::svg_path::PathData;
 
 use crate::color::ColorContext;
 use crate::css::color_space::Space;
+use crate::css::custom_properties::CustomProperties;
 use crate::css::length::{LengthContext, LinearLength};
 use crate::css::line_height::LineHeight;
 use crate::css::table::TableInherited;
@@ -97,6 +98,9 @@ pub(crate) struct ParentFont {
     pub(crate) weight: f64,
     pub(crate) variations: FontVariations,
     pub(crate) inheritable: Inheritable,
+    /// The custom properties the parent computes to, which the `var()` of the element's transform
+    /// properties and keyframes read.
+    pub(crate) custom: CustomProperties,
 }
 
 impl ParentFont {
@@ -108,6 +112,15 @@ impl ParentFont {
             weight: INITIAL_FONT_WEIGHT,
             variations: FontVariations::default(),
             inheritable: Inheritable::default(),
+            custom: CustomProperties::default(),
+        }
+    }
+
+    /// What the element styled by `style` computes its custom properties to.
+    pub(crate) fn custom_of(&self, style: &StyleDesc) -> CustomProperties {
+        match &style.custom_properties {
+            Some(declared) => self.custom.descend(declared),
+            None => self.custom.clone(),
         }
     }
 
@@ -120,6 +133,7 @@ impl ParentFont {
             weight: font.weight,
             variations: font.variations,
             inheritable: self.inheritable_of(style),
+            custom: style.map_or_else(|| self.custom.clone(), |style| self.custom_of(style)),
         }
     }
 

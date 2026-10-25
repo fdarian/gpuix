@@ -112,6 +112,7 @@ defineKeyframes("tpatch-mismatch", {
   "50%": { transform: "translate(200px) rotate(90deg)" },
   to: { transform: "none" },
 })
+defineKeyframes("tpatch-var", { from: { transform: "translateX(0px)" }, to: { transform: "translateX(calc(300% * var(--p)))" } })
 defineKeyframes("tpatch-origin", {
   from: { transformOrigin: "0 0" },
   to: { transformOrigin: "100% 100%" },
@@ -127,6 +128,31 @@ describeNative("a tick of a CSS animation or transition of the transform", { tim
       }
     })
     expectPatched(done)
+  })
+
+  it("patches every tick of a transition of a transform that reads a custom property of its own", async () => {
+    const style = { transition: "transform 2s linear", transform: "translateX(calc(100% * var(--p)))" }
+    const done = await ticksOf(head({ ...style, "--p": 0 }), (root, _renderer, tick) => {
+      if (tick === 0) root.render(<Page head={head({ ...style, "--p": 4 })} />)
+    })
+    expectPatched(done)
+  })
+
+  it("patches every tick of a transition of a transform that reads a custom property of an ancestor", async () => {
+    const style = { transition: "rotate 2s linear", rotate: "calc(var(--a) * 1)" }
+    const above = (a: string) => (
+      <div style={{ "--a": a }}>
+        {head(style)}
+      </div>
+    )
+    const done = await ticksOf(above("0deg"), (root, _renderer, tick) => {
+      if (tick === 0) root.render(<Page head={above("200deg")} />)
+    })
+    expectPatched(done)
+  })
+
+  it("patches every tick of an animation whose keyframes read a custom property", async () => {
+    expectPatched(await ticksOf(head({ "--p": 1, animation: "tpatch-var 1.6s linear infinite" })))
   })
 
   it("patches every tick of a transition of rotate, translate and scale together", async () => {

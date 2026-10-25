@@ -1149,9 +1149,10 @@ pub(crate) fn resolve_declared_style(
     now: Instant,
 ) -> DeclaredStyle {
     if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
-        transitions.seed(id, &fold_state_styles(before, focus_visible, pointer), parent_colors, parent_font);
+        let before = with_vars(fold_state_styles(before, focus_visible, pointer), parent_font);
+        transitions.seed(id, &before, parent_colors, parent_font);
     }
-    let mut after = fold_state_styles(style, focus_visible, pointer);
+    let mut after = with_vars(fold_state_styles(style, focus_visible, pointer), parent_font);
     let covered = animations
         .map(|(animations, registry)| animations.advance(id, &after, registry, scope, now))
         .unwrap_or_default();
@@ -1176,6 +1177,18 @@ pub(crate) struct DeclaredStyle {
     /// properties does not apply: a transition beats an animation in the
     /// cascade.
     pub(crate) transitions: Option<TransitionStyle>,
+}
+
+/// `style` with the `var()` of its transform properties substituted from the custom properties the
+/// element computes to. Transitions and animations compare and blend computed values, so they are
+/// given the style after this: a `--p` that changes is a change of the transform, from the value
+/// the last style computed to the one this does.
+fn with_vars(style: StyleDesc, parent_font: &ParentFont) -> StyleDesc {
+    if !crate::css::transform::reads_vars(&style) {
+        return style;
+    }
+    crate::css::custom_properties::reads::note();
+    crate::css::transform::resolve_vars(&style, &parent_font.custom_of(&style)).unwrap_or(style)
 }
 
 fn fold_state_styles(
@@ -5541,6 +5554,7 @@ mod tests {
                 weight: 700.0,
                 variations: Default::default(),
                 inheritable: Default::default(),
+                custom: Default::default(),
             };
             let colors = Colors::inheriting(&ColorContext::root(Scheme::Light), &parent_font, None);
             let state = MotionState::new(&description, None, colors.clone(), None, 0, started).unwrap();
@@ -5704,6 +5718,68 @@ mod tests {
             let description = json!({ "animate": { "fontVariationSettings": "wght 700" } });
             let error = MotionState::new(&description, None, Colors::root(), None, 0, Instant::now()).err().unwrap();
             assert!(error.contains("fontVariationSettings"), "{error}");
+        }
+    }
+    mod custom_properties {
+        use super::*;
+        use crate::color::{ColorContext, Scheme};
+        use crate::css::custom_properties::CustomProperties;
+
+        fn style(json: &str) -> StyleDesc {
+            serde_json::from_str(json).expect("a style")
+        }
+
+        fn parent(custom: &[(&str, &str)]) -> ParentFont {
+            let declared = CustomProperties::declared(custom.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())));
+            ParentFont {
+                custom: declared.map_or_else(CustomProperties::default, |declared| CustomProperties::default().descend(&declared)),
+                ..ParentFont::initial()
+            }
+        }
+
+        /// The style a frame at `millis` gives the element, with `custom` above it.
+        fn frame(transitions: &mut CssTransitions, started: Instant, millis: u64, style: &StyleDesc, custom: &[(&str, &str)]) -> DeclaredStyle {
+            resolve_declared_style(
+                Some(transitions),
+                None,
+                None,
+                &ColorContext::root(Scheme::Light),
+                &parent(custom),
+                Default::default(),
+                None,
+                1,
+                style,
+                FocusVisible::default(),
+                None,
+                InterpolateSize::default(),
+                Scope::Element,
+                started + Duration::from_millis(millis),
+            )
+        }
+
+        #[test]
+        fn a_transition_of_a_transform_with_a_var_runs_from_the_last_computed_value_to_the_new_one() {
+            let started = Instant::now();
+            let read = |text: &str| style(&format!(r#"{{"transform":"{text}","transition":"transform 1s linear"}}"#));
+            let var = read("translateX(calc(100px * var(--p)))");
+            let mut with_var = CssTransitions::default();
+            let mut literal = CssTransitions::default();
+            for (millis, p) in [(0, "0.2"), (16, "0.2")] {
+                assert!(frame(&mut with_var, started, millis, &var, &[("--p", p)]).transitions.is_none());
+            }
+            let began = frame(&mut with_var, started, 100, &var, &[("--p", "0.9")]);
+            assert!(began.transitions.is_some(), "a new computed value starts a transition");
+            for (millis, text) in [(0, "translateX(calc(100px * 0.2))"), (16, "translateX(calc(100px * 0.2))")] {
+                frame(&mut literal, started, millis, &read(text), &[]);
+            }
+            frame(&mut literal, started, 100, &read("translateX(calc(100px * 0.9))"), &[]);
+            // A frame later, with the same --p: the transition goes on from where it was, not from the new value.
+            for millis in [600, 1100] {
+                let tick = frame(&mut with_var, started, millis, &var, &[("--p", "0.9")]);
+                let want = frame(&mut literal, started, millis, &read("translateX(calc(100px * 0.9))"), &[]);
+                let text = |style: StyleDesc| style.transform.map(|text| text.replace(' ', ""));
+                assert_eq!(text(tick.style), text(want.style), "at {millis}");
+            }
         }
     }
 }

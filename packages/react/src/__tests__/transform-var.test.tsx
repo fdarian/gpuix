@@ -6,6 +6,7 @@
 
 import React from "react"
 import { describe, expect, it } from "vitest"
+import { defineKeyframes } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { verifying } from "./retained-harness.js"
 
@@ -129,6 +130,127 @@ describeNative("var() in a transform", () => {
         expect([angle[2], angle[3]].map((n) => +n.toFixed(3))).toEqual([literal[2], literal[3]].map((n) => +n.toFixed(3)))
       }
     )
+  }, SLOW)
+})
+
+describeNative("a custom property that reads another", () => {
+  it("is computed where it is declared, so a descendant that overrides the name it reads does not change it", () => {
+    mounted(
+      <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600, "--a": "10px", "--b": "var(--a)" }}>
+        <div style={{ "--a": "50px" }}>
+          <div testId="below" style={{ width: 50, height: 50, translate: "var(--b) 0" }} />
+        </div>
+        <div testId="own" style={{ width: 50, height: 50, "--a": "50px", translate: "var(--b) 0" }} />
+        <div testId="same" style={{ width: 50, height: 50, "--a": "30px", "--c": "var(--a)", translate: "var(--c) 0" }} />
+      </div>,
+      (renderer) => {
+        expect(box(renderer, "below")[0]).toBe(10)
+        expect(box(renderer, "own")[0]).toBe(10)
+        expect(box(renderer, "same")[0], "a declaration reads its own element's map").toBe(30)
+      }
+    )
+  }, SLOW)
+
+  it("is guaranteed-invalid when it cannot be computed, whatever it inherits, and a cycle is invalid with its fallbacks", () => {
+    mounted(
+      <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600, "--x": "20px" }}>
+        <div testId="missing" style={{ width: 50, height: 50, "--x": "var(--none)", translate: "var(--x, 4px) 0" }} />
+        <div testId="self" style={{ width: 50, height: 50, "--c": "var(--c, 5px)", translate: "var(--c, 9px) 0" }} />
+        <div testId="loop" style={{ width: 50, height: 50, "--e": "var(--f, 1px)", "--f": "var(--e)", translate: "var(--e, 7px) 0" }} />
+        <div testId="order" style={{ width: 50, height: 50, "--g": "var(--h)", "--h": "3px", translate: "var(--g) 0" }} />
+      </div>,
+      (renderer) => {
+        expect(box(renderer, "missing")[0]).toBe(4)
+        expect(box(renderer, "self")[0]).toBe(9)
+        expect(box(renderer, "loop")[0]).toBe(7)
+        expect(box(renderer, "order")[0]).toBe(3)
+      }
+    )
+  }, SLOW)
+})
+
+describeNative("a transition or an animation of a transform that reads a custom property", () => {
+  /** `--p` is on the page, above the box. */
+  function Slide({ p, style }: { p?: number; style: Record<string, unknown> }) {
+    return (
+      <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600, ...(p === undefined ? {} : { "--p": p }) }}>
+        <div testId="box" style={{ position: "absolute", left: 100, top: 100, width: 100, height: 50, ...style }} />
+      </div>
+    )
+  }
+
+  const x = (renderer: Renderer) => +box(renderer, "box")[0].toFixed(3)
+
+  function run(check: (root: ReturnType<typeof createTestRoot>, renderer: Renderer, step: (ms: number) => void) => void) {
+    const root = createTestRoot({ width: 800, height: 600 })
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      check(root, renderer, (ms) => {
+        renderer.clockFastForward(ms)
+        renderer.flush()
+        renderer.dispatchNativeEvents()
+      })
+    } finally {
+      root.unmount()
+    }
+  }
+
+  const slide = { transform: "translateX(calc(100% * var(--p)))", transition: "transform 1s linear" }
+
+  it("runs from the value computed before the change to the one computed now, and retargets from where it is", () => {
+    run((root, renderer, step) => {
+      root.render(<Slide p={0.2} style={slide} />)
+      renderer.flush()
+      expect(x(renderer)).toBe(120)
+      root.render(<Slide p={0.9} style={slide} />)
+      renderer.flush()
+      expect(x(renderer), "the transition is at its start, not at the new value").toBe(120)
+      step(500)
+      expect(x(renderer)).toBe(155)
+      step(500)
+      expect(x(renderer)).toBe(190)
+      root.render(<Slide p={0.4} style={slide} />)
+      renderer.flush()
+      expect(x(renderer), "from the value it showed").toBe(190)
+      step(500)
+      expect(x(renderer)).toBe(165)
+      step(500)
+      expect(x(renderer)).toBe(140)
+    })
+  }, SLOW)
+
+  it("is not a transition while the custom property is the same, and an unresolved var() is none", () => {
+    run((root, renderer, step) => {
+      root.render(<Slide p={0.5} style={slide} />)
+      renderer.flush()
+      root.render(<Slide p={0.5} style={{ ...slide, opacity: 0.5 }} />)
+      renderer.flush()
+      expect(renderer.getAnimations(renderer.findByTestId("box").id)).toEqual([])
+      root.render(<Slide style={slide} />)
+      renderer.flush()
+      expect(x(renderer), "none, from 150").toBe(150)
+      step(500)
+      expect(x(renderer)).toBe(125)
+      step(500)
+      expect(x(renderer)).toBe(100)
+    })
+  }, SLOW)
+
+  it("reads the var() of keyframes against the element, and follows a --p that changes while it runs", () => {
+    defineKeyframes("tvar-slide", { from: { transform: "translateX(0px)" }, to: { transform: "translateX(calc(100px * var(--p)))" } })
+    run((root, renderer, step) => {
+      const style = { animation: "tvar-slide 1s linear forwards" }
+      root.render(<Slide p={1} style={style} />)
+      renderer.flush()
+      step(500)
+      expect(x(renderer)).toBe(150)
+      root.render(<Slide p={2} style={style} />)
+      renderer.flush()
+      expect(x(renderer), "the same progress, a new end").toBe(200)
+      step(500)
+      expect(x(renderer)).toBe(300)
+    })
   }, SLOW)
 })
 

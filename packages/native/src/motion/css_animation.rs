@@ -32,6 +32,7 @@ use super::value::{AnimValue, Colors, Interpolation, ParentFont};
 use super::web_animation::{ApiEvent, ApiEventKind, Command, Info, Kind, Playback};
 use super::{needs_layout, resolve_keyframes, InterpolateSize, PropKey};
 use crate::color::ColorContext;
+use crate::css::custom_properties::CustomProperties;
 use crate::dormant_wake::Wake;
 use crate::retained_tree::RetainedTree;
 use crate::style::StyleDesc;
@@ -707,6 +708,8 @@ struct PlanKey {
     timing: Ease,
     /// What the keyframes' colours resolved in.
     colors: Colors,
+    /// What their `var()` resolved against, for keyframes that have one.
+    custom: Option<CustomProperties>,
     allow_keywords: bool,
     underlying: Vec<Underlying>,
     measurement: Option<Measurement>,
@@ -732,6 +735,7 @@ enum Endpoint {
 struct Planner<'a> {
     keyframes: &'a Keyframes,
     colors: &'a Colors,
+    custom: Option<&'a CustomProperties>,
     timing: &'a Ease,
     measurement: Option<&'a Measurement>,
     allow_keywords: bool,
@@ -781,7 +785,7 @@ impl Planner<'_> {
             .frames
             .iter()
             .filter_map(|frame| {
-                let value = frame.value(key, self.colors)?;
+                let value = frame.value(key, self.colors, self.custom)?;
                 Some(Stop {
                     offset: frame.offset,
                     value: Some(value),
@@ -1148,6 +1152,7 @@ impl Run {
     ) -> Vec<(PropKey, Option<AnimValue>)> {
         let reads_layout = self.plan.as_ref().is_none_or(|plan| plan.reads_layout);
         let colors = Colors::inheriting(parent_colors, parent_font, Some(subject.style));
+        let custom = self.keyframes.reads_vars().then(|| parent_font.custom_of(subject.style));
         let properties: Vec<PropKey> = self
             .properties
             .iter()
@@ -1158,6 +1163,7 @@ impl Run {
             target: subject.target,
             timing: self.params.timing.clone(),
             colors: colors.clone(),
+            custom: custom.clone(),
             allow_keywords,
             underlying: properties.iter().map(|key| subject.underlying(*key, &colors)).collect(),
             measurement: measurement.copied().filter(|_| reads_layout),
@@ -1166,6 +1172,7 @@ impl Run {
             let mut planner = Planner {
                 keyframes: &self.keyframes,
                 colors: &colors,
+                custom: custom.as_ref(),
                 timing: &self.params.timing,
                 measurement,
                 allow_keywords,
@@ -3129,6 +3136,7 @@ mod tests {
             weight: 700.0,
             variations: Default::default(),
             inheritable: Default::default(),
+            custom: Default::default(),
         };
         frames.define("grow", r#"{ "to": { "fontSize": 40, "fontWeight": 300 } }"#);
         let animated = fading("grow 1s linear");

@@ -7382,6 +7382,7 @@ impl Inherited {
                 visibility_hidden: self.visibility_hidden,
                 line_height: self.line_height,
             },
+            custom: self.custom.clone(),
         }
     }
 

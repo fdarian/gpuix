@@ -110,7 +110,7 @@ fn own_texts(style: &mut StyleDesc) -> [(&mut Option<String>, &'static str); 5] 
     ]
 }
 
-const DEFAULT_ORIGIN_TEXT: &str = "50% 50%";
+pub(crate) const DEFAULT_ORIGIN_TEXT: &str = "50% 50%";
 
 /// Whether a transform property of the style has a `var()` in it, which its value depends on the
 /// custom properties for.

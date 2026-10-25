@@ -6,6 +6,9 @@
 ///   stop pairing blend the rest through the 2D matrix decomposition; `none` blends as the identity of the other list.
 /// - The individual `translate`, `rotate` and `scale` blend as their own values, and `transform-origin` as two lengths.
 /// - The element is a stacking context and a containing block for as long as the animation runs.
+/// - `var()` is substituted from the custom properties the element computes to: keyframes read it against the element, and
+///   a transition of a transform that reads a custom property runs from the value it computed before the change to the one it
+///   computes now (`--p` changing on the element or above it).
 
 import fs from "fs"
 import path from "path"
@@ -23,6 +26,12 @@ interface Case {
   frames: [number, string][]
   extra: string
   boxes: Record<string, Rect>
+  kind?: "transition"
+  /** A transition: the value of the property, and each custom property it reads from its value before the change to the one after (`null` is unset). */
+  value?: string
+  custom?: Record<string, [string | number | null, string | number | null]>
+  where?: "self" | "parent" | "root"
+  animations?: Record<string, number>
 }
 
 const ORACLE: Record<string, Case> = JSON.parse(
@@ -39,7 +48,7 @@ const TIMEOUT = 120_000
  */
 const DEVIATIONS: Record<string, number> = {}
 
-const camel = (name: string) => name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+const camel = (name: string) => (name.startsWith("--") ? name : name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase()))
 
 /** `a: b; c: d` as a style. */
 function styleOf(css: string): Record<string, string> {
@@ -61,6 +70,7 @@ function keyframesOf(scene: Case) {
 
 describeNative("a CSS animation of the transform properties follows Chrome", () => {
   Object.entries(ORACLE).forEach(([name, scene], index) => {
+    if (scene.kind === "transition") return
     it(`shows Chrome's box at every time: ${name}`, () => {
       const keyframes = `tanim-${index}`
       defineKeyframes(keyframes, keyframesOf(scene))
@@ -96,6 +106,68 @@ describeNative("a CSS animation of the transform properties follows Chrome", () 
           const got = [box!.x, box!.y, box!.width, box!.height]
           const tolerance = Math.max(TOLERANCE, DEVIATIONS[name] ?? 0)
           if (got.some((value, i) => Math.abs(value - want[i]!) > tolerance)) {
+            wrong.push(`t=${time}: got [${got.map((value) => +value.toFixed(3))}] Chrome [${want.map((value) => +value.toFixed(3))}]`)
+          }
+        }
+        expect(wrong).toEqual([])
+      } finally {
+        unmount()
+      }
+    }, TIMEOUT)
+  })
+})
+
+/** The scene before (`0`) or after (`1`) the custom properties change: they are on the element, its parent, or its grandparent. */
+function Transitioning({ scene, step }: { scene: Case; step: 0 | 1 }) {
+  const custom: Record<string, string | number> = {}
+  for (const [name, values] of Object.entries(scene.custom!)) if (values[step] !== null) custom[name] = values[step]!
+  const box = (
+    <div
+      testId="box"
+      style={{
+        position: "absolute",
+        left: 200,
+        top: 200,
+        width: 100,
+        height: 50,
+        ...styleOf(scene.extra),
+        [camel(scene.property)]: scene.value,
+        transition: `${scene.property} 1s linear`,
+        ...(scene.where === "self" ? custom : {}),
+      }}
+    />
+  )
+  const page = { position: "absolute", left: 0, top: 0, width: 800, height: 600 } as const
+  if (scene.where === "self") return <div style={page}>{box}</div>
+  return (
+    <div style={{ ...page, ...(scene.where === "parent" ? custom : {}) }}>
+      {scene.where === "root" ? <div style={custom}>{box}</div> : box}
+    </div>
+  )
+}
+
+describeNative("a transition of a transform that reads a custom property follows Chrome", () => {
+  Object.entries(ORACLE).forEach(([name, scene]) => {
+    if (scene.kind !== "transition") return
+    it(`runs from the value the last style computed to the one the custom properties give now: ${name}`, () => {
+      const { render, renderer, unmount } = createTestRoot({ width: 800, height: 600 })
+      try {
+        renderer.clockPause()
+        render(<Transitioning scene={scene} step={0} />)
+        renderer.flush()
+        render(<Transitioning scene={scene} step={1} />)
+        renderer.flush()
+        const wrong: string[] = []
+        let elapsed = 0
+        for (const [time, want] of Object.entries(scene.boxes).sort(([a], [b]) => +a - +b)) {
+          renderer.clockFastForward(Math.round((+time - elapsed) * 1000))
+          elapsed = +time
+          renderer.flush()
+          renderer.dispatchNativeEvents()
+          const box = renderer.getElementBounds(renderer.findByTestId("box").id)
+          expect(box, "the box has bounds").not.toBeNull()
+          const got = [box!.x, box!.y, box!.width, box!.height]
+          if (got.some((value, i) => Math.abs(value - want[i]!) > TOLERANCE)) {
             wrong.push(`t=${time}: got [${got.map((value) => +value.toFixed(3))}] Chrome [${want.map((value) => +value.toFixed(3))}]`)
           }
         }

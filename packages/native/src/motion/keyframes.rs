@@ -25,6 +25,9 @@ use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
+use crate::css::custom_properties::{self, CustomProperties};
+use crate::css::transform::DEFAULT_ORIGIN_TEXT;
+
 use super::css_animation::check_keyframes_name;
 use super::css_transition::parse_list;
 use super::curve::{parse_timing_function, Ease};
@@ -109,6 +112,11 @@ impl Keyframes {
         Self::parse(frames_json).map_err(|error| format!("keyframes {name}: {error}"))
     }
 
+    /// Whether the value of some property depends on the custom properties of the element.
+    pub(super) fn reads_vars(&self) -> bool {
+        self.frames.iter().any(Keyframe::reads_vars)
+    }
+
     /// Every property some keyframe sets, in no particular order.
     pub(super) fn properties(&self) -> Vec<PropKey> {
         let mut props: Vec<PropKey> = self
@@ -123,12 +131,29 @@ impl Keyframes {
 }
 
 impl Keyframe {
-    /// What `key` is at this keyframe for an element with `colors`. A value that
-    /// does not parse for the element is no value of that keyframe, as CSS drops
-    /// a declaration it cannot read.
-    pub(super) fn value(&self, key: PropKey, colors: &Colors) -> Option<AnimValue> {
+    /// What `key` is at this keyframe for an element with `colors` and the custom properties
+    /// `custom`, which are none when no keyframe reads one. A value that does not parse for the
+    /// element is no value of that keyframe, as CSS drops a declaration it cannot read. A `var()`
+    /// that does not resolve is invalid at computed-value time instead, which a keyframe makes the
+    /// initial value of the property (not the element's own).
+    pub(super) fn value(&self, key: PropKey, colors: &Colors, custom: Option<&CustomProperties>) -> Option<AnimValue> {
         let (_, written) = self.values.iter().find(|(k, _)| *k == key)?;
-        key.parse_css(written, colors).ok()
+        if !reads_vars(key, written) {
+            return key.parse_css(written, colors).ok();
+        }
+        let text = match custom.and_then(|custom| custom_properties::substitute(written.as_str()?, custom)) {
+            Some(substituted) => substituted.trim().to_owned(),
+            None => match key {
+                PropKey::Style(AnimProp::TransformOrigin) => DEFAULT_ORIGIN_TEXT.to_owned(),
+                _ => "none".to_owned(),
+            },
+        };
+        key.parse_css(&Value::String(text), colors).ok()
+    }
+
+    /// Whether some value of this keyframe holds a `var()`.
+    fn reads_vars(&self) -> bool {
+        self.values.iter().any(|(key, written)| reads_vars(*key, written))
     }
 
     fn merge(&mut self, later: &Keyframe) {
@@ -146,6 +171,13 @@ impl Keyframe {
             None => self.values.push((key, value)),
         }
     }
+}
+
+/// Whether `written` is a `var()` of a transform property, the only ones that substitute it: it
+/// is checked against the element it is at, and the keyframes only hold the text.
+fn reads_vars(key: PropKey, written: &Value) -> bool {
+    matches!(key, PropKey::Style(prop) if prop.is_css_transform())
+        && written.as_str().is_some_and(custom_properties::has_var)
 }
 
 /// `from`, `to`, `50%` or a comma list of them, as offsets in 0 to 1.
@@ -216,6 +248,10 @@ fn parse_block(block: &Value) -> Result<Keyframe, String> {
         let mut errors = Vec::new();
         let mut accepted = Vec::new();
         for (key, value) in candidates {
+            if reads_vars(key, &value) {
+                accepted.push((key, value));
+                continue;
+            }
             match key.parse_css(&value, &Colors::root()) {
                 Ok(_) => accepted.push((key, value)),
                 Err(error) => errors.push(match (&split, key) {
@@ -283,7 +319,7 @@ mod tests {
     }
 
     fn number(frame: &Keyframe, prop: AnimProp) -> Option<f64> {
-        match frame.value(PropKey::Style(prop), &Colors::root())? {
+        match frame.value(PropKey::Style(prop), &Colors::root(), None)? {
             AnimValue::Number(number) => Some(number),
             _ => None,
         }
@@ -361,13 +397,13 @@ mod tests {
         assert_eq!(number(frame, AnimProp::Top), Some(7.0));
         assert_eq!(number(frame, AnimProp::Left), Some(8.0));
         assert_eq!(
-            frame.value(PropKey::Style(AnimProp::BorderTopLeftRadius), &Colors::root()),
+            frame.value(PropKey::Style(AnimProp::BorderTopLeftRadius), &Colors::root(), None),
             Some(AnimValue::Ellipse { x: (5.0, 0.0), y: (6.0, 0.0) })
         );
     }
 
     fn svg(frame: &Keyframe, attr: SvgAttr) -> Option<AnimValue> {
-        frame.value(PropKey::Svg(attr), &Colors::root())
+        frame.value(PropKey::Svg(attr), &Colors::root(), None)
     }
 
     #[test]
@@ -397,7 +433,7 @@ mod tests {
         assert_eq!(number(frame, AnimProp::Width), Some(10.0));
         assert_eq!(svg(frame, SvgAttr::Width), Some(AnimValue::Number(10.0)));
         // A percentage is a style length and no SVG number.
-        assert!(matches!(frame.value(PropKey::Style(AnimProp::Height), &Colors::root()), Some(AnimValue::Percent(_))));
+        assert!(matches!(frame.value(PropKey::Style(AnimProp::Height), &Colors::root(), None), Some(AnimValue::Percent(_))));
         assert_eq!(svg(frame, SvgAttr::Height), None);
         assert_eq!(number(frame, AnimProp::FontSize), Some(12.0));
         assert_eq!(svg(frame, SvgAttr::FontSize), Some(AnimValue::Number(12.0)));
@@ -445,7 +481,7 @@ mod tests {
             }"##,
         );
         let colors = Colors::root();
-        let value = |frame: usize, prop| keyframes.frames[frame].value(PropKey::Style(prop), &colors);
+        let value = |frame: usize, prop| keyframes.frames[frame].value(PropKey::Style(prop), &colors, None);
         assert!(matches!(value(0, AnimProp::BackgroundColor), Some(AnimValue::Color(_))));
         assert!(matches!(value(0, AnimProp::Width), Some(AnimValue::Percent(_))));
         assert!(matches!(value(1, AnimProp::BoxShadow), Some(AnimValue::Shadows(_))));
@@ -510,5 +546,20 @@ mod tests {
         assert!(registry.define("none", "{}").is_err());
         assert!(registry.define("2d", "{}").is_err());
         assert!(registry.define("", "{}").is_err());
+    }
+    #[test]
+    fn a_transform_value_with_a_var_is_kept_and_read_against_the_custom_properties_of_the_element() {
+        let keyframes = parse(r#"{ "from": { "transform": "translateX(var(--p))" }, "to": { "transform": "translateX(calc(2 * var(--p)))" } }"#);
+        assert!(keyframes.reads_vars());
+        let custom = CustomProperties::declared([("--p".to_owned(), "10px".to_owned())]).unwrap();
+        let custom = CustomProperties::default().descend(&custom);
+        let list = |frame: usize, custom| match keyframes.frames[frame].value(PropKey::Style(AnimProp::Transform), &Colors::root(), custom) {
+            Some(AnimValue::Transform(functions)) => functions.len(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!((list(0, Some(&custom)), list(1, Some(&custom))), (1, 1));
+        assert_eq!(list(0, None), 0, "unresolved, it is none");
+        assert!(!parse(r#"{ "to": { "transform": "none" } }"#).reads_vars());
+        assert!(error(r#"{ "to": { "width": "var(--w)" } }"#).contains("width"), "other properties still do not read it");
     }
 }
