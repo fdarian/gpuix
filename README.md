@@ -1755,7 +1755,7 @@ A `motion` component takes Motion's transform keys in `animate`, `initial`, `exi
 |---|---|---|
 | `x`, `y`, `translateX`, `translateY` | a number (px) or a CSS length; a `%` is of the element's own border box | `0` |
 | `scale`, `scaleX`, `scaleY` | a number, or a percentage in a static `style` | `1` |
-| `rotate`, `rotateZ`, `skew`, `skewX`, `skewY` | degrees, or a CSS angle (`"0.25turn"`) | `0` |
+| `rotate`, `rotateZ`, `skew`, `skewX`, `skewY` | degrees, or a CSS angle (`"0.25turn"`, `"1rad"`), also in a motion value | `0` |
 | `originX`, `originY` | a fraction of the border box (`0.5`, the default, is the middle) or a CSS length | `0.5` |
 
 - **They compose in Motion's order**, around the origin: `x`, `y`, `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`,
@@ -1763,14 +1763,27 @@ A `motion` component takes Motion's transform keys in `animate`, `initial`, `exi
   Motion, so use one or the other.
 - **On a `motion` component `scale` and `rotate` are Motion's**, a factor and degrees; on a plain element they are the CSS
   properties of [Transforms](#transforms), which take strings too. Tweens, springs, keyframes, `transition` per key and
-  [motion values](#motion-values) bind to every key (`style={{ x: motionValue }}`). A motion value carries numbers, so an
-  angle is in degrees there.
-- **An element with a key set is a stacking context and the containing block of its `absolute` and `fixed` children**, as
-  with a `transform`, even while the key rests at its default. Motion writes no transform for `x: 0`; GPUIX does, so that the
-  element does not change layer when it starts to move.
-- **`animate` takes the keys, not a `transform` string.** A `transform` string animates through
-  [CSS transitions](#css-transitions) and [CSS animations](#css-animations), and a motion key does not: `x` is not a CSS
-  property, and `transition: all` leaves it alone. Name it in the `transition` prop of the component.
+  [motion values](#motion-values) bind to every key (`style={{ x: motionValue }}`). A motion value that drives an angle key
+  holds a number of degrees or a CSS angle, and the two mix in degrees (`0` to `"1turn"` passes `"180deg"`); it reads back in
+  degrees (`"0.5turn"` is `"180deg"`).
+- **An element with a key off its default is a stacking context and the containing block of its `absolute` and `fixed`
+  children**, as with a `transform`. Keys all at their defaults (`x: 0`, `scale: 1`) are `transform: none`, as in Motion,
+  which writes no transform for them: no context and no containing block until a key moves, and the frame where one leaves or
+  returns to its default is a layout frame. Motion's `none` also replaces a static `style.transform` on the same element.
+- **`transform` is a key of its own.** `animate`, `initial`, `exit`, variants, keyframe lists and the gestures take a CSS
+  transform list or `none`, and a motion value holding one (`"translateX(10px) rotate(45deg)"`) can be bound to `transform`.
+  It is the element's transform list: Motion's keys beside it are ignored, as in Motion, and a static `style.transform` is
+  replaced by the keys or by it. Two lists blend as a CSS transition blends them. Other CSS transform properties (`translate`,
+  `rotate`, `scale`, `transformOrigin`) animate through [CSS transitions](#css-transitions) and
+  [CSS animations](#css-animations); `x` is not a CSS property, and `transition: all` leaves the keys alone. Name it in the
+  `transition` prop of the component.
+
+```tsx
+<motion.div
+  initial={{ transform: 'translateX(-24px) rotate(-8deg)' }}
+  animate={{ transform: 'translateX(0) rotate(0deg)' }}
+/>
+```
 - **3D keys** (`z`, `translateZ`, `rotateX`, `rotateY`, `transformPerspective`, `perspective`) are accepted and ignored.
 - **Reduced motion** makes the keys jump to their target, as it does `width` and `top` (see
   [MotionConfig and reduced motion](#motionconfig-and-reduced-motion)). CSS transforms are not reduced.
@@ -2306,7 +2319,7 @@ JavaScript, the stale completion is ignored.
 ### Motion values
 
 A **motion value** holds a number, a colour string, a CSS length string, a
-multi-value string, a list of numbers or box shadows that changes over time. Put one in `style` where a property
+multi-value string, a CSS angle (`"0.25turn"`) or transform list for the transform keys, a list of numbers or box shadows that changes over time. Put one in `style` where a property
 `motion` can animate takes a plain value, and the element follows it every
 frame in Rust, with no render and no N-API call per frame. `motion.div` accepts
 them too. A bound value is applied after `animate` and `transition`.
@@ -5106,7 +5119,9 @@ onto the card.
 
 An `<anchored>` layer paints in a later pass, over the page, but its events
 bubble to the element it is declared under, as a React portal's do. The layer
-is a target where it paints, so it is hit before what it covers.
+is a target where it paints, so it is hit before what it covers. Under a
+[transform](#transforms) the layer is not turned with its trigger and is placed
+against the trigger's transformed box.
 
 Set **`pointerEvents: "none"`** to make an element never the target. The pointer
 reaches whatever is under it. It **inherits**: a descendant of a `none` element
@@ -7169,8 +7184,15 @@ size, since a moving transform lays nothing out.
 
 - **`transform`** is `none` or a list of `translate()`, `translateX()`, `translateY()`, `scale()`, `scaleX()`, `scaleY()`,
   `rotate()`, `skew()`, `skewX()`, `skewY()` and `matrix()`. Translations take any [length](#lengths), and a `%` is of the
-  element's own border box. Angles are `deg`, `rad`, `grad` or `turn`, or a bare `0`. A string that does not parse is
+  element's own border box. Angles are `deg`, `rad`, `grad` or `turn`, or a bare `0`, and `calc()` sums angles and scales
+  them by numbers (`rotate(calc(45deg + 0.125turn))`, `skewX(calc(1turn / 4))`). A string that does not parse is
   ignored as a whole, as in CSS.
+- **`var()`** works in `transform`, `translate`, `rotate`, `scale` and `transformOrigin`, from the custom properties the
+  element computes to, its own included, with a fallback (`var(--gap, 8px)`). A `--p` set from JS on an ancestor moves
+  the box like the literal value does, which makes `translateX(calc(-100% * var(--p)))` a carousel track. A `var()` that
+  cannot be resolved (a missing name with no fallback, a cycle) makes the property `none`, as in CSS, and not "ignored". A
+  custom property whose value holds `var()` is computed where it is declared. Other properties do not substitute `var()`
+  (see [`style()` and custom properties](#style-and-custom-properties)).
 - **`translate`, `rotate` and `scale`** are the individual properties. `rotate` takes an angle or a number of degrees, `scale`
   one or two numbers or percentages. Around the origin they apply in the order `translate`, `rotate`, `scale`, then `transform`.
 - **`transformOrigin`** is one or two of `left`, `center`, `right`, `top`, `bottom`, lengths and percentages, `50% 50%` by default.
@@ -7180,28 +7202,45 @@ size, since a moving transform lays nothing out.
   descendants**, as in CSS, even when its value is the identity (`translateZ(0)`). `none` and an invalid value do neither.
 - **What the transform moves.** Painting, hit testing, `getBoundingClientRect()` (the smallest box that holds the four
   corners of the border box after the transforms around the element and its own), `getElementsAt`, `scrollIntoView` and
-  `IntersectionObserver`. A scroller scrolls as far as the transformed boxes inside it reach. `offsetX` and `offsetY` of a
+  `IntersectionObserver`. `scrollIntoView` maps the box through every scroller around the element, in each one's own space
+  (a turn between two scrollers enlarges it, as in Chrome), and a selection drag's autoscroll, a virtual list's row and Tab into
+  skipped content use the drawn box. Text selection works through a transform: a press, a drag, a double and a triple click
+  select what the same gesture selects in the text's own space. A scroller scrolls as far as the transformed boxes inside it
+  reach, and the `scrollWidth` and `scrollHeight` of that scroller follow the transform while it animates. `offsetX` and `offsetY` of a
   pointer event are in the target's own, untransformed space. `offsetWidth`, `clientWidth`, `scrollWidth`, `ResizeObserver` and
   `onLayout` still report the layout box.
 - **A `<span>` takes no transform while it is an inline box.** CSS does not transform a non-atomic inline box, and neither does
   GPUIX; the same span with `display: inline-block` (an atomic inline) does. A `motion.span` drops the Motion keys whatever its
   `display` (see [Animate an inline span](#animate-an-inline-span)).
-- **Text.** A translation is pixel-snapped and exactly as sharp as the same text placed there. Rotated and scaled text is resampled
-  and can look softer than in Chrome.
+- **Text** is rasterized through the transform, so scaled, rotated and skewed text is as sharp as Chrome's, and
+  `scale(2)` text is the text at twice the size. A translation is pixel-snapped and exactly as sharp as the same text placed
+  there. While a transform animates, its text is rasterized at a nearby scale and drawn through the matrix (a few rasters per
+  animation, not one per tick), and rasterized through the transform again once the animation ends.
+- **Filters follow the transform.** `backdropFilter` is cut to the transformed, rounded outline of the box, and `blur()` in
+  `filter` and `backdropFilter` blurs by the transform, as Chrome filters in the element's own space and transforms the
+  result: `blur(4px)` under `scale(2)` blurs by 8px.
+- **A popup follows its trigger.** A deferred `<anchored>` (the default) is drawn in the window, not turned or scaled with the
+  transforms around its trigger, and is placed against the trigger's transformed bounding box in the window, as floating-ui
+  does with `getBoundingClientRect`. An explicit `position={{ x, y }}` is in window coordinates. `deferred={false}` stays in
+  the tree: it is drawn inside the transform and flips against the window in its space.
 - **State styles** (`hover`, `focus`, ...) take all five keys.
 - **Animating.** The five properties take `transition` and `defineKeyframes` like any other. Two `transform` lists with the same
   functions in the same order blend function by function (`rotate(0)` to `rotate(270deg)` turns three quarters, not a quarter back),
   the shorter list padded with identity functions, and `none` blends as the identity of the other list. From the first pair
   of functions that do not match, the rest of both lists blends as 2D matrices, as in Chrome. A tick of any of this is a patched
-  frame. [Motion's keys](#move-scale-and-turn) are the way to animate from `animate`, springs and motion values.
+  frame. [Motion's keys](#move-scale-and-turn) are the way to animate from `animate`, springs and motion values. A transition or
+  an animation of a transform that reads `var()` compares the computed values: changing `--p` under `transition: transform 1s`
+  runs from where the box was, and a keyframe's `var()` is read against the element each frame.
 
 Differences from Chrome:
 
 - A rotated child that has its own `overflow: hidden` inside a rotated, clipping ancestor is cut to the ancestor's bounding box,
   with its rounded corners dropped, where Chrome cuts to the rotated shape. A pointer aimed at such a clip is loose in the same way.
-- `backdropFilter` and `maskImage` under a rotation, scale or skew use the bounding box of what they cover, not its shape.
 - `layout="size"` still does not scale a box (see [Layout animations](#layout-animations)).
-- Selection-drag autoscroll and focus scrolling into view do not account for transforms.
+- A `--p` that JS writes each frame is a paint-only frame that builds the elements reading it, not a patched tick; a
+  transition or an animation of the same transform patches every tick. Motion's string keys do not substitute `var()`.
+- A scroller whose range a patched tick changes declines the patch when its offset would clamp or a scrollbar's thumb would
+  move, and a scroller inside an `inline-block` is not updated by a patch ([deviations](./docs/fork/deviations.md#paint-and-transforms)).
 
 ### Cursors
 
@@ -7962,7 +8001,7 @@ too, since the app has to render and the frame draws afterwards.
 #### `style()` and custom properties
 
 A key that starts with `--` is a CSS custom property, in a style, a state style or an
-`"@container"` block. They inherit, and `style()` queries read them:
+`"@container"` block. They inherit, and `style()` queries and the `var()` of the [transform properties](#transforms) read them:
 
 ```tsx
 <div style={{ '--density': 'compact', '--columns': 3 }}>
@@ -7985,7 +8024,10 @@ A key that starts with `--` is a CSS custom property, in a style, a state style 
 - **They inherit.** An element computes its own declarations over its parent's.
   `"initial"` clears one (it has no value below), `"inherit"` and `"unset"` keep the
   parent's. A state style (`hover`, ...) or a matching `"@container"` block that sets
-  one changes it for the element and everything below it while it applies.
+  one changes it for the element and everything below it while it applies. A value that
+  holds `var()` is computed at the element that declares it, against that element's other
+  declarations and what it inherits; a missing name or a cycle makes it have no value,
+  whatever it inherited.
 - **`style(--name: value)`** is true when the container computes `--name` to exactly
   that text: `style(--theme: dark)` does not match `Dark`, `style(--space: a  b)` does not
   match `a b`, and `10px` is not `10PX`. A trailing `!important` and comments in the
@@ -8012,8 +8054,9 @@ A key that starts with `--` is a CSS custom property, in a style, a state style 
 Differences from the browser:
 
 - `scroll-state()` is unknown (false), and `container-type: scroll-state` does not exist.
-  `var()` is not substituted into other properties: a custom property is only read by
-  `style()`. `style(--x: inherit)`, `unset` and `revert` are unknown, there is no `@property`
+  `var()` is substituted in the [transform properties](#transforms) only: elsewhere a
+  custom property is only read by `style()`. A change of a custom property alone is a
+  paint-only frame while no `"@container"` rule is in the tree. `style(--x: inherit)`, `unset` and `revert` are unknown, there is no `@property`
   registration (every value is text, and none transitions or animates), and a custom
   property cannot be set to `""` (that declares nothing)
 - Which elements are containers follows CSS. A `div`, `text`, `label`, `form`, an atomic
@@ -9016,7 +9059,9 @@ Counters you read off the renderer:
 - `getFrameWorkCounters()`: elements prepainted and painted by themselves (those in
   a culled subtree apart), and the scene primitives that painting inserted against
   the ones a replay put in again, and `boundsInserts`, the draw orders worked out with the
-  scene's bounds tree (a patched tick works out those of what it paints again).
+  scene's bounds tree (a patched tick works out those of what it paints again), and
+  `rasterizedGlyphs`, the glyphs rasterized because the atlas missed them (a glyph of a
+  patched animation that a clip hides is not rasterized until it shows).
   `dormantTicks` counts the frame callbacks that carried the animations of culled content on without drawing.
   A replayed subtree counts none of the elements under it. Subtract two reads to see what one hover frame did to the content that
   did not change.
