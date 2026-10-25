@@ -2482,14 +2482,12 @@ describeNative("animations in auto content that is near but clipped away by an o
   describe.each(KINDS)("$name", ({ kinds }) => {
     it(`costs a page what an empty one costs: ${ABOVE.name}`, () => costsNothing(ABOVE, kinds))
 
-    // gpui culls a child by its box against the content mask, and the mask inside a host the scroller clips away is empty:
-    // `Bounds::intersect` puts it at the later-starting edge, which is the top of the host for content below the clip, so
-    // the box of its child touches the mask and the child is painted under an empty mask. Nothing is culled, so nothing
-    // goes dormant (`Dormancy::holds` asks `was_culled`), and `Surroundings` of a root under an empty mask is not captured
-    // (`capture_surroundings`, patch.rs), so no patch unit is registered: every tick is `UnknownUnit` and drawn whole.
-    // Above the clip the mask sits at the clip, the child is apart from it and is culled. Remove `fails` with the fix.
-    it.fails(`costs a page what an empty one costs: ${BELOW.name}`, () => costsNothing(BELOW, kinds))
-    it.fails(`costs a page what an empty one costs: ${PUSHED.name}`, () => costsNothing(PUSHED, kinds))
+    // The mask inside a host the scroller clips away has no area, and a child tested against it is culled whether the host
+    // is above the clip or below it. A host below the clip used to be drawn whole every tick: its mask is a line at its top
+    // edge (`Bounds::intersect`), the child's box touched it and was not culled, so nothing went dormant and no patch unit
+    // was registered (`UnknownUnit`).
+    it(`costs a page what an empty one costs: ${BELOW.name}`, () => costsNothing(BELOW, kinds))
+    it(`costs a page what an empty one costs: ${PUSHED.name}`, () => costsNothing(PUSHED, kinds))
   })
 })
 
