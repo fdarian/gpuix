@@ -40,6 +40,7 @@ macro_rules! overlay_fields {
             atomic_inline: false,
             animating_opacity: $base.animating_opacity,
             animating_transform: $base.animating_transform,
+            transform_in_motion: $base.transform_in_motion,
             clone_probe: Default::default(),
         }
     };

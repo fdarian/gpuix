@@ -868,6 +868,13 @@ impl Element for Taped {
         self.child.escapes_to()
     }
 
+    // The tape reads no bounds. A subtree that is built whole inside another has no `Taped` around
+    // its root, so one that escaped twice would record a frame deeper than the whole build it is
+    // compared with.
+    fn forwards_escape(&self) -> bool {
+        true
+    }
+
     fn lift_z(&self) -> Option<i32> {
         self.child.lift_z()
     }

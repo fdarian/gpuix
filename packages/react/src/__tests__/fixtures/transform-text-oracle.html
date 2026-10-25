@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>transformed text oracle</title>
+<style>
+@font-face{font-family:'Inter Variable';src:url('inter-subset.ttf') format('truetype');font-weight:100 900}
+html,body{margin:0;width:1200px;height:2060px;overflow:hidden;background:#808080}
+.cell{position:absolute;width:260px;height:150px;overflow:hidden}
+.cell[data-smoothing=antialiased]{-webkit-font-smoothing:antialiased}
+.cell[data-smoothing=auto]{-webkit-font-smoothing:auto}
+.t{position:absolute;left:30px;top:40px;height:24px;line-height:24px;white-space:nowrap;font-family:'Inter Variable';font-variation-settings:'wght' 400,'opsz' 14;transform-origin:0 0}
+</style>
+<body>
+<script>
+// One text per cell. The reference cells draw the same text at twice the font size with no transform: what text under
+// scale(2) is compared with. A cell is 260 x 150 CSS px and its text starts at (30, 40), transformed about that corner.
+const TEXT='Hamburgefon';
+const transforms=[
+  {id:'none',css:'none'},
+  {id:'scale2',css:'scale(2)'},
+  {id:'scale05',css:'scale(0.5)'},
+  {id:'scale15x1',css:'scale(1.5, 1)'},
+  {id:'rotate15',css:'rotate(15deg)'},
+  {id:'rotate90',css:'rotate(90deg)'},
+  {id:'rotate30scale15',css:'rotate(30deg) scale(1.5)'},
+  {id:'skewx20',css:'skewX(20deg)'},
+];
+const pols={dark:{fg:'#000000',bg:'#ffffff'},light:{fg:'#ffffff',bg:'#000000'}};
+const cells=[];
+function add(id,pol,smoothing,size,css){cells.push({id,polarity:pol,smoothing,size,transform:css});}
+for(const pol of ['dark'])for(const smoothing of ['antialiased','auto'])for(const size of [13,16])for(const t of transforms)add(`${smoothing}-${pol}-${size}-${t.id}`,pol,smoothing,size,t.css);
+for(const t of transforms)add(`auto-light-13-${t.id}`,'light','auto',13,t.css);
+for(const smoothing of ['antialiased','auto'])for(const size of [26,32])add(`${smoothing}-dark-${size}-ref`,'dark',smoothing,size,'none');
+add('auto-light-26-ref','light','auto',26,'none');
+
+const COLS=4;
+cells.forEach((c,i)=>{
+  c.box={x:(i%COLS)*300+10,y:Math.floor(i/COLS)*170+10,w:260,h:150};
+  const cell=document.createElement('div');
+  cell.className='cell';
+  cell.dataset.smoothing=c.smoothing;
+  Object.assign(cell.style,{left:c.box.x+'px',top:c.box.y+'px',background:pols[c.polarity].bg,color:pols[c.polarity].fg});
+  const t=document.createElement('div');
+  t.className='t';
+  t.id=c.id;
+  t.style.fontSize=c.size+'px';
+  t.style.transform=c.transform;
+  t.textContent=TEXT;
+  cell.append(t);
+  document.body.append(cell);
+});
+document.body.dataset.samples=JSON.stringify(cells);
+
+document.fonts.load("13px 'Inter Variable'").then(()=>document.fonts.ready).then(()=>{
+  const out={fontsLoaded:document.fonts.check("13px 'Inter Variable'"),
+    samples:cells.map(c=>({id:c.id,advance:document.getElementById(c.id).getBoundingClientRect().width}))};
+  const el=document.createElement('script');
+  el.type='application/json';
+  el.id='result';
+  el.textContent=JSON.stringify(out);
+  document.body.append(el);
+});
+</script>

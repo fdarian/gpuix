@@ -126,6 +126,7 @@ impl Parts {
         Some(ElementTransform {
             functions: values.into_iter().flatten().flat_map(|value| value.functions().iter().cloned()).collect(),
             origin: self.origin.unwrap_or(DEFAULT_ORIGIN),
+            animating: false,
         })
     }
 }
@@ -181,7 +182,10 @@ pub(crate) fn of(style: &StyleDesc, lengths: &LengthContext) -> Option<ElementTr
     if !declares(style) {
         return None;
     }
-    Parts::of(style, lengths).element_transform()
+    Parts::of(style, lengths).element_transform().map(|transform| ElementTransform {
+        animating: style.transform_in_motion,
+        ..transform
+    })
 }
 
 /// Whether the element has a transform, see [`Parts::is_active`], for a style that declares a

@@ -1127,6 +1127,13 @@ pub struct StyleDesc {
     /// (`none` and the identity included), so a tick never flips them.
     #[serde(skip)]
     pub animating_transform: bool,
+    /// Set by the renderer where `animating_transform` is, for as long as any animation or
+    /// transition of the transform, `motion` track or motion value that moves it is current. The
+    /// element is drawn through its matrix with its text rasterized at a scale kept across the run
+    /// (gpui's `ElementTransform::animating`), as a compositor holds an animating layer's raster
+    /// scale; a static transform has its text rasterized through the matrix itself.
+    #[serde(skip)]
+    pub transform_in_motion: bool,
 
     // CSS animations: CSS syntax, as in a DOM inline style. The longhands win
     // over the `animation` shorthand. Names refer to `defineKeyframes`.

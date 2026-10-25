@@ -10073,6 +10073,7 @@ fn animate_style_at(
                 .expect("an animation that runs has the style it runs on");
             current.animating_opacity |= opacity;
             current.animating_transform |= transform;
+            current.transform_in_motion |= transform;
         }
     }
     Animated {
