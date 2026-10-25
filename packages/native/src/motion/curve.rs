@@ -420,6 +420,9 @@ pub(super) struct Spring {
     pub(super) mass: f64,
     rest_speed: Option<f64>,
     rest_delta: Option<f64>,
+    /// Seconds a spring given as `duration` and `bounce` is defined to take: Motion ends such a
+    /// spring when that time has passed, where one of physics ends when it comes to rest.
+    pub(super) time_defined: Option<f64>,
 }
 
 impl Spring {
@@ -479,6 +482,7 @@ impl Spring {
             mass,
             rest_speed: raw.rest_speed,
             rest_delta: raw.rest_delta,
+            time_defined: has_time.then(|| raw.duration.unwrap_or(DEFAULT_SPRING_DURATION)),
         };
         if !(spring.angular_frequency() <= MAX_SPRING_RATE && spring.decay() <= MAX_SPRING_RATE) {
             return Err(
@@ -487,6 +491,14 @@ impl Spring {
             );
         }
         Ok(spring)
+    }
+
+    pub(super) fn rest_speed(&self) -> Option<f64> {
+        self.rest_speed
+    }
+
+    pub(super) fn rest_delta(&self) -> Option<f64> {
+        self.rest_delta
     }
 
     fn angular_frequency(&self) -> f64 {

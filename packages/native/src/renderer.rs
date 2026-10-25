@@ -5719,6 +5719,10 @@ pub(crate) struct GpuixView {
     pub(crate) css_animations: crate::motion::CssAnimations,
     /// Runs that finished or were cancelled, until JS has consumed the event.
     pub(crate) retired_animations: crate::motion::web_animation::Retired,
+    /// What the animations Motion would hand to the browser told since the events were last emitted.
+    script_events: Vec<crate::motion::web_animation::ApiEvent>,
+    /// The pass being built is a frame that is drawn and not a layout a read forced (`note_pass`).
+    drawing: bool,
     /// What the `display: contents` elements handed down in the frame being built, see `splice_overlay`.
     contents_styles: HashMap<u64, Arc<ContentsFrame>>,
     /// What the last paint measured for the elements that animate.
@@ -6015,6 +6019,14 @@ pub(crate) fn gestures_of(
     }
 }
 
+/// Where the animations Motion would hand to the browser tell what happened to them, and whether the pass
+/// being built is a frame that is drawn, which is what starts them.
+pub(crate) struct ScriptFrame<'a> {
+    pub(crate) drawing: bool,
+    pub(crate) events: &'a mut Vec<crate::motion::web_animation::ApiEvent>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sync_motion_states(
     tree: &crate::retained_tree::RetainedTree,
     states: &mut HashMap<u64, crate::motion::MotionState>,
@@ -6023,9 +6035,15 @@ pub(crate) fn sync_motion_states(
     viewport: gpui::Size<gpui::Pixels>,
     gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
     now: web_time::Instant,
+    scripts: ScriptFrame,
 ) -> (Vec<u64>, Vec<(u64, u64)>) {
-    states.retain(|id, _| tree.motion_ids.contains(id));
-    sync_motions(tree, states, tree.motion_ids.iter().copied(), measurements, appearance, viewport, gestures, now)
+    let gone: Vec<u64> = states.keys().filter(|id| !tree.motion_ids.contains(id)).copied().collect();
+    for id in gone {
+        if let Some(mut state) = states.remove(&id) {
+            state.cancel_scripts(id, now, scripts.events);
+        }
+    }
+    sync_motions(tree, states, tree.motion_ids.iter().copied(), measurements, appearance, viewport, gestures, now, scripts)
 }
 
 /// [`sync_motion_states`] for the motions in `ids` only: the ones that were moving when the tree,
@@ -6041,8 +6059,9 @@ pub(crate) fn step_motion_states(
     viewport: gpui::Size<gpui::Pixels>,
     gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
     now: web_time::Instant,
+    scripts: ScriptFrame,
 ) -> (Vec<u64>, Vec<(u64, u64)>) {
-    sync_motions(tree, states, ids.iter().copied(), measurements, appearance, viewport, gestures, now)
+    sync_motions(tree, states, ids.iter().copied(), measurements, appearance, viewport, gestures, now, scripts)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6055,6 +6074,7 @@ fn sync_motions(
     viewport: gpui::Size<gpui::Pixels>,
     gestures: &dyn Fn(u64) -> crate::motion::GestureStates,
     now: web_time::Instant,
+    scripts: ScriptFrame,
 ) -> (Vec<u64>, Vec<(u64, u64)>) {
     let painted = measurements.painted_frames();
     let mut root_font = crate::motion::ParentValues::initial();
@@ -6126,6 +6146,7 @@ fn sync_motions(
             log::warn!("Invalid motion gesture for element {id}: {error}");
         }
         let frame = state.frame(now);
+        state.advance_scripts(id, now, scripts.drawing, scripts.events);
         if frame.active {
             animating.push(id);
         }
@@ -6381,26 +6402,51 @@ impl GpuixView {
     /// is built for it and the last one may be any time ago.
     fn api_instant(&self, element: Option<u64>, now: web_time::Instant) -> Option<web_time::Instant> {
         match element {
-            Some(element) if self.css_animations.is_dormant(element) || self.css_transitions.is_dormant(element) => Some(now),
+            Some(element)
+                if self.css_animations.is_dormant(element)
+                    || self.css_transitions.is_dormant(element)
+                    || (self.retain.is_dormant(element)
+                        && self.motion_states.get(&element).is_some_and(crate::motion::MotionState::has_scripts)) =>
+            {
+                Some(now)
+            }
             _ => self.frame_instant,
         }
     }
 
-    /// The element a CSS animation or transition runs on.
-    fn element_of_web_animation(&self, id: u64) -> Option<u64> {
-        self.css_transitions.element_of(id).or_else(|| self.css_animations.element_of(id))
+    /// The motion element an animation Motion would hand to the browser runs on.
+    fn script_state(&self, id: u64) -> Option<(u64, &crate::motion::MotionState)> {
+        self.motion_states.iter().find(|(_, state)| state.has_script(id)).map(|(element, state)| (*element, state))
     }
 
-    /// The Web Animations of `element`: its CSS transitions, then its CSS animations, each in composite order, as of the last frame.
+    /// The element a CSS animation or transition, or a script animation of the motion engine, runs on.
+    fn element_of_web_animation(&self, id: u64) -> Option<u64> {
+        self.css_transitions
+            .element_of(id)
+            .or_else(|| self.css_animations.element_of(id))
+            .or_else(|| self.script_state(id).map(|(element, _)| element))
+    }
+
+    /// The Web Animations of `element`: its CSS transitions, then its CSS animations, each in composite order, then the
+    /// animations of the motion engine in the order they were made, as of the last frame.
     pub(crate) fn web_animations(&self, element: u64, now: web_time::Instant) -> Vec<WebAnimationInfo> {
         let Some(now) = self.api_instant(Some(element), now) else {
             return Vec::new();
         };
         let transitions = self.css_transitions.list(element, now);
         let animations = self.css_animations.list(element, now);
+        // An element that is gone has no animations, whatever its motion state still holds until the next frame.
+        let gone = !self.tree.lock().unwrap().elements.contains_key(&element);
+        let scripts = self
+            .motion_states
+            .get(&element)
+            .filter(|_| !gone)
+            .map(|state| state.script_list(now))
+            .unwrap_or_default();
         transitions
             .into_iter()
             .chain(animations)
+            .chain(scripts)
             .map(|info| WebAnimationInfo::at(info, &self.clock))
             .collect()
     }
@@ -6420,6 +6466,16 @@ impl GpuixView {
             let Some(at) = self.api_instant(Some(*element), now) else { continue };
             listed.extend(self.css_animations.list(*element, at).into_iter().map(|info| (*element, info)));
         }
+        // Script animations come after both, in the order they were made wherever they run.
+        let mut scripts = Vec::new();
+        for element in &order {
+            let (Some(state), Some(at)) = (self.motion_states.get(element), self.api_instant(Some(*element), now)) else {
+                continue;
+            };
+            scripts.extend(state.script_list(at).into_iter().map(|info| (*element, info)));
+        }
+        scripts.sort_by_key(|(_, info)| info.id);
+        listed.extend(scripts);
         listed
             .into_iter()
             .map(|(element, info)| ElementWebAnimationInfo {
@@ -6434,7 +6490,10 @@ impl GpuixView {
     pub(crate) fn web_animation(&self, id: u64, now: web_time::Instant) -> std::result::Result<WebAnimationInfo, String> {
         self.api_instant(self.element_of_web_animation(id), now)
             .and_then(|now| {
-                self.css_transitions.info(id, now).or_else(|| self.css_animations.info(id, now))
+                self.css_transitions
+                    .info(id, now)
+                    .or_else(|| self.css_animations.info(id, now))
+                    .or_else(|| self.script_state(id).and_then(|(_, state)| state.script_info(id, now)))
             })
             .or_else(|| self.retired_animations.get(id).cloned())
             .map(|info| WebAnimationInfo::at(info, &self.clock))
@@ -6444,7 +6503,12 @@ impl GpuixView {
     /// The timing and computed timing of the run `id`, as of the last frame.
     pub(crate) fn web_animation_effect(&self, id: u64, now: web_time::Instant) -> std::result::Result<WebAnimationEffectInfo, String> {
         self.api_instant(self.element_of_web_animation(id), now)
-            .and_then(|now| self.css_transitions.effect(id, now).or_else(|| self.css_animations.effect(id, now)))
+            .and_then(|now| {
+                self.css_transitions
+                    .effect(id, now)
+                    .or_else(|| self.css_animations.effect(id, now))
+                    .or_else(|| self.script_state(id).and_then(|(_, state)| state.script_effect(id, now)))
+            })
             .ok_or_else(|| unknown_web_animation(id))?
             .map(WebAnimationEffectInfo::from)
     }
@@ -6454,6 +6518,7 @@ impl GpuixView {
         self.css_transitions
             .keyframes(id)
             .or_else(|| self.css_animations.keyframes(id))
+            .or_else(|| self.script_state(id).and_then(|(_, state)| state.script_keyframes(id)))
             .ok_or_else(|| unknown_web_animation(id))?
             .map(|frames| frames.into_iter().map(WebAnimationKeyframeInfo::from).collect())
     }
@@ -6467,6 +6532,9 @@ impl GpuixView {
     ) -> std::result::Result<(), String> {
         let update = update.into_update()?;
         let at = self.api_instant(self.element_of_web_animation(id), now).ok_or_else(|| unknown_web_animation(id))?;
+        if self.script_state(id).is_some() {
+            return Err(SCRIPT_NOT_BUILT.to_string());
+        }
         self.css_transitions
             .update_timing(id, &update, at)
             .or_else(|| self.css_animations.update_timing(id, &update, at))
@@ -6492,6 +6560,9 @@ impl GpuixView {
         command: crate::motion::web_animation::Command,
         now: web_time::Instant,
     ) -> std::result::Result<(), String> {
+        if self.script_state(id).is_some() {
+            return Err(SCRIPT_NOT_BUILT.to_string());
+        }
         let outcome = self.api_instant(self.element_of_web_animation(id), now).and_then(|now| {
             self.css_transitions
                 .command(id, command, now)
@@ -6516,6 +6587,7 @@ impl GpuixView {
     pub(crate) fn emit_css_events(&mut self, callback: &Option<EventCallback>, tree: &crate::retained_tree::RetainedTree) {
         let mut web = self.css_animations.take_api_events();
         web.extend(self.css_transitions.take_api_events());
+        web.append(&mut self.script_events);
         emit_css_events(
             callback,
             tree,
@@ -6531,6 +6603,7 @@ impl GpuixView {
     /// that is drawn, which decides when the animations and transitions start and tell.
     pub(crate) fn note_pass(&mut self, window: &gpui::Window) {
         let layout_only = window.is_layout_pass();
+        self.drawing = !layout_only;
         self.css_animations.set_layout_only(layout_only);
         self.css_transitions.set_layout_only(layout_only);
     }
@@ -6596,6 +6669,8 @@ impl GpuixView {
             css_transitions: Default::default(),
             css_animations: Default::default(),
             retired_animations: Default::default(),
+            script_events: Vec::new(),
+            drawing: true,
             contents_styles: Default::default(),
             measurements: Default::default(),
             layout_flips: Default::default(),
@@ -8729,6 +8804,7 @@ impl GpuixView {
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
+            ScriptFrame { drawing: self.drawing, events: &mut self.script_events },
         );
         self.motion_synced = inputs.map(|inputs| MotionSynced { inputs, moving: synced.0.clone(), split: None });
         synced
@@ -8803,6 +8879,7 @@ impl GpuixView {
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
+            ScriptFrame { drawing: self.drawing, events: &mut self.script_events },
         );
         synced.moving = stepped.iter().chain(&resting).copied().collect();
         self.motion_synced = Some(synced);
@@ -8860,6 +8937,7 @@ impl GpuixView {
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
+            ScriptFrame { drawing: self.drawing, events: &mut self.script_events },
         );
         let step = match split {
             Some(split) if !asleep_due => {
@@ -13607,20 +13685,23 @@ pub struct ElementWebAnimationInfo {
     pub info: WebAnimationInfo,
 }
 
+/// What a command on an animation of the motion engine refuses with: they can be read, and nothing more yet.
+const SCRIPT_NOT_BUILT: &str = "NotSupportedError: the animations of the motion engine cannot be controlled yet";
+
 fn unknown_web_animation(id: u64) -> String {
     format!("No running CSS animation or transition has the id {id}")
 }
 
-/// A CSS animation or transition as `Animation.currentTime`, `playbackRate` and
-/// `playState` show it. Exactly one of `animationName` and `transitionProperty`
-/// is set.
+/// A CSS animation or transition, or an animation of the motion engine, as `Animation.currentTime`,
+/// `playbackRate` and `playState` show it. `animationName` is set for a CSS animation and
+/// `transitionProperty` for a CSS transition; an animation of the motion engine has neither.
 #[derive(Debug, Clone)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct WebAnimationInfo {
     /// Unique among the animations and transitions of the process, and the same
     /// for one run from its start to its end.
     pub id: f64,
-    /// `"animation"` or `"transition"`.
+    /// `"animation"`, `"transition"` or `"script"`.
     pub kind: String,
     /// The `animation-name`.
     pub animation_name: Option<String>,
@@ -13702,8 +13783,10 @@ pub struct WebAnimationKeyframeValue {
 #[derive(Debug, Clone)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
 pub struct WebAnimationKeyframeInfo {
-    /// Also the `computedOffset`: the keyframes of a rule always have one.
-    pub offset: f64,
+    /// The `computedOffset`.
+    pub computed_offset: f64,
+    /// `null` for a keyframe of an animation of the motion engine that was given no offset or time.
+    pub offset: Option<f64>,
     pub easing: String,
     /// `"auto"`, `"replace"`, `"add"` or `"accumulate"`.
     pub composite: String,
@@ -13713,7 +13796,8 @@ pub struct WebAnimationKeyframeInfo {
 impl From<crate::motion::effect::KeyframeInfo> for WebAnimationKeyframeInfo {
     fn from(info: crate::motion::effect::KeyframeInfo) -> Self {
         Self {
-            offset: info.offset,
+            computed_offset: info.offset,
+            offset: info.written.then_some(info.offset),
             easing: info.easing,
             composite: info.composite.to_string(),
             values: info
@@ -13812,6 +13896,7 @@ impl WebAnimationInfo {
         let (animation_name, transition_property) = match info.kind {
             Kind::Animation => (Some(info.name), None),
             Kind::Transition => (None, Some(info.name)),
+            Kind::Script => (None, None),
         };
         Self {
             id: info.id as f64,

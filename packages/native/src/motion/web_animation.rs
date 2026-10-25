@@ -58,6 +58,9 @@ impl Status {
 pub(crate) enum Kind {
     Animation,
     Transition,
+    /// What a script made with `Element.animate()`: an animation of the motion engine that Motion
+    /// would hand to the browser, see [`super::script`].
+    Script,
 }
 
 impl Kind {
@@ -65,6 +68,7 @@ impl Kind {
         match self {
             Self::Animation => "animation",
             Self::Transition => "transition",
+            Self::Script => "script",
         }
     }
 }
@@ -359,6 +363,19 @@ impl Playback {
 
     fn effective_rate(&self) -> f64 {
         self.pending_rate.unwrap_or(self.rate)
+    }
+
+    /// The time the effect is at, seconds from the start of its delay, without the stop an end
+    /// puts on it: a track that goes on past the end of its effect is sampled by it. `None` for an
+    /// idle clock.
+    pub(super) fn time(&self, now: Instant) -> Option<f64> {
+        self.hold.or_else(|| self.calculated(now))
+    }
+
+    /// The time the start time gives, however long ago the clock was held at an end, or the held time of a clock with
+    /// no start time.
+    pub(super) fn run_time(&self, now: Instant) -> Option<f64> {
+        self.calculated(now).or(self.hold)
     }
 
     /// The time from the start time, whatever holds it.

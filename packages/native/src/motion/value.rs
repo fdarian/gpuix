@@ -231,6 +231,11 @@ impl PartialEq for Color {
 }
 
 impl Color {
+    /// Written in the space of `lab()`, `lch()`, `oklab()`, `oklch()` or `color()`, or mixed by `color-mix()`.
+    pub(super) fn is_written_in_space(&self) -> bool {
+        matches!(self.computed, Some(crate::color::ComputedColor::Space { .. }))
+    }
+
     pub(super) const TRANSPARENT: Self = Self {
         lab: [0.0; 3],
         alpha: 0.0,
@@ -568,6 +573,12 @@ impl AnimValue {
     /// blends with none and a pair of it with a length flips at the halfway point.
     pub(super) fn auto_keyword() -> Self {
         Self::Keyword(Some("auto".to_string()))
+    }
+
+    /// A colour in a syntax only the browser reads (`oklch()`, `lab()`, `color()`, `color-mix()`), which Motion
+    /// hands to the browser instead of mixing it itself.
+    pub(super) fn is_browser_colour(&self) -> bool {
+        matches!(self, Self::Color(color) if color.is_written_in_space())
     }
 
     pub(super) fn is_auto_keyword(&self) -> bool {

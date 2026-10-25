@@ -950,6 +950,7 @@ impl View {
             .map(|frame| {
                 Ok(KeyframeInfo {
                     offset: frame.offset,
+                    written: true,
                     easing: frame.easing.to_css()?,
                     composite: if frame.implicit { "replace" } else { "auto" },
                     values: frame

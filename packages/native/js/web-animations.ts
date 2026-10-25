@@ -320,7 +320,8 @@ export interface ComputedEffectTiming extends Omit<EffectTiming, "duration"> {
 
 /** A keyframe as `getKeyframes()` returns it: the other members are the properties, as computed values. */
 export interface ComputedKeyframe {
-  offset: number
+  /** `null` for a keyframe of an animation of the motion engine that was given no offset. */
+  offset: number | null
   computedOffset: number
   easing: string
   composite: "auto" | "replace" | "add" | "accumulate"
@@ -477,10 +478,10 @@ export class KeyframeEffect {
     }
     return unwrap(state.keyframes).map((frame) => {
       const keyframe: ComputedKeyframe = {
-        offset: frame.offset,
+        offset: frame.offset ?? null,
         easing: frame.easing,
         composite: frame.composite as ComputedKeyframe["composite"],
-        computedOffset: frame.offset,
+        computedOffset: frame.computedOffset,
       }
       for (const value of frame.values) keyframe[value.property] = value.value
       return keyframe
@@ -562,7 +563,9 @@ export class KeyframeEffect {
 }
 
 /**
- * A CSS animation or transition of an element, as `element.getAnimations()`
+ * A CSS animation or transition of an element, or an animation of a `motion` element that Motion would hand to the
+ * browser's Web Animations (an `opacity` or `backgroundColor` animation, a colour in `oklch()`, ...; a plain
+ * `Animation`, as the one `element.animate()` makes), as `element.getAnimations()`
  * returns it: the Web Animations `Animation` of the DOM, for what the CSS
  * engine runs. `getAnimations()` gives the same object for the same run every
  * time. `playState`, `currentTime`, `playbackRate`, `startTime` and `pending`
@@ -570,10 +573,13 @@ export class KeyframeEffect {
  * `timeline`. The promises `ready` and `finished` and the `finish` and `cancel`
  * events follow Chrome's order.
  *
- * Not built: `id`, `replaceState`, `persist()`, `commitStyles()`,
- * `onremove`, and setting `effect`. An animation of the motion engine is not listed.
+ * Not built: `replaceState`, `persist()`, `commitStyles()`,
+ * `onremove`, and setting `effect`. An animation of the motion engine can be read and not controlled yet.
  */
 export class Animation extends GpuixEventTarget {
+  /** Empty for what `getAnimations()` lists: the animations of CSS and of Motion have no id. */
+  id = ""
+
   constructor(init: AnimationInit) {
     super()
     const state: State = {
@@ -926,6 +932,18 @@ function register(registry: Registry, elementId: number, id: number, animation: 
   registry.byElement.set(elementId, siblings)
 }
 
+/** The class of the animation of a run: the DOM makes an `Animation` for a script and a subclass for CSS. */
+function animationOf(kind: string, init: AnimationInit): Animation {
+  switch (kind) {
+    case "transition":
+      return new CSSTransition(init)
+    case "script":
+      return new Animation(init)
+    default:
+      return new CSSAnimation(init)
+  }
+}
+
 function adopt(
   registry: Registry,
   host: WebAnimationHost,
@@ -937,7 +955,7 @@ function adopt(
   const known = registry.byId.get(info.id)
   if (known) return known
   const init = { host, registry, timeline, target, elementId, info }
-  const animation = info.kind === "transition" ? new CSSTransition(init) : new CSSAnimation(init)
+  const animation = animationOf(info.kind, init)
   register(registry, elementId, info.id, animation)
   return animation
 }

@@ -329,7 +329,11 @@ impl EffectInfo {
 /// One keyframe as `getKeyframes()` shows it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct KeyframeInfo {
+    /// The `computedOffset`.
     pub(crate) offset: f64,
+    /// The offset was written (`offset` is not `null`): the keyframes of a rule and the endpoints of a
+    /// transition always have one, those of a script have it where it gave `offset` or `times`.
+    pub(crate) written: bool,
     pub(crate) easing: String,
     pub(crate) composite: &'static str,
     /// The camelCase property and its computed value, as Chrome writes it.

@@ -797,6 +797,7 @@ impl Running {
             .map(|(offset, value)| {
                 Ok(KeyframeInfo {
                     offset,
+                    written: true,
                     easing: "linear".to_string(),
                     composite: "auto",
                     values: self.endpoint_text(key, value)?,

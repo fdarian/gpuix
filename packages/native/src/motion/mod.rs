@@ -16,6 +16,7 @@ mod layout_flip;
 mod list;
 pub(crate) mod measure;
 mod property;
+mod script;
 mod svg_attr;
 pub(crate) mod text;
 mod track;
@@ -63,6 +64,7 @@ use measure::Measurement;
 use property::AnimProp;
 pub(crate) use property::Scope;
 pub(crate) use svg_attr::SvgAttr;
+use script::{Advance, Script};
 use track::{Goal, Track};
 pub(crate) use value::{Colors, Inheritable, ParentValues, INITIAL_FONT_WEIGHT};
 use value::{AnimValue, Interpolation};
@@ -537,6 +539,8 @@ pub(crate) struct MotionState {
     /// What the description animates to without a gesture.
     resting: Goals,
     resting_transition: Option<Transitions>,
+    /// The animations of tracks that were replaced or removed, until `advance_scripts` has cancelled them.
+    cancelled: Vec<Script>,
 }
 
 impl MotionState {
@@ -587,7 +591,8 @@ impl MotionState {
     ) -> Result<Self, String> {
         let description = parse_description(source, base.target(), base.colors())?;
         check_scope(&description, scope)?;
-        let (tracks, pending) = mount_tracks(&description, base, measurement, painted, now)?;
+        let (mut tracks, pending) = mount_tracks(&description, base, measurement, painted, now)?;
+        screen_tracks(&mut tracks, source, now);
         Ok(Self {
             source: source.clone(),
             colors: base.colors().clone(),
@@ -602,6 +607,7 @@ impl MotionState {
             resting_transition: Some(description.transition),
             gestures: description.gestures,
             active: GestureStates::default(),
+            cancelled: Vec::new(),
         })
     }
 
@@ -618,6 +624,7 @@ impl MotionState {
             resting_transition: None,
             gestures: Vec::new(),
             active: GestureStates::default(),
+            cancelled: Vec::new(),
         }
     }
 
@@ -736,7 +743,7 @@ impl MotionState {
 
         self.needs_settle =
             description.is_exit || description.generation != previous_generation || moving;
-        self.tracks = tracks;
+        self.install(tracks, source, now);
         self.pending = pending;
         self.source = source.clone();
         self.valid = true;
@@ -784,9 +791,24 @@ impl MotionState {
         };
         let (tracks, pending, moving) = self.retarget_tracks(&description, base, measurement, painted, now)?;
         self.needs_settle |= moving;
-        self.tracks = tracks;
+        let source = self.source.clone();
+        self.install(tracks, &source, now);
         self.pending = pending;
         Ok(())
+    }
+
+    /// Puts `tracks` in place of the ones the state has. The animation of a track that is replaced or
+    /// dropped is cancelled, and the tracks that are new get the animations Motion would make of them,
+    /// in the order Motion makes them: that of the keys of `animate`.
+    fn install(&mut self, mut tracks: BTreeMap<PropKey, Track>, source: &Value, now: Instant) {
+        screen_tracks(&mut tracks, source, now);
+        let kept: Vec<u64> = tracks.values().filter_map(|track| track.animation().map(Script::id)).collect();
+        for track in self.tracks.values_mut() {
+            if track.animation().is_some_and(|script| !kept.contains(&script.id())) {
+                self.cancelled.extend(track.release_animation(now));
+            }
+        }
+        self.tracks = tracks;
     }
 
     /// Keeps a track whose target and transition are unchanged, restarts the
@@ -1071,6 +1093,84 @@ impl MotionState {
             just_settled,
             generation: self.generation,
         }
+    }
+}
+
+impl MotionState {
+    /// What a frame does for the animations Motion would hand to the browser: a frame that is
+    /// drawn starts them, the ones that ended are cancelled as Motion cancels them, and the ones of
+    /// tracks that were replaced are cancelled. What JS has to hear of goes to `events`.
+    pub(crate) fn advance_scripts(
+        &mut self,
+        element: u64,
+        now: Instant,
+        drawing: bool,
+        events: &mut Vec<web_animation::ApiEvent>,
+    ) {
+        for mut script in std::mem::take(&mut self.cancelled) {
+            script.cancel(element, now, events);
+        }
+        for track in self.tracks.values_mut() {
+            let Some(script) = track.animation_mut() else {
+                continue;
+            };
+            if script.advance(element, now, drawing, events) == Advance::Over {
+                track.release_animation(now);
+            }
+        }
+    }
+
+    /// Cancels every animation: the state is going. JS hears of it.
+    pub(crate) fn cancel_scripts(&mut self, element: u64, now: Instant, events: &mut Vec<web_animation::ApiEvent>) {
+        for mut script in std::mem::take(&mut self.cancelled) {
+            script.cancel(element, now, events);
+        }
+        for track in self.tracks.values_mut() {
+            if let Some(mut script) = track.release_animation(now) {
+                script.cancel(element, now, events);
+            }
+        }
+    }
+
+    fn animations(&self) -> impl Iterator<Item = (PropKey, &Track, &Script)> {
+        self.tracks.iter().filter_map(|(key, track)| Some((*key, track, track.animation()?)))
+    }
+
+    /// The animations Motion would have in the browser for this element, in the order it made them.
+    pub(crate) fn script_list(&self, now: Instant) -> Vec<web_animation::Info> {
+        if !self.valid {
+            return Vec::new();
+        }
+        let mut listed: Vec<web_animation::Info> =
+            self.animations().filter(|(_, _, script)| script.listed(now)).map(|(_, _, script)| script.info(now)).collect();
+        listed.sort_by_key(|info| info.id);
+        listed
+    }
+
+    /// The animation `id`, if it is this element's and has not been cancelled.
+    fn script_of(&self, id: u64) -> Option<(PropKey, &Track, &Script)> {
+        self.animations().find(|(_, _, script)| script.id() == id)
+    }
+
+    /// Whether any track has an animation to list.
+    pub(crate) fn has_scripts(&self) -> bool {
+        self.animations().next().is_some()
+    }
+
+    pub(crate) fn has_script(&self, id: u64) -> bool {
+        self.script_of(id).is_some()
+    }
+
+    pub(crate) fn script_info(&self, id: u64, now: Instant) -> Option<web_animation::Info> {
+        self.script_of(id).map(|(_, _, script)| script.info(now))
+    }
+
+    pub(crate) fn script_effect(&self, id: u64, now: Instant) -> Option<Result<effect::EffectInfo, String>> {
+        self.script_of(id).map(|(_, _, script)| script.effect_info(now))
+    }
+
+    pub(crate) fn script_keyframes(&self, id: u64) -> Option<Result<Vec<effect::KeyframeInfo>, String>> {
+        self.script_of(id).map(|(key, track, script)| script.keyframe_info(key, track.literal()))
     }
 }
 
@@ -1562,6 +1662,20 @@ fn mount_tracks(
     Ok((tracks, pending))
 }
 
+/// Asks, for every track that is new, whether Motion would hand the value to the browser.
+fn screen_tracks(tracks: &mut BTreeMap<PropKey, Track>, source: &Value, now: Instant) {
+    let written: Vec<&str> = source
+        .get("animate")
+        .and_then(Value::as_object)
+        .map(|animate| animate.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    let mut new: Vec<PropKey> = tracks.iter().filter(|(_, track)| track.is_unscreened()).map(|(key, _)| *key).collect();
+    new.sort_by_key(|key| (written.iter().position(|name| *name == key.name()).unwrap_or(usize::MAX), *key));
+    for key in new {
+        tracks.get_mut(&key).expect("the key was found in the tracks").screen(key, now);
+    }
+}
+
 fn source_generation(source: &Value) -> u64 {
     source
         .get("generation")
@@ -1853,7 +1967,10 @@ mod tests {
 
         fn state(transition: serde_json::Value, animate: serde_json::Value, now: Instant) -> MotionState {
             let description = serde_json::json!({ "initial": { "opacity": 1.0 }, "animate": animate, "transition": transition });
-            MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap()
+            let mut state = MotionState::new(&description, None, Colors::root(), None, 0, now).unwrap();
+            // The frame that draws it starts the animation of an opacity.
+            state.advance_scripts(1, now, true, &mut Vec::new());
+            state
         }
 
         #[test]

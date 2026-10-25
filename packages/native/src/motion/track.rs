@@ -11,7 +11,9 @@ use crate::dormant_wake::Wake;
 use super::curve::{
     ease, ease_slope, seconds, Curve, RepeatCount, RepeatType, Spring, Transition,
 };
+use super::script::Script;
 use super::value::{align, align_in, pair, AnimValue, Interpolation, Layout};
+use super::PropKey;
 
 /// What a description asks one property to animate to: a single target, or
 /// keyframes. A `None` keyframe repeats the one before it, and a leading `None`
@@ -86,6 +88,11 @@ pub(super) struct Track {
     measured: bool,
     transition: Transition,
     started: Instant,
+    /// The animation Motion would hand to the browser for this track, whose clock the track then
+    /// follows: `started` is the clock of every other track.
+    script: Option<Script>,
+    /// Nobody has asked yet whether Motion would make an animation of the track.
+    unscreened: bool,
     /// Seconds a repeating spring takes to settle, which is the length of one
     /// of its iterations. Zero for everything else.
     pub(super) settle: f64,
@@ -227,11 +234,50 @@ impl Track {
             measured,
             transition,
             started: now,
+            script: None,
+            unscreened: true,
             settle: 0.0,
             rest: OnceLock::new(),
         };
         track.settle = track.spring_settle();
         track
+    }
+
+    /// Gives the track the animation Motion would make of it, if it would make one.
+    pub(super) fn screen(&mut self, key: PropKey, now: Instant) {
+        self.unscreened = false;
+        self.script = Script::of(key, self, now);
+    }
+
+    /// The track has not been through [`Self::screen`].
+    pub(super) fn is_unscreened(&self) -> bool {
+        self.unscreened
+    }
+
+    pub(super) fn animation(&self) -> Option<&Script> {
+        self.script.as_ref()
+    }
+
+    pub(super) fn animation_mut(&mut self) -> Option<&mut Script> {
+        self.script.as_mut()
+    }
+
+    /// Takes the animation off the track, which goes on by the clock of its own from where the
+    /// animation had it.
+    pub(super) fn release_animation(&mut self, now: Instant) -> Option<Script> {
+        let script = self.script.take()?;
+        self.started = script.started_at(now);
+        Some(script)
+    }
+
+    /// The rate of change of the first channel per second at the start, which a spring takes from the motion it interrupted.
+    pub(super) fn start_velocity(&self) -> f64 {
+        self.from_velocity.first().copied().unwrap_or(0.0)
+    }
+
+    /// The track goes from one keyframe to another, and does not rest where it starts.
+    pub(super) fn moves(&self) -> bool {
+        !self.is_static()
     }
 
     /// A `height: auto` that was never anything else, so there is nothing to
@@ -414,7 +460,13 @@ impl Track {
     }
 
     pub(super) fn sample(&self, now: Instant) -> Sample {
-        self.sample_at(now.saturating_duration_since(self.started))
+        let Some(script) = &self.script else {
+            return self.sample_at(now.saturating_duration_since(self.started));
+        };
+        let mut sample = self.sample_at(script.elapsed(now));
+        // The animation outlives the value when Motion's length of a spring is the longer.
+        sample.active |= script.running(now);
+        sample
     }
 
     /// [`Self::sample`] at `elapsed` since the track started, for a clock that
@@ -707,6 +759,19 @@ impl Track {
         if !self.sample(now).active {
             return Wake::Never;
         }
+        let Some(script) = &self.script else {
+            return self.timed_wake();
+        };
+        match self.transition.curve {
+            // The animation ends the track's timed span, on a clock of its own, which also moves
+            // where a spring rests, so a spring under one is sampled in every frame.
+            Curve::Tween { .. } => script.wake(now),
+            Curve::Spring(_) if self.transition.repeat.count == RepeatCount::Infinite => script.wake(now),
+            Curve::Spring(_) => Wake::NextFrame,
+        }
+    }
+
+    fn timed_wake(&self) -> Wake {
         if self.transition.repeat.count == RepeatCount::Infinite {
             return Wake::Never;
         }

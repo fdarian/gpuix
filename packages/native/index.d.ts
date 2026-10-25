@@ -2238,9 +2238,9 @@ export interface WebAnimationEffectInfo {
 }
 
 /**
- * A CSS animation or transition as `Animation.currentTime`, `playbackRate` and
- * `playState` show it. Exactly one of `animationName` and `transitionProperty`
- * is set.
+ * A CSS animation or transition, or an animation of the motion engine, as `Animation.currentTime`,
+ * `playbackRate` and `playState` show it. `animationName` is set for a CSS animation and
+ * `transitionProperty` for a CSS transition; an animation of the motion engine has neither.
  */
 export interface WebAnimationInfo {
   /**
@@ -2248,7 +2248,7 @@ export interface WebAnimationInfo {
    * for one run from its start to its end.
    */
   id: number
-  /** `"animation"` or `"transition"`. */
+  /** `"animation"`, `"transition"` or `"script"`. */
   kind: string
   /** The `animation-name`. */
   animationName?: string
@@ -2282,8 +2282,10 @@ export interface WebAnimationInfo {
 
 /** One keyframe of a CSS animation or transition, as `getKeyframes()` has it. */
 export interface WebAnimationKeyframeInfo {
-  /** Also the `computedOffset`: the keyframes of a rule always have one. */
-  offset: number
+  /** The `computedOffset`. */
+  computedOffset: number
+  /** `null` for a keyframe of an animation of the motion engine that was given no offset or time. */
+  offset?: number
   easing: string
   /** `"auto"`, `"replace"`, `"add"` or `"accumulate"`. */
   composite: string
