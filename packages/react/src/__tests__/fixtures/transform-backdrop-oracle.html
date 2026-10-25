@@ -7,7 +7,7 @@
     sh transform-backdrop-oracle.sh
 
   `shape` cells put `backdrop-filter: invert(1)` over a flat colour, so the inverted pixels are exactly the box's shape:
-  `points` are the inverted fraction (1 - red / 255) at pixels just inside and outside the edges and the corner arcs of the
+  `points` are [x, y, the inverted fraction (1 - red / 255)] at pixels just inside and outside the edges and the corner arcs of the
   transformed box, and just inside the corners of its bounding box (1.5 px in). `blur` cells put a blur over a hard edge (vertical for
   `v`, horizontal for `h`) through the box's centre, and `filter` cells blur a white box on black: `lines` are the red
   channel along a line across the edge, and `sigma` the standard deviation of the Gaussian-blurred step that fits it best.
@@ -33,11 +33,11 @@ const transforms = [
   { id: 'rotate30-in-scale05', own: 'rotate(30deg)', parent: 'scale(0.5)', big: true },
 ];
 const cells = [];
-for (const t of transforms) cells.push({ id: `shape-${t.id}`, kind: 'shape', ...t });
-for (const t of transforms) cells.push({ id: `blur-v-${t.id}`, kind: 'blur', edge: 'v', ...t });
-for (const t of transforms) cells.push({ id: `blur-h-${t.id}`, kind: 'blur', edge: 'h', ...t });
+for (const t of transforms) cells.push({ ...t, id: `shape-${t.id}`, kind: 'shape' });
+for (const t of transforms) cells.push({ ...t, id: `blur-v-${t.id}`, kind: 'blur', edge: 'v' });
+for (const t of transforms) cells.push({ ...t, id: `blur-h-${t.id}`, kind: 'blur', edge: 'h' });
 for (const id of ['none', 'scale2', 'scale2x1']) {
-  cells.push({ id: `filter-${id}`, kind: 'filter', ...transforms.find((t) => t.id === id) });
+  cells.push({ ...transforms.find((t) => t.id === id), id: `filter-${id}`, kind: 'filter' });
 }
 
 const COLS = 5;

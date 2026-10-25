@@ -1,7 +1,7 @@
 """Transformed backdrop-filter oracle: samples of a headless Chrome screenshot, stdlib only.
 usage: python3 -I transform-backdrop-oracle.py <dump.html> <shot.png> <out.json>
 Per cell of transform-backdrop-oracle.html:
-  points  the inverted fraction (1 - red / 255) of the pixel each point falls in
+  points  [x, y, inverted fraction (1 - red / 255) of the pixel the point falls in], x and y in the cell
   lines   the red channel of the pixels along a line, as hex pairs, and `sigma`: the standard deviation of the Gaussian-blurred
           step at `edge` (in pixels from the line's start) that fits the line best, found by a grid search"""
 import html
@@ -60,7 +60,11 @@ def main():
         entry = {'id': cell['id'], 'kind': cell['kind'], 'matrix': [round(v, 4) for v in cell['matrix']]}
         if cell['points']:
             entry['points'] = {
-                p['name']: round(1 - red(rows, left + math.floor(p['x']), top + math.floor(p['y'])) / 255, 3)
+                p['name']: [
+                    round(p['x'], 2),
+                    round(p['y'], 2),
+                    round(1 - red(rows, left + math.floor(p['x']), top + math.floor(p['y'])) / 255, 3),
+                ]
                 for p in cell['points']
             }
         if cell['lines']:
