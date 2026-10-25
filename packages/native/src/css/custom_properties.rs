@@ -5,11 +5,12 @@
 //! two values are equal when their text is, which is how `style(--x: v)` compares them in a browser.
 //!
 //! They inherit. [`CustomProperties::descend`] lays an element's declarations over its parent's
-//! computed map. Two things read them: `style()` container queries, and [`substitute`], which puts
-//! them into the text of the transform properties. No other property substitutes `var()`.
+//! computed map, substituting the `var()` in a value where it is declared. Two things read them:
+//! `style()` container queries, and [`substitute`], which puts them into the text of the transform
+//! properties. No other property substitutes `var()`.
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use serde::ser::SerializeMap;
@@ -93,44 +94,32 @@ fn find_var(text: &str) -> Option<usize> {
 
 /// `text` with each `var(--name)` and `var(--name, fallback)` replaced by the value `custom`
 /// computes for the name, or by the fallback (which may hold `var()` itself) when it computes to
-/// none. `None` when one cannot be resolved: a name that is missing without a fallback, a custom
-/// property that refers to itself, or a malformed call. CSS makes the declaration invalid at
-/// computed-value time then.
+/// none. `None` when one cannot be resolved: a name that is missing without a fallback, or a
+/// malformed call. CSS makes the declaration invalid at computed-value time then.
 ///
-/// A custom property whose own value holds `var()` is expanded against `custom` as well, which
-/// is the map of the element reading it: a descendant that overrides a name the ancestor's value
-/// refers to changes what the ancestor's value means here, where CSS computes it at the ancestor.
+/// `custom` is the computed map of the element reading: the values in it hold no `var()` any
+/// more, [`CustomProperties::descend`] substituted them where they were declared.
 pub(crate) fn substitute<'a>(text: &'a str, custom: &CustomProperties) -> Option<Cow<'a, str>> {
     if !has_var(text) {
         return Some(Cow::Borrowed(text));
     }
-    expand(text, custom, &mut Vec::new()).map(Cow::Owned)
+    expand(text, &mut |name| custom.get(name).map(str::to_owned)).map(Cow::Owned)
 }
 
-fn expand(text: &str, custom: &CustomProperties, active: &mut Vec<String>) -> Option<String> {
+fn expand(text: &str, lookup: &mut dyn FnMut(&str) -> Option<String>) -> Option<String> {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = find_var(rest) {
         out.push_str(&rest[..start]);
         let after = &rest[start + 4..];
         let close = closing_paren(after)?;
-        let arguments = &after[..close];
-        let (name, fallback) = match arguments.find(',') {
-            Some(comma) => (arguments[..comma].trim(), Some(arguments[comma + 1..].trim())),
-            None => (arguments.trim(), None),
-        };
+        let (name, fallback) = split_call(&after[..close]);
         if !is_name(name) {
             return None;
         }
-        let value = custom.get(name).filter(|_| !active.iter().any(|open| open == name)).and_then(|value| {
-            active.push(name.to_owned());
-            let expanded = expand(value, custom, active);
-            active.pop();
-            expanded
-        });
-        let replacement = match (value, fallback) {
+        let replacement = match (lookup(name), fallback) {
             (Some(value), _) => value,
-            (None, Some(fallback)) => expand(fallback, custom, active)?,
+            (None, Some(fallback)) => expand(fallback, lookup)?,
             (None, None) => return None,
         };
         // Spaces keep what the call stood for apart from the tokens around it, as tokens are.
@@ -141,6 +130,70 @@ fn expand(text: &str, custom: &CustomProperties, active: &mut Vec<String>) -> Op
     }
     out.push_str(rest);
     Some(out)
+}
+
+/// The name and the fallback of the arguments of a `var()` call.
+fn split_call(arguments: &str) -> (&str, Option<&str>) {
+    match arguments.find(',') {
+        Some(comma) => (arguments[..comma].trim(), Some(arguments[comma + 1..].trim())),
+        None => (arguments.trim(), None),
+    }
+}
+
+/// The names `text` refers to with `var()`, those in a fallback included.
+fn referenced_names(text: &str) -> Vec<&str> {
+    let mut names = Vec::new();
+    let mut rest = text;
+    while let Some(start) = find_var(rest) {
+        let after = &rest[start + 4..];
+        let Some(close) = closing_paren(after) else {
+            break;
+        };
+        names.push(split_call(&after[..close]).0);
+        rest = after;
+    }
+    names
+}
+
+/// The custom properties declared on one element that are computed from it: a name whose value
+/// holds a `var()`, as written. Its own declarations shadow what it inherits.
+type Pending<'a> = BTreeMap<&'a str, &'a str>;
+
+/// The names of `pending` that refer to themselves through each other. All of a cycle is invalid
+/// at computed-value time, whatever fallbacks it has.
+fn cyclic_names<'a>(pending: &Pending<'a>) -> HashSet<&'a str> {
+    fn reaches(from: &str, target: &str, pending: &Pending, seen: &mut HashSet<String>) -> bool {
+        referenced_names(pending[from])
+            .into_iter()
+            .filter(|name| pending.contains_key(name))
+            .any(|next| next == target || (seen.insert(next.to_owned()) && reaches(next, target, pending, seen)))
+    }
+    pending.keys().copied().filter(|name| reaches(name, name, pending, &mut HashSet::new())).collect()
+}
+
+/// The computed value of a pending name: the text with its `var()` expanded, against the other
+/// pending names of the element first and what it inherits after. `None` makes the property
+/// guaranteed-invalid.
+fn compute_pending(
+    name: &str,
+    pending: &Pending,
+    cyclic: &HashSet<&str>,
+    inherited: &BTreeMap<String, String>,
+    done: &mut BTreeMap<String, Option<String>>,
+) -> Option<String> {
+    if cyclic.contains(name) {
+        return None;
+    }
+    if let Some(value) = done.get(name) {
+        return value.clone();
+    }
+    let value = expand(pending[name], &mut |reference| match pending.contains_key(reference) {
+        true => compute_pending(reference, pending, cyclic, inherited, done),
+        false => inherited.get(reference).cloned(),
+    })
+    .map(|expanded| expanded.trim().to_owned());
+    done.insert(name.to_owned(), value.clone());
+    value
 }
 
 /// The index of the `)` that closes a call whose `(` was just before `text`.
@@ -191,18 +244,34 @@ impl CustomProperties {
     }
 
     /// What an element computes to: `declared` laid over what it inherits (`self`). `inherit`
-    /// and `unset` keep the inherited value, `initial` removes it.
+    /// and `unset` keep the inherited value, `initial` removes it. A value with a `var()` is
+    /// substituted here, at the element that declares it, against this element's other
+    /// declarations and what it inherits: its readers below get the text, not the call. One that
+    /// cannot be (a name that is missing, a cycle) is guaranteed-invalid, which removes the
+    /// property whatever it inherited.
     pub(crate) fn descend(&self, declared: &Self) -> Self {
         if declared.is_empty() {
             return self.clone();
         }
         let mut computed = (*self.0).clone();
+        let mut pending = Pending::new();
         for (name, value) in declared.0.iter() {
             if is_initial(value) {
                 computed.remove(name);
+            } else if has_var(value) {
+                computed.remove(name);
+                pending.insert(name.as_str(), value.as_str());
             } else if !is_inherit(value) {
                 computed.insert(name.clone(), value.clone());
             }
+        }
+        if !pending.is_empty() {
+            let cyclic = cyclic_names(&pending);
+            let mut done = BTreeMap::new();
+            for name in pending.keys() {
+                compute_pending(name, &pending, &cyclic, &computed, &mut done);
+            }
+            computed.extend(done.into_iter().filter_map(|(name, value)| Some((name, value?))));
         }
         Self(Arc::new(computed))
     }
@@ -292,9 +361,13 @@ mod tests {
         assert_eq!(CustomProperties::layered(Some(&base), None), Some(base));
     }
 
+    fn computed(entries: &[(&str, &str)]) -> CustomProperties {
+        CustomProperties::default().descend(&declared(entries))
+    }
+
     #[test]
     fn var_is_replaced_by_the_computed_value_or_its_fallback() {
-        let custom = declared(&[("--p", "0.4"), ("--len", "calc(1px + 2px)"), ("--twice", "calc(var(--p) * 2)")]);
+        let custom = computed(&[("--p", "0.4"), ("--len", "calc(1px + 2px)"), ("--twice", "calc(var(--p) * 2)")]);
         let sub = |text: &str| substitute(text, &custom).map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "));
         assert_eq!(sub("translateX(calc(100% * var(--p)))").as_deref(), Some("translateX(calc(100% * 0.4 ))"));
         assert_eq!(sub("none").as_deref(), Some("none"));
@@ -311,7 +384,7 @@ mod tests {
 
     #[test]
     fn an_unresolvable_var_makes_the_whole_text_invalid() {
-        let custom = declared(&[("--a", "var(--b)"), ("--b", "var(--a)"), ("--self", "var(--self)"), ("--ok", "1")]);
+        let custom = computed(&[("--a", "var(--b)"), ("--b", "var(--a)"), ("--self", "var(--self)"), ("--ok", "1")]);
         for text in [
             "var(--missing)",
             "1 var(--ok) var(--missing)",
@@ -325,6 +398,42 @@ mod tests {
             assert_eq!(substitute(text, &custom), None, "{text}");
         }
         assert_eq!(substitute("var(--self, 5px)", &custom).as_deref().map(str::trim), Some("5px"), "a cycle falls back");
+    }
+
+    #[test]
+    fn a_value_with_var_is_computed_where_it_is_declared() {
+        let parent = computed(&[("--a", "10px"), ("--b", "var(--a)")]);
+        assert_eq!(parent.get("--b"), Some("10px"));
+        let child = parent.descend(&declared(&[("--a", "50px")]));
+        assert_eq!((child.get("--a"), child.get("--b")), (Some("50px"), Some("10px")), "--b stays what the parent computed");
+        let sibling = parent.descend(&declared(&[("--a", "50px"), ("--c", "var(--a)"), ("--d", "var(--b)")]));
+        assert_eq!((sibling.get("--c"), sibling.get("--d")), (Some("50px"), Some("10px")), "a declaration reads its own element's map");
+    }
+
+    #[test]
+    fn declarations_of_one_element_read_each_other_in_any_order() {
+        let map = computed(&[("--a", "var(--z)"), ("--m", "calc(var(--a) + 1px)"), ("--z", "2px")]);
+        assert_eq!((map.get("--a"), map.get("--z")), (Some("2px"), Some("2px")));
+        assert_eq!(map.get("--m").map(|text| text.split_whitespace().collect::<Vec<_>>().join(" ")).as_deref(), Some("calc( 2px + 1px)"));
+    }
+
+    #[test]
+    fn a_missing_name_or_a_cycle_makes_the_property_guaranteed_invalid() {
+        let parent = computed(&[("--x", "1px"), ("--y", "2px")]);
+        let child = parent.descend(&declared(&[
+            ("--x", "var(--missing)"),
+            ("--y", "var(--missing, 3px)"),
+            ("--a", "var(--b, 1px)"),
+            ("--b", "var(--a)"),
+            ("--self", "var(--self, 1px)"),
+            ("--uses", "var(--a, 4px)"),
+        ]));
+        assert_eq!(child.get("--x"), None, "it does not fall back to what the parent computed");
+        assert_eq!(child.get("--y").map(str::trim), Some("3px"));
+        for cyclic in ["--a", "--b", "--self"] {
+            assert_eq!(child.get(cyclic), None, "{cyclic}: a fallback does not save a cycle");
+        }
+        assert_eq!(child.get("--uses").map(str::trim), Some("4px"), "a reader of an invalid property falls back");
     }
 
     #[test]

@@ -156,7 +156,17 @@ scenes["var"] = {
     abs("o1", 100, 450, 80, 40, "transform:rotate(25deg);transform-origin:var(--o);--o:0 0") +
     abs("o2", 250, 450, 80, 40, "--s:1.5;--t:calc(var(--s) * 2);transform:scale(var(--t)) rotate(var(--r, 10deg))") +
     abs("o3", 400, 450, 80, 40, "--k:2;translate:var(--k)px 4px") +
-    abs("o4", 550, 450, 80, 40, "--n:-20px;transform:translateX( var(--n) )"),
+    abs("o4", 550, 450, 80, 40, "--n:-20px;transform:translateX( var(--n) )") +
+    // A custom property whose value holds var() is computed where it is declared: d1's --b is the parent's 10px
+    // whatever --a the reader has; a name that does not resolve is guaranteed-invalid, which hides what was inherited;
+    // every name of a cycle is invalid whatever fallback it has; the declarations of one element read each other in
+    // any order; a descendant of the declaring element's child inherits the computed value.
+    abs("w1", 20, 520, 100, 60, "--a:10px;--b:var(--a)", abs("d1", 0, 0, 40, 20, "--a:50px;transform:translateX(var(--b))")) +
+    abs("w2", 140, 520, 100, 60, "--x:20px", abs("d2", 0, 0, 40, 20, "--x:var(--missing);translate:var(--x, 4px) 0")) +
+    abs("w3", 260, 520, 100, 60, "", abs("d3", 0, 0, 40, 20, "--c:var(--c, 5px);translate:var(--c, 9px) 0")) +
+    abs("w4", 380, 520, 100, 60, "", abs("d4", 0, 0, 40, 20, "--e:var(--f, 1px);--f:var(--e);translate:var(--e, 7px) var(--f, 2px)")) +
+    abs("w5", 500, 520, 100, 60, "", abs("d5", 0, 0, 40, 20, "--g:var(--h);--h:3px;translate:var(--g) 0")) +
+    abs("w6", 620, 520, 160, 60, "--a:10px;--b:var(--a)", abs("m", 0, 0, 80, 60, "--a:50px", abs("d6", 0, 0, 40, 20, "translate:var(--b) 0"))),
 };
 
 scenes["scrolled"] = {
