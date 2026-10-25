@@ -38,7 +38,7 @@ export type MotionValueRenderer = NativeRenderer & MotionValueHost
  * `borderRadius`) it gives each side, axis or corner its own component, and
  * `get()` reads it back as px, percentages and `calc()`s, colours as `rgba()`.
  *
- * An angle drives the angle keys (`rotate`, `rotateZ`, `skew`, `skewX`, `skewY`) like a number of degrees and is held in
+ * An angle drives the angle keys (`rotate`, `rotateX`, `rotateY`, `rotateZ`, `skew`, `skewX`, `skewY`) like a number of degrees and is held in
  * degrees: `"0.5turn"` reads back as `"180deg"`. A number and an angle mix in degrees, so `0` animated to `"1turn"`
  * passes `"180deg"` halfway (Motion mixes them to `NaN`). Bound to another key, an angle is skipped. A transform list
  * bound to `transform` is the list of a motion component, and Motion's other transform keys beside it are ignored; two

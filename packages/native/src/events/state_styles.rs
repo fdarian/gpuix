@@ -1607,6 +1607,27 @@ mod tests {
     }
 
     #[test]
+    fn a_state_replaces_the_depth_properties_and_ignores_invalid_values() {
+        let resolved = resolved_hover(
+            r##"{"perspective":"400px","perspectiveOrigin":"0 0","transformStyle":"preserve-3d","backfaceVisibility":"hidden","z":5,"rotateX":10,
+                "hover":{"perspective":"none","perspectiveOrigin":"100% 0","transformStyle":"flat","backfaceVisibility":"visible","z":9,"rotateY":20}}"##,
+        );
+        assert_eq!(resolved.perspective.as_deref(), Some("none"));
+        assert_eq!(resolved.perspective_origin.as_deref(), Some("100% 0"));
+        assert_eq!(resolved.transform_style.as_deref(), Some("flat"));
+        assert_eq!(resolved.backface_visibility.as_deref(), Some("visible"));
+        assert_eq!((resolved.z.is_some(), resolved.rotate_x, resolved.rotate_y), (true, Some(10.0), Some(20.0)));
+        let kept = resolved_hover(
+            r##"{"perspective":"400px","perspectiveOrigin":"0 0","transformStyle":"preserve-3d","backfaceVisibility":"hidden",
+                "hover":{"perspective":"-4px","perspectiveOrigin":"1 2 3","transformStyle":"nope","backfaceVisibility":"nope"}}"##,
+        );
+        assert_eq!(kept.perspective.as_deref(), Some("400px"));
+        assert_eq!(kept.perspective_origin.as_deref(), Some("0 0"));
+        assert_eq!(kept.transform_style.as_deref(), Some("preserve-3d"));
+        assert_eq!(kept.backface_visibility.as_deref(), Some("hidden"));
+    }
+
+    #[test]
     fn an_invalid_state_mask_keeps_the_base_mask_and_does_not_reset_its_longhands() {
         let resolved = resolved_hover(
             r##"{"mask":"linear-gradient(black, transparent)","maskSize":"10px",

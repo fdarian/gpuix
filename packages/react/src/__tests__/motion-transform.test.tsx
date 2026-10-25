@@ -322,7 +322,7 @@ describeNative("an angle string in Motion", () => {
   it("is the same as the number of degrees", () => {
     expectBox(boundsDriven(() => <Rotated value="45deg" />), boundsOf(motionBox({ rotate: 45 })), "45deg")
     expectBox(boundsDriven(() => <Rotated value="0.5turn" />), boundsOf(motionBox({ rotate: 180 })), "0.5turn")
-    for (const key of ["rotateZ", "skewX", "skewY", "skew"]) {
+    for (const key of ["rotateX", "rotateY", "rotateZ", "skewX", "skewY", "skew"]) {
       expectBox(boundsDriven(() => <Rotated value="0.1turn" key_={key} />), boundsOf(motionBox({ [key]: 36 })), key)
     }
   }, TIMEOUT)
@@ -717,6 +717,36 @@ describeNative("a tick of an animation of the transform keys", { timeout: TIMEOU
         animate={{ transform: "translateX(300px) rotate(40deg)" }}
         transition={{ type: "spring", stiffness: 20, damping: 2 }}
       />
+    ),
+    "a looping tween of rotateY and z under a perspective": (
+      <div style={{ perspective: 500, width: 300, height: 100 }}>
+        <motion.div
+          testId="head"
+          style={{ ...BOX, backgroundColor: "#336699" }}
+          animate={{ rotateY: [0, 70, 0], z: [0, 80, 0] }}
+          transition={{ duration: 1.6, ease: "linear", repeat: Infinity }}
+        />
+      </div>
+    ),
+    "a looping tween of transformPerspective and rotateX": (
+      <motion.div
+        testId="head"
+        style={{ ...BOX, backgroundColor: "#336699" }}
+        animate={{ transformPerspective: [200, 800, 200], rotateX: [0, 60, 0] }}
+        transition={{ duration: 1.6, ease: "linear", repeat: Infinity }}
+      />
+    ),
+    "a looping tween of a face of a card that turns in a preserve-3d card": (
+      <div style={{ perspective: 600, width: 300, height: 100 }}>
+        <div style={{ transformStyle: "preserve-3d", width: 100, height: 50 }}>
+          <motion.div
+            testId="head"
+            style={{ ...BOX, backgroundColor: "#336699", backfaceVisibility: "hidden" }}
+            animate={{ rotateY: [0, 180, 360] }}
+            transition={{ duration: 1.6, ease: "linear", repeat: Infinity }}
+          />
+        </div>
+      </div>
     ),
     "a tween of a transformed element holding text": (
       <motion.div
