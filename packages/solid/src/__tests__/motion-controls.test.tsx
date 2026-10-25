@@ -188,17 +188,25 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     frame(renderer, 16)
     expect(width()).toBe(0)
     expect(running.state).toBe("finished")
+    // The time is not held at the end: a seek past it reads back as set.
+    expect(running.time).toBeCloseTo(5, 6)
   })
 
-  it("keeps the time as set in an animation with a delay", () => {
+  it("counts the delay in the time it is given, as Motion does", () => {
     const { renderer, x, width } = mount()
     const controls = animate(x, 100, { ...linear, delay: 0.5 })
     frame(renderer, 100)
     expect(controls.time).toBe(0)
     controls.time = 0.4
-    // Motion counts the delay in the time it is given; here it reads back as set.
-    expect(controls.time).toBeCloseTo(0.4, 6)
     frame(renderer, 0)
+    expect(controls.time).toBe(0)
+    expect(width()).toBe(0)
+    controls.time = 0.8
+    frame(renderer, 0)
+    expect(controls.time).toBeCloseTo(0.3, 6)
+    expect(width()).toBe(30)
+    frame(renderer, 100)
+    expect(controls.time).toBeCloseTo(0.4, 6)
     expect(width()).toBe(40)
   })
 
@@ -224,7 +232,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     expect(await resolved(controls.finished)).toBe(true)
   })
 
-  it("holds at speed 0 and runs again at another", () => {
+  it("holds at speed 0, and keeps holding at another until play()", () => {
     const { renderer, x, width } = mount()
     const controls = animate(x, 100, linear)
     frame(renderer, 300)
@@ -232,8 +240,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     expect(controls.state).toBe("running")
     frame(renderer, 3000)
     expect(width()).toBe(30)
-    // Motion needs play() as well; here a speed other than 0 runs it again.
     controls.speed = 1
+    frame(renderer, 200)
+    expect(width()).toBe(30)
+    expect(controls.state).toBe("running")
+    controls.play()
     frame(renderer, 200)
     expect(width()).toBe(50)
   })
@@ -249,12 +260,18 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     expect(spring.iterationDuration).toBe(spring.duration)
   })
 
-  it("throws for the duration of an animation whose value is not bound yet", () => {
+  it("reads the duration of an animation whose value is not bound yet", () => {
     const loose = motionValue(0)
-    const controls = animate(loose, 100, linear)
-    expect(() => controls.duration).toThrow(/not known until/)
-    expect(() => controls.iterationDuration).toThrow(/not known until/)
-    expect(controls.state).toBe("running")
+    const controls = animate(loose, 100, { ...linear, delay: 0.25, repeat: 2 })
+    expect(controls.duration).toBe(1)
+    expect(controls.iterationDuration).toBe(1.25)
+    const spring = animate(loose, 100, { type: "spring", stiffness: 300, damping: 30 })
+    expect(spring.duration).toBeGreaterThan(0.1)
+    expect(spring.duration).toBeLessThan(20)
+    expect(controls.state).toBe("idle")
+    expect(spring.state).toBe("running")
+    const plain = animate(loose, 100, linear)
+    expect(plain.startTime).toBeNull()
     expect(controls.speed).toBe(1)
     expect(controls.time).toBe(0)
     controls.stop()
@@ -344,9 +361,12 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     frame(renderer, 400)
     controls.stop()
     expect(controls.state).toBe("idle")
-    expect(x.isAnimating()).toBe(false)
+    // Motion's isAnimating() is whether the value has an animation: the controls' stop() leaves it.
+    expect(x.isAnimating()).toBe(true)
     frame(renderer, 2000)
     expect(width()).toBe(40)
+    x.stop()
+    expect(x.isAnimating()).toBe(false)
 
     controls.play()
     controls.time = 0.9
@@ -365,7 +385,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     expect(width()).toBe(50)
     controls.cancel()
     expect(controls.state).toBe("idle")
-    expect(x.isAnimating()).toBe(false)
+    expect(x.isAnimating()).toBe(true)
     frame(renderer, 100)
     expect(width()).toBe(10)
 
@@ -417,6 +437,100 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
     loose.destroy()
   })
 
+  it("reads startTime on the renderer's clock, where Motion moves it", () => {
+    const { renderer, x } = mount()
+    renderer.clockSet(5000)
+    const controls = animate(x, 100, linear)
+    expect(controls.startTime).toBeCloseTo(5000, 6)
+    frame(renderer, 300)
+    controls.pause()
+    expect(controls.startTime).toBeCloseTo(5000, 6)
+    frame(renderer, 200)
+    controls.play()
+    frame(renderer, 0)
+    expect(controls.startTime).toBeCloseTo(5200, 6)
+    controls.time = 0.8
+    expect(controls.startTime).toBeCloseTo(4700, 6)
+    controls.speed = 2
+    expect(controls.startTime).toBeCloseTo(5100, 6)
+    frame(renderer, 1000)
+    expect(controls.state).toBe("finished")
+    expect(controls.startTime).toBeNull()
+
+    const stopped = animate(x, 0, linear)
+    expect(stopped.startTime).not.toBeNull()
+    stopped.stop()
+    expect(stopped.startTime).toBeNull()
+  })
+
+  it("hands the clock to a timeline that sets the time, as Motion's scroll() does", () => {
+    const { renderer, x, width } = mount()
+    const controls = animate(x, 100, linear)
+    let observed: AnimationPlaybackControlsWithThen | undefined
+    let cleaned = 0
+    const detach = controls.attachTimeline({
+      observe(animation) {
+        observed = animation
+        animation.pause()
+        return () => {
+          cleaned += 1
+        }
+      },
+    })
+    expect(observed).toBe(controls)
+    frame(renderer, 500)
+    expect(width()).toBe(0)
+    expect(controls.state).toBe("paused")
+
+    for (const [progress, expected] of [[0.25, 25], [0.75, 75], [0.1, 10]] as const) {
+      controls.time = controls.iterationDuration * progress
+      frame(renderer, 0)
+      expect(width()).toBe(expected)
+    }
+    frame(renderer, 3000)
+    expect(width()).toBe(10)
+    expect(cleaned).toBe(0)
+
+    detach()
+    expect(controls.state).toBe("idle")
+    expect(cleaned).toBe(2)
+    expect(x.get()).toBeCloseTo(10, 6)
+  })
+
+  it("takes the frames from an animation whose timeline does not pause it, and play() gives them back", () => {
+    const { renderer, x, width } = mount()
+    const controls = animate(x, 100, linear)
+    frame(renderer, 200)
+    controls.attachTimeline({ observe: () => () => {} })
+    frame(renderer, 500)
+    expect(controls.state).toBe("running")
+    expect(width()).toBe(20)
+    controls.play()
+    frame(renderer, 100)
+    expect(width()).toBe(80)
+  })
+
+  it("observes a timeline attached before the value is bound when the animation starts", () => {
+    const loose = motionValue(0)
+    const controls = animate(loose, 100, linear)
+    const seen: AnimationPlaybackControlsWithThen[] = []
+    const replaced: AnimationPlaybackControlsWithThen[] = []
+    controls.attachTimeline({ observe: (animation) => (seen.push(animation), () => {}) })
+    controls.attachTimeline({ observe: (animation) => (replaced.push(animation), () => {}) })
+    expect(seen).toHaveLength(0)
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    loose.bind(app.renderer)
+    app.renderer.flush()
+    // Motion keeps the last timeline attached before the animation exists.
+    expect(seen).toHaveLength(0)
+    expect(replaced[0]).toBe(controls)
+    frame(app.renderer, 400)
+    expect(loose.get()).toBe(0)
+    controls.stop()
+    loose.destroy()
+  })
+
   describe("frames", () => {
     /** Frames a window draws on its own, the clock held: a running animation asks for each next one. */
     function framesDrawn(renderer: TestRenderer, display: number): number {
@@ -451,6 +565,11 @@ describe.skipIf(!hasNativeTestRenderer)("Solid playback controls of animate()", 
       expect(framesDrawn(renderer, 5), "a speed of 0 holds it, and asks for none").toBe(0)
       expect(controls.state).toBe("running")
       controls.speed = 1
+      renderer.clockFastForward(100)
+      renderer.drawFrame()
+      expect(width()).toBe(50)
+      expect(framesDrawn(renderer, 5), "it stays held at another speed until play()").toBe(0)
+      controls.play()
       renderer.clockFastForward(100)
       renderer.drawFrame()
       expect(width()).toBe(60)
