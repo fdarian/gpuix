@@ -790,7 +790,7 @@ macro_rules! properties {
         $field:ident $(| $fallback:ident $(. $corner:ident ())?)?;
     )*) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub(super) enum AnimProp {
+        pub(crate) enum AnimProp {
             $($variant),*
         }
 

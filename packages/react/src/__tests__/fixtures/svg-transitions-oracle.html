@@ -1,0 +1,301 @@
+<!doctype html>
+<!--
+  Oracle for svg-transitions.test.tsx: what headless Chrome does when an SVG property changes under a `transition`.
+  A case is an <svg> with a tree of shapes, a `change` (attributes set or removed and inline style set, on any node
+  of it) and the `times` to sample. The page lays the shapes out, applies the change, and lists what
+  `getAnimations()` returns on every node (the class and the `transitionProperty` of each, in order). Then every
+  transition is paused and its currentTime set to each of `times` (ms, including the delay), and every `reads` entry
+  is the computed value of a property on a node then (`prop` in CSS spelling). A case with a `then` seeks the
+  transitions to `then.seek` ms and applies a second change there, and lists and samples the transitions that
+  second change leaves.
+  `via: 'style'` cases make the same change with inline style instead of an attribute: Chrome treats the two alike.
+  The JSON carries the case as the test replays it: attributes in the camelCase JS spells them, numbers without
+  units (this page writes `px` where a length takes one). An attribute that is not set reads `initial` while no
+  transition has an effect on it. `events` cases do not pause anything: they run in real time with a listener on
+  the <svg> for the four transition events and record the ones that fire, with the node, the property and the
+  elapsedTime. Frames need a real compositor clock, so the page is driven over the DevTools protocol. Regenerate with
+
+    bun svg-transitions-oracle.ts
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/20px Menlo;color:#000}
+</style></head><body>
+<script>
+const LENGTHS = new Set(['strokeDashoffset', 'strokeWidth', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'width', 'height', 'fontSize', 'letterSpacing']);
+const kebab = (name) => name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+const cssValue = (prop, value) => {
+  if (value === 'none' || value === 'auto') return value;
+  if (prop === 'd') return /^path\(/.test(value) ? value : `path("${value}")`;
+  if (typeof value === 'number') return LENGTHS.has(prop) ? value + 'px' : String(value);
+  if (prop === 'strokeDasharray') return String(value).split(/[ ,]+/).map((n) => n + 'px').join(' ');
+  return String(value);
+};
+
+const node = (id, tag, attrs, children, style) => ({ id, tag, attrs: attrs || {}, children: children || [], style });
+const SLOW = { transition: 'all 1s linear' };
+const only = (prop, extra) => ({ transition: `${prop} 1s linear${extra ? ' ' + extra : ''}` });
+
+// One row per property: the shape it applies to, what the shape starts with, the attribute value before and after, and
+// what Chrome computes when the attribute is not set (`initial`).
+const SHAPES = {
+  circle: (style, attrs) => node('t', 'circle', Object.assign({ cx: 50, cy: 50, r: 10 }, attrs), [], style),
+  rect: (style, attrs) => node('t', 'rect', Object.assign({ x: 10, y: 10, width: 50, height: 50 }, attrs), [], style),
+  ellipse: (style, attrs) => node('t', 'ellipse', Object.assign({ cx: 50, cy: 50, rx: 5, ry: 5 }, attrs), [], style),
+  path: (style, attrs) => node('t', 'path', Object.assign({ d: 'M10 50 L190 50', stroke: '#000000', strokeWidth: 4 }, attrs), [], style),
+  text: (style, attrs) => node('t', 'text', Object.assign({ x: 10, y: 50, text: 'hi' }, attrs), [], style),
+  stop: (style, attrs) => node('d', 'defs', {}, [node('grad', 'linearGradient', { id: 'grad' }, [node('t', 'stop', Object.assign({ offset: 0 }, attrs), [], style)])]),
+  feFlood: (style, attrs) => node('d', 'defs', {}, [node('f', 'filter', { id: 'f' }, [node('t', 'feFlood', attrs, [], style)])]),
+};
+const PROPS = [
+  { prop: 'fill', tag: 'circle', from: '#ff0000', to: '#0000ff', initial: 'rgb(0, 0, 0)' },
+  { prop: 'stroke', tag: 'circle', from: '#ff0000', to: '#0000ff', initial: 'none', base: { strokeWidth: 4 } },
+  { prop: 'strokeWidth', tag: 'path', from: 2, to: 10, initial: '1px' },
+  { prop: 'strokeDasharray', tag: 'path', from: '4 2', to: '8 4', initial: 'none' },
+  { prop: 'strokeDasharray', tag: 'path', from: '4', to: '8 2', initial: 'none', label: 'uneven' },
+  { prop: 'strokeDashoffset', tag: 'path', from: 0, to: 100, initial: '0px', base: { strokeDasharray: '10 5' } },
+  { prop: 'strokeOpacity', tag: 'circle', from: 1, to: 0.2, initial: '1', base: { stroke: '#000000' } },
+  { prop: 'fillOpacity', tag: 'circle', from: 1, to: 0.2, initial: '1' },
+  { prop: 'opacity', tag: 'circle', from: 1, to: 0.2, initial: '1' },
+  { prop: 'strokeMiterlimit', tag: 'path', from: 1, to: 10, initial: '4' },
+  { prop: 'stopColor', tag: 'stop', from: '#ff0000', to: '#0000ff', initial: 'rgb(0, 0, 0)' },
+  { prop: 'stopOpacity', tag: 'stop', from: 1, to: 0.2, initial: '1' },
+  { prop: 'floodColor', tag: 'feFlood', from: '#ff0000', to: '#0000ff', initial: 'rgb(0, 0, 0)' },
+  { prop: 'floodOpacity', tag: 'feFlood', from: 1, to: 0.2, initial: '1' },
+  { prop: 'cx', tag: 'circle', from: 20, to: 80, initial: '0px' },
+  { prop: 'cy', tag: 'circle', from: 20, to: 80, initial: '0px' },
+  { prop: 'r', tag: 'circle', from: 5, to: 25, initial: '0px' },
+  { prop: 'rx', tag: 'rect', from: 0, to: 20, initial: 'auto' },
+  { prop: 'ry', tag: 'rect', from: 0, to: 20, initial: 'auto' },
+  { prop: 'rx', tag: 'ellipse', from: 5, to: 25, initial: '0px' },
+  { prop: 'ry', tag: 'ellipse', from: 5, to: 25, initial: '0px' },
+  { prop: 'x', tag: 'rect', from: 10, to: 50, initial: '0px' },
+  { prop: 'y', tag: 'rect', from: 10, to: 50, initial: '0px' },
+  { prop: 'width', tag: 'rect', from: 20, to: 60, initial: '0px' },
+  { prop: 'height', tag: 'rect', from: 20, to: 60, initial: '0px' },
+  { prop: 'd', tag: 'path', from: 'M10 10 L50 10 L50 50', to: 'M10 50 L90 10 L50 90', initial: 'none' },
+  { prop: 'fontSize', tag: 'text', from: 10, to: 30, initial: '16px' },
+  { prop: 'letterSpacing', tag: 'text', from: 0, to: 4, initial: 'normal' },
+];
+const read = (entry, nodeId) => ({ node: nodeId || 't', prop: kebab(entry.prop), initial: entry.initial });
+const TIMES = [0, 250, 500, 750, 999, 1000];
+
+const cases = [];
+for (const entry of PROPS) {
+  const label = kebab(entry.prop) + (entry.label ? ` (${entry.label})` : '') + ` of a ${entry.tag}`;
+  for (const via of ['attribute', 'style']) {
+    if (via === 'style' && !['fill', 'strokeWidth', 'strokeDasharray', 'opacity', 'r', 'd', 'fontSize'].includes(entry.prop)) continue;
+    if (via === 'style' && entry.label) continue;
+    const change = via === 'attribute' ? { attrs: { [entry.prop]: entry.to } } : { style: { [kebab(entry.prop)]: cssValue(entry.prop, entry.to) } };
+    cases.push({
+      name: `${label} ${via === 'attribute' ? 'changes under a transition' : 'changes by style under a transition'}`,
+      via, twin: via === 'style' ? `${label} changes under a transition` : undefined,
+      nodes: [SHAPES[entry.tag](only(kebab(entry.prop)), Object.assign({}, entry.base, { [entry.prop]: entry.from }))],
+      change: [Object.assign({ node: 't' }, change)], times: TIMES, reads: [read(entry)],
+    });
+  }
+}
+
+const circle = (style, attrs) => SHAPES.circle(style, attrs);
+const path = (style, attrs) => SHAPES.path(style, attrs);
+const rect = (style, attrs) => SHAPES.rect(style, attrs);
+const fillR = [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'r', initial: '0px' }, { node: 't', prop: 'stroke-width', initial: '1px' }];
+cases.push(
+  { name: 'all transitions every property that changes, in the order of their names', nodes: [circle(SLOW, { fill: '#ff0000', strokeWidth: 2 })], change: [{ node: 't', attrs: { fill: '#0000ff', r: 30, strokeWidth: 10 } }], times: TIMES, reads: fillR },
+  { name: 'all leaves a property that did not change alone', nodes: [circle(SLOW, { fill: '#ff0000', strokeWidth: 2 })], change: [{ node: 't', attrs: { fill: '#0000ff' } }], times: [0, 500, 1000], reads: fillR },
+  { name: 'only the properties a transition names run', nodes: [circle(only('fill'), { fill: '#ff0000', strokeWidth: 2 })], change: [{ node: 't', attrs: { fill: '#0000ff', r: 30, strokeWidth: 10 } }], times: [0, 500, 1000], reads: fillR },
+  { name: 'a list gives each property its own duration', nodes: [circle({ transition: 'fill 1s linear, r 2s linear' }, { fill: '#ff0000' })], change: [{ node: 't', attrs: { fill: '#0000ff', r: 30 } }], times: [0, 500, 1000, 1500, 2000], reads: fillR },
+  { name: 'transition-property, -duration and -timing-function as longhands', nodes: [circle({ transitionProperty: 'r, fill', transitionDuration: '1s', transitionTimingFunction: 'linear' }, { fill: '#ff0000' })], change: [{ node: 't', attrs: { fill: '#0000ff', r: 30 } }], times: [0, 500, 1000], reads: fillR },
+  { name: 'a delay holds the start', nodes: [circle(only('r', '500ms'), {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0, 250, 500, 1000, 1499, 1500, 2000], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a negative delay starts part-way', nodes: [circle(only('r', '-500ms'), {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0, 250, 500, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a timing function eases the transition', nodes: [circle({ transition: 'r 1s ease-in-out' }, {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0, 250, 500, 750, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'steps timing', nodes: [circle({ transition: 'r 1s steps(4, end)' }, {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0, 249, 250, 500, 750, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a zero duration does not transition', nodes: [circle({ transition: 'r 0s' }, {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'transition none does not transition', nodes: [circle({ transition: 'none' }, {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a property no transition names does not transition', nodes: [circle(only('cx'), {})], change: [{ node: 't', attrs: { r: 30 } }], times: [0], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'removing an attribute transitions to the initial value', nodes: [circle(only('fill'), { fill: '#ff0000' })], change: [{ node: 't', attrs: { fill: null } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'adding an attribute transitions from the initial value', nodes: [circle(only('stroke-width'), {})], change: [{ node: 't', attrs: { strokeWidth: 9 } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'adding a stroke transitions from none, which swaps', nodes: [circle(only('stroke', 'allow-discrete'), {})], change: [{ node: 't', attrs: { stroke: '#ff0000' } }], times: [0, 499, 501, 1000], reads: [{ node: 't', prop: 'stroke', initial: 'none' }] },
+  { name: 'a group transitions its own value and its shape shows it', nodes: [node('g', 'g', { strokeWidth: 2, stroke: '#000000' }, [path({}, { strokeWidth: undefined })], only('stroke-width'))], change: [{ node: 'g', attrs: { strokeWidth: 10 } }], times: [0, 500, 1000], reads: [{ node: 'g', prop: 'stroke-width', initial: '1px' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'a shape transitions when the group it inherits from changes', nodes: [node('g', 'g', { fill: '#ff0000' }, [circle(only('fill'), {})])], change: [{ node: 'g', attrs: { fill: '#0000ff' } }], times: [0, 500, 1000], reads: [{ node: 'g', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'a shape that sets its own value does not transition with its group', nodes: [node('g', 'g', { fill: '#ff0000' }, [circle(only('fill'), { fill: '#00ff00' })])], change: [{ node: 'g', attrs: { fill: '#0000ff' } }], times: [0], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'a property that does not inherit is not the shape\'s when the group changes', nodes: [node('g', 'g', { opacity: 1 }, [circle(only('opacity'), {})])], change: [{ node: 'g', attrs: { opacity: 0.2 } }], times: [0], reads: [{ node: 't', prop: 'opacity', initial: '1' }] },
+  { name: 'two shapes transition on their own', nodes: [circle(only('r'), {}), Object.assign(circle(only('r'), {}), { id: 'u' })], change: [{ node: 't', attrs: { r: 30 } }, { node: 'u', attrs: { r: 40 } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }, { node: 'u', prop: 'r', initial: '10px' }] },
+  { name: 'a transition changed mid-way starts from the value showing', nodes: [circle(only('r'), {})], change: [{ node: 't', attrs: { r: 30 } }], then: { seek: 500, change: [{ node: 't', attrs: { r: 50 } }] }, times: [0, 250, 500, 999, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a transition changed back mid-way runs shortened', nodes: [circle(only('r'), {})], change: [{ node: 't', attrs: { r: 30 } }], then: { seek: 250, change: [{ node: 't', attrs: { r: 10 } }] }, times: [0, 125, 250, 500, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a transition changed to its own end mid-way keeps running', nodes: [circle(only('r'), {})], change: [{ node: 't', attrs: { r: 30 } }], then: { seek: 500, change: [{ node: 't', attrs: { r: 30 } }] }, times: [0, 500, 999], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'dropping the transition mid-way cancels it', nodes: [circle(only('r'), {})], change: [{ node: 't', attrs: { r: 30 } }], then: { seek: 500, change: [{ node: 't', style: { transition: 'none' } }] }, times: [0, 500], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+);
+
+// Properties with no value in between: fill and stroke against `none`, a dash list against `none`, a path of other
+// commands, `auto` against a length. A transition does not run on them unless it allows discrete properties, and then
+// it swaps halfway.
+const DISCRETE = [
+  { name: 'fill from none', tag: 'circle', prop: 'fill', from: 'none', to: '#ff0000', initial: 'rgb(0, 0, 0)' },
+  { name: 'fill to none', tag: 'circle', prop: 'fill', from: '#ff0000', to: 'none', initial: 'rgb(0, 0, 0)' },
+  { name: 'stroke from none', tag: 'circle', prop: 'stroke', from: 'none', to: '#ff0000', initial: 'none' },
+  { name: 'stroke to none', tag: 'circle', prop: 'stroke', from: '#ff0000', to: 'none', initial: 'none' },
+  { name: 'a dash list from none', tag: 'path', prop: 'strokeDasharray', from: 'none', to: '8 4', initial: 'none' },
+  { name: 'a dash list to none', tag: 'path', prop: 'strokeDasharray', from: '8 4', to: 'none', initial: 'none' },
+  { name: 'a path of other commands', tag: 'path', prop: 'd', from: 'M10 10 L50 10', to: 'M10 10 L50 10 L50 50', initial: 'none' },
+  { name: 'a path of H against L', tag: 'path', prop: 'd', from: 'M10 10 H50', to: 'M10 10 L50 10', initial: 'none' },
+  { name: 'a path of the same commands', tag: 'path', prop: 'd', from: 'M10 10 H50 V50', to: 'M10 20 H90 V80', initial: 'none' },
+  { name: 'a path against none', tag: 'path', prop: 'd', unset: true, to: 'M10 10 L50 10', initial: 'none' },
+  { name: 'width from auto', tag: 'rect', prop: 'width', unset: true, to: 40, initial: '0px' },
+  { name: 'rx from auto', tag: 'rect', prop: 'rx', unset: true, to: 20, initial: 'auto' },
+  { name: 'rx to auto', tag: 'rect', prop: 'rx', from: 20, to: null, initial: 'auto' },
+  { name: 'width to auto', tag: 'rect', prop: 'width', from: 20, to: null, initial: '0px' },
+  { name: 'rx from auto on an ellipse', tag: 'ellipse', prop: 'rx', unset: true, to: 20, initial: '0px' },
+];
+for (const entry of DISCRETE) {
+  for (const behavior of ['normal', 'allow-discrete']) {
+    cases.push({
+      name: `${entry.name} under transition-behavior ${behavior}`,
+      nodes: [SHAPES[entry.tag](only(kebab(entry.prop), behavior === 'normal' ? '' : 'allow-discrete'), { [entry.prop]: entry.unset ? undefined : entry.from })],
+      change: [{ node: 't', attrs: { [entry.prop]: entry.to } }], times: [0, 250, 499, 501, 750, 1000], reads: [read(entry)],
+    });
+  }
+}
+cases.push(
+  { name: 'transition-behavior as a longhand', nodes: [SHAPES.circle({ transitionProperty: 'fill', transitionDuration: '1s', transitionTimingFunction: 'linear', transitionBehavior: 'allow-discrete' }, { fill: 'none' })], change: [{ node: 't', attrs: { fill: '#ff0000' } }], times: [0, 499, 501, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'all with allow-discrete swaps what does not blend and blends the rest', nodes: [SHAPES.path({ transition: 'all 1s linear allow-discrete' }, { d: 'M10 10 L50 10', strokeWidth: 2 })], change: [{ node: 't', attrs: { d: 'M10 10 L50 10 L50 50', strokeWidth: 10 } }], times: [0, 250, 499, 501, 1000], reads: [{ node: 't', prop: 'd', initial: 'none' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'all without allow-discrete leaves what does not blend', nodes: [SHAPES.path({ transition: 'all 1s linear' }, { d: 'M10 10 L50 10', strokeWidth: 2 })], change: [{ node: 't', attrs: { d: 'M10 10 L50 10 L50 50', strokeWidth: 10 } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'd', initial: 'none' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+);
+
+// The <svg> itself: the properties it sets are inherited by the shapes below it. Its `opacity`, `font-size` and
+// `letter-spacing` are the ones of the element, which boxes transition the same way.
+const ROOT = [
+  { prop: 'fill', from: '#ff0000', to: '#0000ff', initial: 'rgb(0, 0, 0)' },
+  { prop: 'stroke', from: '#ff0000', to: '#0000ff', initial: 'none' },
+  { prop: 'strokeWidth', from: 2, to: 10, initial: '1px' },
+  { prop: 'strokeDasharray', from: '4 2', to: '8 4', initial: 'none' },
+  { prop: 'strokeDashoffset', from: 0, to: 100, initial: '0px' },
+  { prop: 'strokeOpacity', from: 1, to: 0.2, initial: '1' },
+  { prop: 'fillOpacity', from: 1, to: 0.2, initial: '1' },
+  { prop: 'strokeMiterlimit', from: 1, to: 10, initial: '4' },
+];
+for (const entry of ROOT) {
+  const name = kebab(entry.prop);
+  for (const via of ['attribute', 'style']) {
+    if (via === 'style' && !['fill', 'strokeWidth'].includes(entry.prop)) continue;
+    const change = via === 'attribute' ? { attrs: { [entry.prop]: entry.to } } : { style: { [name]: cssValue(entry.prop, entry.to) } };
+    cases.push({
+      name: `${name} of the svg changes ${via === 'attribute' ? '' : 'by style '}under a transition`, via, twin: via === 'style' ? `${name} of the svg changes under a transition` : undefined,
+      svg: { attrs: { [entry.prop]: entry.from }, style: only(name) },
+      nodes: [circle({}, { r: 20, stroke: entry.prop === 'stroke' ? undefined : '#000000', strokeWidth: entry.prop === 'strokeWidth' ? undefined : 4 })],
+      change: [Object.assign({ node: 'svg' }, change)], times: TIMES, reads: [{ node: 'svg', prop: name, initial: entry.initial }, { node: 't', prop: name, initial: entry.initial }],
+    });
+  }
+}
+cases.push(
+  { name: 'a shape with a transition follows the svg it inherits fill from', svg: { attrs: { fill: '#ff0000' } }, nodes: [circle(only('fill'), { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' } }], times: [0, 500, 1000], reads: [{ node: 'svg', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'all on the svg takes the attributes it sets', svg: { attrs: { fill: '#ff0000', strokeWidth: 2 }, style: SLOW }, nodes: [circle({}, { r: 20, stroke: '#000000' })], change: [{ node: 'svg', attrs: { fill: '#0000ff', strokeWidth: 10 } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'the svg transitions fill and a width of its own together', svg: { attrs: { fill: '#ff0000' }, style: { width: '200px', height: '100px', transition: 'fill 1s linear, width 1s linear' } }, nodes: [circle({}, { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' }, style: { width: '100px' } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+);
+
+// Events: no pausing. `wait` is how long to let the page run after the change (ms).
+const eventCases = [
+  { name: 'a transition fires run, start and end', nodes: [circle({ transition: 'r 100ms linear' }, {})], change: [{ node: 't', attrs: { r: 30 } }], wait: 300 },
+  { name: 'a delay puts start after run', nodes: [circle({ transition: 'r 100ms linear 100ms' }, {})], change: [{ node: 't', attrs: { r: 30 } }], wait: 400 },
+  { name: 'a negative delay starts part-way in', nodes: [circle({ transition: 'r 200ms linear -100ms' }, {})], change: [{ node: 't', attrs: { r: 30 } }], wait: 400 },
+  { name: 'two properties fire their own events', nodes: [circle({ transition: 'r 100ms linear, fill 200ms linear' }, { fill: '#ff0000' })], change: [{ node: 't', attrs: { r: 30, fill: '#0000ff' } }], wait: 400 },
+  { name: 'a change mid-way cancels and runs again', nodes: [circle({ transition: 'r 200ms linear' }, {})], change: [{ node: 't', attrs: { r: 30 } }], then: { after: 100, change: [{ node: 't', attrs: { r: 50 } }] }, wait: 500 },
+  { name: 'dropping the transition mid-way cancels it', nodes: [circle({ transition: 'r 200ms linear' }, {})], change: [{ node: 't', attrs: { r: 30 } }], then: { after: 100, change: [{ node: 't', style: { transition: 'none' } }] }, wait: 400 },
+  { name: 'the svg fires its own, and a shape\'s bubble to it', svg: { attrs: { fill: '#ff0000' }, style: { transition: 'fill 100ms linear' } }, nodes: [circle({ transition: 'r 100ms linear' }, { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' } }, { node: 't', attrs: { r: 30 } }], wait: 300 },
+  { name: 'allow-discrete fires for a property that swaps', nodes: [circle({ transition: 'fill 100ms linear allow-discrete' }, { fill: 'none' })], change: [{ node: 't', attrs: { fill: '#ff0000' } }], wait: 300 },
+  { name: 'a property that does not blend fires nothing', nodes: [circle({ transition: 'fill 100ms linear' }, { fill: 'none' })], change: [{ node: 't', attrs: { fill: '#ff0000' } }], wait: 300 },
+];
+
+window.__run = async () => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const build = (spec, parent) => {
+    const el = document.createElementNS(NS, spec.tag);
+    el.setAttribute('id', spec.id);
+    for (const [name, value] of Object.entries(spec.attrs)) {
+      if (value === undefined) continue;
+      if (name === 'text') { el.textContent = value; continue; }
+      el.setAttribute(name === 'viewBox' ? name : kebab(name), String(value));
+    }
+    if (spec.style) Object.assign(el.style, spec.style);
+    for (const child of spec.children) build(child, el);
+    parent.appendChild(el);
+    return el;
+  };
+  const setup = (spec) => {
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', '200'); svg.setAttribute('height', '100'); svg.setAttribute('viewBox', '0 0 200 100');
+    svg.setAttribute('id', 'svg');
+    for (const [name, value] of Object.entries(spec.svg && spec.svg.attrs || {})) svg.setAttribute(kebab(name), String(value));
+    if (spec.svg && spec.svg.style) Object.assign(svg.style, spec.svg.style);
+    document.body.appendChild(svg);
+    for (const child of spec.nodes) build(child, svg);
+    const all = [svg, ...svg.querySelectorAll('*')];
+    const byId = (id) => id === 'svg' ? svg : svg.querySelector('#' + id);
+    const flush = () => all.forEach((el) => getComputedStyle(el).fill);
+    const change = (changes) => {
+      for (const c of changes) {
+        const el = byId(c.node);
+        for (const [name, value] of Object.entries(c.attrs || {})) {
+          if (value === null) el.removeAttribute(kebab(name)); else el.setAttribute(kebab(name), String(value));
+        }
+        for (const [name, value] of Object.entries(c.style || {})) el.style.setProperty(kebab(name), String(value));
+      }
+    };
+    return { svg, all, byId, flush, change };
+  };
+  const list = (all) => {
+    const listed = {};
+    for (const el of all) {
+      const animations = el.getAnimations();
+      if (animations.length) listed[el.id] = animations.map((a) => ({ type: a.constructor.name, property: a.transitionProperty }));
+    }
+    return listed;
+  };
+  const out = { cases: [], events: [] };
+  for (const spec of cases) {
+    const page = setup(spec);
+    page.flush();
+    page.change(spec.change);
+    page.flush();
+    const record = { before: null, listed: null, samples: [] };
+    let all = page.all;
+    if (spec.then) {
+      const first = all.flatMap((el) => el.getAnimations());
+      record.before = list(all);
+      for (const a of first) { a.pause(); a.currentTime = spec.then.seek; }
+      page.flush();
+      page.change(spec.then.change);
+      page.flush();
+    }
+    record.listed = list(all);
+    const animations = all.flatMap((el) => el.getAnimations());
+    for (const time of spec.times) {
+      for (const a of animations) { a.pause(); a.currentTime = time; }
+      record.samples.push({ time, values: spec.reads.map((r) => getComputedStyle(page.byId(r.node)).getPropertyValue(r.prop)) });
+    }
+    out.cases.push({ name: spec.name, via: spec.via || 'attribute', twin: spec.twin || null, svg: spec.svg || {}, nodes: spec.nodes, change: spec.change, then: spec.then || null, times: spec.times, reads: spec.reads, record });
+    page.svg.remove();
+  }
+  for (const spec of eventCases) {
+    const page = setup(spec);
+    page.flush();
+    const seen = [];
+    for (const type of ['transitionrun', 'transitionstart', 'transitionend', 'transitioncancel']) {
+      page.svg.addEventListener(type, (event) => seen.push({ type, target: event.target.id, property: event.propertyName, elapsed: Math.round(event.elapsedTime * 1000) / 1000, pseudo: event.pseudoElement }));
+    }
+    await sleep(50);
+    page.change(spec.change);
+    page.flush();
+    if (spec.then) {
+      await sleep(spec.then.after);
+      page.change(spec.then.change);
+      page.flush();
+    }
+    await sleep(spec.wait);
+    out.events.push({ name: spec.name, svg: spec.svg || {}, nodes: spec.nodes, change: spec.change, then: spec.then || null, wait: spec.wait, record: seen });
+    page.svg.remove();
+  }
+  return out;
+};
+</script></body></html>

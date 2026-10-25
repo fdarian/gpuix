@@ -33,12 +33,12 @@ pub(crate) use curve::cubic_bezier;
 pub(crate) use inline::{InlineStyles, Timeline};
 use css_animation::animates_width;
 pub(crate) use css_animation::{
-    validate_animations, AnimationEvent, AnimationStyle, CssAnimations, Subject, SvgSource,
+    validate_animations, AnimationEvent, CssAnimations, PropTarget, Subject, SvgSource,
 };
 pub(crate) use keyframes::{validate_keyframes, KeyframesRegistry};
 pub(crate) use layout_flip::{drag_value_ids, LayoutEvent, LayoutFlips};
 pub(crate) use css_transition::{
-    declares_transitions, validate_transitions, CssTransitions, InterpolateSize, TransitionEvent,
+    declares_transitions, validate_transitions, CssTransitions, InterpolateSize, Svg, TransitionEvent,
     TransitionStyle,
 };
 pub(crate) use bindings::{BindingIndex, Demand, MotionValueEvent, MotionValueFrame, MotionValueStore};
@@ -60,7 +60,7 @@ use curve::Transition;
 use measure::Measurement;
 use property::AnimProp;
 pub(crate) use property::Scope;
-use svg_attr::SvgAttr;
+pub(crate) use svg_attr::SvgAttr;
 use track::{Goal, Track};
 pub(crate) use value::{Colors, Inheritable, ParentValues, INITIAL_FONT_WEIGHT};
 use value::{AnimValue, Interpolation};
@@ -80,7 +80,7 @@ impl MotionStyle {
 /// attribute of an SVG shape. One description targets one or the other,
 /// decided by the element it sits on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum PropKey {
+pub(crate) enum PropKey {
     Style(AnimProp),
     Svg(SvgAttr),
 }
@@ -929,8 +929,7 @@ impl MotionState {
 
     /// Whether this description animates `prop`, which then is not a CSS
     /// transition's to animate.
-    fn owns(&self, prop: AnimProp) -> bool {
-        let key = PropKey::Style(prop);
+    fn owns(&self, key: PropKey) -> bool {
         self.valid && (self.tracks.contains_key(&key) || self.pending.contains_key(&key))
     }
 
@@ -1146,6 +1145,7 @@ pub(crate) fn resolve_declared_style(
     mut transitions: Option<&mut CssTransitions>,
     animations: Option<(&mut CssAnimations, &KeyframesRegistry)>,
     before: Option<&StyleDesc>,
+    svg: Svg,
     parent_colors: &crate::color::ColorContext,
     parent_font: &ParentValues,
     pointer: crate::events::state_styles::PointerStates,
@@ -1160,7 +1160,7 @@ pub(crate) fn resolve_declared_style(
 ) -> DeclaredStyle {
     if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
         let before = with_vars(fold_state_styles(before, focus_visible, pointer), parent_font);
-        transitions.seed(id, &before, parent_colors, parent_font);
+        transitions.seed(id, &before, svg, parent_colors, parent_font);
     }
     let mut after = with_vars(fold_state_styles(style, focus_visible, pointer), parent_font);
     let covered = animations
@@ -1168,7 +1168,7 @@ pub(crate) fn resolve_declared_style(
         .unwrap_or_default();
     let running = transitions.and_then(|transitions| {
         transitions.update(
-            id, &after, parent_colors, parent_font, motion, measurement, interpolate_size, scope, &covered, now,
+            id, &after, svg, parent_colors, parent_font, motion, measurement, interpolate_size, scope, &covered, now,
         )
     });
     if let Some(running) = &running {
@@ -3771,7 +3771,7 @@ mod tests {
             let waiting = state.frame(started);
             assert!(waiting.active);
             assert!(!waiting.just_settled);
-            assert!(state.owns(AnimProp::Height), "a transition must not take it over");
+            assert!(state.owns(PropKey::Style(AnimProp::Height)), "a transition must not take it over");
 
             // The clock started when the style changed, not at the first frame
             // that has a measurement.
@@ -4092,7 +4092,7 @@ mod tests {
             let mut state = MotionState::new(&open_wide(), None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(pixels(style_at(&state, started).width), 0.0);
             assert!(state.frame(started).active);
-            assert!(state.owns(AnimProp::Width));
+            assert!(state.owns(PropKey::Style(AnimProp::Width)));
             assert!(state.needs_natural_width(started), "the element is flagged to measure it");
 
             // A measurement from a frame that did not measure the width does not

@@ -162,6 +162,7 @@ fn step(
         transitions_wanted.then_some(transitions),
         animations_wanted.then_some((&mut *animations, keyframes)),
         before,
+        None,
         colors,
         font,
         pointer,

@@ -39,7 +39,7 @@ use super::svg_path::{
 };
 use crate::color::ColorContext;
 use crate::motion::{
-    CssAnimations, KeyframesRegistry, MotionState, ParentValues, Subject, SvgMotion, SvgSource,
+    CssAnimations, CssTransitions, KeyframesRegistry, MotionState, ParentValues, Subject, SvgMotion, SvgSource,
 };
 use crate::retained_tree::RetainedTree;
 use crate::style::{DimensionValue, StyleDesc};
@@ -123,6 +123,8 @@ struct Node<'a> {
     /// A string child of a text element, written as character data. Such a node
     /// has no tag, props or children of its own.
     text: Option<&'a str>,
+    /// The attributes its CSS transitions write, over its own and beneath `motion`.
+    transition: Vec<(&'static str, String)>,
     motion: Option<SvgMotion>,
     /// The attributes its CSS animations write, over `motion` and its own.
     css: Vec<(&'static str, String)>,
@@ -133,12 +135,13 @@ struct Node<'a> {
 pub(crate) struct Frame<'a> {
     pub motion_states: &'a HashMap<u64, MotionState>,
     pub animations: &'a mut CssAnimations,
+    pub transitions: &'a mut CssTransitions,
     pub keyframes: &'a KeyframesRegistry,
     /// The `<svg>`'s own colours and font, which its shapes inherit.
     pub colors: &'a ColorContext,
     pub font: &'a ParentValues,
-    /// What the animations of the `<svg>` itself write on the root, where every
-    /// shape below inherits it.
+    /// What the transitions and animations of the `<svg>` itself write on the root,
+    /// where every shape below inherits it.
     pub host: Vec<(&'static str, String)>,
     pub now: Instant,
 }
@@ -198,6 +201,7 @@ impl SvgTrees {
             tag: "svg",
             props: element.custom_props(),
             text: None,
+            transition: Vec::new(),
             motion: None,
             css: frame.host,
             children,
@@ -261,6 +265,7 @@ fn nodes<'a>(
                     tag: "",
                     props: element.custom_props(),
                     text: Some(content),
+                    transition: Vec::new(),
                     motion: None,
                     css: Vec::new(),
                     children: Vec::new(),
@@ -273,7 +278,7 @@ fn nodes<'a>(
                 );
                 return None;
             }
-            let css = animate(element, frame, above);
+            let (transition, css) = animate(element, frame, above);
             let own = element
                 .style
                 .as_deref()
@@ -292,6 +297,7 @@ fn nodes<'a>(
                 tag: &element.element_type,
                 props: element.custom_props(),
                 text: None,
+                transition,
                 motion: frame
                     .motion_states
                     .get(&element.id)
@@ -303,16 +309,18 @@ fn nodes<'a>(
         .collect()
 }
 
-/// Advances the CSS animations of a shape to the frame and returns the
-/// attributes they write.
+/// Advances the CSS transitions and animations of a shape to the frame and returns the
+/// attributes they write: the transitions', and the animations' beneath them.
 fn animate(
     element: &crate::retained_tree::RetainedElement,
     frame: &mut Frame,
     above: &Above,
-) -> Vec<(&'static str, String)> {
+) -> (Vec<(&'static str, String)>, Vec<(&'static str, String)>) {
     let style = element.style.as_deref();
-    if !frame.animations.wants(element.id, style) {
-        return Vec::new();
+    let animates = frame.animations.wants(element.id, style);
+    let transitions = frame.transitions.wants(element.id, style);
+    if !animates && !transitions {
+        return (Vec::new(), Vec::new());
     }
     let none;
     let declared = match style {
@@ -322,20 +330,37 @@ fn animate(
             &none
         }
     };
-    let subject = Subject::svg_shape(declared, SvgSource { own: element.custom_props(), ancestors: &above.props });
-    frame
-        .animations
-        .animate_shape(
+    let source = SvgSource { own: element.custom_props(), ancestors: &above.props };
+    let covered = if animates {
+        frame.animations.advance(element.id, declared, frame.keyframes, crate::motion::Scope::Element, frame.now)
+    } else {
+        Vec::new()
+    };
+    let running = if transitions {
+        frame.transitions.animate_shape(
             element.id,
             declared,
-            frame.keyframes,
-            &subject,
+            &source,
             &above.colors,
             &above.font,
+            frame.motion_states.get(&element.id),
+            &covered,
             frame.now,
         )
-        .map(|values| values.svg_attributes())
-        .unwrap_or_default()
+    } else {
+        None
+    };
+    let animated = if animates {
+        let subject = Subject::svg_shape(declared, source);
+        frame
+            .animations
+            .animate_shape(element.id, declared, &subject, &above.colors, &above.font, frame.now)
+            .map(|values| values.svg_attributes_beneath(running.as_ref()))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    (running.map(|running| running.svg_attributes()).unwrap_or_default(), animated)
 }
 
 /// The string of a text node: React and Solid make a `text` element with
@@ -359,6 +384,7 @@ fn animation_key(nodes: &[Node]) -> u64 {
                         .hash(hasher);
                 }
             }
+            node.transition.hash(hasher);
             node.css.hash(hasher);
             visit(&node.children, hasher);
         }
@@ -418,7 +444,7 @@ fn escape_into(value: &str, xml: &mut String) {
 }
 
 /// The attributes a node is written with, in a fixed order: its own props,
-/// then the animated ones replacing them, then the dashes a draw or a DOM
+/// then the transitioning and animated ones replacing them, then the dashes a draw or a DOM
 /// `pathLength` turns into absolute units.
 fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)> {
     let mut written: Vec<(&'static str, String)> = Vec::new();
@@ -448,6 +474,9 @@ fn attributes(node: &Node, colors: &ColorContext) -> Vec<(&'static str, String)>
     }
     if matches!(node.tag, "image" | "feImage") {
         resolve_image_href(node.tag, &mut written);
+    }
+    for (name, text) in &node.transition {
+        set(&mut written, name, text.clone());
     }
     if let Some(motion) = &node.motion {
         for (name, text) in &motion.attributes {
@@ -698,6 +727,7 @@ mod tests {
             tag,
             props,
             text: None,
+            transition: Vec::new(),
             motion: None,
             css: Vec::new(),
             children,
@@ -1028,6 +1058,7 @@ mod tests {
             tag: "",
             props: &NO_PROPS,
             text: Some(text),
+            transition: Vec::new(),
             motion: None,
             css: Vec::new(),
             children: vec![],
@@ -1287,6 +1318,7 @@ mod tests {
     struct Animated {
         trees: SvgTrees,
         animations: CssAnimations,
+        transitions: CssTransitions,
         keyframes: KeyframesRegistry,
         start: Instant,
         at: std::time::Duration,
@@ -1297,6 +1329,7 @@ mod tests {
             Self {
                 trees: SvgTrees::default(),
                 animations: CssAnimations::default(),
+                transitions: CssTransitions::default(),
                 keyframes: KeyframesRegistry::default(),
                 start: Instant::now(),
                 at: std::time::Duration::ZERO,
@@ -1324,6 +1357,7 @@ mod tests {
                     Frame {
                         motion_states: &motion,
                         animations: &mut self.animations,
+                        transitions: &mut self.transitions,
                         keyframes: &self.keyframes,
                         colors: &colors,
                         font: &font,
@@ -1534,5 +1568,57 @@ mod tests {
         svg.keyframes.define("thick", r#"{ "from": { "strokeWidth": 2 }, "to": { "strokeWidth": 6 } }"#).unwrap();
         svg.at(0).markup(&tree);
         assert!(svg.at(500).markup(&tree).contains(r#"<g stroke-width="4"><path/></g>"#));
+    }
+
+    // ── CSS transitions ──────────────────────────────────────────────
+
+    fn transitioning_circle(tree: &mut RetainedTree, transition: &str) {
+        tree.create_element(2, "circle".to_string());
+        tree.set_custom_prop(2, "r".to_string(), 5.into());
+        tree.set_style(
+            2,
+            Arc::new(serde_json::from_value(serde_json::json!({ "transition": transition })).unwrap()),
+        );
+        tree.append_child(1, 2);
+    }
+
+    #[test]
+    fn a_shape_is_written_with_the_value_its_transition_is_at_and_then_the_one_it_has() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        transitioning_circle(&mut tree, "r 1s linear");
+        let mut svg = Animated::new();
+        assert!(svg.at(0).markup(&tree).contains(r#"<circle r="5"/>"#));
+
+        tree.set_custom_prop(2, "r".to_string(), 15.into());
+        assert!(svg.at(100).markup(&tree).contains(r#"<circle r="5"/>"#), "it starts where it was");
+        assert!(svg.at(600).markup(&tree).contains(r#"<circle r="10"/>"#));
+        let moving = svg.trees.generation(1);
+        assert!(svg.at(1200).markup(&tree).contains(r#"<circle r="15"/>"#));
+        assert_ne!(svg.trees.generation(1), moving, "the frame that ends it is written");
+        let ended = svg.trees.generation(1);
+        svg.at(1300).markup(&tree);
+        assert_eq!(svg.trees.generation(1), ended, "and nothing moves after");
+    }
+
+    #[test]
+    fn a_running_transition_beats_an_animation_that_started_after_it() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "svg".to_string());
+        transitioning_circle(&mut tree, "r 1s linear");
+        let mut svg = Animated::new();
+        svg.keyframes.define("grow", r#"{ "to": { "r": 100 } }"#).unwrap();
+        svg.at(0).markup(&tree);
+        tree.set_custom_prop(2, "r".to_string(), 15.into());
+        svg.at(100).markup(&tree);
+        tree.set_style(
+            2,
+            Arc::new(
+                serde_json::from_value(serde_json::json!({ "transition": "r 1s linear", "animation": "grow 10s linear" }))
+                    .unwrap(),
+            ),
+        );
+        assert!(svg.at(600).markup(&tree).contains(r#"<circle r="10"/>"#));
+        assert!(svg.at(1200).markup(&tree).contains(r#"<circle r="20.1"/>"#), "the animation shows once the transition is over");
     }
 }

@@ -8863,7 +8863,7 @@ impl GpuixView {
             commanded,
             relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
-            motion: running_motion(&tree, &self.motion_states, moving, &self.css_animations, &self.keyframes, now),
+            motion: running_motion(&tree, &self.motion_states, moving, (&self.css_animations, &self.css_transitions), &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             clock_due: &|id| {
                 self.custom_registry.clock_due(id)
@@ -8929,7 +8929,7 @@ fn running_motion(
     tree: &crate::retained_tree::RetainedTree,
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     moving: Option<&[u64]>,
-    animations: &crate::motion::CssAnimations,
+    (animations, transitions): (&crate::motion::CssAnimations, &crate::motion::CssTransitions),
     keyframes: &crate::motion::KeyframesRegistry,
     now: web_time::Instant,
 ) -> Vec<u64> {
@@ -8941,6 +8941,7 @@ fn running_motion(
         .filter(|(_, state)| state.is_animating(now))
         .map(|(id, _)| *id)
         .chain(animations.svg_shapes(keyframes))
+        .chain(transitions.svg_shapes())
         .map(|id| crate::custom_elements::svg_tree::host_of(tree, id))
         // Nothing is built or drawn for an element with no box, and a tick or a frame has nothing to
         // do for what runs there: it is a change of no unit, and of no element a build reaches.
@@ -9113,7 +9114,7 @@ fn paints_only_running(
 fn shapes_running(
     tree: &crate::retained_tree::RetainedTree,
     element: &crate::retained_tree::RetainedElement,
-    animations: &crate::motion::CssAnimations,
+    (animations, transitions): (&crate::motion::CssAnimations, &crate::motion::CssTransitions),
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     keyframes: &crate::motion::KeyframesRegistry,
     now: web_time::Instant,
@@ -9124,6 +9125,9 @@ fn shapes_running(
     for shape in crate::custom_elements::svg_tree::shapes(tree, element) {
         if animations.shape_moves(shape.id, keyframes) {
             running |= Dynamic::Animation as u8;
+        }
+        if transitions.shape_moves(shape.id) {
+            running |= Dynamic::Transition as u8;
         }
         if motion_states.get(&shape.id).is_some_and(|state| state.is_animating(now)) {
             running |= Dynamic::Motion as u8;
@@ -9415,7 +9419,7 @@ impl gpui::Render for GpuixView {
             commanded,
             relevance: tree.relevance.pending(),
             customs: self.custom_registry.retain_states(),
-            motion: running_motion(&tree, &self.motion_states, None, &self.css_animations, &self.keyframes, now),
+            motion: running_motion(&tree, &self.motion_states, None, (&self.css_animations, &self.css_transitions), &self.keyframes, now),
             dormant: &|id| dormancy.holds(id),
             clock_due: &|id| {
                 self.custom_registry.clock_due(id)
@@ -10094,6 +10098,7 @@ fn animate_style_at(
         ctx.inherited.colors.note_read();
     }
     let measurement = reads_measurement.then(|| ctx.measurements.get(id)).flatten();
+    let svg = (element.element_type == "svg").then(|| crate::motion::SvgSource { own: props, ancestors: &[] });
     let mut dynamic = 0;
     if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
         dynamic |= Dynamic::Motion as u8;
@@ -10119,6 +10124,7 @@ fn animate_style_at(
             transitions_wanted.then_some(&mut *ctx.css_transitions),
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
             input.before_transition,
+            svg.as_ref().map(|source| (source, crate::motion::PropTarget::SvgHost)),
             &ctx.inherited.colors,
             &ctx.inherited.parent_values(),
             input.pointer_states,
@@ -10199,8 +10205,10 @@ fn animate_style_at(
             )
         })
         .flatten();
-    // What the animations of an `<svg>` write on its root, for its shapes to inherit.
-    let svg_css = css_values.as_ref().map(crate::motion::AnimationStyle::svg_attributes).unwrap_or_default();
+    // What the transitions and animations of an `<svg>` write on its root, for its shapes to inherit.
+    let running = transitioned.as_ref().and_then(|declared| declared.transitions.as_ref());
+    let mut svg_css = css_values.as_ref().map(|values| values.svg_attributes_beneath(running)).unwrap_or_default();
+    svg_css.extend(running.map(crate::motion::TransitionStyle::svg_attributes).unwrap_or_default());
     let animated = css_values.map(|values| {
         let mut resolved = Box::new(underlying_style.cloned().unwrap_or_default());
         values.apply_to(
@@ -10726,6 +10734,7 @@ fn build_element_unpumped(
                         crate::custom_elements::svg_tree::Frame {
                             motion_states: ctx.motion_states,
                             animations: &mut *ctx.css_animations,
+                            transitions: &mut *ctx.css_transitions,
                             keyframes: ctx.keyframes,
                             colors: &ctx.inherited.colors,
                             font: &font,
@@ -10739,7 +10748,7 @@ fn build_element_unpumped(
                 let running = shapes_running(
                     ctx.tree,
                     element,
-                    ctx.css_animations,
+                    (&*ctx.css_animations, &*ctx.css_transitions),
                     ctx.motion_states,
                     ctx.keyframes,
                     ctx.now,
@@ -18220,7 +18229,7 @@ mod running_motion_tests {
         let tree = tree_with_a_host();
         let states: HashMap<u64, crate::motion::MotionState> = [(3, looping(now)), (4, looping(now))].into();
         assert!(states[&3].is_animating(now) && states[&4].is_animating(now), "both run");
-        let running = running_motion(&tree, &states, None, &Default::default(), &Default::default(), now);
+        let running = running_motion(&tree, &states, None, (&Default::default(), &Default::default()), &Default::default(), now);
         assert_eq!(running, vec![4], "3 is under the host that skips its content, 4 is drawn");
     }
 }

@@ -585,7 +585,7 @@ pub(crate) enum PropTarget {
 }
 
 impl PropTarget {
-    fn takes(self, key: PropKey) -> bool {
+    pub(super) fn takes(self, key: PropKey) -> bool {
         match (self, key) {
             (Self::Element | Self::SvgHost, PropKey::Style(_)) | (Self::SvgShape, PropKey::Svg(_)) => true,
             (Self::SvgHost, PropKey::Svg(attr)) => AnimProp::from_css_animated_name(attr.name()).is_none(),
@@ -600,6 +600,21 @@ pub(crate) struct SvgSource<'a> {
     /// The elements above it in the `<svg>`, the nearest last, which an inherited
     /// property it sets nothing for comes from.
     pub ancestors: &'a [&'a HashMap<String, Value>],
+}
+
+impl SvgSource<'_> {
+    /// What CSS computes `attr` to for the element: what it declares, else what it inherits from the
+    /// elements above it, else the initial value. `colors` resolve the colours it declares and
+    /// supply the font size an unset one starts from.
+    pub(super) fn computed(&self, attr: SvgAttr, colors: &Colors) -> Option<AnimValue> {
+        let own = attr.read_css(self.own, &colors.element);
+        let inherited = || {
+            attr.inherits()
+                .then(|| self.ancestors.iter().rev().find_map(|above| attr.read_css(above, &colors.element)))
+                .flatten()
+        };
+        own.or_else(inherited).or_else(|| attr.initial_css(colors.font.size))
+    }
 }
 
 /// What an element's animations lay their values over.
@@ -633,20 +648,11 @@ impl<'a> Subject<'a> {
                     None => Underlying::Unknown,
                 }
             }
-            PropKey::Svg(attr) => {
-                let value = self.svg.as_ref().and_then(|source| {
-                    let own = attr.read_css(source.own, &colors.element);
-                    let inherited = || {
-                        attr.inherits()
-                            .then(|| {
-                                source.ancestors.iter().rev().find_map(|above| attr.read_css(above, &colors.element))
-                            })
-                            .flatten()
-                    };
-                    own.or_else(inherited).or_else(|| attr.initial_css(colors.font.size))
-                });
-                value.map_or(Underlying::Unknown, Underlying::Value)
-            }
+            PropKey::Svg(attr) => self
+                .svg
+                .as_ref()
+                .and_then(|source| source.computed(attr, colors))
+                .map_or(Underlying::Unknown, Underlying::Value),
         }
     }
 }
@@ -1472,10 +1478,12 @@ pub(crate) struct AnimationStyle {
 }
 
 impl AnimationStyle {
-    /// The SVG attributes the animations drive, as the XML writes them.
-    pub(crate) fn svg_attributes(&self) -> Vec<(&'static str, String)> {
+    /// The SVG attributes the animations drive, as the XML writes them, without the ones a running
+    /// transition holds: a transition beats an animation in the cascade.
+    pub(crate) fn svg_attributes_beneath(&self, transitions: Option<&TransitionStyle>) -> Vec<(&'static str, String)> {
         self.svg
             .iter()
+            .filter(|(attr, _)| !transitions.is_some_and(|transitions| transitions.runs(PropKey::Svg(*attr))))
             .filter_map(|(attr, value)| Some((attr.attribute()?, attribute_text(value))))
             .collect()
     }
@@ -1485,7 +1493,7 @@ impl AnimationStyle {
     /// and a transition beats an animation in the cascade.
     pub(crate) fn apply_to(self, style: &mut StyleDesc, transitions: Option<&TransitionStyle>) {
         for (prop, value) in self.style {
-            if transitions.is_some_and(|transitions| transitions.runs(prop)) {
+            if transitions.is_some_and(|transitions| transitions.runs(PropKey::Style(prop))) {
                 continue;
             }
             prop.write(style, value);
@@ -1663,7 +1671,7 @@ impl CssAnimations {
         registry: &KeyframesRegistry,
         scope: Scope,
         now: Instant,
-    ) -> Vec<AnimProp> {
+    ) -> Vec<PropKey> {
         let state = self.states.entry(id).or_insert_with(ElementState::new);
         state.sync_config(id, declared);
         state.reconcile(id, registry, now, &mut self.events, &mut self.api_events);
@@ -1677,9 +1685,9 @@ impl CssAnimations {
         for run in &mut state.runs {
             run.tick(id, now, !self.layout_only, &mut self.events, &mut self.api_events);
             if run.progress.is_some() {
-                covered.extend(run.properties.iter().filter_map(|key| match key {
-                    PropKey::Style(prop) if scope.animates(*prop) => Some(*prop),
-                    _ => None,
+                covered.extend(run.properties.iter().copied().filter(|key| match key {
+                    PropKey::Style(prop) => scope.animates(*prop),
+                    PropKey::Svg(_) => true,
                 }));
             }
         }
@@ -1932,21 +1940,19 @@ impl CssAnimations {
         wake.merge(Wake::merged(listening.elements.iter().map(|id| Wake::At(sleepers.iterating[id]))))
     }
 
-    /// A frame of a shape inside an `<svg>`: its animations advance and the SVG
-    /// properties they drive come back. A shape has no layout and starts no
-    /// transitions, so nothing waits between the two halves of the frame.
+    /// The second half of a frame of a shape inside an `<svg>`, after [`advance`](Self::advance) and
+    /// the shape's transitions: the SVG properties its animations drive. A shape has no layout, so
+    /// nothing waits for a measurement.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn animate_shape(
         &mut self,
         id: u64,
         declared: &StyleDesc,
-        registry: &KeyframesRegistry,
         subject: &Subject,
         parent_colors: &ColorContext,
         parent_font: &ParentValues,
         now: Instant,
     ) -> Option<AnimationStyle> {
-        self.advance(id, declared, registry, Scope::Element, now);
         self.update(
             id,
             declared,
@@ -2386,6 +2392,7 @@ mod tests {
             let running = transitions.update(
                 1,
                 declared,
+                None,
                 &self.parent_colors,
                 &self.parent_font,
                 None,
@@ -2427,9 +2434,10 @@ mod tests {
         ) -> Vec<(&'static str, String)> {
             let now = self.at(millis);
             let subject = Subject::svg_shape(declared, SvgSource { own, ancestors });
+            self.animations.advance(1, declared, &self.registry, Scope::Element, now);
             self.animations
-                .animate_shape(1, declared, &self.registry, &subject, &self.parent_colors, &self.parent_font, now)
-                .map(|values| values.svg_attributes())
+                .animate_shape(1, declared, &subject, &self.parent_colors, &self.parent_font, now)
+                .map(|values| values.svg_attributes_beneath(None))
                 .unwrap_or_default()
         }
 
@@ -4615,7 +4623,7 @@ mod tests {
         };
         host(&mut frames, 0);
         let values = host(&mut frames, 500).expect("the animation has an effect");
-        let written = values.svg_attributes();
+        let written = values.svg_attributes_beneath(None);
         assert_eq!(attribute(&written, "stroke-width"), "3");
         assert_eq!(attribute(&written, "r"), "2");
         assert!(written.iter().all(|(name, _)| *name != "opacity"), "opacity is the box's: {written:?}");

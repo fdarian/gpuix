@@ -1,10 +1,15 @@
-//! CSS transitions (CSS Transitions Level 1) for style props.
+//! CSS transitions (CSS Transitions Level 1) for style props and SVG properties.
 //!
 //! Each frame the renderer hands an element's after-change style (state styles
 //! already folded in) to [`CssTransitions::update`]. A change in the value of a
 //! transitionable property starts a transition from the value the element
 //! showed to the new one; the returned [`TransitionStyle`] holds the values of
 //! the transitions still running, to lay over that style.
+//!
+//! The SVG properties (`fill`, `stroke-width`, `r`, `d`...) are the attributes of an `<svg>` and of
+//! the shapes inside it. A shape is never built, so its `<svg>` steps its transitions beside its
+//! animations ([`CssTransitions::animate_shape`]) and the values come back as attributes; the
+//! `<svg>` itself steps its style properties and its attributes together.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -12,10 +17,12 @@ use web_time::Instant;
 
 use super::curve::{ease, parse_timing_function, Ease};
 use super::measure::Measurement;
+use super::css_animation::{PropTarget, SvgSource};
 use super::property::{expand_shorthand, AnimProp, Scope};
+use super::svg_attr::{attribute_text, SvgAttr};
 use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentValues};
 use super::web_animation::{next_seq, ApiEvent, Command, Info, Kind, Playback, Status};
-use super::MotionState;
+use super::{MotionState, PropKey};
 use crate::color::ColorContext;
 use crate::dormant_wake::Wake;
 use crate::retained_tree::RetainedTree;
@@ -28,8 +35,10 @@ enum Matcher {
     All,
     /// The animatable properties a CSS name stands for. Empty for a name that
     /// is a valid property but not one gpuix animates (`perspective`), which
-    /// matches nothing, as an unsupported property does in a browser.
-    Props(Vec<AnimProp>),
+    /// matches nothing, as an unsupported property does in a browser. A name that
+    /// is a style and an SVG property (`opacity`, `width`) stands for both: which
+    /// one an element has is its [`PropTarget`]'s to say.
+    Props(Vec<PropKey>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -46,10 +55,10 @@ struct Entry {
 }
 
 impl Entry {
-    fn matches(&self, prop: AnimProp) -> bool {
+    fn matches(&self, key: PropKey) -> bool {
         match &self.matcher {
             Matcher::All => true,
-            Matcher::Props(props) => props.contains(&prop),
+            Matcher::Props(keys) => keys.contains(&key),
         }
     }
 }
@@ -60,8 +69,8 @@ struct TransitionList(Vec<Entry>);
 
 impl TransitionList {
     /// The last entry that names `prop`, as CSS picks the matching one.
-    fn matching(&self, prop: AnimProp) -> Option<&Entry> {
-        self.0.iter().rev().find(|entry| entry.matches(prop))
+    fn matching(&self, key: PropKey) -> Option<&Entry> {
+        self.0.iter().rev().find(|entry| entry.matches(key))
     }
 
     fn parse(style: &StyleDesc) -> Result<Self, String> {
@@ -412,7 +421,15 @@ fn kebab_case(camel: &str) -> String {
 }
 
 /// The animatable properties a CSS property name covers, shorthands included.
-fn css_props(ident: &str) -> Vec<AnimProp> {
+fn css_props(ident: &str) -> Vec<PropKey> {
+    let mut keys: Vec<PropKey> = style_props(ident).into_iter().map(PropKey::Style).collect();
+    if let Some(attr) = SvgAttr::from_name(&camel_case(ident)).filter(|attr| attr.is_css_property()) {
+        keys.push(PropKey::Svg(attr));
+    }
+    keys
+}
+
+fn style_props(ident: &str) -> Vec<AnimProp> {
     use AnimProp::*;
     match ident {
         "inset" => vec![Top, Right, Bottom, Left],
@@ -477,18 +494,18 @@ impl InterpolateSize {
 /// Whether a transition on `prop` is between a length and a keyword, which
 /// browsers swap at once unless `interpolate-size` allows it.
 fn is_keyword_change(
-    prop: AnimProp,
+    key: PropKey,
     before: Option<&AnimValue>,
     after: Option<&AnimValue>,
 ) -> bool {
     let keyword = |value: Option<&AnimValue>| matches!(value, None | Some(AnimValue::Auto));
-    prop.size_axis().is_some() && (keyword(before) || keyword(after))
+    matches!(key, PropKey::Style(prop) if prop.size_axis().is_some()) && (keyword(before) || keyword(after))
 }
 
 /// Whether a transition of `style` can run on `width`, which to or from `auto`
 /// needs the natural width measured a frame before the style changes.
 pub(crate) fn transitions_width(style: &StyleDesc) -> bool {
-    TransitionList::parse(style).is_ok_and(|list| list.matching(AnimProp::Width).is_some())
+    TransitionList::parse(style).is_ok_and(|list| list.matching(PropKey::Style(AnimProp::Width)).is_some())
 }
 
 /// Rejects a style whose `transition*` or `interpolateSize` values, in it or in
@@ -565,7 +582,7 @@ impl TransitionEventKind {
 pub(crate) struct TransitionEvent {
     pub(crate) id: u64,
     pub(crate) kind: TransitionEventKind,
-    prop: AnimProp,
+    key: PropKey,
     /// Seconds.
     pub(crate) elapsed: f64,
     /// See [`next_seq`].
@@ -576,8 +593,8 @@ pub(crate) struct TransitionEvent {
 }
 
 impl TransitionEvent {
-    fn new(id: u64, kind: TransitionEventKind, prop: AnimProp, elapsed: f64) -> Self {
-        Self { id, kind, prop, elapsed, seq: next_seq(), late: false }
+    fn new(id: u64, kind: TransitionEventKind, key: PropKey, elapsed: f64) -> Self {
+        Self { id, kind, key, elapsed, seq: next_seq(), late: false }
     }
 
     fn late(mut self, late: bool) -> Self {
@@ -587,7 +604,7 @@ impl TransitionEvent {
 
     /// The CSS name, `background-color`.
     pub(crate) fn property_name(&self) -> String {
-        kebab_case(self.prop.name())
+        kebab_case(self.key.name())
     }
 }
 
@@ -610,9 +627,9 @@ impl Events {
     }
 
     /// What the clock of `running` noted since the last call, for the Web Animations objects.
-    fn tell(&mut self, element: u64, prop: AnimProp, running: &mut Running, now: Instant) {
+    fn tell(&mut self, element: u64, key: PropKey, running: &mut Running, now: Instant) {
         for note in running.clock.take_notes() {
-            self.api.push(ApiEvent::of(element, note, running.info(prop, now)));
+            self.api.push(ApiEvent::of(element, note, running.info(key, now)));
         }
     }
 }
@@ -652,7 +669,7 @@ impl Running {
     /// the change is simply not transitioned.
     #[allow(clippy::too_many_arguments)]
     fn new(
-        prop: AnimProp,
+        key: PropKey,
         from: &AnimValue,
         to: &AnimValue,
         (end, end_computed): (AnimValue, AnimValue),
@@ -661,9 +678,10 @@ impl Running {
         shortening: f64,
         now: Instant,
     ) -> Option<Self> {
-        let segment = pair_in(prop.name(), from, to, Interpolation::Css)
+        let flips = matches!(key, PropKey::Style(prop) if prop.flips_without_allow_discrete());
+        let segment = pair_in(key.name(), from, to, Interpolation::Css)
             .ok()
-            .filter(|pair| entry.allow_discrete || !pair.is_discrete() || prop.flips_without_allow_discrete())?;
+            .filter(|pair| entry.allow_discrete || !pair.is_discrete() || flips)?;
         let delay = if entry.delay >= 0.0 {
             entry.delay
         } else {
@@ -724,10 +742,13 @@ impl Running {
     /// measurement as it changes, without moving the value showing now: the
     /// start is solved so the same eased progress still lands on the old value.
     /// The schedule and the events are untouched.
-    fn follow(&mut self, prop: AnimProp, measurement: &Measurement, now: Instant) {
+    fn follow(&mut self, key: PropKey, measurement: &Measurement, now: Instant) {
         // Too near the end the start would be solved from almost nothing, and
         // the transition is about to hand over to the literal style anyway.
         const NEAR_END: f64 = 0.999;
+        let PropKey::Style(prop) = key else {
+            return;
+        };
         if !self.measured {
             return;
         }
@@ -745,8 +766,8 @@ impl Running {
         self.segment.to[0] = end;
     }
 
-    fn info(&self, prop: AnimProp, now: Instant) -> Info {
-        Info::of(Kind::Transition, kebab_case(prop.name()), &self.clock, now, self.end_time())
+    fn info(&self, key: PropKey, now: Instant) -> Info {
+        Info::of(Kind::Transition, kebab_case(key.name()), &self.clock, now, self.end_time())
     }
 
     /// Whether `getAnimations()` lists it: current (active, before its active
@@ -789,12 +810,15 @@ fn computed_value(prop: AnimProp, style: &StyleDesc, colors: &Colors) -> Option<
 }
 
 /// The number a transition leaves from. A value the style leaves unset or
-/// `auto` is the size layout gave the element.
+/// `auto` is the size layout gave the element; an SVG property has no layout.
 fn laid_out_start(
-    prop: AnimProp,
+    key: PropKey,
     declared: Option<&AnimValue>,
     measurement: Option<&Measurement>,
 ) -> Option<AnimValue> {
+    let PropKey::Style(prop) = key else {
+        return declared.cloned();
+    };
     match declared {
         Some(AnimValue::Auto) | None => measurement?.laid_out(prop).map(AnimValue::Number),
         Some(value) => Some(value.clone()),
@@ -804,10 +828,13 @@ fn laid_out_start(
 /// The number a transition runs to: `auto` is the size the content wants.
 /// `None` when that is not measured yet.
 fn laid_out_end(
-    prop: AnimProp,
+    key: PropKey,
     declared: &AnimValue,
     measurement: Option<&Measurement>,
 ) -> Option<AnimValue> {
+    let PropKey::Style(prop) = key else {
+        return Some(declared.clone());
+    };
     match declared {
         AnimValue::Auto => measurement?.natural_px(prop).map(AnimValue::Number),
         value => Some(value.clone()),
@@ -829,23 +856,70 @@ fn config_key(style: &StyleDesc) -> ConfigKey {
     ]
 }
 
+/// What the SVG properties of an element were in a frame. `declared` is the value as the element shows
+/// it, `computed` the one CSS compares: `currentColor` stays itself.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SvgValues(BTreeMap<SvgAttr, (Option<AnimValue>, Option<AnimValue>)>);
+
+impl SvgValues {
+    fn read(source: &SvgSource, target: PropTarget, colors: &Colors) -> Self {
+        let pinned = colors.with_current_color_pinned();
+        Self(
+            SvgAttr::ALL
+                .iter()
+                .copied()
+                .filter(|attr| attr.is_css_property() && target.takes(PropKey::Svg(*attr)))
+                .map(|attr| (attr, (source.computed(attr, colors), source.computed(attr, &pinned))))
+                .collect(),
+        )
+    }
+}
+
+/// One frame's style of an element, to read a property of.
+struct Frame<'a> {
+    style: &'a StyleDesc,
+    svg: &'a SvgValues,
+    colors: &'a Colors,
+}
+
+impl Frame<'_> {
+    fn declared(&self, key: PropKey) -> Option<AnimValue> {
+        match key {
+            PropKey::Style(prop) => declared_value(prop, self.style, self.colors),
+            PropKey::Svg(attr) => self.svg.0.get(&attr)?.0.clone(),
+        }
+    }
+
+    fn computed(&self, key: PropKey) -> Option<AnimValue> {
+        match key {
+            PropKey::Style(prop) => computed_value(prop, self.style, self.colors),
+            PropKey::Svg(attr) => self.svg.0.get(&attr)?.1.clone(),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ElementState {
     /// The previous frame's after-change style: the before-change style of the
     /// next style change.
     previous: StyleDesc,
+    /// The SVG properties of the previous frame.
+    previous_svg: SvgValues,
     /// What the last frame's after-change style resolved its colours in.
     colors: Colors,
     config: ConfigKey,
     list: TransitionList,
-    running: BTreeMap<AnimProp, Running>,
+    /// Which properties the element has: a layout element its styles, a shape in an `<svg>` the SVG
+    /// properties, and the `<svg>` both.
+    target: PropTarget,
+    running: BTreeMap<PropKey, Running>,
     /// Counts the steps, to tell which style change started a transition.
     generation: u64,
     /// Transitions that finished at their end, so a style that still has the
     /// end value does not start the transition again, and the Web Animations
     /// API can still read and play them as in a browser.
-    completed: BTreeMap<AnimProp, Completed>,
-    cancelled: BTreeMap<AnimProp, Cancelled>,
+    completed: BTreeMap<PropKey, Completed>,
+    cancelled: BTreeMap<PropKey, Cancelled>,
 }
 
 /// A transition that ran to its end and left the running ones. It stays until
@@ -860,6 +934,7 @@ struct Completed {
 /// A transition `animation.cancel()` made idle. It stays, for `play()` and the like to bring
 /// back, until the style changes the property to another value or stops transitioning it; a
 /// style that still has its end value starts nothing.
+#[derive(Clone)]
 struct Cancelled {
     /// The computed end value.
     end: AnimValue,
@@ -873,13 +948,19 @@ fn parse_config(id: u64, style: &StyleDesc) -> TransitionList {
     })
 }
 
+/// The SVG properties of an element: what it declares and what it is, see [`PropTarget`].
+pub(crate) type Svg<'a> = Option<(&'a SvgSource<'a>, PropTarget)>;
+
 impl ElementState {
-    fn new(id: u64, after: &StyleDesc, colors: Colors) -> Self {
+    fn new(id: u64, after: &StyleDesc, colors: Colors, svg: Svg) -> Self {
+        let target = svg.map_or(PropTarget::Element, |(_, target)| target);
         Self {
             previous: after.clone(),
+            previous_svg: svg.map_or_else(SvgValues::default, |(source, target)| SvgValues::read(source, target, &colors)),
             colors,
             config: config_key(after),
             list: parse_config(id, after),
+            target,
             running: BTreeMap::new(),
             generation: 0,
             completed: BTreeMap::new(),
@@ -892,22 +973,25 @@ impl ElementState {
         self.running.is_empty() && self.completed.is_empty()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn step(
         &mut self,
         id: u64,
         after: &StyleDesc,
+        svg: Svg,
         parent_colors: &ColorContext,
         parent_font: &ParentValues,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
-        (scope, covered): (Scope, &[AnimProp]),
+        (scope, covered): (Scope, &[PropKey]),
         now: Instant,
         drawing: bool,
         events: &mut Events,
     ) {
         self.generation += 1;
         events.drawing = drawing;
+        self.target = svg.map_or(PropTarget::Element, |(_, target)| target);
         let config = config_key(after);
         let config_changed = config != self.config;
         if config_changed {
@@ -927,13 +1011,11 @@ impl ElementState {
         let previous_colors = std::mem::replace(&mut self.colors, colors.clone());
         let colors_changed = colors != previous_colors;
         let style_changed = self.previous != *after;
-        if style_changed || config_changed || colors_changed {
-            let mut props: Vec<AnimProp> = if style_changed || colors_changed {
-                AnimProp::ALL
-                    .iter()
-                    .copied()
-                    .filter(|prop| scope.animates(*prop) && !prop.is_motion_only())
-                    .collect()
+        let after_svg = svg.map_or_else(SvgValues::default, |(source, target)| SvgValues::read(source, target, &colors));
+        let svg_changed = self.previous_svg != after_svg;
+        if style_changed || config_changed || colors_changed || svg_changed {
+            let keys: Vec<PropKey> = if style_changed || colors_changed || svg_changed {
+                self.target_keys(scope)
             } else {
                 self.running
                     .keys()
@@ -942,13 +1024,12 @@ impl ElementState {
                     .copied()
                     .collect()
             };
-            // The order the transitions are listed in, which the events of one time follow.
-            props.sort_by_key(|prop| kebab_case(prop.name()));
-            for prop in props {
+            let now_frame = Frame { style: after, svg: &after_svg, colors: &colors };
+            for key in keys {
                 self.restyle(
                     id,
-                    prop,
-                    (after, &colors),
+                    key,
+                    &now_frame,
                     &previous_colors,
                     motion,
                     measurement,
@@ -961,13 +1042,28 @@ impl ElementState {
             if style_changed {
                 self.previous = after.clone();
             }
+            self.previous_svg = after_svg;
         }
         self.advance(id, now, drawing, events);
         if let Some(measurement) = measurement {
-            for (prop, running) in &mut self.running {
-                running.follow(*prop, measurement, now);
+            for (key, running) in &mut self.running {
+                running.follow(*key, measurement, now);
             }
         }
+    }
+
+    /// Every property the element has that a transition may move.
+    fn target_keys(&self, scope: Scope) -> Vec<PropKey> {
+        let styles = AnimProp::ALL
+            .iter()
+            .copied()
+            .filter(|prop| scope.animates(*prop) && !prop.is_motion_only())
+            .map(PropKey::Style);
+        let svg = SvgAttr::ALL.iter().copied().filter(|attr| attr.is_css_property()).map(PropKey::Svg);
+        let mut keys: Vec<PropKey> = styles.chain(svg).filter(|key| self.target.takes(*key)).collect();
+        // The order the transitions are listed in, which the events of one time follow.
+        keys.sort_by_key(|key| kebab_case(key.name()));
+        keys
     }
 
     /// Reports transitions that began and finished, and moves the ones at their
@@ -981,14 +1077,14 @@ impl ElementState {
     fn advance(&mut self, id: u64, now: Instant, drawing: bool, events: &mut Events) {
         let mut finished = Vec::new();
         let mut at_end = Vec::new();
-        for (prop, running) in &mut self.running {
+        for (key, running) in &mut self.running {
             let end = running.end_time();
             let started = drawing && running.clock.pending_play();
             if started {
                 running.clock.resolve_pending(now, end);
             }
             running.clock.settle(now, end);
-            events.tell(id, *prop, running, now);
+            events.tell(id, *key, running, now);
             if !drawing || running.clock.pending_play() {
                 continue;
             }
@@ -1000,59 +1096,59 @@ impl ElementState {
             }
             if running.announce {
                 running.announce = false;
-                events.push(TransitionEvent::new(id, TransitionEventKind::Run, *prop, running.initial_elapsed()).late(started));
+                events.push(TransitionEvent::new(id, TransitionEventKind::Run, *key, running.initial_elapsed()).late(started));
             }
             let elapsed = running.elapsed(now);
             if !running.began && elapsed >= running.delay {
                 running.began = true;
-                events.push(TransitionEvent::new(id, TransitionEventKind::Start, *prop, running.initial_elapsed()).late(started));
+                events.push(TransitionEvent::new(id, TransitionEventKind::Start, *key, running.initial_elapsed()).late(started));
             }
             let rate = running.clock.rate();
             if let Some(restart) = running.restart {
                 let inside = elapsed > running.delay || (elapsed == running.delay && rate >= 0.0);
                 if inside && !running.clock.is_finished(now, end) {
                     running.restart = None;
-                    events.push(TransitionEvent::new(id, TransitionEventKind::Start, *prop, restart).late(started));
+                    events.push(TransitionEvent::new(id, TransitionEventKind::Start, *key, restart).late(started));
                 }
             }
             if running.clock.take_end(now, end) {
-                finished.push(*prop);
+                finished.push(*key);
             } else if running.began && running.restart.is_none() && (elapsed < running.delay || (elapsed == running.delay && rate < 0.0)) {
                 // Told it began, and now back before its active interval without having finished
                 // there: it ended at that edge.
                 running.restart = Some(running.initial_elapsed());
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, *prop, running.initial_elapsed()).late(started));
+                events.push(TransitionEvent::new(id, TransitionEventKind::End, *key, running.initial_elapsed()).late(started));
             }
             if running.clock.status(now, end) == Status::Finished && running.clock.rate() >= 0.0 {
-                at_end.push(*prop);
+                at_end.push(*key);
             }
             if running.clock.pending_pause() {
                 running.clock.resolve_pending(now, end);
-                events.tell(id, *prop, running, now);
+                events.tell(id, *key, running, now);
             }
         }
         // Events come in the order of the times they are scheduled at.
         finished.sort_by(|first, second| {
             self.running[first].end_time().total_cmp(&self.running[second].end_time())
         });
-        for prop in finished {
-            let Some(running) = self.running.get_mut(&prop) else {
+        for key in finished {
+            let Some(running) = self.running.get_mut(&key) else {
                 continue;
             };
             if running.clock.rate() >= 0.0 {
                 running.restart = Some(running.duration);
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, prop, running.duration));
+                events.push(TransitionEvent::new(id, TransitionEventKind::End, key, running.duration));
             } else if running.began {
                 // Run back to its start, it ends at the other edge of its
                 // active interval.
                 running.restart = Some(running.initial_elapsed());
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, prop, running.initial_elapsed()));
+                events.push(TransitionEvent::new(id, TransitionEventKind::End, key, running.initial_elapsed()));
             }
             // Still before its active interval: the DOM saw nothing begin.
         }
-        for prop in at_end {
-            if let Some(running) = self.running.remove(&prop) {
-                self.completed.insert(prop, Completed { end: running.end_computed.clone(), run: running });
+        for key in at_end {
+            if let Some(running) = self.running.remove(&key) {
+                self.completed.insert(key, Completed { end: running.end_computed.clone(), run: running });
             }
         }
     }
@@ -1060,19 +1156,19 @@ impl ElementState {
     fn cancel(
         &mut self,
         id: u64,
-        prop: AnimProp,
+        key: PropKey,
         now: Instant,
         events: &mut Events,
     ) {
-        if let Some(mut running) = self.running.remove(&prop) {
+        if let Some(mut running) = self.running.remove(&key) {
             let active = running.elapsed(now) - running.delay;
             let end = running.end_time();
             running.clock.apply(Command::Cancel, now, end).expect("cancelling cannot fail");
-            events.tell(id, prop, &mut running, now);
+            events.tell(id, key, &mut running, now);
             events.push(TransitionEvent::new(
                 id,
                 TransitionEventKind::Cancel,
-                prop,
+                key,
                 active.clamp(0.0, running.duration),
             ));
         }
@@ -1081,30 +1177,30 @@ impl ElementState {
     /// A transition that finished is cancelled, to the Web Animations objects
     /// that still hold it, once the style moves off its end value. The DOM has
     /// no `transitioncancel` for it.
-    fn forget(&mut self, id: u64, prop: AnimProp, now: Instant, events: &mut Events) {
-        if let Some(mut completed) = self.completed.remove(&prop) {
+    fn forget(&mut self, id: u64, key: PropKey, now: Instant, events: &mut Events) {
+        if let Some(mut completed) = self.completed.remove(&key) {
             let end = completed.run.end_time();
             completed.run.clock.apply(Command::Cancel, now, end).expect("cancelling cannot fail");
-            events.tell(id, prop, &mut completed.run, now);
+            events.tell(id, key, &mut completed.run, now);
         }
     }
 
     fn begin(
         &mut self,
         id: u64,
-        prop: AnimProp,
+        key: PropKey,
         mut running: Running,
         events: &mut Events,
     ) {
         running.generation = self.generation;
         let late = events.drawing;
-        events.push(TransitionEvent::new(id, TransitionEventKind::Run, prop, running.initial_elapsed()).late(late));
+        events.push(TransitionEvent::new(id, TransitionEventKind::Run, key, running.initial_elapsed()).late(late));
         // Chrome starts a transition with no delay as it makes it, before its play has a frame.
         if running.delay <= 0.0 {
             running.began = true;
-            events.push(TransitionEvent::new(id, TransitionEventKind::Start, prop, running.initial_elapsed()).late(late));
+            events.push(TransitionEvent::new(id, TransitionEventKind::Start, key, running.initial_elapsed()).late(late));
         }
-        self.running.insert(prop, running);
+        self.running.insert(key, running);
     }
 
     /// The start rules of CSS Transitions 1 §3 for one property, run when its
@@ -1113,35 +1209,35 @@ impl ElementState {
     fn restyle(
         &mut self,
         id: u64,
-        prop: AnimProp,
-        (after, colors): (&StyleDesc, &Colors),
+        key: PropKey,
+        after: &Frame,
         previous_colors: &Colors,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         interpolate_size: InterpolateSize,
-        covered: &[AnimProp],
+        covered: &[PropKey],
         now: Instant,
         events: &mut Events,
     ) {
-        let entry = if motion.is_some_and(|motion| motion.owns(prop)) {
+        let entry = if motion.is_some_and(|motion| motion.owns(key)) {
             None
         } else {
-            self.list.matching(prop).cloned()
+            self.list.matching(key).cloned()
         };
         let Some(entry) = entry else {
-            self.cancel(id, prop, now, events);
-            self.forget(id, prop, now, events);
-            self.cancelled.remove(&prop);
+            self.cancel(id, key, now, events);
+            self.forget(id, key, now, events);
+            self.cancelled.remove(&key);
             return;
         };
 
-        let after_value = declared_value(prop, after, colors);
-        let after_computed = computed_value(prop, after, colors);
-        if self.completed.get(&prop).is_some_and(|completed| after_computed.as_ref() != Some(&completed.end)) {
-            self.forget(id, prop, now, events);
+        let after_value = after.declared(key);
+        let after_computed = after.computed(key);
+        if self.completed.get(&key).is_some_and(|completed| after_computed.as_ref() != Some(&completed.end)) {
+            self.forget(id, key, now, events);
         }
-        if self.cancelled.get(&prop).is_some_and(|cancelled| after_computed.as_ref() != Some(&cancelled.end)) {
-            self.cancelled.remove(&prop);
+        if self.cancelled.get(&key).is_some_and(|cancelled| after_computed.as_ref() != Some(&cancelled.end)) {
+            self.cancelled.remove(&key);
         }
         let has_duration = entry.duration + entry.delay > 0.0;
 
@@ -1149,39 +1245,39 @@ impl ElementState {
         // after-change values are both the animated one and nothing starts. A
         // transition that ran toward the old declared value is cancelled by the
         // change; one the style still agrees with keeps running over the animation.
-        if covered.contains(&prop) {
+        if covered.contains(&key) {
             if self
                 .running
-                .get(&prop)
+                .get(&key)
                 .is_some_and(|old| after_computed.as_ref() != Some(&old.end_computed))
             {
-                self.cancel(id, prop, now, events);
+                self.cancel(id, key, now, events);
             }
             return;
         }
 
-        let Some(old) = self.running.get(&prop) else {
-            if self.completed.contains_key(&prop) || self.cancelled.contains_key(&prop) || !has_duration {
+        let Some(old) = self.running.get(&key) else {
+            if self.completed.contains_key(&key) || self.cancelled.contains_key(&key) || !has_duration {
                 return;
             }
-            let before = declared_value(prop, &self.previous, previous_colors);
-            let before_computed = computed_value(prop, &self.previous, previous_colors);
+            let before = Frame { style: &self.previous, svg: &self.previous_svg, colors: previous_colors };
+            let (before, before_computed) = (before.declared(key), before.computed(key));
             if before_computed == after_computed
                 || (!interpolate_size.allows_keywords()
-                    && is_keyword_change(prop, before.as_ref(), after_value.as_ref()))
+                    && is_keyword_change(key, before.as_ref(), after_value.as_ref()))
             {
                 return;
             }
-            let from = laid_out_start(prop, before.as_ref(), measurement);
-            let to = after_value.as_ref().and_then(|end| laid_out_end(prop, end, measurement));
+            let from = laid_out_start(key, before.as_ref(), measurement);
+            let to = after_value.as_ref().and_then(|end| laid_out_end(key, end, measurement));
             if let (Some(from), Some(to), Some(end), Some(end_computed)) =
                 (from, to, after_value, after_computed)
             {
                 let reversing_start = before_computed.unwrap_or_else(|| from.clone());
                 if let Some(running) = Running::new(
-                    prop, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, now,
+                    key, &from, &to, (end, end_computed), &entry, reversing_start, 1.0, now,
                 ) {
-                    self.begin(id, prop, running, events);
+                    self.begin(id, key, running, events);
                 }
             }
             return;
@@ -1198,15 +1294,15 @@ impl ElementState {
                 .clamp(0.0, 1.0);
             (old.end_computed.clone(), shortening)
         });
-        self.cancel(id, prop, now, events);
+        self.cancel(id, key, now, events);
         let (Some(end), Some(end_computed)) = (after_value, after_computed) else {
             return;
         };
-        if !interpolate_size.allows_keywords() && is_keyword_change(prop, Some(&current), Some(&end))
+        if !interpolate_size.allows_keywords() && is_keyword_change(key, Some(&current), Some(&end))
         {
             return;
         }
-        let Some(to) = laid_out_end(prop, &end, measurement) else {
+        let Some(to) = laid_out_end(key, &end, measurement) else {
             return;
         };
         if current == to || !has_duration {
@@ -1214,9 +1310,9 @@ impl ElementState {
         }
         let (reversing_start, shortening) = reversal.unwrap_or_else(|| (current.clone(), 1.0));
         if let Some(running) = Running::new(
-            prop, &current, &to, (end, end_computed), &entry, reversing_start, shortening, now,
+            key, &current, &to, (end, end_computed), &entry, reversing_start, shortening, now,
         ) {
-            self.begin(id, prop, running, events);
+            self.begin(id, key, running, events);
         }
     }
 
@@ -1231,13 +1327,13 @@ impl ElementState {
         events: &mut Events,
     ) -> Option<Result<(), String>> {
         let is = |running: &Running| running.clock.id() == id;
-        let (prop, mut run, was_running) = if let Some(prop) = self.running.iter().find(|(_, run)| is(run)).map(|(prop, _)| *prop) {
-            (prop, self.running.remove(&prop)?, true)
-        } else if let Some(prop) = self.completed.iter().find(|(_, done)| is(&done.run)).map(|(prop, _)| *prop) {
-            (prop, self.completed.remove(&prop)?.run, false)
+        let (key, mut run, was_running) = if let Some(key) = self.running.iter().find(|(_, run)| is(run)).map(|(key, _)| *key) {
+            (key, self.running.remove(&key)?, true)
+        } else if let Some(key) = self.completed.iter().find(|(_, done)| is(&done.run)).map(|(key, _)| *key) {
+            (key, self.completed.remove(&key)?.run, false)
         } else {
-            let prop = self.cancelled.iter().find(|(_, held)| is(&held.run)).map(|(prop, _)| *prop)?;
-            (prop, self.cancelled.remove(&prop)?.run, false)
+            let key = self.cancelled.iter().find(|(_, held)| is(&held.run)).map(|(key, _)| *key)?;
+            (key, self.cancelled.remove(&key)?.run, false)
         };
         let end = run.end_time();
         let was_idle = run.clock.is_idle();
@@ -1245,14 +1341,14 @@ impl ElementState {
         let owed = (command == Command::Cancel && was_running && !run.clock.is_finished(now, end))
             .then(|| (run.elapsed(now) - run.delay).clamp(0.0, run.duration));
         let outcome = run.clock.apply(command, now, end);
-        events.tell(element, prop, &mut run, now);
+        events.tell(element, key, &mut run, now);
         if let Some(elapsed) = owed {
-            events.push(TransitionEvent::new(element, TransitionEventKind::Cancel, prop, elapsed));
+            events.push(TransitionEvent::new(element, TransitionEventKind::Cancel, key, elapsed));
         }
         if run.clock.is_idle() {
             run.began = false;
             run.restart = None;
-            self.cancelled.insert(prop, Cancelled { end: run.end_computed.clone(), run });
+            self.cancelled.insert(key, Cancelled { end: run.end_computed.clone(), run });
         } else {
             if was_idle {
                 run.announce = true;
@@ -1260,32 +1356,45 @@ impl ElementState {
                 run.restart = None;
             }
             // The next step puts a finished one back.
-            self.running.insert(prop, run);
+            self.running.insert(key, run);
         }
         Some(outcome)
     }
 
-    fn values(&self, now: Instant) -> Vec<(AnimProp, AnimValue)> {
+    fn values(&self, now: Instant) -> Vec<(PropKey, AnimValue)> {
         self.running
             .iter()
-            .map(|(prop, running)| (*prop, prop.clamp_value(running.value(now))))
+            .map(|(key, running)| (*key, key.clamp_value(running.value(now))))
             .collect()
     }
 }
 
 /// The values of the transitions running on an element, ready to lay over its
 /// after-change style.
-pub(crate) struct TransitionStyle(Vec<(AnimProp, AnimValue)>);
+pub(crate) struct TransitionStyle(Vec<(PropKey, AnimValue)>);
 
 impl TransitionStyle {
     pub(crate) fn apply_to(&self, style: &mut StyleDesc) {
-        for (prop, value) in &self.0 {
-            prop.write(style, value.clone());
+        for (key, value) in &self.0 {
+            if let PropKey::Style(prop) = key {
+                prop.write(style, value.clone());
+            }
         }
     }
 
-    pub(super) fn runs(&self, prop: AnimProp) -> bool {
-        self.0.iter().any(|(running, _)| *running == prop)
+    /// The SVG attributes the transitions drive, as the XML writes them.
+    pub(crate) fn svg_attributes(&self) -> Vec<(&'static str, String)> {
+        self.0
+            .iter()
+            .filter_map(|(key, value)| match key {
+                PropKey::Svg(attr) => Some((attr.attribute()?, attribute_text(value))),
+                PropKey::Style(_) => None,
+            })
+            .collect()
+    }
+
+    pub(super) fn runs(&self, key: PropKey) -> bool {
+        self.0.iter().any(|(running, _)| *running == key)
     }
 }
 
@@ -1376,8 +1485,8 @@ impl CssTransitions {
         self.states
             .iter()
             .filter(|(_, state)| {
-                state.running.contains_key(&AnimProp::Display)
-                    || state.list.matching(AnimProp::Display).is_some_and(|entry| {
+                state.running.contains_key(&PropKey::Style(AnimProp::Display))
+                    || state.list.matching(PropKey::Style(AnimProp::Display)).is_some_and(|entry| {
                         entry.allow_discrete && entry.duration + entry.delay > 0.0
                     })
             })
@@ -1389,39 +1498,50 @@ impl CssTransitions {
     /// declared a transition. The transitions of a change come from the style
     /// after it, so a change that also adds the declaration must not be the
     /// first style the element is seen with.
-    pub(crate) fn seed(&mut self, id: u64, before: &StyleDesc, parent_colors: &ColorContext, parent_font: &ParentValues) {
+    pub(crate) fn seed(
+        &mut self,
+        id: u64,
+        before: &StyleDesc,
+        svg: Svg,
+        parent_colors: &ColorContext,
+        parent_font: &ParentValues,
+    ) {
         if let std::collections::hash_map::Entry::Vacant(slot) = self.states.entry(id) {
             let colors = Colors::inheriting(parent_colors, parent_font, Some(before));
-            slot.insert(ElementState::new(id, before, colors));
+            slot.insert(ElementState::new(id, before, colors, svg));
         }
     }
 
     /// Feeds one frame's after-change style. The first style an element is seen
     /// with never transitions: there is nothing before it. `inherited` is the
     /// `interpolateSize` of the parent, which `after` overrides when it sets one.
-    /// `covered` are the properties a CSS animation drives right now.
+    /// `covered` are the properties a CSS animation drives right now. `svg` is where the SVG properties
+    /// of an `<svg>` or of a shape in one come from.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn update(
         &mut self,
         id: u64,
         after: &StyleDesc,
+        svg: Svg,
         parent_colors: &ColorContext,
         parent_font: &ParentValues,
         motion: Option<&MotionState>,
         measurement: Option<&Measurement>,
         inherited: InterpolateSize,
         scope: Scope,
-        covered: &[AnimProp],
+        covered: &[PropKey],
         now: Instant,
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
             let colors = Colors::inheriting(parent_colors, parent_font, Some(after));
-            self.states.insert(id, ElementState::new(id, after, colors));
+            self.states.insert(id, ElementState::new(id, after, colors, svg));
             return None;
         };
         let interpolate_size = InterpolateSize::declared(after).unwrap_or(inherited);
         state.step(
             id,
             after,
+            svg,
             parent_colors,
             parent_font,
             motion,
@@ -1443,6 +1563,51 @@ impl CssTransitions {
         (!values.is_empty()).then_some(TransitionStyle(values))
     }
 
+    /// A frame of a shape inside an `<svg>`: its transitions advance and the SVG properties they drive
+    /// come back. A shape has no layout, so nothing waits for a measurement.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn animate_shape(
+        &mut self,
+        id: u64,
+        declared: &StyleDesc,
+        source: &SvgSource,
+        parent_colors: &ColorContext,
+        parent_font: &ParentValues,
+        motion: Option<&MotionState>,
+        covered: &[PropKey],
+        now: Instant,
+    ) -> Option<TransitionStyle> {
+        self.update(
+            id,
+            declared,
+            Some((source, PropTarget::SvgShape)),
+            parent_colors,
+            parent_font,
+            motion,
+            None,
+            InterpolateSize::default(),
+            Scope::Element,
+            covered,
+            now,
+        )
+    }
+
+    /// The shapes inside an `<svg>` with a transition running, which their `<svg>` has to write again
+    /// every frame.
+    pub(crate) fn svg_shapes(&self) -> impl Iterator<Item = u64> + '_ {
+        self.states
+            .iter()
+            .filter(|(_, state)| state.target == PropTarget::SvgShape && !state.running.is_empty())
+            .map(|(id, _)| *id)
+    }
+
+    /// Whether the shape `id` inside an `<svg>` is one of `svg_shapes`.
+    pub(crate) fn shape_moves(&self, id: u64) -> bool {
+        self.states
+            .get(&id)
+            .is_some_and(|state| state.target == PropTarget::SvgShape && !state.running.is_empty())
+    }
+
     /// Brings the transitions of `id` up to `now` without a style, see `CssAnimations::advance_clock`.
     pub(crate) fn advance_clock(&mut self, id: u64, now: Instant) {
         let Some(state) = self.states.get_mut(&id) else {
@@ -1453,17 +1618,25 @@ impl CssTransitions {
 
     /// Whether a transition of `opacity` is running on `id`.
     pub(crate) fn animates_opacity(&self, id: u64) -> bool {
-        self.states.get(&id).is_some_and(|state| state.running.contains_key(&AnimProp::Opacity))
+        self.states.get(&id).is_some_and(|state| state.running.contains_key(&PropKey::Style(AnimProp::Opacity)))
     }
 
     /// Whether a transition of a property that moves, scales or turns the element is running on `id`.
     pub(crate) fn animates_transform(&self, id: u64) -> bool {
-        self.states.get(&id).is_some_and(|state| state.running.keys().any(|prop| prop.is_transform()))
+        self.states
+            .get(&id)
+            .is_some_and(|state| state.running.keys().any(|key| matches!(key, PropKey::Style(prop) if prop.is_transform())))
     }
 
     /// Whether every transition running on `id` is on a property that only changes what it paints.
     pub(crate) fn paints_only(&self, id: u64) -> bool {
-        self.states.get(&id).is_none_or(|state| state.running.keys().all(|prop| prop.paints_only()))
+        self.states.get(&id).is_none_or(|state| {
+            state.running.keys().all(|key| match key {
+                PropKey::Style(prop) => prop.paints_only(),
+                // The attributes of an `<svg>` and its shapes change its picture, never its box.
+                PropKey::Svg(_) => true,
+            })
+        })
     }
 
     pub(crate) fn enter_dormant(&mut self, id: u64) {
@@ -1525,13 +1698,13 @@ impl CssTransitions {
                 continue;
             };
             self.running_dormant.remove(&hidden);
-            let running: Vec<AnimProp> = state.running.keys().copied().collect();
-            for prop in running {
-                state.cancel(hidden, prop, now, &mut self.events);
+            let running: Vec<PropKey> = state.running.keys().copied().collect();
+            for key in running {
+                state.cancel(hidden, key, now, &mut self.events);
             }
-            let completed: Vec<AnimProp> = state.completed.keys().copied().collect();
-            for prop in completed {
-                state.forget(hidden, prop, now, &mut self.events);
+            let completed: Vec<PropKey> = state.completed.keys().copied().collect();
+            for key in completed {
+                state.forget(hidden, key, now, &mut self.events);
             }
         }
     }
@@ -1563,7 +1736,7 @@ impl CssTransitions {
             .running
             .iter()
             .filter(|(_, running)| running.is_relevant(now))
-            .map(|(prop, running)| (running.generation, running.info(*prop, now)))
+            .map(|(key, running)| (running.generation, running.info(*key, now)))
             .collect();
         running.sort_by(|(first_generation, first), (second_generation, second)| {
             first_generation.cmp(second_generation).then_with(|| first.name.cmp(&second.name))
@@ -1578,10 +1751,10 @@ impl CssTransitions {
             state
                 .running
                 .iter()
-                .chain(state.completed.iter().map(|(prop, completed)| (prop, &completed.run)))
-                .chain(state.cancelled.iter().map(|(prop, cancelled)| (prop, &cancelled.run)))
+                .chain(state.completed.iter().map(|(key, completed)| (key, &completed.run)))
+                .chain(state.cancelled.iter().map(|(key, cancelled)| (key, &cancelled.run)))
                 .find(|(_, running)| running.clock.id() == id)
-                .map(|(prop, running)| running.info(*prop, now))
+                .map(|(key, running)| running.info(*key, now))
         })
     }
 
@@ -1685,7 +1858,7 @@ mod tests {
         assert_eq!(
             transitions.0[0],
             Entry {
-                matcher: Matcher::Props(vec![AnimProp::BackgroundColor]),
+                matcher: Matcher::Props(vec![PropKey::Style(AnimProp::BackgroundColor)]),
                 duration: 0.15,
                 delay: 0.0,
                 timing: Ease::CubicBezier([0.0, 0.0, 0.58, 1.0]),
@@ -1694,7 +1867,7 @@ mod tests {
         );
         assert_eq!(entry(&transitions, 1).1, 0.2);
         assert_eq!(entry(&transitions, 1).2, 0.05);
-        assert_eq!(entry(&transitions, 1).0, &Matcher::Props(vec![AnimProp::Opacity]));
+        assert_eq!(entry(&transitions, 1).0, &Matcher::Props(vec![PropKey::Style(AnimProp::Opacity), PropKey::Svg(SvgAttr::Opacity)]));
         assert_eq!(entry(&transitions, 2), (&Matcher::All, 1.0, -0.1));
 
         let reordered = list(r#"{ "transition": "ease-in 1s 2s width" }"#);
@@ -1727,7 +1900,7 @@ mod tests {
         let transitions = list(
             r#"{ "transition": "width 1s linear", "transitionDuration": "3s", "transitionDelay": "100ms" }"#,
         );
-        assert_eq!(entry(&transitions, 0), (&Matcher::Props(vec![AnimProp::Width]), 3.0, 0.1));
+        assert_eq!(entry(&transitions, 0), (&Matcher::Props(vec![PropKey::Style(AnimProp::Width), PropKey::Svg(SvgAttr::Width)]), 3.0, 0.1));
         assert_eq!(transitions.0[0].timing, Ease::Name("linear".to_string()));
     }
 
@@ -1762,14 +1935,14 @@ mod tests {
     fn shorthand_property_names_cover_their_longhands() {
         let padding = list(r#"{ "transition": "padding 1s" }"#);
         for prop in [AnimProp::PaddingTop, AnimProp::PaddingLeft] {
-            assert!(padding.matching(prop).is_some());
+            assert!(padding.matching(PropKey::Style(prop)).is_some());
         }
-        assert!(padding.matching(AnimProp::MarginTop).is_none());
+        assert!(padding.matching(PropKey::Style(AnimProp::MarginTop)).is_none());
         let colours = list(r#"{ "transition": "border-color 1s, text-decoration 1s" }"#);
         for prop in [AnimProp::BorderTopColor, AnimProp::BorderLeftColor, AnimProp::TextDecorationColor] {
-            assert!(colours.matching(prop).is_some(), "{prop:?}");
+            assert!(colours.matching(PropKey::Style(prop)).is_some(), "{prop:?}");
         }
-        assert!(colours.matching(AnimProp::OutlineColor).is_none());
+        assert!(colours.matching(PropKey::Style(AnimProp::OutlineColor)).is_none());
         let border = list(r#"{ "transition": "border 1s, border-radius 1s, inset 1s, flex 1s" }"#);
         for prop in [
             AnimProp::BorderLeftWidth,
@@ -1779,25 +1952,25 @@ mod tests {
             AnimProp::Left,
             AnimProp::FlexBasis,
         ] {
-            assert!(border.matching(prop).is_some(), "{prop:?}");
+            assert!(border.matching(PropKey::Style(prop)).is_some(), "{prop:?}");
         }
     }
 
     #[test]
     fn the_last_matching_entry_wins() {
         let transitions = list(r#"{ "transition": "all 1s, opacity 2s" }"#);
-        assert_eq!(transitions.matching(AnimProp::Opacity).unwrap().duration, 2.0);
-        assert_eq!(transitions.matching(AnimProp::Width).unwrap().duration, 1.0);
+        assert_eq!(transitions.matching(PropKey::Style(AnimProp::Opacity)).unwrap().duration, 2.0);
+        assert_eq!(transitions.matching(PropKey::Style(AnimProp::Width)).unwrap().duration, 1.0);
         let reversed = list(r#"{ "transition": "opacity 2s, all 1s" }"#);
-        assert_eq!(reversed.matching(AnimProp::Opacity).unwrap().duration, 1.0);
+        assert_eq!(reversed.matching(PropKey::Style(AnimProp::Opacity)).unwrap().duration, 1.0);
     }
 
     #[test]
     fn a_valid_property_gpuix_cannot_animate_matches_nothing() {
         let transitions = list(r#"{ "transition": "perspective 1s, display 1s, opacity 1s" }"#);
         assert_eq!(transitions.0.len(), 3);
-        assert!(transitions.matching(AnimProp::Opacity).is_some());
-        assert!(transitions.matching(AnimProp::Width).is_none());
+        assert!(transitions.matching(PropKey::Style(AnimProp::Opacity)).is_some());
+        assert!(transitions.matching(PropKey::Style(AnimProp::Width)).is_none());
     }
 
     #[test]
@@ -1850,9 +2023,9 @@ mod tests {
             r#"{ "transition": "display 1s allow-discrete, opacity normal .2s, allow-discrete 2s width" }"#,
         );
         assert_eq!(behaviors(&transitions), [true, false, true]);
-        assert_eq!(entry(&transitions, 0), (&Matcher::Props(vec![AnimProp::Display]), 1.0, 0.0));
-        assert_eq!(entry(&transitions, 1).0, &Matcher::Props(vec![AnimProp::Opacity]));
-        assert_eq!(entry(&transitions, 2).0, &Matcher::Props(vec![AnimProp::Width]));
+        assert_eq!(entry(&transitions, 0), (&Matcher::Props(vec![PropKey::Style(AnimProp::Display)]), 1.0, 0.0));
+        assert_eq!(entry(&transitions, 1).0, &Matcher::Props(vec![PropKey::Style(AnimProp::Opacity), PropKey::Svg(SvgAttr::Opacity)]));
+        assert_eq!(entry(&transitions, 2).0, &Matcher::Props(vec![PropKey::Style(AnimProp::Width), PropKey::Svg(SvgAttr::Width)]));
         assert_eq!(behaviors(&list(r#"{ "transition": "all 1s ALLOW-DISCRETE" }"#)), [true]);
         assert_eq!(behaviors(&list(r#"{ "transition": "all 1s" }"#)), [false]);
         assert_eq!(behaviors(&list(r#"{ "transition": "1s" }"#)), [false]);
@@ -1969,6 +2142,7 @@ mod tests {
                     .update(
                         id,
                         after,
+                        None,
                         &self.parent_colors,
                         &self.parent_font,
                         motion,
@@ -2214,7 +2388,7 @@ mod tests {
     fn an_element_seeded_with_the_style_before_its_declaration_transitions_the_change_that_adds_it() {
         let mut clock = Clock::new();
         let before = style(r#"{ "width": 0 }"#);
-        clock.transitions.seed(1, &before, &clock.parent_colors, &clock.parent_font);
+        clock.transitions.seed(1, &before, None, &clock.parent_colors, &clock.parent_font);
         assert_eq!(width_of(&clock.frame(0, &sized(100.0, "width 1s linear"))), 0.0);
         assert_eq!(clock.events(), [(Run, "width".to_string(), 0.0), (Start, "width".to_string(), 0.0)]);
         assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
@@ -2225,7 +2399,7 @@ mod tests {
         let mut clock = Clock::new();
         clock.frame(0, &sized(0.0, "width 1s linear"));
         clock.frame(0, &sized(100.0, "width 1s linear"));
-        clock.transitions.seed(1, &style(r#"{ "width": 7 }"#), &clock.parent_colors, &clock.parent_font);
+        clock.transitions.seed(1, &style(r#"{ "width": 7 }"#), None, &clock.parent_colors, &clock.parent_font);
         assert_eq!(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 50.0);
     }
 
@@ -4619,5 +4793,179 @@ mod tests {
         assert!(clock.transitions.command(id, Command::SetCurrentTime(f64::NAN), at).unwrap().is_err());
         assert!(clock.transitions.command(id, Command::SetPlaybackRate(f64::NAN), at).unwrap().is_err());
         assert!(clock.transitions.command(u64::MAX, Command::Pause, at).is_none());
+    }
+
+    // ── SVG properties ───────────────────────────────────────────────
+
+    fn attributes(pairs: &[(&str, serde_json::Value)]) -> HashMap<String, serde_json::Value> {
+        pairs.iter().map(|(name, value)| (name.to_string(), value.clone())).collect()
+    }
+
+    impl Clock {
+        /// One frame of a shape at `millis`: the SVG attributes its transitions write.
+        fn shape(
+            &mut self,
+            millis: u64,
+            declared: &StyleDesc,
+            own: &HashMap<String, serde_json::Value>,
+            ancestors: &[&HashMap<String, serde_json::Value>],
+        ) -> Vec<(&'static str, String)> {
+            let source = SvgSource { own, ancestors };
+            self.transitions
+                .animate_shape(1, declared, &source, &self.parent_colors, &self.parent_font, None, &[], self.at(millis))
+                .map(|running| running.svg_attributes())
+                .unwrap_or_default()
+        }
+    }
+
+    fn written(attributes: &[(&'static str, String)], name: &str) -> Option<String> {
+        attributes.iter().find(|(attribute, _)| *attribute == name).map(|(_, text)| text.clone())
+    }
+
+    #[test]
+    fn a_css_name_stands_for_the_style_and_the_svg_property_it_names() {
+        assert_eq!(css_props("stroke-width"), [PropKey::Svg(SvgAttr::StrokeWidth)]);
+        assert_eq!(css_props("fill"), [PropKey::Svg(SvgAttr::Fill)]);
+        assert_eq!(
+            css_props("opacity"),
+            [PropKey::Style(AnimProp::Opacity), PropKey::Svg(SvgAttr::Opacity)],
+            "a shape's opacity is the SVG one and a box's the style one"
+        );
+        assert!(css_props("x1").is_empty(), "an attribute that is no CSS property is not transitioned");
+        assert_eq!(css_props("perspective"), [PropKey::Style(AnimProp::Perspective)], "a style property that no SVG attribute shares");
+    }
+
+    #[test]
+    fn a_shape_transitions_an_attribute_that_changed_and_ends_on_it() {
+        let mut clock = Clock::new();
+        let declared = style(r#"{ "transition": "r 1s linear" }"#);
+        let small = attributes(&[("r", serde_json::json!(5))]);
+        let large = attributes(&[("r", serde_json::json!(15))]);
+        assert!(clock.shape(0, &declared, &small, &[]).is_empty());
+        assert!(clock.events().is_empty(), "the first frame never transitions");
+
+        assert_eq!(written(&clock.shape(100, &declared, &large, &[]), "r").as_deref(), Some("5"));
+        assert_eq!(clock.events(), [(Run, "r".to_string(), 0.0), (Start, "r".to_string(), 0.0)]);
+        assert_eq!(written(&clock.shape(600, &declared, &large, &[]), "r").as_deref(), Some("10"));
+        assert!(clock.shape(1200, &declared, &large, &[]).is_empty());
+        assert_eq!(clock.events(), [(End, "r".to_string(), 1.0)]);
+        assert_eq!(clock.transitions.list(1, clock.at(1200)).len(), 0);
+    }
+
+    #[test]
+    fn a_shape_lists_its_transitions_by_the_css_name() {
+        let mut clock = Clock::new();
+        let declared = style(r#"{ "transition": "all 1s linear" }"#);
+        let before = attributes(&[("strokeWidth", serde_json::json!(2)), ("fill", serde_json::json!("#ff0000"))]);
+        let after = attributes(&[("strokeWidth", serde_json::json!(6)), ("fill", serde_json::json!("#0000ff"))]);
+        clock.shape(0, &declared, &before, &[]);
+        let running = clock.shape(250, &declared, &after, &[]);
+        assert_eq!(written(&running, "stroke-width").as_deref(), Some("2"));
+        let names: Vec<String> = clock.transitions.list(1, clock.at(250)).into_iter().map(|info| info.name).collect();
+        assert_eq!(names, ["fill", "stroke-width"]);
+        assert!(clock.transitions.paints_only(1));
+        assert!(clock.transitions.shape_moves(1));
+        assert_eq!(clock.transitions.svg_shapes().collect::<Vec<_>>(), [1]);
+    }
+
+    #[test]
+    fn what_cannot_blend_waits_for_allow_discrete_and_then_swaps_halfway() {
+        let none = attributes(&[("fill", serde_json::json!("none"))]);
+        let red = attributes(&[("fill", serde_json::json!("#ff0000"))]);
+        let mut clock = Clock::new();
+        let normal = style(r#"{ "transition": "fill 1s linear" }"#);
+        clock.shape(0, &normal, &none, &[]);
+        assert!(clock.shape(100, &normal, &red, &[]).is_empty());
+        assert!(clock.events().is_empty());
+
+        let mut clock = Clock::new();
+        let discrete = style(r#"{ "transition": "fill 1s linear allow-discrete" }"#);
+        clock.shape(0, &discrete, &none, &[]);
+        assert_eq!(written(&clock.shape(100, &discrete, &red, &[]), "fill").as_deref(), Some("none"));
+        assert_eq!(written(&clock.shape(400, &discrete, &red, &[]), "fill").as_deref(), Some("none"));
+        let flipped = written(&clock.shape(600, &discrete, &red, &[]), "fill").unwrap();
+        assert!(flipped.starts_with("rgba(255"), "{flipped}");
+    }
+
+    #[test]
+    fn paths_of_other_commands_and_a_dash_list_against_none_are_discrete() {
+        let mut clock = Clock::new();
+        let normal = style(r#"{ "transition": "d 1s linear, stroke-dasharray 1s linear" }"#);
+        let before = attributes(&[("d", serde_json::json!("M0 0 L10 0")), ("strokeDasharray", serde_json::json!("none"))]);
+        let after = attributes(&[("d", serde_json::json!("M0 0 H10")), ("strokeDasharray", serde_json::json!("4 2"))]);
+        clock.shape(0, &normal, &before, &[]);
+        assert!(clock.shape(100, &normal, &after, &[]).is_empty());
+
+        let blending = attributes(&[("d", serde_json::json!("M0 0 L30 0"))]);
+        let mut clock = Clock::new();
+        clock.shape(0, &normal, &before, &[]);
+        assert_eq!(written(&clock.shape(500, &normal, &blending, &[]), "d").as_deref(), Some("M 0 0 L 10 0"));
+        assert_eq!(written(&clock.shape(1000, &normal, &blending, &[]), "d").as_deref(), Some("M 0 0 L 20 0"));
+    }
+
+    #[test]
+    fn a_shape_follows_the_inherited_value_it_does_not_set() {
+        let declared = style(r#"{ "transition": "fill 1s linear" }"#);
+        let red = attributes(&[("fill", serde_json::json!("#ff0000"))]);
+        let blue = attributes(&[("fill", serde_json::json!("#0000ff"))]);
+        let none = attributes(&[]);
+        let mut clock = Clock::new();
+        clock.shape(0, &declared, &none, &[&red]);
+        let running = clock.shape(100, &declared, &none, &[&blue]);
+        assert!(written(&running, "fill").unwrap().starts_with("rgba(255"), "{running:?}");
+
+        // A shape that sets its own value does not follow the group, and neither does a property that does not inherit.
+        let own = attributes(&[("fill", serde_json::json!("#00ff00"))]);
+        let mut clock = Clock::new();
+        clock.shape(0, &declared, &own, &[&red]);
+        assert!(clock.shape(100, &declared, &own, &[&blue]).is_empty());
+        let opacity = style(r#"{ "transition": "opacity 1s linear" }"#);
+        let (dim, bright) = (attributes(&[("opacity", serde_json::json!(0.2))]), attributes(&[("opacity", serde_json::json!(1))]));
+        let mut clock = Clock::new();
+        clock.shape(0, &opacity, &none, &[&bright]);
+        assert!(clock.shape(100, &opacity, &none, &[&dim]).is_empty());
+    }
+
+    #[test]
+    fn the_svg_transitions_its_styles_and_its_attributes_together() {
+        let mut clock = Clock::new();
+        let declared = |width: f64| style(&format!(r#"{{ "width": {width}, "transition": "width 1s linear, fill 1s linear" }}"#));
+        let red = attributes(&[("fill", serde_json::json!("#ff0000"))]);
+        let blue = attributes(&[("fill", serde_json::json!("#0000ff"))]);
+        let step = |clock: &mut Clock, millis, width, own: &HashMap<String, serde_json::Value>| {
+            let source = SvgSource { own, ancestors: &[] };
+            let after = declared(width);
+            clock.transitions.update(
+                1,
+                &after,
+                Some((&source, PropTarget::SvgHost)),
+                &clock.parent_colors.clone(),
+                &clock.parent_font.clone(),
+                None,
+                None,
+                InterpolateSize::default(),
+                Scope::Element,
+                &[],
+                clock.at(millis),
+            )
+        };
+        assert!(step(&mut clock, 0, 100.0, &red).is_none());
+        let running = step(&mut clock, 500, 200.0, &blue).expect("both change");
+        let mut resolved = declared(200.0);
+        running.apply_to(&mut resolved);
+        assert_eq!(width_of(&resolved), 100.0);
+        assert!(written(&running.svg_attributes(), "fill").unwrap().starts_with("rgba(255"));
+        let names: Vec<String> = clock.transitions.list(1, clock.at(500)).into_iter().map(|info| info.name).collect();
+        assert_eq!(names, ["fill", "width"]);
+        assert!(!clock.transitions.svg_shapes().any(|id| id == 1), "the svg is built itself");
+    }
+
+    #[test]
+    fn a_property_the_svg_shares_a_name_with_a_style_is_the_style() {
+        let target = PropTarget::SvgHost;
+        assert!(target.takes(PropKey::Style(AnimProp::Opacity)) && !target.takes(PropKey::Svg(SvgAttr::Opacity)));
+        assert!(target.takes(PropKey::Svg(SvgAttr::Fill)));
+        let shape = PropTarget::SvgShape;
+        assert!(shape.takes(PropKey::Svg(SvgAttr::Opacity)) && !shape.takes(PropKey::Style(AnimProp::Opacity)));
     }
 }

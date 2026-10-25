@@ -54,11 +54,13 @@ enum CssInitial {
 macro_rules! attributes {
     ($($variant:ident $name:literal $attribute:literal $kind:ident $clamp:ident $initial:expr, $css:expr;)*) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub(super) enum SvgAttr {
+        pub(crate) enum SvgAttr {
             $($variant),*
         }
 
         impl SvgAttr {
+            pub(super) const ALL: &'static [SvgAttr] = &[$(Self::$variant),*];
+
             pub(super) fn from_name(name: &str) -> Option<Self> {
                 match name {
                     $($name => Some(Self::$variant),)*
