@@ -32,10 +32,17 @@ const transforms = [
   { id: 'skewx20', own: 'skewX(20deg)' },
   { id: 'rotate30-in-scale05', own: 'rotate(30deg)', parent: 'scale(0.5)', big: true },
 ];
+// The same blur untransformed at the deviations the matrices scale it to: what a scaled blur is compared with.
+const references = [{ id: 'none-blur8', own: 'none', blur: 8 }];
 const cells = [];
 for (const t of transforms) cells.push({ ...t, id: `shape-${t.id}`, kind: 'shape' });
 for (const t of transforms) cells.push({ ...t, id: `blur-v-${t.id}`, kind: 'blur', edge: 'v' });
 for (const t of transforms) cells.push({ ...t, id: `blur-h-${t.id}`, kind: 'blur', edge: 'h' });
+for (const t of references) {
+  cells.push({ ...t, id: `blur-v-${t.id}`, kind: 'blur', edge: 'v' });
+  cells.push({ ...t, id: `blur-h-${t.id}`, kind: 'blur', edge: 'h' });
+  cells.push({ ...t, id: `filter-${t.id}`, kind: 'filter' });
+}
 for (const id of ['none', 'scale2', 'scale2x1']) {
   cells.push({ ...transforms.find((t) => t.id === id), id: `filter-${id}`, kind: 'filter' });
 }
@@ -43,7 +50,7 @@ for (const id of ['none', 'scale2', 'scale2x1']) {
 const COLS = 5;
 for (const [index, cell] of cells.entries()) {
   const w = cell.big ? 200 : 100, h = cell.big ? 120 : 60, radius = cell.big ? 24 : 12;
-  const blur = cell.big ? 8 : 4;
+  const blur = cell.blur || (cell.big ? 8 : 4);
   const x = (index % COLS) * 320 + 10, y = Math.floor(index / COLS) * 320 + 10;
   const element = document.createElement('div');
   element.className = 'cell';
