@@ -415,6 +415,25 @@ mod tests {
     }
 
     #[test]
+    fn motion_keys_make_a_context_only_off_their_defaults() {
+        assert!(!context_of(&with(|s| s.x = Some(serde_json::from_str("0").unwrap()))));
+        assert!(!context_of(&with(|s| s.motion_scale = Some(1.0))));
+        assert!(!context_of(&with(|s| {
+            s.motion_rotate = Some(0.0);
+            s.skew_x = Some(0.0);
+        })));
+        // Motion's `none` replaces a static transform it is rebuilt from.
+        assert!(!context_of(&with(|s| {
+            s.transform = Some("scale(2)".into());
+            s.x = Some(serde_json::from_str("0").unwrap());
+        })));
+        let moved = with(|s| s.x = Some(serde_json::from_str("10").unwrap()));
+        assert!(context_of(&moved));
+        assert_eq!(lift_of(&moved, false), Some(0));
+        assert!(context_of(&with(|s| s.scale_y = Some(0.0))));
+    }
+
+    #[test]
     fn a_flex_or_grid_item_has_a_z_index_without_a_position() {
         for item in [style(None, Some(3.0)), style(Some("static"), Some(-2.0))] {
             let z = item.z_index.unwrap() as i32;

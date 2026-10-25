@@ -97,7 +97,6 @@ impl Parts {
             scale: style.scale.as_deref().and_then(parse_scale),
             // Motion writes its keys into `transform`, so they replace it.
             list: motion_list(style, lengths)
-                .map(Value::List)
                 .or_else(|| style.transform.as_deref().and_then(|value| parse_transform(value, lengths))),
             origin: motion_origin(style, lengths, style.transform_origin.as_deref().and_then(|value| parse_origin(value, lengths))),
         }
@@ -137,27 +136,42 @@ fn transform_length(length: &LinearLength, lengths: &LengthContext) -> Transform
     TransformLength { px: px as f32, fraction: fraction as f32 }
 }
 
-/// The functions of Motion's keys, in the order of its `buildTransform`; `None` when the style has
-/// none. A key at its default stays in the list: the element has a transform whatever the value.
-/// The 3D keys are not read: nothing draws them.
-fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Vec<TransformFunction>> {
+/// What Motion's `buildTransform` writes for the keys of the style, in its order; `None` when the
+/// style has none. A key at its default is left out of the string, and when every key is, Motion
+/// writes `none`: no stacking context, no containing block. It still replaces `transform`, which
+/// `buildHTMLStyles` rebuilds. The 3D keys are not read: nothing draws them.
+fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Value> {
+    if !has_motion_keys(style) {
+        return None;
+    }
     let zero = TransformLength::default();
     let mut functions = Vec::new();
-    let horizontal = |length: &LinearLength| TransformFunction::Translate(transform_length(length, lengths), zero);
-    let vertical = |length: &LinearLength| TransformFunction::Translate(zero, transform_length(length, lengths));
-    functions.extend(style.x.as_ref().map(horizontal));
-    functions.extend(style.y.as_ref().map(vertical));
-    functions.extend(style.translate_x.as_ref().map(horizontal));
-    functions.extend(style.translate_y.as_ref().map(vertical));
-    functions.extend(style.motion_scale.map(|factor| TransformFunction::Scale(factor as f32, factor as f32)));
-    functions.extend(style.scale_x.map(|factor| TransformFunction::Scale(factor as f32, 1.0)));
-    functions.extend(style.scale_y.map(|factor| TransformFunction::Scale(1.0, factor as f32)));
-    functions.extend(style.motion_rotate.map(|degrees| TransformFunction::Rotate(degrees.to_radians() as f32)));
-    functions.extend(style.rotate_z.map(|degrees| TransformFunction::Rotate(degrees.to_radians() as f32)));
-    functions.extend(style.skew.map(|degrees| TransformFunction::Skew(degrees.to_radians() as f32, 0.0)));
-    functions.extend(style.skew_x.map(|degrees| TransformFunction::SkewX(degrees.to_radians() as f32)));
-    functions.extend(style.skew_y.map(|degrees| TransformFunction::SkewY(degrees.to_radians() as f32)));
-    (!functions.is_empty()).then_some(functions)
+    let mut translate = |length: &Option<LinearLength>, on_x: bool| {
+        let Some(length) = length else { return };
+        let length = transform_length(length, lengths);
+        if length != zero {
+            functions.push(if on_x { TransformFunction::Translate(length, zero) } else { TransformFunction::Translate(zero, length) });
+        }
+    };
+    translate(&style.x, true);
+    translate(&style.y, false);
+    translate(&style.translate_x, true);
+    translate(&style.translate_y, false);
+    let mut scale = |factor: Option<f64>, function: fn(f32) -> TransformFunction| {
+        functions.extend(factor.filter(|factor| *factor != 1.0).map(|factor| function(factor as f32)));
+    };
+    scale(style.motion_scale, |factor| TransformFunction::Scale(factor, factor));
+    scale(style.scale_x, |factor| TransformFunction::Scale(factor, 1.0));
+    scale(style.scale_y, |factor| TransformFunction::Scale(1.0, factor));
+    let mut turn = |degrees: Option<f64>, function: fn(f32) -> TransformFunction| {
+        functions.extend(degrees.filter(|degrees| *degrees != 0.0).map(|degrees| function(degrees.to_radians() as f32)));
+    };
+    turn(style.motion_rotate, TransformFunction::Rotate);
+    turn(style.rotate_z, TransformFunction::Rotate);
+    turn(style.skew, |radians| TransformFunction::Skew(radians, 0.0));
+    turn(style.skew_x, TransformFunction::SkewX);
+    turn(style.skew_y, TransformFunction::SkewY);
+    Some(if functions.is_empty() { Value::None } else { Value::List(functions) })
 }
 
 /// `transform-origin` with the axes `originX` and `originY` replace.
@@ -854,9 +868,33 @@ mod tests {
     }
 
     #[test]
-    fn a_motion_key_at_its_default_is_still_a_transform() {
-        assert!(is_active(&style(r#"{"x":0}"#), &lengths()));
-        assert!(is_active(&style(r#"{"motionScale":1}"#), &lengths()));
+    fn motion_keys_all_at_their_defaults_are_none() {
+        for json in [
+            r#"{"x":0}"#,
+            r#"{"x":0,"y":"0px","translateX":"0%","scaleX":1,"motionScale":1,"motionRotate":0,"rotateZ":"0turn","skew":0,"skewX":0,"skewY":0}"#,
+            r#"{"motionScale":1}"#,
+        ] {
+            assert!(!is_active(&style(json), &lengths()), "{json}");
+            assert_eq!(of(&style(json), &lengths()).unwrap().functions, [], "{json}");
+        }
+        // Motion's `none` replaces a static `transform`.
+        let replaced = style(r#"{"transform":"rotate(45deg)","x":0}"#);
+        assert!(!is_active(&replaced, &lengths()));
+        assert_eq!(of(&replaced, &lengths()).unwrap().functions, []);
+        assert_eq!(is_active_if_declared(&replaced, &lengths()), Some(false));
+    }
+
+    #[test]
+    fn a_motion_key_off_its_default_is_a_transform_of_that_key_alone() {
+        assert!(is_active(&style(r#"{"x":10}"#), &lengths()));
+        assert!(is_active(&style(r#"{"x":0,"motionScale":1.5}"#), &lengths()));
+        assert_eq!(
+            of(&style(r#"{"x":0,"y":3,"motionScale":1,"scaleX":2,"skewX":0}"#), &lengths()).unwrap().functions,
+            [
+                TransformFunction::Translate(TransformLength::default(), px(3.0)),
+                TransformFunction::Scale(2.0, 1.0),
+            ]
+        );
         assert!(!is_active(&style(r#"{"originX":0.5}"#), &lengths()));
         assert!(!is_active(&style(r#"{"z":4,"rotateX":10}"#), &lengths()));
     }

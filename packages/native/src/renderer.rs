@@ -10092,14 +10092,7 @@ fn animate_style_at(
     // states: it is not an effect group or a transform for the frames that skip it, whatever they say.
     if steps {
         let opacity = opacity_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now);
-        let transform = transform_runs(
-            element,
-            ctx.css_animations,
-            ctx.css_transitions,
-            ctx.motion_states,
-            ctx.motion_values,
-            ctx.now,
-        );
+        let transform = ctx.css_animations.animates_transform(element.id) || ctx.css_transitions.animates_transform(element.id);
         if opacity || transform {
             // The one `Animated::current` picks: each of the others is made from a copy of the ones below it.
             let current = animated
@@ -10147,8 +10140,9 @@ fn opacity_runs(
 }
 
 /// Whether a CSS animation or transition, a `motion` track or a motion value that moves, scales or turns
-/// `element` is moving. For as long as one is, the element has a transform at every value it samples
-/// (`StyleDesc::animating_transform`).
+/// `element` is moving. Only the CSS ones keep a transform at every value they sample
+/// (`StyleDesc::animating_transform`): Motion writes `transform` each frame, `none` at its defaults.
+/// All of them make the element lifted for as long as the run does (`Entry::lift_run`).
 fn transform_runs(
     element: &crate::retained_tree::RetainedElement,
     animations: &crate::motion::CssAnimations,
@@ -10476,7 +10470,10 @@ fn build_element_unpumped(
     );
     tree.resolved.borrow_mut().record(id, resolved);
     let (colors, lengths) = (&ctx.inherited.colors, &ctx.inherited.lengths);
-    ctx.retain.lift_run(style.is_some_and(|style| style.animating_opacity || style.animating_transform));
+    ctx.retain.lift_run(
+        style.is_some_and(|style| style.animating_opacity)
+            || transform_runs(element, ctx.css_animations, ctx.css_transitions, ctx.motion_states, ctx.motion_values, ctx.now),
+    );
     ctx.retain.stacking(|| {
         (
             crate::layout::stacking::lift_z(&resolved, stacking_item),

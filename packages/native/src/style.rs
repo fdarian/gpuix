@@ -1122,9 +1122,10 @@ pub struct StyleDesc {
     /// at opacity 0 still paints. A run that ends puts the element back to what its static opacity says.
     #[serde(skip)]
     pub animating_opacity: bool,
-    /// Set by the renderer like `animating_opacity`, for an animation of the transform: the element
-    /// has a transform, a stacking context and is a containing block, at every value it samples
-    /// (`none` and the identity included), so a tick never flips them.
+    /// Set by the renderer like `animating_opacity`, for a CSS animation or transition of a transform
+    /// property: the element has a transform, a stacking context and is a containing block, at every
+    /// value it samples (`none` and the identity included), so a tick never flips them. Motion's
+    /// tracks and motion values don't set it: the `transform` they write each frame decides.
     #[serde(skip)]
     pub animating_transform: bool,
     /// Set by the renderer where `animating_transform` is, for as long as any animation or
