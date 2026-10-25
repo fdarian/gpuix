@@ -4763,6 +4763,54 @@
   },
   "scale": 1
  },
+ "abs | percent basis 50% shrink 0 + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 0 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "abs | percent basis 0% shrink 0 + width 50": {
+  "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:0 0 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
  "abs | two 1 1 0% + width 50": {
   "html": "<div id=\"k\" style=\"position:absolute;left:0;top:0;display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div>",
   "boxes": {
@@ -5365,6 +5413,54 @@
  },
  "inlineflex | basis 0 + width 50": {
   "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "inlineflex | percent basis 50% shrink 0 + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:1 0 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "inlineflex | percent basis 0% shrink 0 + width 50": {
+  "html": "<div id=\"k\" style=\"display:inline-flex;\"><div id=\"i\" style=\"flex:0 0 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
   "boxes": {
    "k": [
     0,
@@ -6011,6 +6107,54 @@
   },
   "scale": 1
  },
+ "fitcontent | percent basis 50% shrink 0 + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 0 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "fitcontent | percent basis 0% shrink 0 + width 50": {
+  "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:0 0 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
  "fitcontent | two 1 1 0% + width 50": {
   "html": "<div id=\"k\" style=\"display:flex;width:fit-content;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div>",
   "boxes": {
@@ -6635,6 +6779,54 @@
   },
   "scale": 1
  },
+ "columnstart | percent basis 50% shrink 0 + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 0 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "columnstart | percent basis 0% shrink 0 + width 50": {
+  "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:0 0 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
  "columnstart | two 1 1 0% + width 50": {
   "html": "<div style=\"display:flex;flex-direction:column;align-items:flex-start\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div><div id=\"j\" style=\"flex:1 1 0%;width:50px\"><div style=\"width:100px;height:20px;flex-shrink:0;width:30px\"></div></div></div></div>",
   "boxes": {
@@ -7237,6 +7429,54 @@
  },
  "gridauto | basis 0 + width 50": {
   "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 1 0;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "gridauto | percent basis 50% shrink 0 + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:1 0 50%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
+  "boxes": {
+   "k": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "c": [
+    0,
+    0,
+    100,
+    20
+   ]
+  },
+  "scale": 1
+ },
+ "gridauto | percent basis 0% shrink 0 + width 50": {
+  "html": "<div style=\"display:grid;grid-template-columns:max-content\"><div id=\"k\" style=\"display:flex;\"><div id=\"i\" style=\"flex:0 0 0%;width:50px\"><div id=\"c\" style=\"width:100px;height:20px;flex-shrink:0;\"></div></div></div></div>",
   "boxes": {
    "k": [
     0,

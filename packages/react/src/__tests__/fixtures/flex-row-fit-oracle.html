@@ -83,6 +83,8 @@ for (const context of ['abs', 'inlineflex', 'fitcontent', 'columnstart', 'gridau
   cases[`${context} | percent basis 0% + width 50`] = k('', `<div id="i" style="flex:1 1 0%;width:50px">${box('', 'c')}</div>`);
   cases[`${context} | basis auto + width 50`] = k('', `<div id="i" style="flex:1 1 auto;width:50px">${box('', 'c')}</div>`);
   cases[`${context} | basis 0 + width 50`] = k('', `<div id="i" style="flex:1 1 0;width:50px">${box('', 'c')}</div>`);
+  cases[`${context} | percent basis 50% shrink 0 + width 50`] = k('', `<div id="i" style="flex:1 0 50%;width:50px">${box('', 'c')}</div>`);
+  cases[`${context} | percent basis 0% shrink 0 + width 50`] = k('', `<div id="i" style="flex:0 0 0%;width:50px">${box('', 'c')}</div>`);
   cases[`${context} | two 1 1 0% + width 50`] = k('', `<div id="i" style="flex:1 1 0%;width:50px">${box('', 'c')}</div><div id="j" style="flex:1 1 0%;width:50px">${box('width:30px')}</div>`);
   cases[`${context} | three 1 1 100px content 10`] = k('flex-wrap:wrap', ['i', 'j', 'k2'].map((id) => `<div id="${id}" style="flex:1 1 100px">${box('width:10px')}</div>`).join(''));
 }
