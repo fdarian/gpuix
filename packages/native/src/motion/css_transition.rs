@@ -15,9 +15,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use web_time::Instant;
 
-use super::curve::{ease, parse_timing_function, Ease};
+use super::curve::{parse_timing_function, Ease};
 use super::measure::Measurement;
-use super::css_animation::{PropTarget, SvgSource};
+use super::css_animation::{Direction, FillMode, IterationCount, PropTarget, SvgSource};
+use super::effect::{DurationUpdate, EffectInfo, KeyframeInfo, Timing, TimingUpdate};
 use super::property::{expand_shorthand, AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
 use super::value::{pair_in, AnimValue, Colors, Interpolation, Pair, ParentValues};
@@ -634,6 +635,31 @@ impl Events {
     }
 }
 
+/// The timing of a transition beyond its delay, duration and easing, which only
+/// `updateTiming()` changes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Shape {
+    iterations: IterationCount,
+    direction: Direction,
+    fill: FillMode,
+    end_delay: f64,
+    iteration_start: f64,
+    /// The duration was set to `auto`, which plays as 0.
+    auto_duration: bool,
+}
+
+impl Shape {
+    /// What a transition has: one iteration, forwards, and a fill before its active phase.
+    const TRANSITION: Self = Self {
+        iterations: IterationCount::Finite(1.0),
+        direction: Direction::Normal,
+        fill: FillMode::Backwards,
+        end_delay: 0.0,
+        iteration_start: 0.0,
+        auto_duration: false,
+    };
+}
+
 #[derive(Clone, Debug)]
 struct Running {
     /// Time since the transition started, with the delay inside it.
@@ -643,7 +669,12 @@ struct Running {
     generation: u64,
     delay: f64,
     duration: f64,
+    /// The easing of the effect.
     timing: Ease,
+    shape: Shape,
+    /// The keyframes of the effect: where it runs from and to.
+    from: AnimValue,
+    to: AnimValue,
     segment: Pair,
     end: AnimValue,
     /// The computed value of `end`: a style that still has it leaves the
@@ -695,6 +726,9 @@ impl Running {
             delay,
             duration,
             timing: entry.timing.clone(),
+            shape: Shape::TRANSITION,
+            from: from.clone(),
+            to: to.clone(),
             segment,
             end,
             end_computed,
@@ -706,9 +740,72 @@ impl Running {
         })
     }
 
+    /// The timing of the effect.
+    fn effect_timing(&self) -> Timing {
+        Timing {
+            delay: self.delay,
+            duration: self.duration,
+            iterations: self.shape.iterations,
+            direction: self.shape.direction,
+            fill: self.shape.fill,
+            end_delay: self.shape.end_delay,
+            iteration_start: self.shape.iteration_start,
+        }
+    }
+
     /// Where the transition ends, in time since it started.
     fn end_time(&self) -> f64 {
-        (self.delay + self.duration).max(0.0)
+        self.effect_timing().end_time()
+    }
+
+    /// `getTiming()` and `getComputedTiming()`.
+    fn effect_info(&self, now: Instant) -> Result<EffectInfo, String> {
+        EffectInfo::of(
+            &self.effect_timing(),
+            self.shape.auto_duration,
+            Some(&self.timing),
+            self.clock.current_time(now, self.end_time()),
+            self.clock.rate() < 0.0,
+        )
+    }
+
+    /// `getKeyframes()`: the computed start and end values, eased by the effect and not by them.
+    fn keyframe_info(&self, key: PropKey) -> Result<Vec<KeyframeInfo>, String> {
+        [(0.0, &self.from), (1.0, &self.to)]
+            .into_iter()
+            .map(|(offset, value)| {
+                Ok(KeyframeInfo {
+                    offset,
+                    easing: "linear".to_string(),
+                    composite: "auto",
+                    values: vec![(key.name().to_string(), key.computed_text(value)?)],
+                })
+            })
+            .collect()
+    }
+
+    /// `updateTiming()`: this transition only; a later change of the `transition-*` properties
+    /// never reaches a transition that is running.
+    fn update_timing(&mut self, update: &TimingUpdate, now: Instant) {
+        let timing = update.over(self.effect_timing());
+        self.delay = timing.delay;
+        self.duration = timing.duration;
+        self.shape = Shape {
+            iterations: timing.iterations,
+            direction: timing.direction,
+            fill: timing.fill,
+            end_delay: timing.end_delay,
+            iteration_start: timing.iteration_start,
+            auto_duration: match update.duration {
+                Some(DurationUpdate::Auto) => true,
+                Some(DurationUpdate::Seconds(_)) => false,
+                None => self.shape.auto_duration,
+            },
+        };
+        if let Some(easing) = &update.easing {
+            self.timing = easing.clone();
+        }
+        self.clock.retime(now, self.end_time());
     }
 
     /// When the transition next has an event to report: the end of its delay, and its end.
@@ -724,14 +821,9 @@ impl Running {
     /// The eased progress. Before the delay ends it holds the start (the
     /// implicit `backwards` fill), after the end it holds the end.
     fn progress(&self, elapsed: f64) -> f64 {
-        let linear = if elapsed < self.delay {
-            0.0
-        } else if self.duration <= 0.0 {
-            1.0
-        } else {
-            ((elapsed - self.delay) / self.duration).clamp(0.0, 1.0)
-        };
-        ease(linear, &self.timing)
+        let evaluation = self.effect_timing().evaluate(elapsed, self.clock.rate() < 0.0).eased(Some(&self.timing));
+        // Out of the effect the style shows, which is where the transition ends.
+        evaluation.progress.unwrap_or(1.0)
     }
 
     fn value(&self, now: Instant) -> AnimValue {
@@ -784,7 +876,7 @@ impl Running {
 
     /// `elapsedTime` of `transitionrun` and `transitionstart`.
     fn initial_elapsed(&self) -> f64 {
-        (-self.delay).min(self.duration).max(0.0)
+        self.effect_timing().initial_elapsed()
     }
 }
 
@@ -1136,8 +1228,9 @@ impl ElementState {
                 continue;
             };
             if running.clock.rate() >= 0.0 {
-                running.restart = Some(running.duration);
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, key, running.duration));
+                let active = running.effect_timing().active_duration();
+                running.restart = Some(active);
+                events.push(TransitionEvent::new(id, TransitionEventKind::End, key, active));
             } else if running.began {
                 // Run back to its start, it ends at the other edge of its
                 // active interval.
@@ -1169,7 +1262,7 @@ impl ElementState {
                 id,
                 TransitionEventKind::Cancel,
                 key,
-                active.clamp(0.0, running.duration),
+                active.clamp(0.0, running.effect_timing().active_duration()),
             ));
         }
     }
@@ -1316,6 +1409,42 @@ impl ElementState {
         }
     }
 
+    /// Takes the transition `id` out of wherever this element keeps it, and whether it was
+    /// running.
+    fn take_run(&mut self, id: u64) -> Option<(PropKey, Running, bool)> {
+        let is = |running: &Running| running.clock.id() == id;
+        if let Some(key) = self.running.iter().find(|(_, run)| is(run)).map(|(key, _)| *key) {
+            Some((key, self.running.remove(&key)?, true))
+        } else if let Some(key) = self.completed.iter().find(|(_, done)| is(&done.run)).map(|(key, _)| *key) {
+            Some((key, self.completed.remove(&key)?.run, false))
+        } else {
+            let key = self.cancelled.iter().find(|(_, held)| is(&held.run)).map(|(key, _)| *key)?;
+            Some((key, self.cancelled.remove(&key)?.run, false))
+        }
+    }
+
+    /// `updateTiming()` of the transition `id` of this element, wherever it is. `None` when it
+    /// is not here.
+    fn update_timing(
+        &mut self,
+        element: u64,
+        id: u64,
+        update: &TimingUpdate,
+        now: Instant,
+        events: &mut Events,
+    ) -> Option<()> {
+        let (key, mut run, _) = self.take_run(id)?;
+        run.update_timing(update, now);
+        events.tell(element, key, &mut run, now);
+        if run.clock.is_idle() {
+            self.cancelled.insert(key, Cancelled { end: run.end_computed.clone(), run });
+        } else {
+            // The next step puts a finished one back.
+            self.running.insert(key, run);
+        }
+        Some(())
+    }
+
     /// Applies `command` to the transition `id` of this element, wherever it is. `None` when
     /// it is not here.
     fn command(
@@ -1326,20 +1455,12 @@ impl ElementState {
         now: Instant,
         events: &mut Events,
     ) -> Option<Result<(), String>> {
-        let is = |running: &Running| running.clock.id() == id;
-        let (key, mut run, was_running) = if let Some(key) = self.running.iter().find(|(_, run)| is(run)).map(|(key, _)| *key) {
-            (key, self.running.remove(&key)?, true)
-        } else if let Some(key) = self.completed.iter().find(|(_, done)| is(&done.run)).map(|(key, _)| *key) {
-            (key, self.completed.remove(&key)?.run, false)
-        } else {
-            let key = self.cancelled.iter().find(|(_, held)| is(&held.run)).map(|(key, _)| *key)?;
-            (key, self.cancelled.remove(&key)?.run, false)
-        };
+        let (key, mut run, was_running) = self.take_run(id)?;
         let end = run.end_time();
         let was_idle = run.clock.is_idle();
         // What the DOM is owed for a run that is stopped while it runs.
         let owed = (command == Command::Cancel && was_running && !run.clock.is_finished(now, end))
-            .then(|| (run.elapsed(now) - run.delay).clamp(0.0, run.duration));
+            .then(|| (run.elapsed(now) - run.delay).clamp(0.0, run.effect_timing().active_duration()));
         let outcome = run.clock.apply(command, now, end);
         events.tell(element, key, &mut run, now);
         if let Some(elapsed) = owed {
@@ -1761,6 +1882,45 @@ impl CssTransitions {
     /// Whether the last frame left `id` dormant.
     pub(crate) fn is_dormant(&self, id: u64) -> bool {
         self.dormant.contains(&id)
+    }
+
+    fn run(&self, id: u64) -> Option<(PropKey, &Running)> {
+        self.states.values().find_map(|state| {
+            state
+                .running
+                .iter()
+                .chain(state.completed.iter().map(|(key, completed)| (key, &completed.run)))
+                .chain(state.cancelled.iter().map(|(key, cancelled)| (key, &cancelled.run)))
+                .find(|(_, running)| running.clock.id() == id)
+                .map(|(key, running)| (*key, running))
+        })
+    }
+
+    /// The timing and the computed timing of the transition `id`. `None` once it was cancelled
+    /// for good.
+    pub(crate) fn effect(&self, id: u64, now: Instant) -> Option<Result<EffectInfo, String>> {
+        self.run(id).map(|(_, running)| running.effect_info(now))
+    }
+
+    /// The keyframes of the transition `id`: where it runs from and to.
+    pub(crate) fn keyframes(&self, id: u64) -> Option<Result<Vec<KeyframeInfo>, String>> {
+        self.run(id).map(|(key, running)| running.keyframe_info(key))
+    }
+
+    /// `updateTiming()` of the transition `id` at `now`, the time of the last frame; the
+    /// transition alone. `None` for an id that is not here.
+    pub(crate) fn update_timing(&mut self, id: u64, update: &TimingUpdate, now: Instant) -> Option<()> {
+        for (element, state) in &mut self.states {
+            if state.update_timing(*element, id, update, now, &mut self.events).is_none() {
+                continue;
+            }
+            self.commanded.push(*element);
+            if self.dormant.contains(element) {
+                self.running_dormant.insert(*element);
+            }
+            return Some(());
+        }
+        None
     }
 
     /// The element the transition `id` is of, running or finished at its end.
@@ -4418,6 +4578,43 @@ mod tests {
         assert!(!clock.transitions.take_active(), "a held transition asks for no frames");
         assert!(api_events(&mut clock).is_empty());
         assert!(clock.events().iter().all(|(kind, ..)| *kind != End));
+    }
+
+    fn updated(clock: &mut Clock, millis: u64, id: u64, update: TimingUpdate) {
+        let at = clock.at(millis);
+        clock.transitions.update_timing(id, &update, at).expect("the transition exists");
+    }
+
+    #[test]
+    fn an_updated_timing_changes_that_transition_and_the_keyframes_are_its_start_and_end() {
+        let (mut clock, target, id) = moving();
+        let info = clock.transitions.effect(id, clock.at(100)).unwrap().unwrap();
+        assert_eq!((info.duration, info.fill, info.easing.as_str()), (Some(1000.0), "backwards", "linear"));
+        let keyframes = clock.transitions.keyframes(id).unwrap().unwrap();
+        let shown: Vec<(f64, &str, &str)> =
+            keyframes.iter().map(|frame| (frame.offset, frame.composite, frame.values[0].1.as_str())).collect();
+        assert_eq!(shown, [(0.0, "auto", "0px"), (1.0, "auto", "100px")]);
+
+        updated(&mut clock, 100, id, TimingUpdate { duration: Some(DurationUpdate::Seconds(2.0)), ..Default::default() });
+        close(width_of(&clock.frame(1100, &target)), 50.0);
+        // A change of the transition properties of the style does not reach a running transition.
+        let slower = sized(100.0, "width 9s linear");
+        close(width_of(&clock.frame(1100, &slower)), 50.0);
+        assert_eq!(clock.transitions.effect(id, clock.at(1100)).unwrap().unwrap().duration, Some(2000.0));
+    }
+
+    #[test]
+    fn more_iterations_and_an_alternate_direction_run_the_transition_back() {
+        let (mut clock, target, id) = moving();
+        updated(
+            &mut clock,
+            100,
+            id,
+            TimingUpdate { iterations: Some(IterationCount::Finite(2.0)), direction: Some(Direction::Alternate), ..Default::default() },
+        );
+        close(width_of(&clock.frame(1600, &target)), 50.0);
+        let info = clock.transitions.effect(id, clock.at(1600)).unwrap().unwrap();
+        assert_eq!((info.end_time, info.current_iteration), (2000.0, Some(1)));
     }
 
     #[test]

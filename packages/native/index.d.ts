@@ -282,6 +282,18 @@ export declare class GpuixRenderer {
    */
   getAnimation(animationId: number): WebAnimationInfo
   /**
+   * What `effect.getTiming()` and `effect.getComputedTiming()` read of the run `animationId`,
+   * as of the last frame. Throws for a run native no longer has.
+   */
+  getAnimationEffect(animationId: number): WebAnimationEffectInfo
+  /** `effect.getKeyframes()` of the run `animationId`. Throws for a run native no longer has. */
+  getAnimationKeyframes(animationId: number): Array<WebAnimationKeyframeInfo>
+  /**
+   * `effect.updateTiming(timing)` of the run `animationId`: what it sets stays set against a
+   * later style. Throws `TypeError: ...` for an easing that does not parse.
+   */
+  updateAnimationTiming(animationId: number, timing: WebAnimationTimingUpdate): void
+  /**
    * JS consumed one `webanimationfinish` or `webanimationcancel` event of the
    * run: native stops answering for what it ended as. Call it for every such
    * event, whether or not an `Animation` object exists for the run.
@@ -1200,6 +1212,12 @@ export declare class TestGpuixRenderer {
    * `GpuixRenderer.getAnimation`.
    */
   getAnimation(animationId: number): WebAnimationInfo
+  /** See the renderer's `getAnimationEffect`. */
+  getAnimationEffect(animationId: number): WebAnimationEffectInfo
+  /** See the renderer's `getAnimationKeyframes`. */
+  getAnimationKeyframes(animationId: number): Array<WebAnimationKeyframeInfo>
+  /** See the renderer's `updateAnimationTiming`. */
+  updateAnimationTiming(animationId: number, timing: WebAnimationTimingUpdate): void
   /** See the renderer's `releaseAnimation`. */
   releaseAnimation(animationId: number): void
   /**
@@ -2174,6 +2192,30 @@ export interface UpdaterHeader {
 export declare function validateKeyframes(name: string, framesJson: string): void
 
 /**
+ * What `getTiming()` and `getComputedTiming()` read of a CSS animation or transition, in
+ * milliseconds.
+ */
+export interface WebAnimationEffectInfo {
+  delay: number
+  /** `null` is `"auto"`. */
+  duration?: number
+  endDelay: number
+  fill: string
+  iterationStart: number
+  /** `Infinity` for an effect that repeats for ever. */
+  iterations: number
+  direction: string
+  easing: string
+  endTime: number
+  activeDuration: number
+  /** `null` for a run that was cancelled, which has no current time. */
+  localTime?: number
+  /** `null` outside the active phase when no fill holds the effect, and for a cancelled run. */
+  progress?: number
+  currentIteration?: number
+}
+
+/**
  * A CSS animation or transition as `Animation.currentTime`, `playbackRate` and
  * `playState` show it. Exactly one of `animationName` and `transitionProperty`
  * is set.
@@ -2214,6 +2256,41 @@ export interface WebAnimationInfo {
    * of the animations reads (`getAnimationTimelineTime`). `null` while it has none.
    */
   startTime?: number
+}
+
+/** One keyframe of a CSS animation or transition, as `getKeyframes()` has it. */
+export interface WebAnimationKeyframeInfo {
+  /** Also the `computedOffset`: the keyframes of a rule always have one. */
+  offset: number
+  easing: string
+  /** `"auto"`, `"replace"`, `"add"` or `"accumulate"`. */
+  composite: string
+  values: Array<WebAnimationKeyframeValue>
+}
+
+/** One property of a keyframe of a CSS animation or transition, as `getKeyframes()` has it. */
+export interface WebAnimationKeyframeValue {
+  /** The camelCase name, `marginLeft`. */
+  property: string
+  /** The computed value as Chrome writes it: `16px`, `rgb(255, 0, 0)`. */
+  value: string
+}
+
+/**
+ * What `updateTiming()` sets, checked by JS: milliseconds, and the names of the DOM. A member
+ * left out is left as it is.
+ */
+export interface WebAnimationTimingUpdate {
+  delay?: number
+  /** `"auto"` or a number. */
+  duration?: number | string
+  endDelay?: number
+  fill?: string
+  iterationStart?: number
+  /** `Infinity` repeats for ever. */
+  iterations?: number
+  direction?: string
+  easing?: string
 }
 
 export interface WindowInsets {

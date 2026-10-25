@@ -1354,6 +1354,36 @@ impl AnimProp {
         }
     }
 
+    /// `value` of this property as Chrome writes a computed value in `getKeyframes()`: lengths in
+    /// px, a percentage or `calc()` as it is, a colour as `rgb()`. A kind of value whose text was
+    /// not derived from Chrome is an error.
+    pub(super) fn computed_text(self, value: &AnimValue) -> Result<String, String> {
+        let length = |terms: [f64; 4]| {
+            LinearLength { px: terms[0], percent: terms[1], em: terms[2], rem: terms[3], ..Default::default() }.to_string()
+        };
+        let unsupported = || format!("the value of {} has no computed text yet", self.name());
+        match (self.kind(), value) {
+            (_, AnimValue::Color(color)) => color.computed_text(),
+            (Kind::Dimension, AnimValue::Auto) => Ok("auto".to_string()),
+            (Kind::Offset | Kind::UnderlineOffset | Kind::Thickness | Kind::VerticalAlign, AnimValue::Keyword(Some(keyword))) => {
+                Ok(keyword.clone())
+            }
+            (Kind::Keyword | Kind::TypedKeyword, AnimValue::Keyword(Some(keyword))) => Ok(keyword.clone()),
+            (Kind::Number, AnimValue::Number(number)) => match self {
+                Self::Opacity | Self::FlexGrow | Self::FlexShrink | Self::LineHeight => Ok(number.to_string()),
+                _ => Err(unsupported()),
+            },
+            (Kind::FontWeight | Kind::Integer, AnimValue::Number(number)) => Ok(number.to_string()),
+            (
+                Kind::Length | Kind::Dimension | Kind::Offset | Kind::FontSize | Kind::UnderlineOffset | Kind::Thickness,
+                value,
+            ) => value.as_terms().map(length).ok_or_else(unsupported),
+            (Kind::Corner, AnimValue::Ellipse { x, y }) => Ok(format!("{} {}", length([x.0, x.1, 0.0, 0.0]), length([y.0, y.1, 0.0, 0.0]))),
+            (Kind::Corner, value) => value.as_terms().map(length).ok_or_else(unsupported),
+            _ => Err(unsupported()),
+        }
+    }
+
     /// Whether the value flips instead of blending, so only a transition with
     /// `allow-discrete` runs it.
     pub(super) fn is_discrete(self) -> bool {

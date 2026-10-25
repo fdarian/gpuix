@@ -2694,6 +2694,27 @@ impl TestGpuixRenderer {
         self.with_motion_state(Repaint::None, move |view, now| view.web_animation(id, now))
     }
 
+    /// See the renderer's `getAnimationEffect`.
+    #[napi]
+    pub fn get_animation_effect(&self, animation_id: f64) -> Result<crate::renderer::WebAnimationEffectInfo> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::None, move |view, now| view.web_animation_effect(id, now))
+    }
+
+    /// See the renderer's `getAnimationKeyframes`.
+    #[napi]
+    pub fn get_animation_keyframes(&self, animation_id: f64) -> Result<Vec<crate::renderer::WebAnimationKeyframeInfo>> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::None, move |view, _now| view.web_animation_keyframes(id))
+    }
+
+    /// See the renderer's `updateAnimationTiming`.
+    #[napi]
+    pub fn update_animation_timing(&self, animation_id: f64, timing: crate::renderer::WebAnimationTimingUpdate) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::Layout, move |view, now| view.update_web_animation_timing(id, timing, now))
+    }
+
     /// See the renderer's `releaseAnimation`.
     #[napi]
     pub fn release_animation(&self, animation_id: f64) -> Result<()> {

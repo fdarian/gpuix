@@ -277,6 +277,27 @@ impl Color {
         }
     }
 
+    /// The computed value Chrome gives a colour written in a legacy syntax: `rgb(255, 0, 0)`, and
+    /// `rgba(0, 0, 0, 0.5)` with an alpha. A colour in another syntax computes to the syntax it
+    /// was written in, which is not kept.
+    pub(super) fn computed_text(self) -> Result<String, String> {
+        if !self.legacy {
+            return Err("a colour written outside the legacy syntaxes has no computed text yet".to_string());
+        }
+        let [l, a, b] = self.lab;
+        let rgb = csscolorparser::Color::from_oklaba(l as f32, a as f32, b as f32, 1.0);
+        let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let (red, green, blue) = (channel(rgb.r), channel(rgb.g), channel(rgb.b));
+        let alpha = (self.alpha.clamp(0.0, 1.0) * 255.0).round();
+        if alpha == 255.0 {
+            return Ok(format!("rgb({red}, {green}, {blue})"));
+        }
+        // Two decimals when they give the same 8-bit alpha back, three otherwise.
+        let two = (alpha / 255.0 * 100.0).round() / 100.0;
+        let alpha = if (two * 255.0).round() == alpha { two } else { (alpha / 255.0 * 1000.0).round() / 1000.0 };
+        Ok(format!("rgba({red}, {green}, {blue}, {alpha})"))
+    }
+
     /// Springs overshoot, so the result is clamped to the sRGB gamut here and
     /// only here. Fractional channels keep slow fades from stepping in 8-bit.
     pub(super) fn to_css(self) -> String {

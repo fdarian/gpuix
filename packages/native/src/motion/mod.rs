@@ -9,6 +9,7 @@ pub(crate) mod containing;
 mod css_animation;
 mod css_transition;
 mod curve;
+pub(crate) mod effect;
 mod inline;
 mod keyframes;
 mod layout_flip;
@@ -112,6 +113,14 @@ impl PropKey {
         match self {
             Self::Style(prop) => prop.parse(value, colors),
             Self::Svg(attr) => attr.parse_css(value, &colors.element),
+        }
+    }
+
+    /// See [`AnimProp::computed_text`].
+    fn computed_text(self, value: &AnimValue) -> Result<String, String> {
+        match self {
+            Self::Style(prop) => prop.computed_text(value),
+            Self::Svg(attr) => attr.computed_text(value),
         }
     }
 

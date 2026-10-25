@@ -332,6 +332,17 @@ impl SvgAttr {
     }
 }
 
+impl SvgAttr {
+    /// `value` of this property as Chrome writes a computed value in `getKeyframes()`. Only
+    /// colours are derived from Chrome so far.
+    pub(super) fn computed_text(self, value: &AnimValue) -> Result<String, String> {
+        match value {
+            AnimValue::Color(color) => color.computed_text(),
+            _ => Err(format!("the value of {} has no computed text yet", self.name())),
+        }
+    }
+}
+
 /// The text of an animated value as an XML attribute.
 pub(super) fn attribute_text(value: &AnimValue) -> String {
     match value {

@@ -59,6 +59,7 @@ export interface ElementMethods extends PointerCaptureMethods {
    * it has and what is not built. Animations of the motion engine
    * (`motion`, `animate`) are not listed, and there is no `subtree` option.
    * Pending changes are sent first. An element that is not in the tree has none.
+   * Call it on the element: that is the `target` of the effects it returns.
    */
   getAnimations(): Animation[]
 }
@@ -87,7 +88,9 @@ export function createElementMethods(
     hasPointerCapture: (pointerId) => supported("hasPointerCapture")(elementId, pointerId),
     click: () => supported("clickElement")(elementId),
     requestPointerLock: () => supported("requestPointerLock")(elementId),
-    getAnimations: () => getElementAnimations(renderer, elementId),
+    getAnimations(this: object) {
+      return getElementAnimations(renderer, elementId, this)
+    },
   }
 }
 

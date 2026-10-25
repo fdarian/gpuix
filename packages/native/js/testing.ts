@@ -18,7 +18,10 @@ import {
   type MediaFeatures,
   type MotionValuePlayback,
   type PatchCounters,
+  type WebAnimationEffectInfo,
   type WebAnimationInfo,
+  type WebAnimationKeyframeInfo,
+  type WebAnimationTimingUpdate,
   type WindowOptions,
 } from "../index.js"
 import type {
@@ -260,6 +263,9 @@ interface NativeTestRendererApi
   getSvgMarkup(elementId: number): string | null
   getAnimation(animationId: number): WebAnimationInfo
   releaseAnimation(animationId: number): void
+  getAnimationEffect(animationId: number): WebAnimationEffectInfo
+  getAnimationKeyframes(animationId: number): WebAnimationKeyframeInfo[]
+  updateAnimationTiming(animationId: number, timing: WebAnimationTimingUpdate): void
   pauseAnimation(animationId: number): void
   playAnimation(animationId: number): void
   cancelAnimation(animationId: number): void
@@ -1488,6 +1494,18 @@ export class TestRenderer implements NativeRenderer {
 
   releaseAnimation(animationId: number): void {
     this.native.releaseAnimation(animationId)
+  }
+
+  getAnimationEffect(animationId: number): WebAnimationEffectInfo {
+    return this.native.getAnimationEffect(animationId)
+  }
+
+  getAnimationKeyframes(animationId: number): WebAnimationKeyframeInfo[] {
+    return this.native.getAnimationKeyframes(animationId)
+  }
+
+  updateAnimationTiming(animationId: number, timing: WebAnimationTimingUpdate): void {
+    this.native.updateAnimationTiming(animationId, timing)
   }
 
   pauseAnimation(animationId: number): void {

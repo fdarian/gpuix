@@ -239,7 +239,7 @@ export class HostElement {
    */
   getAnimations(): Animation[] {
     if (!this.root || !this.mounted) return []
-    return this.methods().getAnimations()
+    return this.methods().getAnimations.call(this)
   }
 
   [HOST_MOUNT](listener: () => void): () => void {

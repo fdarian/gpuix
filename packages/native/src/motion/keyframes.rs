@@ -117,6 +117,14 @@ impl Keyframes {
         self.frames.iter().any(Keyframe::reads_vars)
     }
 
+    /// Whether `key` has no keyframe at 0% or none at 100%, so the element's own value stands in.
+    pub(super) fn misses_endpoint(&self, key: PropKey) -> bool {
+        let mut sets = self.frames.iter().filter(|frame| frame.values.iter().any(|(set, _)| *set == key));
+        let first = sets.next();
+        let last = sets.last().or(first);
+        first.is_some_and(|first| first.offset > 0.0) || last.is_some_and(|last| last.offset < 1.0)
+    }
+
     /// Every property some keyframe sets, in no particular order.
     pub(super) fn properties(&self) -> Vec<PropKey> {
         let mut props: Vec<PropKey> = self

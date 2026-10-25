@@ -61,6 +61,16 @@ interface ApiAnimationRecord extends AnimationRecord {
   hasStartTime: boolean
   startTimeAge: number | null
   timelineIsDocument: boolean
+  effectTarget: string
+}
+interface Sample {
+  t: number
+  localTime: number | null
+  progress: number | null
+  currentIteration: number | null
+  endTime: number | string
+  activeDuration: number | string
+  width: number
 }
 interface ApiSnapshot {
   step: Step
@@ -73,6 +83,10 @@ interface ApiSnapshot {
   listIndex?: number[]
   finished?: string[][]
   ready?: string[][]
+  keyframes?: unknown
+  timing?: unknown
+  computedTiming?: unknown
+  samples?: Sample[]
 }
 interface ApiCase {
   name: string
@@ -83,6 +97,7 @@ interface ApiCase {
 }
 const ORACLE: {
   keyframes: Record<string, Record<string, Record<string, number>>>
+  richKeyframes: Record<string, string>
   base: Record<string, string>
   cases: Case[]
   apiCases: ApiCase[]
@@ -94,6 +109,40 @@ const ORACLE: {
 )
 
 for (const [name, frames] of Object.entries(ORACLE.keyframes)) defineKeyframes(name, frames)
+
+/** `0%{width:100px}50%{width:150px;animation-timing-function:ease-in}` as the frames `defineKeyframes` takes. */
+function framesOf(body: string): Record<string, Record<string, string>> {
+  const frames: Record<string, Record<string, string>> = {}
+  for (const block of body.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    const declarations = Object.fromEntries(
+      block[2]
+        .split(";")
+        .filter((declaration) => declaration.trim() !== "")
+        .map((declaration) => {
+          const colon = declaration.indexOf(":")
+          const name = declaration.slice(0, colon).trim().replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+          return [name, declaration.slice(colon + 1).trim()]
+        })
+    )
+    // Two blocks of one selector are one keyframe, the later declaration winning.
+    frames[block[1].trim()] = { ...frames[block[1].trim()], ...declarations }
+  }
+  return frames
+}
+
+/** `animation-composition` is not supported, and the cases that set it have no replay (round 15b, S2b). */
+const COMPOSITION = /composition/i
+
+/** Whether the case sets `animation-composition` on the animation or in the keyframes it names. */
+const composes = (scenario: { style: Record<string, unknown> }): boolean =>
+  COMPOSITION.test(JSON.stringify(scenario.style)) ||
+  Object.entries(ORACLE.richKeyframes).some(
+    ([name, body]) => COMPOSITION.test(body) && String(scenario.style.animation ?? "").split(/\s+/).includes(name)
+  )
+
+for (const [name, body] of Object.entries(ORACLE.richKeyframes)) {
+  if (!COMPOSITION.test(body)) defineKeyframes(name, framesOf(body))
+}
 
 /** `"50px"` as the number a style takes. */
 const toStyle = (style: Record<string, unknown>): Record<string, unknown> =>
@@ -248,17 +297,19 @@ describeNative("Web animations against Chrome", () => {
   }
 })
 
-/** The steps that read the effect of an animation, which `effect` is for (round 15b, S2b). */
-const EFFECT_STEPS = new Set(["keyframes", "timing", "computed", "updateTiming", "sample"])
-
-/** The one filter on the cases: what the playback interface can replay without `effect`. */
-const WITHOUT_EFFECT = (scenario: ApiCase): boolean => scenario.steps.every((step) => !EFFECT_STEPS.has(step[0] as string))
-
 /** A number as the oracle writes it: three decimals, `"Infinity"` for infinity. */
 const rounded = (value: number | null): number | string | null => {
   if (value === null) return null
   return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : String(value)
 }
+
+/** What the oracle page makes of a value it records: numbers rounded, objects as JSON. */
+const clean = (value: unknown): unknown =>
+  JSON.parse(JSON.stringify(value, (_, member: unknown) => (typeof member === "number" ? rounded(member) : member)))
+
+/** `updateTiming({iterations: "Infinity"})` as the page revives it. */
+const revive = (timing: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(timing).map(([key, value]) => [key, value === "Infinity" ? Infinity : value]))
 
 /**
  * Chrome tells the `transitionrun` and `transitionstart` of a transition either before the `ready` of its first
@@ -298,7 +349,10 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
   renderer.clockPause()
   renderer.setInlineDraws(false)
   const element: { current: PublicInstance | null } = { current: null }
+  // The element the effects name, which they keep after it is gone.
+  let target: PublicInstance | null = null
   const log: string[] = []
+  let disposed = false
   // Chrome runs the promise reactions between two events of a frame, a microtask checkpoint apart. The events
   // of a window are delivered in one go, so what they log is put behind the reactions that were queued first.
   const note = (text: string) => queueMicrotask(() => log.push(text))
@@ -314,6 +368,7 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
       testId="box"
       ref={(node: PublicInstance | null) => {
         element.current = node
+        target ??= node
       }}
       style={toStyle(style)}
       onAnimationStart={heard("animationstart")}
@@ -350,6 +405,7 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
       finishedSeen.push([])
       readySeen.push([])
       const describe = (event: { type: string; currentTime: number | null; timelineTime: number | null }) => {
+        if (disposed) return `a${index}.${event.type} after the window is gone`
         const now = animation.timeline.currentTime
         const side = event.timelineTime === null ? null : event.timelineTime < now ? "before" : event.timelineTime === now ? "now" : "after"
         return `a${index}.${event.type} currentTime=${rounded(event.currentTime)} timelineTime=${side}`
@@ -389,6 +445,7 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
               ? Math.round(animation.timeline.currentTime - startTime)
               : null,
           timelineIsDocument: animation.timeline === tracked[0].timeline,
+          effectTarget: animation.effect.target === target ? "element" : animation.effect.target === null ? "null" : "other",
         }
       }),
     }
@@ -419,6 +476,7 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
         else if (op === "reverse") tracked[first as number].reverse()
         else if (op === "updateRate") tracked[first as number].updatePlaybackRate(second as number)
         else if (op === "startTime") tracked[first as number].startTime = relative(second) as number | null
+        else if (op === "updateTiming") tracked[first as number].effect.updateTiming(revive(second as Record<string, unknown>))
         else if (op === "style") {
           style = { ...style, ...(first as Record<string, unknown>) }
           render(box())
@@ -440,11 +498,33 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
             const now = animation.currentTime
             if (now === null || Math.abs(now - was) > 1e-6) animation.currentTime = was
           })
-        } else if (op !== "list") throw new Error(`Unknown step ${op as string}`)
+        } else if (!["list", "keyframes", "timing", "computed", "sample"].includes(op)) {
+          throw new Error(`Unknown step ${op as string}`)
+        }
         if (op === "list") {
           const listed = element.current?.getAnimations() ?? []
           record.list = listed.map((animation) => [animation.constructor.name, nameOf(animation)])
           record.listIndex = listed.map((animation) => tracked.indexOf(animation))
+        }
+        if (op === "keyframes") record.keyframes = clean(tracked[first as number].effect.getKeyframes())
+        if (op === "timing") record.timing = clean(tracked[first as number].effect.getTiming())
+        if (op === "computed") record.computedTiming = clean(tracked[first as number].effect.getComputedTiming())
+        if (op === "sample") {
+          record.samples = (second as number[]).map((time) => {
+            const animation = tracked[first as number]
+            animation.currentTime = time
+            const computed = animation.effect.getComputedTiming()
+            const bounds = layout()
+            return clean({
+              t: time,
+              localTime: computed.localTime,
+              progress: computed.progress,
+              currentIteration: computed.currentIteration,
+              endTime: computed.endTime,
+              activeDuration: computed.activeDuration,
+              width: bounds ? bounds.width : null,
+            }) as Sample
+          })
         }
       } catch (error) {
         record.threw = error instanceof Error ? error.name : String(error)
@@ -457,12 +537,14 @@ async function replayApi(scenario: ApiCase): Promise<ApiSnapshot[]> {
     }
     return records
   } finally {
+    // Unmounting removes the element, whose animations are cancelled in a task of their own: nobody hears it.
+    disposed = true
     unmount()
   }
 }
 
 describeNative("Web animations playback against Chrome", () => {
-  for (const scenario of ORACLE.apiCases.filter(WITHOUT_EFFECT)) {
+  for (const scenario of ORACLE.apiCases.filter((scenario) => !composes(scenario))) {
     it(scenario.name, { timeout: 30_000 }, async () => {
       const got = await replayApi(scenario)
       expect(got.length).toBe(scenario.records.length)
@@ -493,7 +575,20 @@ describeNative("Web animations playback against Chrome", () => {
           expect(actual.hasStartTime, `${label} hasStartTime`).toBe(expected.hasStartTime)
           expect(actual.startTimeAge, `${label} startTimeAge`).toBe(expected.startTimeAge)
           expect(actual.timelineIsDocument, `${label} timeline`).toBe(expected.timelineIsDocument)
+          expect(actual.effectTarget, `${label} effect.target`).toBe(expected.effectTarget)
         })
+        if (want.keyframes !== undefined) expect(here.keyframes, `${where}: getKeyframes()`).toEqual(want.keyframes)
+        if (want.timing !== undefined) expect(here.timing, `${where}: getTiming()`).toEqual(want.timing)
+        if (want.computedTiming !== undefined) expect(here.computedTiming, `${where}: getComputedTiming()`).toEqual(want.computedTiming)
+        if (want.samples) {
+          expect(here.samples?.length, `${where}: samples`).toBe(want.samples.length)
+          want.samples.forEach((sample, at) => {
+            const got = here.samples![at]
+            const label = `${where}: sample at ${sample.t}`
+            expect({ ...got, width: undefined }, label).toEqual({ ...sample, width: undefined })
+            expect(got.width, `${label}: width`).toBeCloseTo(sample.width, 1)
+          })
+        }
         if (want.list) expect(here.list, `${where}: getAnimations()`).toEqual(want.list)
         if (want.listIndex) expect(here.listIndex, `${where}: which animations`).toEqual(want.listIndex)
         if (want.finished) expect(here.finished, `${where}: finished`).toEqual(want.finished)

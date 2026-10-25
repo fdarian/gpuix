@@ -23,6 +23,7 @@ use super::css_transition::{
     split_outside_parens, split_whitespace_outside_parens, TransitionStyle,
 };
 use super::curve::{ease, parse_timing_function, Curve, Ease, Repeat, Transition};
+use super::effect::{DurationUpdate, EffectInfo, Evaluation, KeyframeInfo, Phase, Timing, TimingUpdate};
 use super::keyframes::{Keyframes, KeyframesRegistry};
 use super::measure::Measurement;
 use super::property::{AnimProp, Scope};
@@ -39,14 +40,14 @@ use crate::style::StyleDesc;
 use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum IterationCount {
+pub(crate) enum IterationCount {
     /// Never negative. Fractions run a partial last iteration.
     Finite(f64),
     Infinite,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Direction {
+pub(crate) enum Direction {
     Normal,
     Reverse,
     Alternate,
@@ -54,7 +55,7 @@ pub(super) enum Direction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum FillMode {
+pub(crate) enum FillMode {
     None,
     Forwards,
     Backwards,
@@ -452,105 +453,17 @@ struct Scheduled {
     at: Instant,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Phase {
-    Before,
-    Active,
-    After,
-}
-
-/// Where an animation is at one local time (Web Animations, "calculating the
-/// directed progress").
-struct Evaluation {
-    phase: Phase,
-    /// Zero-based, meaningful in the active phase.
-    iteration: u64,
-    /// How far through the keyframes, 0 to 1, after the direction. `None` when
-    /// the animation has no effect at this time: before the delay without
-    /// `backwards`, or after the end without `forwards`.
-    progress: Option<f64>,
-}
-
-fn active_duration(animation: &Animation) -> f64 {
-    match animation.iteration_count {
-        _ if animation.duration == 0.0 => 0.0,
-        IterationCount::Infinite => f64::INFINITY,
-        IterationCount::Finite(count) => animation.duration * count,
-    }
-}
-
-/// Where the effect of an animation ends, in local time: the delay and the active duration.
-fn effect_end(animation: &Animation) -> f64 {
-    (animation.delay + active_duration(animation)).max(0.0)
-}
-
-/// `elapsedTime` of an `animationstart`: the part of the active interval a
-/// negative delay already skipped.
-fn initial_elapsed(animation: &Animation) -> f64 {
-    (-animation.delay).min(active_duration(animation)).max(0.0)
-}
-
-/// `backwards` is a negative playback rate, which gives the boundaries to the
-/// phase the time came from.
-fn evaluate(animation: &Animation, local: f64, backwards_rate: bool) -> Evaluation {
-    let duration = animation.duration;
-    let active_duration = active_duration(animation);
-    let end_time = (animation.delay + active_duration).max(0.0);
-    let before_boundary = animation.delay.min(end_time).max(0.0);
-    let phase = if local < before_boundary || (backwards_rate && local == before_boundary) {
-        Phase::Before
-    } else if local > end_time || (!backwards_rate && local == end_time) {
-        Phase::After
-    } else {
-        Phase::Active
-    };
-
-    let backwards_fill = matches!(animation.fill_mode, FillMode::Backwards | FillMode::Both);
-    let forwards_fill = matches!(animation.fill_mode, FillMode::Forwards | FillMode::Both);
-    let active_time = match phase {
-        Phase::Before => backwards_fill.then_some(0.0),
-        Phase::Active => Some(local - animation.delay),
-        Phase::After => forwards_fill.then(|| (local - animation.delay).clamp(0.0, active_duration)),
-    };
-    let Some(active_time) = active_time else {
-        return Evaluation { phase, iteration: 0, progress: None };
-    };
-
-    let count = match animation.iteration_count {
-        IterationCount::Infinite => f64::INFINITY,
-        IterationCount::Finite(count) => count,
-    };
-    let overall = if duration == 0.0 {
-        if phase == Phase::Before {
-            0.0
-        } else if count.is_infinite() {
-            1.0
-        } else {
-            count
+impl Animation {
+    pub(super) fn timing(&self) -> Timing {
+        Timing {
+            delay: self.delay,
+            duration: self.duration,
+            iterations: self.iteration_count,
+            direction: self.direction,
+            fill: self.fill_mode,
+            end_delay: 0.0,
+            iteration_start: 0.0,
         }
-    } else if active_time >= active_duration {
-        // Not `active_time / duration`: that can land a hair past the count.
-        count
-    } else {
-        active_time / duration
-    };
-    let (mut progress, mut iteration) = (overall % 1.0, overall.floor());
-    if progress == 0.0 && phase != Phase::Before && active_time >= active_duration && count != 0.0 {
-        // The end of an iteration is its last frame, not the next one's first.
-        progress = 1.0;
-        iteration = overall - 1.0;
-    }
-    let iteration = iteration.max(0.0) as u64;
-    let backwards = match animation.direction {
-        Direction::Normal => false,
-        Direction::Reverse => true,
-        Direction::Alternate => iteration % 2 == 1,
-        Direction::AlternateReverse => iteration % 2 == 0,
-    };
-    Evaluation {
-        phase,
-        iteration,
-        progress: Some(if backwards { 1.0 - progress } else { progress }),
     }
 }
 
@@ -637,6 +550,16 @@ impl<'a> Subject<'a> {
 
     pub(crate) fn svg_shape(style: &'a StyleDesc, source: SvgSource<'a>) -> Self {
         Self { style, target: PropTarget::SvgShape, svg: Some(source) }
+    }
+
+    /// What the element has for `key` without the animations, as `getKeyframes()` writes it for
+    /// the keyframe a property leaves out. `None` where the style cannot say.
+    fn beneath(&self, key: PropKey, colors: &Colors) -> Option<AnimValue> {
+        match self.underlying(key, colors) {
+            Underlying::Value(value) => Some(value),
+            Underlying::Keyword => matches!(key, PropKey::Style(AnimProp::Width | AnimProp::Height)).then_some(AnimValue::Auto),
+            Underlying::Unknown => None,
+        }
     }
 
     fn underlying(&self, key: PropKey, colors: &Colors) -> Underlying {
@@ -933,6 +856,105 @@ impl Planner<'_> {
     }
 }
 
+// ── What the DOM reads of a run's keyframes ──────────────────────────
+
+/// One keyframe of the effect of a run, as `getKeyframes()` has it.
+#[derive(Clone, Debug, PartialEq)]
+struct ViewFrame {
+    offset: f64,
+    /// Added for a property that leaves out the start or the end, so `replace` and not `auto`.
+    implicit: bool,
+    easing: Ease,
+    values: Vec<(PropKey, AnimValue)>,
+}
+
+/// What a [`View`] was made from, so it is made again only when one changes.
+#[derive(Clone, Debug, PartialEq)]
+struct ViewKey {
+    /// The identity of the definition, which a redefinition replaces.
+    keyframes: usize,
+    target: PropTarget,
+    /// The animation's timing function, which a keyframe without its own takes.
+    timing: Ease,
+    colors: Colors,
+    custom: Option<CustomProperties>,
+    /// What the element stands at for a property whose keyframes leave out the start or the end.
+    underlying: Vec<(PropKey, AnimValue)>,
+}
+
+#[derive(Clone, Debug)]
+struct View {
+    key: ViewKey,
+    frames: Vec<ViewFrame>,
+}
+
+impl View {
+    /// The keyframes of the effect: those the definition has, and the implicit ones Chrome adds
+    /// for a property that has none at 0% or 100%, which stand at what the element has without
+    /// the animation. An implicit keyframe is added to the explicit one at its offset if there is
+    /// one, and is a keyframe of its own, composited by `replace`, if not.
+    fn new(key: ViewKey, keyframes: &Keyframes, properties: &[PropKey]) -> Self {
+        let mut frames: Vec<ViewFrame> = keyframes
+            .frames
+            .iter()
+            .map(|frame| ViewFrame {
+                offset: frame.offset,
+                implicit: false,
+                easing: frame.timing.clone().unwrap_or_else(|| key.timing.clone()),
+                values: properties
+                    .iter()
+                    .filter_map(|prop| Some((*prop, frame.value(*prop, &key.colors, key.custom.as_ref())?)))
+                    .collect(),
+            })
+            .filter(|frame| !frame.values.is_empty())
+            .collect();
+        for (prop, value) in &key.underlying {
+            for offset in [0.0, 1.0] {
+                let held = frames.iter().any(|frame| frame.offset == offset && frame.values.iter().any(|(set, _)| set == prop));
+                let beyond = frames.iter().any(|frame| frame.values.iter().any(|(set, _)| set == prop));
+                if held || !beyond {
+                    continue;
+                }
+                match frames.iter_mut().find(|frame| frame.offset == offset) {
+                    Some(frame) => frame.values.push((*prop, value.clone())),
+                    None => {
+                        let frame = ViewFrame {
+                            offset,
+                            implicit: true,
+                            easing: key.timing.clone(),
+                            values: vec![(*prop, value.clone())],
+                        };
+                        if offset == 0.0 {
+                            frames.insert(0, frame);
+                        } else {
+                            frames.push(frame);
+                        }
+                    }
+                }
+            }
+        }
+        Self { key, frames }
+    }
+
+    fn info(&self) -> Result<Vec<KeyframeInfo>, String> {
+        self.frames
+            .iter()
+            .map(|frame| {
+                Ok(KeyframeInfo {
+                    offset: frame.offset,
+                    easing: frame.easing.to_css()?,
+                    composite: if frame.implicit { "replace" } else { "auto" },
+                    values: frame
+                        .values
+                        .iter()
+                        .map(|(prop, value)| Ok((prop.name().to_string(), prop.computed_text(value)?)))
+                        .collect::<Result<_, String>>()?,
+                })
+            })
+            .collect()
+    }
+}
+
 // ── One running animation ────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -941,7 +963,17 @@ struct Run {
     /// The registry's definition of `name` as of the last frame.
     keyframes: Arc<Keyframes>,
     properties: Vec<PropKey>,
+    /// What the style declares. The timing the run plays by is this with `update` over it, see
+    /// `Run::timing`.
     params: Animation,
+    /// What `updateTiming()` set: the properties it names stay as set whatever the style says.
+    update: TimingUpdate,
+    /// A style change that moved the declared timing, with `update` in force: Chrome paints the
+    /// moment of the change from the style alone, while `getTiming()` still says what was set. It
+    /// holds until something touches the animation (a command, `updateTiming()`, a frame).
+    styled: bool,
+    /// What `getKeyframes()` reads, kept by every frame the element is built in.
+    view: Option<View>,
     /// The animation's local time (its `currentTime`), the API controls and its id.
     clock: Playback,
     /// The phase the DOM events were told of. A frame that is drawn tells them; a layout pass a
@@ -997,7 +1029,10 @@ impl Run {
             properties: keyframes.properties(),
             keyframes,
             params: params.clone(),
-            clock: Playback::start(now, params.play_state == PlayState::Paused, effect_end(params)),
+            update: TimingUpdate::default(),
+            styled: false,
+            view: None,
+            clock: Playback::start(now, params.play_state == PlayState::Paused, params.timing().end_time()),
             phase: Phase::Before,
             shown: Phase::Before,
             begun: false,
@@ -1009,6 +1044,63 @@ impl Run {
             quiet_until: None,
             events: Events::default(),
         }
+    }
+
+    /// Keeps what `getKeyframes()` reads up to date with the element it runs on: the values it
+    /// has beneath the animation stand in for the keyframes a property leaves out.
+    fn observe(&mut self, subject: &Subject, parent_colors: &ColorContext, parent_font: &ParentValues) {
+        let colors = Colors::inheriting(parent_colors, parent_font, Some(subject.style));
+        let properties: Vec<PropKey> = self
+            .properties
+            .iter()
+            .copied()
+            .filter(|key| subject.target.takes(*key))
+            .collect();
+        let underlying = properties
+            .iter()
+            .filter(|key| self.keyframes.misses_endpoint(**key))
+            .filter_map(|key| Some((*key, subject.beneath(*key, &colors)?)))
+            .collect();
+        let key = ViewKey {
+            keyframes: Arc::as_ptr(&self.keyframes) as usize,
+            target: subject.target,
+            timing: self.params.timing.clone(),
+            colors,
+            custom: self.keyframes.reads_vars().then(|| parent_font.custom_of(subject.style)),
+            underlying,
+        };
+        if self.view.as_ref().is_some_and(|view| view.key == key) {
+            return;
+        }
+        self.view = Some(View::new(key, &self.keyframes, &properties));
+    }
+
+    /// `getKeyframes()`.
+    fn keyframe_info(&self) -> Result<Vec<KeyframeInfo>, String> {
+        self.view
+            .as_ref()
+            .ok_or_else(|| "the keyframes of an animation on an element that was never built are not known".to_string())?
+            .info()
+    }
+
+    /// `getTiming()` and `getComputedTiming()`.
+    fn effect_info(&self, now: Instant) -> Result<EffectInfo, String> {
+        EffectInfo::of(
+            &self.timing(),
+            matches!(self.update.duration, Some(DurationUpdate::Auto)),
+            self.update.easing.as_ref(),
+            self.clock.current_time(now, self.end_time()),
+            self.clock.rate() < 0.0,
+        )
+    }
+
+    /// `updateTiming()`: what it sets stays as set against a later style.
+    fn update_timing(&mut self, id: u64, update: &TimingUpdate, now: Instant, api: &mut Vec<ApiEvent>) {
+        self.quiet_until = None;
+        self.styled = false;
+        self.update.merge(update);
+        self.clock.retime(now, self.end_time());
+        self.tell(id, now, api);
     }
 
     /// The instant the first change of phase, iteration or finish can have come, which ticks
@@ -1056,8 +1148,8 @@ impl Run {
         if rate < 0.0 {
             return Next::Unknown;
         }
-        let params = &self.params;
-        let active = active_duration(params);
+        let timing = self.timing();
+        let active = timing.active_duration();
         let local = self.local(now);
         let mut next = f64::INFINITY;
         let mut consider = |boundary: f64| {
@@ -1065,13 +1157,13 @@ impl Run {
                 next = next.min(boundary);
             }
         };
-        consider(params.delay.max(0.0));
-        consider((params.delay + active).max(0.0));
+        consider(timing.delay.max(0.0));
+        consider((timing.delay + active).max(0.0));
         consider(self.end_time());
-        if iterations && params.duration > 0.0 && params.duration.is_finite() {
-            let iteration = params.delay + params.duration * (((local - params.delay) / params.duration).floor() + 1.0);
+        if iterations && timing.duration > 0.0 && timing.duration.is_finite() {
+            let iteration = timing.delay + timing.duration * (((local - timing.delay) / timing.duration).floor() + 1.0);
             // The end of the last iteration is the end of the animation, and nothing follows it.
-            if iteration < (params.delay + active).max(0.0) {
+            if iteration < (timing.delay + active).max(0.0) {
                 consider(iteration);
             }
         }
@@ -1095,7 +1187,26 @@ impl Run {
     /// Where the effect ends, in local time. Infinite for an animation that
     /// repeats forever.
     fn end_time(&self) -> f64 {
-        effect_end(&self.params)
+        self.timing().end_time()
+    }
+
+    /// The timing the run plays by: what the style declares and `updateTiming()` set.
+    fn timing(&self) -> Timing {
+        self.update.over(self.params.timing())
+    }
+
+    /// The progress of the effect at `local`, after its own easing.
+    fn evaluate(&self, local: f64) -> Evaluation {
+        self.timing().evaluate(local, self.clock.rate() < 0.0).eased(self.update.easing.as_ref())
+    }
+
+    /// The progress the element is painted with: that of the style alone for the moment a style
+    /// change leaves, see `styled`.
+    fn painted(&self, local: f64, evaluation: &Evaluation) -> Option<f64> {
+        if !self.styled {
+            return evaluation.progress;
+        }
+        self.params.timing().evaluate(local, self.clock.rate() < 0.0).progress
     }
 
     fn local(&self, now: Instant) -> f64 {
@@ -1113,6 +1224,7 @@ impl Run {
         self.quiet_until = None;
         let end = self.end_time();
         self.clock.follow_style(params.play_state == PlayState::Paused, now, end);
+        self.styled |= self.update != TimingUpdate::default() && self.params != *params;
         self.params = params.clone();
     }
 
@@ -1127,7 +1239,7 @@ impl Run {
     /// the last time it was told (CSS Animations 2, "event dispatch").
     fn advance(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>) -> Evaluation {
         let local = self.local(now);
-        let evaluation = evaluate(&self.params, local, self.clock.rate() < 0.0);
+        let evaluation = self.evaluate(local);
         self.report(id, now, local, &evaluation, events);
         evaluation
     }
@@ -1140,11 +1252,11 @@ impl Run {
             self.begun = true;
             return;
         }
-        let params = &self.params;
-        let active_duration = active_duration(params);
-        let starts = params.delay.max(0.0);
-        let ends = (params.delay + active_duration).max(0.0);
-        let initial = initial_elapsed(params);
+        let timing = self.timing();
+        let active_duration = timing.active_duration();
+        let starts = timing.delay.max(0.0);
+        let ends = (timing.delay + active_duration).max(0.0);
+        let initial = timing.initial_elapsed();
 
         let from = self.phase;
         let to = evaluation.phase;
@@ -1164,12 +1276,12 @@ impl Run {
             (Phase::Active, Phase::Before) => events.push(end(local, initial)),
             (Phase::Active, Phase::Active) if evaluation.iteration != self.iteration => {
                 // Going back across a boundary tells the boundary it left: that of the later iteration.
-                let boundary = params.duration * evaluation.iteration.max(self.iteration) as f64;
+                let boundary = timing.duration * evaluation.iteration.max(self.iteration) as f64;
                 events.push(self.event(
                     id,
                     Iteration,
                     boundary,
-                    self.instant_at(params.delay + boundary, now),
+                    self.instant_at(timing.delay + boundary, now),
                 ));
             }
             _ => {}
@@ -1209,8 +1321,11 @@ impl Run {
         self.clock.settle(now, end);
         self.tell(id, now, api);
         let local = self.local(now);
-        let evaluation = evaluate(&self.params, local, self.clock.rate() < 0.0);
-        self.progress = evaluation.progress;
+        let evaluation = self.evaluate(local);
+        self.progress = self.painted(local, &evaluation);
+        if drawing {
+            self.styled = false;
+        }
         self.shown = evaluation.phase;
         if drawing && !self.clock.pending_play() {
             let before = events.len();
@@ -1256,7 +1371,8 @@ impl Run {
         if self.phase == Phase::After {
             return None;
         }
-        Some((self.local(now) - self.params.delay).clamp(0.0, active_duration(&self.params)))
+        let timing = self.timing();
+        Some((self.local(now) - timing.delay).clamp(0.0, timing.active_duration()))
     }
 
     /// `animation.cancel()`: the run stays, idle, for `play()` and the like to bring back.
@@ -1280,6 +1396,7 @@ impl Run {
         api: &mut Vec<ApiEvent>,
     ) -> Result<(), String> {
         self.quiet_until = None;
+        self.styled = false;
         if command == Command::Cancel {
             self.cancel_by_api(id, now, events, api);
             return Ok(());
@@ -1720,6 +1837,7 @@ impl CssAnimations {
             .allows_keywords();
         let mut values: BTreeMap<PropKey, Option<AnimValue>> = BTreeMap::new();
         for run in &mut state.runs {
+            run.observe(subject, parent_colors, parent_font);
             if let Some(progress) = run.progress {
                 // Later in the list is higher in the cascade.
                 values.extend(run.values(
@@ -2044,6 +2162,32 @@ impl CssAnimations {
         self.layout_only = layout_only;
     }
 
+    /// The timing and the computed timing of the animation `id`. `None` once it is cancelled.
+    pub(crate) fn effect(&self, id: u64, now: Instant) -> Option<Result<EffectInfo, String>> {
+        self.run(id).map(|run| run.effect_info(now))
+    }
+
+    /// The keyframes of the animation `id`. `None` once it is cancelled.
+    pub(crate) fn keyframes(&self, id: u64) -> Option<Result<Vec<KeyframeInfo>, String>> {
+        self.run(id).map(Run::keyframe_info)
+    }
+
+    /// `updateTiming()` of the animation `id` at `now`, the time of the last frame. `None` for
+    /// an id that is not running.
+    pub(crate) fn update_timing(&mut self, id: u64, update: &TimingUpdate, now: Instant) -> Option<()> {
+        let (element, run) = self
+            .states
+            .iter_mut()
+            .flat_map(|(element, state)| state.runs.iter_mut().map(move |run| (*element, run)))
+            .find(|(_, run)| run.clock.id() == id)?;
+        run.update_timing(element, update, now, &mut self.api_events);
+        self.commanded.push(element);
+        if self.dormant.contains(&element) {
+            self.sleepers.next.insert(element);
+        }
+        Some(())
+    }
+
     /// Applies `command` to the animation `id` at `now`, the time of the last
     /// frame. `None` for an id that is not running.
     pub(crate) fn command(&mut self, id: u64, command: Command, now: Instant) -> Option<Result<(), String>> {
@@ -2096,6 +2240,7 @@ impl CssAnimations {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::effect::EffectInfo;
 
     fn style(json: &str) -> StyleDesc {
         serde_json::from_str(json).unwrap()
@@ -4154,6 +4299,88 @@ mod tests {
         frames.frame(6000, &paused);
         assert_eq!(only(&frames, 6000).status, Status::Running, "paused in the style is ignored");
         near(only(&frames, 6000).current_time, 2000.0);
+    }
+
+    fn timing_update(json: &str) -> TimingUpdate {
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        let number = |key: &str| value.get(key).and_then(serde_json::Value::as_f64);
+        TimingUpdate::parse(
+            number("delay"),
+            number("duration").map(DurationUpdate::Seconds),
+            number("endDelay"),
+            value.get("fill").and_then(serde_json::Value::as_str),
+            number("iterationStart"),
+            number("iterations"),
+            value.get("direction").and_then(serde_json::Value::as_str),
+            value.get("easing").and_then(serde_json::Value::as_str),
+        )
+        .unwrap()
+    }
+
+    fn effect(frames: &Frames, millis: u64, id: u64) -> EffectInfo {
+        frames.animations.effect(id, frames.at(millis)).expect("the animation exists").unwrap()
+    }
+
+    #[test]
+    fn an_updated_timing_stays_against_the_style_for_the_members_it_set_and_the_rest_follow() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        let id = only(&frames, 0).id;
+        let at = frames.at(0);
+        frames.animations.update_timing(id, &timing_update(r#"{ "duration": 2000 }"#), at).unwrap();
+        assert_eq!(effect(&frames, 0, id).duration, Some(2000.0));
+        frames.frame(0, &fading("fade 4s linear 500ms"));
+        let info = effect(&frames, 0, id);
+        assert_eq!((info.duration, info.delay, info.end_time), (Some(2000.0), 500.0, 2500.0));
+        assert_eq!(info.easing, "linear");
+    }
+
+    #[test]
+    fn an_updated_effect_easing_shapes_the_progress_and_not_the_keyframes_easing() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s ease-in"));
+        let id = only(&frames, 0).id;
+        let at = frames.at(0);
+        frames.animations.update_timing(id, &timing_update(r#"{ "easing": "steps(2, jump-end)" }"#), at).unwrap();
+        frames.frame(0, &fading("fade 1s ease-in"));
+        command(&mut frames, 0, id, Command::SetCurrentTime(900.0));
+        let info = effect(&frames, 0, id);
+        assert_eq!((info.easing.as_str(), info.progress), ("steps(2)", Some(0.5)));
+    }
+
+    #[test]
+    fn the_keyframes_of_an_animation_carry_the_implicit_endpoints_at_what_the_element_has() {
+        let mut frames = Frames::new();
+        frames.define("grow", r#"{ "50%": { "width": 150 } }"#);
+        let style = style(r#"{ "width": 50, "animation": "grow 1s linear" }"#);
+        frames.frame(0, &style);
+        let id = only(&frames, 0).id;
+        let keyframes = frames.animations.keyframes(id).expect("the animation exists").unwrap();
+        let shown: Vec<(f64, &str, Vec<(String, String)>)> =
+            keyframes.iter().map(|frame| (frame.offset, frame.composite, frame.values.clone())).collect();
+        let width = |value: &str| vec![("width".to_string(), value.to_string())];
+        assert_eq!(
+            shown,
+            vec![(0.0, "replace", width("50px")), (0.5, "auto", width("150px")), (1.0, "replace", width("50px"))]
+        );
+    }
+
+    #[test]
+    fn an_end_delay_keeps_the_animation_running_after_its_active_phase() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        let id = only(&frames, 0).id;
+        let at = frames.at(0);
+        frames.animations.update_timing(id, &timing_update(r#"{ "endDelay": 500 }"#), at).unwrap();
+        frames.frame(1200, &fading("fade 1s linear"));
+        // The end delay is after the active phase, where nothing is in effect and nothing is listed.
+        assert!(listed(&frames, 1200).is_empty());
+        let info = frames.animations.info(id, frames.at(1200)).expect("the animation exists");
+        assert_eq!(info.status, Status::Running);
+        assert_eq!(effect(&frames, 1200, id).end_time, 1500.0);
     }
 
     #[test]

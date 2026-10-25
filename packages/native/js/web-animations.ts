@@ -1,4 +1,10 @@
-import type { EventPayload, WebAnimationInfo } from "../index.js"
+import type {
+  EventPayload,
+  WebAnimationEffectInfo,
+  WebAnimationInfo,
+  WebAnimationKeyframeInfo,
+  WebAnimationTimingUpdate,
+} from "../index.js"
 import { flushPendingMutations } from "./bounds.js"
 import { EVENT_PHASE_AT_TARGET, EVENT_PHASE_NONE, reportUncaught, type DomEvent } from "./events/dispatch.js"
 import { GpuixEventTarget, type AddEventListenerOptions, type WindowEventListener } from "./events/window-target.js"
@@ -23,6 +29,9 @@ export type WebAnimationHost = Required<
     | "setAnimationStartTime"
     | "getAnimationTimelineTime"
     | "releaseAnimation"
+    | "getAnimationEffect"
+    | "getAnimationKeyframes"
+    | "updateAnimationTiming"
   >
 >
 
@@ -40,6 +49,9 @@ const HOST_METHODS = [
   "setAnimationStartTime",
   "getAnimationTimelineTime",
   "releaseAnimation",
+  "getAnimationEffect",
+  "getAnimationKeyframes",
+  "updateAnimationTiming",
 ] as const
 
 const FINISH_EVENT = "webanimationfinish"
@@ -48,6 +60,7 @@ const READY_EVENT = "webanimationready"
 
 /** What native says when a command refuses, before it is a `DOMException`. */
 const INVALID_STATE_PREFIX = "InvalidStateError: "
+const TYPE_ERROR_PREFIX = "TypeError: "
 
 interface Deferred {
   readonly promise: Promise<Animation>
@@ -101,6 +114,10 @@ interface State {
   mode: Mode
   /** What native last said, kept for what outlives the run: the rate an idle animation still reports. */
   last: WebAnimationInfo
+  /** The timing and the keyframes of the effect as native last said, which outlive the run. */
+  effect: Snapshot<WebAnimationEffectInfo>
+  keyframes: Snapshot<WebAnimationKeyframeInfo[]>
+  readonly keyframeEffect: KeyframeEffect
   finished: Deferred
   ready: Deferred
   /** `cancel()` calls whose `cancel` event native has not delivered yet. */
@@ -125,6 +142,8 @@ export interface AnimationInit {
   host: WebAnimationHost
   registry: Registry
   timeline: DocumentTimeline
+  /** The element the run is of, which the effect has for its `target`. */
+  target: object
   elementId: number
   info: WebAnimationInfo
 }
@@ -196,6 +215,9 @@ function refusal(error: unknown): unknown {
   if (error instanceof Error && error.message.startsWith(INVALID_STATE_PREFIX)) {
     return invalidState(error.message.slice(INVALID_STATE_PREFIX.length))
   }
+  if (error instanceof Error && error.message.startsWith(TYPE_ERROR_PREFIX)) {
+    return new TypeError(error.message.slice(TYPE_ERROR_PREFIX.length))
+  }
   return error
 }
 
@@ -238,6 +260,297 @@ function settle(animation: Animation, state: State, before: WebAnimationInfo): v
 }
 
 /**
+ * What native said of a run's effect, or why it could not: a value Chrome writes as a computed
+ * value in a form that is not known yet (a transform, a `linear()` easing) is an error for the
+ * one who asks, not for the one who lists the animations.
+ */
+type Snapshot<T> = { readonly value: T } | { readonly error: DOMException }
+
+function snapshot<T>(read: () => T): Snapshot<T> {
+  try {
+    return { value: read() }
+  } catch (error) {
+    if (isUnknownAnimation(error)) throw error
+    return { error: new DOMException(error instanceof Error ? error.message : String(error), "NotSupportedError") }
+  }
+}
+
+function unwrap<T>(snapshot: Snapshot<T>): T {
+  if ("error" in snapshot) throw snapshot.error
+  return snapshot.value
+}
+
+export type FillMode = "none" | "forwards" | "backwards" | "both" | "auto"
+export type PlaybackDirection = "normal" | "reverse" | "alternate" | "alternate-reverse"
+
+/** The `EffectTiming` of the DOM. */
+export interface EffectTiming {
+  delay: number
+  endDelay: number
+  fill: FillMode
+  iterationStart: number
+  iterations: number
+  duration: number | "auto"
+  direction: PlaybackDirection
+  easing: string
+}
+
+export type OptionalEffectTiming = Partial<EffectTiming>
+
+/** The `ComputedEffectTiming` of the DOM: milliseconds, `null` where the effect has none. */
+export interface ComputedEffectTiming extends Omit<EffectTiming, "duration"> {
+  duration: number
+  endTime: number
+  activeDuration: number
+  localTime: number | null
+  progress: number | null
+  currentIteration: number | null
+}
+
+/** A keyframe as `getKeyframes()` returns it: the other members are the properties, as computed values. */
+export interface ComputedKeyframe {
+  offset: number
+  computedOffset: number
+  easing: string
+  composite: "auto" | "replace" | "add" | "accumulate"
+  [property: string]: string | number | null | undefined
+}
+
+/** What a run's animation makes its effect from. */
+interface EffectInit {
+  animation: Animation
+  target: object
+}
+
+const effects = new WeakMap<KeyframeEffect, EffectInit>()
+
+function effectOf(effect: KeyframeEffect): EffectInit {
+  const init = effects.get(effect)
+  if (!init) throw new TypeError("Illegal invocation")
+  return init
+}
+
+/** What native says of the effect now; what it said last once it no longer has the run. */
+function readEffect(state: State): WebAnimationEffectInfo {
+  let read: Snapshot<WebAnimationEffectInfo> = state.effect
+  if (state.mode === "live") {
+    try {
+      read = state.effect = snapshot(() => state.host.getAnimationEffect(state.id))
+    } catch (error) {
+      if (!isUnknownAnimation(error)) throw error
+    }
+  }
+  const info = unwrap(read)
+  // A run native let go of is idle, whatever it showed when it went.
+  if (state.mode === "gone" || readLive(state).playState === "idle") {
+    return { ...info, localTime: undefined, progress: undefined, currentIteration: undefined }
+  }
+  return info
+}
+
+/** A member the DOM takes as a finite number, which `updateTiming()` refuses to leave anything else. */
+function finite(name: string, value: unknown): number {
+  const number = Number(value)
+  if (!Number.isFinite(number)) throw new TypeError(`Failed to execute 'updateTiming' on 'AnimationEffect': ${name} must be a finite number`)
+  return number
+}
+
+function oneOf<T extends string>(name: string, value: unknown, names: readonly T[]): T {
+  if (typeof value !== "string" || !names.includes(value as T)) {
+    throw new TypeError(`Failed to execute 'updateTiming' on 'AnimationEffect': ${String(value)} is not a valid ${name}`)
+  }
+  return value as T
+}
+
+/** The `updateTiming()` argument as native takes it, or the `TypeError` the DOM throws for a member that is wrong. */
+function timingUpdate(timing: OptionalEffectTiming | undefined): WebAnimationTimingUpdate {
+  if (timing === undefined || timing === null) return {}
+  if (typeof timing !== "object") {
+    throw new TypeError("Failed to execute 'updateTiming' on 'AnimationEffect': the timing is not an object")
+  }
+  const update: WebAnimationTimingUpdate = {}
+  if (timing.delay !== undefined) update.delay = finite("delay", timing.delay)
+  if (timing.endDelay !== undefined) update.endDelay = finite("endDelay", timing.endDelay)
+  if (timing.iterationStart !== undefined) {
+    update.iterationStart = finite("iterationStart", timing.iterationStart)
+    if (update.iterationStart < 0) throw new TypeError("Failed to execute 'updateTiming' on 'AnimationEffect': iterationStart must not be negative")
+  }
+  if (timing.iterations !== undefined) {
+    const iterations = Number(timing.iterations)
+    if (Number.isNaN(iterations) || iterations < 0) {
+      throw new TypeError("Failed to execute 'updateTiming' on 'AnimationEffect': iterations must not be negative")
+    }
+    update.iterations = iterations
+  }
+  if (timing.duration !== undefined) {
+    if (typeof timing.duration === "string") {
+      if (timing.duration !== "auto") throw new TypeError(`Failed to execute 'updateTiming' on 'AnimationEffect': ${timing.duration} is not a valid duration`)
+      update.duration = "auto"
+    } else {
+      const duration = Number(timing.duration)
+      if (Number.isNaN(duration) || duration < 0) {
+        throw new TypeError("Failed to execute 'updateTiming' on 'AnimationEffect': duration must not be negative")
+      }
+      update.duration = duration
+    }
+  }
+  // `auto` is no fill: an effect has none of its own.
+  if (timing.fill !== undefined) {
+    const fill = oneOf("fill", timing.fill, ["none", "forwards", "backwards", "both", "auto"] as const)
+    update.fill = fill === "auto" ? "none" : fill
+  }
+  if (timing.direction !== undefined) {
+    update.direction = oneOf("direction", timing.direction, ["normal", "reverse", "alternate", "alternate-reverse"] as const)
+  }
+  if (timing.easing !== undefined) update.easing = String(timing.easing)
+  return update
+}
+
+const EASING_KEYWORDS = ["linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end"]
+
+/** `updateTiming()` of a run native no longer has: it changes what the effect reports from now on. */
+function updateGone(state: State, update: WebAnimationTimingUpdate): void {
+  const info = unwrap(state.effect)
+  if (update.easing !== undefined && !EASING_KEYWORDS.includes(update.easing.trim())) {
+    throw new DOMException(
+      "The easing of an animation that was cancelled for good can be set to a keyword only",
+      "NotSupportedError"
+    )
+  }
+  const next: WebAnimationEffectInfo = { ...info }
+  if (update.delay !== undefined) next.delay = update.delay
+  if (update.endDelay !== undefined) next.endDelay = update.endDelay
+  if (update.fill !== undefined) next.fill = update.fill
+  if (update.iterationStart !== undefined) next.iterationStart = update.iterationStart
+  if (update.iterations !== undefined) next.iterations = update.iterations
+  if (update.direction !== undefined) next.direction = update.direction
+  if (update.duration !== undefined) next.duration = update.duration === "auto" ? undefined : (update.duration as number)
+  if (update.easing !== undefined) next.easing = update.easing.trim() === "step-start" ? "steps(1, start)" : update.easing.trim() === "step-end" ? "steps(1)" : update.easing.trim()
+  const duration = next.duration ?? 0
+  const active = duration === 0 || next.iterations === 0 ? 0 : duration * next.iterations
+  next.activeDuration = active
+  next.endTime = Math.max(next.delay + active + next.endDelay, 0)
+  state.effect = { value: next }
+}
+
+/**
+ * The effect of a CSS animation or transition, as the DOM's `KeyframeEffect`: the keyframes
+ * and the timing it plays by. `animation.effect` is the same object every time. It cannot be
+ * made, and there is no `setKeyframes()`, `composite` or `pseudoElement`.
+ */
+export class KeyframeEffect {
+  /** Not for apps: the effect of an animation is `animation.effect`. */
+  constructor(init: EffectInit) {
+    effects.set(this, init)
+  }
+
+  /** The element the run is of, also after the element is gone. */
+  get target(): object | null {
+    return effectOf(this).target
+  }
+
+  /**
+   * The keyframes with computed values: those of the `@keyframes` rule with the ones Chrome adds
+   * for a property that has none at 0% or 100% (`composite: "replace"`, at the value the element
+   * has without the animation), or the start and the end of a transition. As of the last frame.
+   * Throws a `NotSupportedError` for a value whose computed text is not known yet.
+   */
+  getKeyframes(): ComputedKeyframe[] {
+    const state = stateOf(effectOf(this).animation)
+    if (state.mode === "live") {
+      try {
+        state.keyframes = snapshot(() => state.host.getAnimationKeyframes(state.id))
+      } catch (error) {
+        if (!isUnknownAnimation(error)) throw error
+      }
+    }
+    return unwrap(state.keyframes).map((frame) => {
+      const keyframe: ComputedKeyframe = {
+        offset: frame.offset,
+        easing: frame.easing,
+        composite: frame.composite as ComputedKeyframe["composite"],
+        computedOffset: frame.offset,
+      }
+      for (const value of frame.values) keyframe[value.property] = value.value
+      return keyframe
+    })
+  }
+
+  /**
+   * The timing in the units of the DOM: milliseconds, `iterations` `Infinity` for an animation
+   * that repeats for ever. For a CSS animation the `easing` is `"linear"` and its
+   * `animation-timing-function` is the easing of its keyframes; for a transition it is the
+   * `transition-timing-function`.
+   */
+  getTiming(): EffectTiming {
+    const info = readEffect(stateOf(effectOf(this).animation))
+    return {
+      delay: info.delay,
+      endDelay: info.endDelay,
+      fill: info.fill as FillMode,
+      iterationStart: info.iterationStart,
+      iterations: info.iterations,
+      duration: info.duration ?? "auto",
+      direction: info.direction as PlaybackDirection,
+      easing: info.easing,
+    }
+  }
+
+  /**
+   * The timing with what it works out to at the current time of the animation: `localTime`,
+   * `progress` and `currentIteration` are `null` for an idle animation and `progress` and
+   * `currentIteration` outside the active phase unless a fill holds the effect.
+   */
+  getComputedTiming(): ComputedEffectTiming {
+    const info = readEffect(stateOf(effectOf(this).animation))
+    return {
+      delay: info.delay,
+      endDelay: info.endDelay,
+      fill: info.fill as FillMode,
+      iterationStart: info.iterationStart,
+      iterations: info.iterations,
+      duration: info.duration ?? 0,
+      direction: info.direction as PlaybackDirection,
+      easing: info.easing,
+      endTime: info.endTime,
+      activeDuration: info.activeDuration,
+      localTime: info.localTime ?? null,
+      progress: info.progress ?? null,
+      currentIteration: info.currentIteration ?? null,
+    }
+  }
+
+  /**
+   * Sets the timing members given, for this animation only. What a CSS animation is set to here
+   * stays against a later change of its `animation-*` style, which still moves the members that
+   * were not set; a running transition never follows a change of its `transition-*` style. A
+   * member that is wrong throws a `TypeError` and changes nothing. An effect that ends later than
+   * the animation has gone makes a finished animation run again.
+   */
+  updateTiming(timing?: OptionalEffectTiming): void {
+    const owner = effectOf(this)
+    const update = timingUpdate(timing)
+    const state = stateOf(owner.animation)
+    if (state.mode === "live") {
+      try {
+        command(owner.animation, "update the timing of", (live) => live.host.updateAnimationTiming(live.id, update))
+        // What the animation keeps once native lets the run go.
+        try {
+          state.effect = snapshot(() => state.host.getAnimationEffect(state.id))
+        } catch (error) {
+          if (!isUnknownAnimation(error)) throw error
+        }
+        return
+      } catch (error) {
+        // Cancelled since the frame JS last heard of: the effect is what it was.
+        if (!(error instanceof DOMException && error.name === "InvalidStateError")) throw error
+      }
+    }
+    updateGone(state, update)
+  }
+}
+
+/**
  * A CSS animation or transition of an element, as `element.getAnimations()`
  * returns it: the Web Animations `Animation` of the DOM, for what the CSS
  * engine runs. `getAnimations()` gives the same object for the same run every
@@ -246,8 +559,8 @@ function settle(animation: Animation, state: State, before: WebAnimationInfo): v
  * `timeline`. The promises `ready` and `finished` and the `finish` and `cancel`
  * events follow Chrome's order.
  *
- * Not built: `effect`, `id`, `replaceState`, `persist()`, `commitStyles()`,
- * `onremove`. An animation of the motion engine is not listed.
+ * Not built: `id`, `replaceState`, `persist()`, `commitStyles()`,
+ * `onremove`, and setting `effect`. An animation of the motion engine is not listed.
  */
 export class Animation extends GpuixEventTarget {
   constructor(init: AnimationInit) {
@@ -260,6 +573,9 @@ export class Animation extends GpuixEventTarget {
       elementId: init.elementId,
       mode: "live",
       last: init.info,
+      effect: snapshot(() => init.host.getAnimationEffect(init.info.id)),
+      keyframes: snapshot(() => init.host.getAnimationKeyframes(init.info.id)),
+      keyframeEffect: new KeyframeEffect({ animation: this, target: init.target }),
       finished: deferred(),
       ready: deferred(),
       cancelEvents: 0,
@@ -271,11 +587,19 @@ export class Animation extends GpuixEventTarget {
     // event, not when it is made.
     if (init.info.playState === "finished" && !init.info.pending) state.finished.resolve(this)
     if (!init.info.pending) state.ready.resolve(this)
+    // An animation made finished (an effect with no length) has nothing to wait a frame for: Chrome
+    // runs its play right after the script that first read it, which a seek to where it is does here.
+    if (init.info.pending && init.info.playState === "finished") queueMicrotask(() => startFinished(this))
   }
 
   /** The timeline all the animations of a renderer share. */
   get timeline(): DocumentTimeline {
     return stateOf(this).timeline
+  }
+
+  /** The keyframes and the timing the run plays by. The same object every time. */
+  get effect(): KeyframeEffect {
+    return stateOf(this).keyframeEffect
   }
 
   /**
@@ -595,12 +919,13 @@ function adopt(
   registry: Registry,
   host: WebAnimationHost,
   timeline: DocumentTimeline,
+  target: object,
   elementId: number,
   info: WebAnimationInfo
 ): Animation {
   const known = registry.byId.get(info.id)
   if (known) return known
-  const init = { host, registry, timeline, elementId, info }
+  const init = { host, registry, timeline, target, elementId, info }
   const animation = info.kind === "transition" ? new CSSTransition(init) : new CSSAnimation(init)
   register(registry, elementId, info.id, animation)
   return animation
@@ -611,12 +936,12 @@ function adopt(
  * that are running, paused or in effect through a fill, in composite order.
  * Pending mutations are sent first, so a style just set is seen.
  */
-export function getElementAnimations(renderer: NativeRenderer, elementId: number): Animation[] {
+export function getElementAnimations(renderer: NativeRenderer, elementId: number, target: object): Animation[] {
   const host = hostOf(renderer)
   flushPendingMutations(renderer)
   const registry = registryOf(renderer)
   const timeline = (registry.timeline ??= new DocumentTimeline(host))
-  return host.getAnimations(elementId).map((info) => adopt(registry, host, timeline, elementId, info))
+  return host.getAnimations(elementId).map((info) => adopt(registry, host, timeline, target, elementId, info))
 }
 
 /** The cancel of an animation: its promises, as `cancel()` and a style that stops naming it leave them. */
@@ -628,6 +953,19 @@ function abort(state: State, wasPending: boolean): void {
   }
   if (state.finished.settled === "pending") state.finished.reject(error())
   state.finished = deferred()
+}
+
+/** Runs the play of an animation that was made finished, which has no frame to wait for. */
+function startFinished(animation: Animation): void {
+  const state = stateOf(animation)
+  if (state.mode !== "live") return
+  try {
+    if (!readLive(state).pending) return
+    command(animation, "start", (live) => live.host.setAnimationCurrentTime(live.id, readLive(live).currentTime))
+  } catch (error) {
+    // Cancelled since: there is nothing left to start.
+    if (!(error instanceof DOMException && error.name === "InvalidStateError")) throw error
+  }
 }
 
 /** The animation went for good: nothing native has stays to be played again. */
@@ -739,7 +1077,8 @@ export function deliverWebAnimationEvent(renderer: NativeRenderer, event: EventP
 export function cancelAnimationsOfElements(renderer: object, elementIds: readonly number[]): void {
   const registry = registryOf(renderer)
   for (const elementId of elementIds) {
-    for (const animation of [...(registry.byElement.get(elementId) ?? [])]) {
+    // Chrome cancels the last of an element's animations first.
+    for (const animation of [...(registry.byElement.get(elementId) ?? [])].reverse()) {
       const state = stateOf(animation)
       const wasIdle = state.mode === "gone" || state.last.playState === "idle"
       lose(animation)

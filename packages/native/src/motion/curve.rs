@@ -749,6 +749,41 @@ pub(super) fn parse_timing_function(text: &str) -> Result<Ease, String> {
     }
 }
 
+impl Ease {
+    /// The text Chrome gives an easing in `getTiming().easing`: a keyword for the named curves,
+    /// `steps(n)` for a jump at the end and `steps(n, start)` for one at the start. A `linear()`
+    /// has no text derived from Chrome yet.
+    pub(super) fn to_css(&self) -> Result<String, String> {
+        const NAMED: [(&str, [f64; 4]); 4] = [
+            ("ease", [0.25, 0.1, 0.25, 1.0]),
+            ("ease-in", [0.42, 0.0, 1.0, 1.0]),
+            ("ease-out", [0.0, 0.0, 0.58, 1.0]),
+            ("ease-in-out", [0.42, 0.0, 0.58, 1.0]),
+        ];
+        match self {
+            Self::Name(name) => match name.as_str() {
+                "linear" => Ok("linear".to_string()),
+                "ease" => Ok("ease".to_string()),
+                "easeIn" => Ok("ease-in".to_string()),
+                "easeOut" => Ok("ease-out".to_string()),
+                "easeInOut" => Ok("ease-in-out".to_string()),
+                other => Err(format!("`{other}` is not an easing")),
+            },
+            Self::CubicBezier(curve) => Ok(match NAMED.iter().find(|(_, named)| named == curve) {
+                Some((name, _)) => (*name).to_string(),
+                None => format!("cubic-bezier({}, {}, {}, {})", curve[0], curve[1], curve[2], curve[3]),
+            }),
+            Self::Steps(steps) => Ok(match steps.jump {
+                Jump::End => format!("steps({})", steps.count),
+                Jump::Start => format!("steps({}, start)", steps.count),
+                Jump::None => format!("steps({}, jump-none)", steps.count),
+                Jump::Both => format!("steps({}, jump-both)", steps.count),
+            }),
+            Self::Stops(_) => Err("a linear() easing has no text to give yet".to_string()),
+        }
+    }
+}
+
 fn parse_number(text: &str) -> Result<f64, String> {
     text.parse::<f64>()
         .ok()

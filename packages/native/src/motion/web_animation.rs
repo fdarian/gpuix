@@ -476,6 +476,16 @@ impl Playback {
         report
     }
 
+    /// The effect now ends at `end`, which `updateTiming()` moved: the finished state is looked at
+    /// again against it.
+    pub(super) fn retime(&mut self, now: Instant, end: f64) {
+        self.update_finished(now, end, false);
+        self.start_if_finished(now, end);
+        if !self.is_finished(now, end) {
+            self.end_reported = false;
+        }
+    }
+
     /// Notes the finish of a clock that ran into its end by itself, at a frame.
     pub(super) fn settle(&mut self, now: Instant, end: f64) {
         self.update_finished(now, end, false);

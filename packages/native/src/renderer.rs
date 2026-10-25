@@ -3330,6 +3330,29 @@ impl GpuixRenderer {
         self.with_motion_state(Repaint::None, move |view, now| view.web_animation(id, now))
     }
 
+    /// What `effect.getTiming()` and `effect.getComputedTiming()` read of the run `animationId`,
+    /// as of the last frame. Throws for a run native no longer has.
+    #[napi]
+    pub fn get_animation_effect(&self, animation_id: f64) -> Result<WebAnimationEffectInfo> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::None, move |view, now| view.web_animation_effect(id, now))
+    }
+
+    /// `effect.getKeyframes()` of the run `animationId`. Throws for a run native no longer has.
+    #[napi]
+    pub fn get_animation_keyframes(&self, animation_id: f64) -> Result<Vec<WebAnimationKeyframeInfo>> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::None, move |view, _now| view.web_animation_keyframes(id))
+    }
+
+    /// `effect.updateTiming(timing)` of the run `animationId`: what it sets stays set against a
+    /// later style. Throws `TypeError: ...` for an easing that does not parse.
+    #[napi]
+    pub fn update_animation_timing(&self, animation_id: f64, timing: WebAnimationTimingUpdate) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::Layout, move |view, now| view.update_web_animation_timing(id, timing, now))
+    }
+
     /// JS consumed one `webanimationfinish` or `webanimationcancel` event of the
     /// run: native stops answering for what it ended as. Call it for every such
     /// event, whether or not an `Animation` object exists for the run.
@@ -6374,6 +6397,38 @@ impl GpuixView {
             })
             .or_else(|| self.retired_animations.get(id).cloned())
             .map(|info| WebAnimationInfo::at(info, &self.clock))
+            .ok_or_else(|| unknown_web_animation(id))
+    }
+
+    /// The timing and computed timing of the run `id`, as of the last frame.
+    pub(crate) fn web_animation_effect(&self, id: u64, now: web_time::Instant) -> std::result::Result<WebAnimationEffectInfo, String> {
+        self.api_instant(self.element_of_web_animation(id), now)
+            .and_then(|now| self.css_transitions.effect(id, now).or_else(|| self.css_animations.effect(id, now)))
+            .ok_or_else(|| unknown_web_animation(id))?
+            .map(WebAnimationEffectInfo::from)
+    }
+
+    /// The keyframes of the run `id`.
+    pub(crate) fn web_animation_keyframes(&self, id: u64) -> std::result::Result<Vec<WebAnimationKeyframeInfo>, String> {
+        self.css_transitions
+            .keyframes(id)
+            .or_else(|| self.css_animations.keyframes(id))
+            .ok_or_else(|| unknown_web_animation(id))?
+            .map(|frames| frames.into_iter().map(WebAnimationKeyframeInfo::from).collect())
+    }
+
+    /// `effect.updateTiming(update)`. The caller requests the frame that paints it.
+    pub(crate) fn update_web_animation_timing(
+        &mut self,
+        id: u64,
+        update: WebAnimationTimingUpdate,
+        now: web_time::Instant,
+    ) -> std::result::Result<(), String> {
+        let update = update.into_update()?;
+        let at = self.api_instant(self.element_of_web_animation(id), now).ok_or_else(|| unknown_web_animation(id))?;
+        self.css_transitions
+            .update_timing(id, &update, at)
+            .or_else(|| self.css_animations.update_timing(id, &update, at))
             .ok_or_else(|| unknown_web_animation(id))
     }
 
@@ -13538,6 +13593,126 @@ pub struct WebAnimationInfo {
     /// The `startTime`: milliseconds on the renderer's clock since its origin, as the timeline
     /// of the animations reads (`getAnimationTimelineTime`). `null` while it has none.
     pub start_time: Option<f64>,
+}
+
+/// What `getTiming()` and `getComputedTiming()` read of a CSS animation or transition, in
+/// milliseconds.
+#[derive(Debug, Clone)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct WebAnimationEffectInfo {
+    pub delay: f64,
+    /// `null` is `"auto"`.
+    pub duration: Option<f64>,
+    pub end_delay: f64,
+    pub fill: String,
+    pub iteration_start: f64,
+    /// `Infinity` for an effect that repeats for ever.
+    pub iterations: f64,
+    pub direction: String,
+    pub easing: String,
+    pub end_time: f64,
+    pub active_duration: f64,
+    /// `null` for a run that was cancelled, which has no current time.
+    pub local_time: Option<f64>,
+    /// `null` outside the active phase when no fill holds the effect, and for a cancelled run.
+    pub progress: Option<f64>,
+    pub current_iteration: Option<f64>,
+}
+
+impl From<crate::motion::effect::EffectInfo> for WebAnimationEffectInfo {
+    fn from(info: crate::motion::effect::EffectInfo) -> Self {
+        Self {
+            delay: info.delay,
+            duration: info.duration,
+            end_delay: info.end_delay,
+            fill: info.fill.to_string(),
+            iteration_start: info.iteration_start,
+            iterations: info.iterations,
+            direction: info.direction.to_string(),
+            easing: info.easing,
+            end_time: info.end_time,
+            active_duration: info.active_duration,
+            local_time: info.local_time,
+            progress: info.progress,
+            current_iteration: info.current_iteration.map(|iteration| iteration as f64),
+        }
+    }
+}
+
+/// One property of a keyframe of a CSS animation or transition, as `getKeyframes()` has it.
+#[derive(Debug, Clone)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct WebAnimationKeyframeValue {
+    /// The camelCase name, `marginLeft`.
+    pub property: String,
+    /// The computed value as Chrome writes it: `16px`, `rgb(255, 0, 0)`.
+    pub value: String,
+}
+
+/// One keyframe of a CSS animation or transition, as `getKeyframes()` has it.
+#[derive(Debug, Clone)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct WebAnimationKeyframeInfo {
+    /// Also the `computedOffset`: the keyframes of a rule always have one.
+    pub offset: f64,
+    pub easing: String,
+    /// `"auto"`, `"replace"`, `"add"` or `"accumulate"`.
+    pub composite: String,
+    pub values: Vec<WebAnimationKeyframeValue>,
+}
+
+impl From<crate::motion::effect::KeyframeInfo> for WebAnimationKeyframeInfo {
+    fn from(info: crate::motion::effect::KeyframeInfo) -> Self {
+        Self {
+            offset: info.offset,
+            easing: info.easing,
+            composite: info.composite.to_string(),
+            values: info
+                .values
+                .into_iter()
+                .map(|(property, value)| WebAnimationKeyframeValue { property, value })
+                .collect(),
+        }
+    }
+}
+
+/// What `updateTiming()` sets, checked by JS: milliseconds, and the names of the DOM. A member
+/// left out is left as it is.
+#[derive(Debug, Clone)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), napi(object))]
+pub struct WebAnimationTimingUpdate {
+    pub delay: Option<f64>,
+    /// `"auto"` or a number.
+    pub duration: Option<napi::Either<f64, String>>,
+    pub end_delay: Option<f64>,
+    pub fill: Option<String>,
+    pub iteration_start: Option<f64>,
+    /// `Infinity` repeats for ever.
+    pub iterations: Option<f64>,
+    pub direction: Option<String>,
+    pub easing: Option<String>,
+}
+
+impl WebAnimationTimingUpdate {
+    fn into_update(self) -> std::result::Result<crate::motion::effect::TimingUpdate, String> {
+        use crate::motion::effect::{DurationUpdate, TimingUpdate, TYPE_ERROR};
+        let duration = match self.duration {
+            None => None,
+            Some(napi::Either::A(millis)) => Some(DurationUpdate::Seconds(millis)),
+            Some(napi::Either::B(text)) if text == "auto" => Some(DurationUpdate::Auto),
+            Some(napi::Either::B(text)) => return Err(format!("{TYPE_ERROR}`{text}` is not a duration")),
+        };
+        TimingUpdate::parse(
+            self.delay,
+            duration,
+            self.end_delay,
+            self.fill.as_deref(),
+            self.iteration_start,
+            self.iterations,
+            self.direction.as_deref(),
+            self.easing.as_deref(),
+        )
+    }
 }
 
 /// What the controls of a motion value's animation read, in seconds.

@@ -258,6 +258,87 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Web animations", () => {
     })
   })
 
+  describe("effect", () => {
+    const stage = (animation: string) => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      let box!: HostElement
+      app.render(() => <div ref={(element) => (box = element)} testId="box" style={{ width: 50, height: 20, animation }} />)
+      app.renderer.clockFastForward(0)
+      return { app, box }
+    }
+
+    it("names the element and the keyframes of an animation, and keeps one effect for it", () => {
+      const { app, box } = stage("solid-wa-grow 1s ease-in")
+      const [animation] = box.getAnimations()
+      expect(animation.effect.target).toBe(box)
+      expect(animation.effect).toBe(animation.effect)
+      expect(animation.effect.getKeyframes()).toEqual([
+        { offset: 0, computedOffset: 0, easing: "ease-in", composite: "auto", width: "100px" },
+        { offset: 1, computedOffset: 1, easing: "ease-in", composite: "auto", width: "200px" },
+      ])
+      app.unmount()
+    })
+
+    it("reports the timing in milliseconds, with a linear effect easing for an animation", () => {
+      const { app, box } = stage("solid-wa-grow 2s ease-in 500ms 3 alternate both")
+      const [animation] = box.getAnimations()
+      expect(animation.effect.getTiming()).toEqual({
+        delay: 500,
+        endDelay: 0,
+        fill: "both",
+        iterationStart: 0,
+        iterations: 3,
+        duration: 2000,
+        direction: "alternate",
+        easing: "linear",
+      })
+      expect(animation.effect.getComputedTiming()).toMatchObject({ endTime: 6500, activeDuration: 6000, localTime: 0, progress: 0 })
+      app.unmount()
+    })
+
+    it("keeps what updateTiming sets against a later style and refuses a bad member", () => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      const [animation, setAnimation] = createSignal("solid-wa-grow 1s linear")
+      let box!: HostElement
+      app.render(() => <div ref={(element) => (box = element)} testId="box" style={{ width: 50, height: 20, animation: animation() }} />)
+      app.renderer.clockFastForward(0)
+      const [running] = box.getAnimations()
+      running.effect.updateTiming({ duration: 2000, iterations: Infinity })
+      setAnimation("solid-wa-grow 5s linear 100ms")
+      app.flushSync(() => {})
+      app.renderer.clockFastForward(0)
+      expect(running.effect.getTiming()).toMatchObject({ duration: 2000, iterations: Infinity, delay: 100 })
+      expect(() => running.effect.updateTiming({ duration: -1 })).toThrow(TypeError)
+      expect(() => running.effect.updateTiming({ easing: "nope" })).toThrow(TypeError)
+      expect(running.effect.getTiming().duration).toBe(2000)
+      app.unmount()
+    })
+
+    it("gives a transition its computed start and end, and its easing to the effect", () => {
+      const app = createTestRoot()
+      app.renderer.clockPause()
+      const [width, setWidth] = createSignal(50)
+      let box!: HostElement
+      app.render(() => (
+        <div ref={(element) => (box = element)} testId="box" style={{ width: width(), height: 20, transition: "width 1s ease-in 200ms" }} />
+      ))
+      setWidth(150)
+      app.flushSync(() => {})
+      app.renderer.clockFastForward(0)
+      const [transition] = box.getAnimations()
+      expect(transition.effect.getKeyframes()).toEqual([
+        { offset: 0, computedOffset: 0, easing: "linear", composite: "auto", width: "50px" },
+        { offset: 1, computedOffset: 1, easing: "linear", composite: "auto", width: "150px" },
+      ])
+      expect(transition.effect.getTiming()).toMatchObject({ delay: 200, duration: 1000, fill: "backwards", easing: "ease-in" })
+      transition.effect.updateTiming({ delay: 0 })
+      expect(transition.effect.getComputedTiming().endTime).toBe(1000)
+      app.unmount()
+    })
+  })
+
   it("has no animations for an element that is not mounted", () => {
     const app = createTestRoot()
     let box!: HostElement
