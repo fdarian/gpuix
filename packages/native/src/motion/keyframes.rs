@@ -144,7 +144,7 @@ impl Keyframe {
         let text = match custom.and_then(|custom| custom_properties::substitute(written.as_str()?, custom)) {
             Some(substituted) => substituted.trim().to_owned(),
             None => match key {
-                PropKey::Style(AnimProp::TransformOrigin) => DEFAULT_ORIGIN_TEXT.to_owned(),
+                PropKey::Style(AnimProp::TransformOrigin | AnimProp::PerspectiveOrigin) => DEFAULT_ORIGIN_TEXT.to_owned(),
                 _ => "none".to_owned(),
             },
         };
@@ -176,7 +176,7 @@ impl Keyframe {
 /// Whether `written` is a `var()` of a transform property, the only ones that substitute it: it
 /// is checked against the element it is at, and the keyframes only hold the text.
 fn reads_vars(key: PropKey, written: &Value) -> bool {
-    matches!(key, PropKey::Style(prop) if prop.is_css_transform())
+    matches!(key, PropKey::Style(prop) if prop.reads_vars())
         && written.as_str().is_some_and(custom_properties::has_var)
 }
 

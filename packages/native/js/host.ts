@@ -222,7 +222,7 @@ export type MotionLength = DimensionValue
 
 /**
  * Motion's transform keys, composed in Motion's order (`transformPerspective`, `x`, `y`, `z`, `translateX`,
- * `translateY`, `translateZ`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateX`, `rotateY`, `rotateZ`,
+ * `translateY`, `translateZ`, `scale`, `scaleX`, `scaleY`, `scaleZ`, `rotate`, `rotateX`, `rotateY`, `rotateZ`,
  * `skew`, `skewX`, `skewY`) around the origin. They replace
  * `transform`, as Motion's do, and the element is a stacking context and the containing block of its
  * absolute and fixed descendants whenever one is set. On a `motion.*` component `scale` and `rotate`
@@ -242,6 +242,8 @@ export interface MotionTransformKeys {
   scale?: number
   scaleX?: number
   scaleY?: number
+  /** Along z, so only seen where the element is in a 3D rendering context or under a perspective. */
+  scaleZ?: number
   /** A number is degrees; a string is a CSS angle (`"0.25turn"`). */
   rotate?: number | string
   rotateZ?: number | string
@@ -251,6 +253,8 @@ export interface MotionTransformKeys {
   /** A number is a fraction of the border box (`0.5` is the middle, the default); a string is a CSS length. */
   originX?: number | string
   originY?: number | string
+  /** Along z: a number is px; a string a CSS length without `%`. */
+  originZ?: number | string
   /** Along z, toward the viewer: a number is px; a string is a CSS length without `%`. Seen with a
    *  `perspective` on the parent, or `transformPerspective` here. */
   z?: MotionLength

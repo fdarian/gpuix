@@ -9,6 +9,7 @@
 
 use serde_json::Value;
 
+use super::list::ListValue;
 use super::value::{AnimValue, Color, Colors, Shadow};
 use crate::color::ColorContext;
 use crate::css::length::{LengthContext, LinearLength};
@@ -25,8 +26,8 @@ use crate::css::border_radius::parse_radii;
 use crate::css::shorthand::{parse_pair, parse_sides, Gap, Sides};
 use crate::css::syntax::{expand_sides, split_slash_tokens};
 use crate::css::transform::{
-    format_list, format_origin, format_rotate, format_scale, format_translate, parse_origin, parse_rotate, parse_scale,
-    parse_transform, parse_translate, Origin, Value as TransformValue,
+    format_list, format_origin, format_rotate, format_scale, format_translate, parse_origin, parse_perspective,
+    parse_perspective_origin, parse_rotate, parse_scale, parse_transform, parse_translate, Origin, Value as TransformValue,
 };
 use gpui::{TransformFunction, TransformLength};
 use crate::layout::aspect_ratio::AspectRatio;
@@ -82,8 +83,12 @@ enum Kind {
     Rotate,
     /// The CSS `scale`: `none` or a scaling.
     Scale,
-    /// The CSS `transform-origin`: two lengths, held as the radii of an ellipse.
+    /// The CSS `transform-origin`: a list of the lengths along x and y, and the px along z.
     TransformOrigin,
+    /// The CSS `perspective-origin`: two lengths, held as the radii of an ellipse.
+    PerspectiveOrigin,
+    /// The CSS `perspective`: a length in px, or `none`, which is no length and flips at the middle.
+    Perspective,
 }
 
 /// The range the applied value is held to. Physics keeps the unclamped value.
@@ -139,6 +144,8 @@ enum Initial {
     InheritedLineHeight,
     /// `50%`, the middle of the border box.
     Center,
+    /// `50% 50% 0`, the `transform-origin`.
+    CenterOrigin,
     /// `none`: a list of no functions, which blends with every list.
     NoTransform,
 }
@@ -584,17 +591,66 @@ fn origin_value(origin: &Origin) -> AnimValue {
     AnimValue::ellipse(part(&origin.x), part(&origin.y))
 }
 
-fn origin_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
-    parse_origin(slot.as_deref()?, cx.lengths).map(|origin| origin_value(&origin))
+/// The `perspective-origin`, which has no z.
+fn perspective_origin_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
+    let (x, y) = parse_perspective_origin(slot.as_deref()?, cx.lengths)?;
+    Some(origin_value(&Origin { x, y, z: 0.0 }))
 }
 
-fn origin_write(slot: &mut Option<String>, value: AnimValue) {
+fn perspective_origin_write(slot: &mut Option<String>, value: AnimValue) {
     let ((x_px, x_fraction), (y_px, y_fraction)) = value
         .as_ellipse()
-        .unwrap_or_else(|| unreachable!("a transform origin field was given {value:?}"));
+        .unwrap_or_else(|| unreachable!("a perspective origin field was given {value:?}"));
     let part = |px: f64, fraction: f64| TransformLength { px: px as f32, fraction: fraction as f32 };
-    // The z of the origin is not animated, a blend of two origins has none.
     *slot = Some(format_origin(&Origin { x: part(x_px, x_fraction), y: part(y_px, y_fraction), z: 0.0 }));
+}
+
+/// A `transform-origin` as its three lengths, which blend one by one: Blink's `CSSTransformOriginInterpolationType`
+/// is two lengths and a px length too. The list is how a motion value holds a multi-value string.
+fn transform_origin_value(origin: &Origin) -> AnimValue {
+    let length = |length: &TransformLength| AnimValue::length(f64::from(length.px), f64::from(length.fraction));
+    AnimValue::List(ListValue {
+        items: vec![length(&origin.x), length(&origin.y), AnimValue::Number(f64::from(origin.z))],
+        slash: None,
+    })
+}
+
+fn transform_origin_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
+    parse_origin(slot.as_deref()?, cx.lengths).map(|origin| transform_origin_value(&origin))
+}
+
+fn transform_origin_write(slot: &mut Option<String>, value: AnimValue) {
+    let AnimValue::List(list) = &value else {
+        unreachable!("a transform origin field was given {value:?}")
+    };
+    let length = |item: &AnimValue| {
+        let (px, fraction) = item.as_length().unwrap_or_else(|| unreachable!("an origin holds {item:?}"));
+        TransformLength { px: px as f32, fraction: fraction as f32 }
+    };
+    let z = match list.items.get(2) {
+        Some(AnimValue::Number(z)) => *z as f32,
+        item => unreachable!("an origin holds {item:?} along z"),
+    };
+    *slot = Some(format_origin(&Origin { x: length(&list.items[0]), y: length(&list.items[1]), z }));
+}
+
+const NONE: &str = "none";
+
+/// `perspective`: a distance in px, or the keyword `none`.
+fn perspective_read(slot: &Option<String>, cx: &Reading) -> Option<AnimValue> {
+    Some(match parse_perspective(slot.as_deref()?, cx.lengths)? {
+        Some(distance) => AnimValue::Number(f64::from(distance)),
+        None => AnimValue::Keyword(Some(NONE.to_string())),
+    })
+}
+
+fn perspective_write(slot: &mut Option<String>, value: AnimValue) {
+    *slot = Some(match value {
+        // A spring can overshoot below 0, which no distance is.
+        AnimValue::Number(distance) => format!("{}px", distance.max(0.0)),
+        AnimValue::Keyword(Some(keyword)) if keyword == NONE => NONE.to_string(),
+        other => unreachable!("a perspective field was given {other:?}"),
+    });
 }
 
 fn integer_write(slot: &mut Option<f64>, value: AnimValue) {
@@ -639,7 +695,13 @@ macro_rules! read_field {
         transform_read(&$slot, parse_scale)
     };
     (TransformOrigin, $slot:expr, $cx:expr) => {
-        origin_read(&$slot, $cx)
+        transform_origin_read(&$slot, $cx)
+    };
+    (PerspectiveOrigin, $slot:expr, $cx:expr) => {
+        perspective_origin_read(&$slot, $cx)
+    };
+    (Perspective, $slot:expr, $cx:expr) => {
+        perspective_read(&$slot, $cx)
     };
     ($kind:ident, $slot:expr, $cx:expr) => {
         Field::read(&$slot, $cx)
@@ -672,7 +734,13 @@ macro_rules! write_field {
         transform_write(&mut $slot, $value, format_scale)
     };
     (TransformOrigin, $slot:expr, $value:expr) => {
-        origin_write(&mut $slot, $value)
+        transform_origin_write(&mut $slot, $value)
+    };
+    (PerspectiveOrigin, $slot:expr, $value:expr) => {
+        perspective_origin_write(&mut $slot, $value)
+    };
+    (Perspective, $slot:expr, $value:expr) => {
+        perspective_write(&mut $slot, $value)
     };
     ($kind:ident, $slot:expr, $value:expr) => {
         Field::write(&mut $slot, $value)
@@ -803,7 +871,7 @@ macro_rules! properties {
 }
 
 use Initial::{
-    BorderWidth, Center, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
+    BorderWidth, Center, CenterOrigin, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
     InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoShadows, NoTransform, Number,
     Transparent, Unresolved, Unset,
 };
@@ -907,6 +975,7 @@ properties! {
     MotionScale "motionScale" Number None Number(1.0), motion_scale;
     ScaleX "scaleX" Number None Number(1.0), scale_x;
     ScaleY "scaleY" Number None Number(1.0), scale_y;
+    ScaleZ "scaleZ" Number None Number(1.0), scale_z;
     MotionRotate "motionRotate" Angle None Number(0.0), motion_rotate;
     RotateX "rotateX" Angle None Number(0.0), rotate_x;
     RotateY "rotateY" Angle None Number(0.0), rotate_y;
@@ -916,6 +985,7 @@ properties! {
     SkewY "skewY" Angle None Number(0.0), skew_y;
     OriginX "originX" Origin None Center, origin_x;
     OriginY "originY" Origin None Center, origin_y;
+    OriginZ "originZ" Length None Number(0.0), origin_z;
 
     // Motion's `transform`, which is the animated value of its own and replaces the keys above
     // (`motionTransform` on the wire, like `motionScale`; `AnimProp::from_name` maps `transform`).
@@ -925,7 +995,9 @@ properties! {
     Translate "translate" Translate None NoTransform, translate;
     Rotate "rotate" Rotate None NoTransform, rotate;
     Scale "scale" Scale None NoTransform, scale;
-    TransformOrigin "transformOrigin" TransformOrigin None Center, transform_origin;
+    TransformOrigin "transformOrigin" TransformOrigin None CenterOrigin, transform_origin;
+    Perspective "perspective" Perspective NonNegative InitialKeyword("none"), perspective;
+    PerspectiveOrigin "perspectiveOrigin" PerspectiveOrigin None Center, perspective_origin;
 }
 
 impl AnimProp {
@@ -940,7 +1012,9 @@ impl AnimProp {
             || self.is_css_transform()
             || matches!(
                 self,
-                Self::Opacity
+                Self::Perspective
+                    | Self::PerspectiveOrigin
+                    | Self::Opacity
                     | Self::BoxShadow
                     | Self::Color
                     | Self::BackgroundColor
@@ -971,6 +1045,7 @@ impl AnimProp {
                 | Self::MotionScale
                 | Self::ScaleX
                 | Self::ScaleY
+                | Self::ScaleZ
                 | Self::MotionRotate
                 | Self::RotateZ
                 | Self::Skew
@@ -978,6 +1053,7 @@ impl AnimProp {
                 | Self::SkewY
                 | Self::OriginX
                 | Self::OriginY
+                | Self::OriginZ
                 | Self::MotionTransform
         )
     }
@@ -993,10 +1069,16 @@ impl AnimProp {
         self.is_motion_only() || self.is_css_transform()
     }
 
+    /// Whether a value of the property may be a `var()`, which is substituted from the element's custom
+    /// properties: the transform properties and the `perspective` ones.
+    pub(super) fn reads_vars(self) -> bool {
+        self.is_css_transform() || matches!(self, Self::Perspective | Self::PerspectiveOrigin)
+    }
+
     /// Whether a change of this property moves, scales or turns what the element paints. The origins
     /// only place a transform, so they are none.
     pub(super) fn is_transform(self) -> bool {
-        (self.is_motion_only() && !matches!(self, Self::OriginX | Self::OriginY))
+        (self.is_motion_only() && !matches!(self, Self::OriginX | Self::OriginY | Self::OriginZ))
             || (self.is_css_transform() && self != Self::TransformOrigin)
     }
 }
@@ -1341,6 +1423,7 @@ impl AnimProp {
                 | Self::OutlineOffset
                 | Self::Z
                 | Self::TranslateZ
+                | Self::OriginZ
                 | Self::TransformPerspective
         )
     }
@@ -1364,6 +1447,11 @@ impl AnimProp {
             Initial::Unresolved => None,
             Initial::Auto => Some(AnimValue::auto_keyword()),
             Initial::Center => Some(AnimValue::Percent(0.5)),
+            Initial::CenterOrigin => Some(transform_origin_value(&Origin {
+                x: TransformLength::fraction(0.5),
+                y: TransformLength::fraction(0.5),
+                z: 0.0,
+            })),
             Initial::NoTransform => Some(AnimValue::Transform(Vec::new())),
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(
@@ -1506,7 +1594,28 @@ impl AnimProp {
                     .ok_or_else(|| format!("motion {name} must be one or two CSS lengths, percentages or keywords"))?;
                 let origin = parse_origin(text, lengths)
                     .ok_or_else(|| format!("motion {name} is not a valid transform origin: {text}"))?;
-                origin_value(&origin)
+                transform_origin_value(&origin)
+            }
+            Kind::PerspectiveOrigin => {
+                let text = value
+                    .as_str()
+                    .ok_or_else(|| format!("motion {name} must be one or two CSS lengths, percentages or keywords"))?;
+                let (x, y) = parse_perspective_origin(text, lengths)
+                    .ok_or_else(|| format!("motion {name} is not a valid perspective origin: {text}"))?;
+                origin_value(&Origin { x, y, z: 0.0 })
+            }
+            Kind::Perspective => {
+                let text = match value {
+                    Value::Number(number) => format!("{number}px"),
+                    Value::String(text) => text.clone(),
+                    _ => return Err(format!("motion {name} must be none or a CSS length")),
+                };
+                match parse_perspective(&text, lengths)
+                    .ok_or_else(|| format!("motion {name} must be none or a non-negative CSS length: {text}"))?
+                {
+                    Some(distance) => AnimValue::Number(check_finite(name, f64::from(distance))?),
+                    None => AnimValue::Keyword(Some(NONE.to_string())),
+                }
             }
             Kind::Corner => {
                 let corner: CornerRadiusValue = serde_json::from_value(value.clone())
@@ -1686,10 +1795,13 @@ impl AnimProp {
                     | (Kind::Spacing, AnimValue::Number(_))
                     | (Kind::Corner | Kind::Spacing, AnimValue::Ellipse { .. })
                     | (Kind::Transform | Kind::Translate | Kind::Rotate | Kind::Scale, AnimValue::Transform(_))
+                    | (Kind::TransformOrigin, AnimValue::List(_))
                     | (
-                        Kind::TransformOrigin,
+                        Kind::PerspectiveOrigin,
                         AnimValue::Number(_) | AnimValue::Percent(_) | AnimValue::Calc { .. } | AnimValue::Ellipse { .. }
                     )
+                    | (Kind::Perspective, AnimValue::Number(_))
+                    | (Kind::Perspective, AnimValue::Keyword(Some(_)))
                     | (Kind::Color, AnimValue::Color(_))
                     | (Kind::Shadow, AnimValue::Shadows(_))
                     | (Kind::Variations, AnimValue::Variations(_))
@@ -1964,17 +2076,85 @@ mod tests {
     }
 
     #[test]
-    fn transform_origin_is_two_lengths() {
+    fn transform_origin_is_two_lengths_and_a_depth() {
         let colors = Colors::root();
         let origin = |text: &str| AnimProp::TransformOrigin.parse(&serde_json::json!(text), &colors).unwrap();
-        assert_eq!(origin("left top"), AnimValue::Number(0.0));
+        let list = |x: AnimValue, y: AnimValue, z: f64| {
+            AnimValue::List(ListValue { items: vec![x, y, AnimValue::Number(z)], slash: None })
+        };
+        assert_eq!(origin("left top"), list(AnimValue::Number(0.0), AnimValue::Number(0.0), 0.0));
+        assert_eq!(origin("0 50% 30px"), list(AnimValue::Number(0.0), AnimValue::Percent(0.5), 30.0));
+        let mut style = StyleDesc::default();
+        let value = origin("10px 25% -4px");
+        AnimProp::TransformOrigin.write(&mut style, value.clone());
+        assert_eq!(style.transform_origin.as_deref(), Some("10px 25% -4px"));
+        assert_eq!(AnimProp::TransformOrigin.read(&style, &colors), Some(value));
+        assert_eq!(
+            AnimProp::TransformOrigin.initial(None, &colors),
+            Some(list(AnimValue::Percent(0.5), AnimValue::Percent(0.5), 0.0))
+        );
+        assert!(AnimProp::TransformOrigin.accepts(&origin("1px 2px")));
+        // The depth blends beside the lengths.
+        let pair = crate::motion::value::pair("transformOrigin", &origin("0 0 0"), &origin("100% 50% 40px")).unwrap();
+        assert_eq!(pair.at(0.5), list(AnimValue::Percent(0.5), AnimValue::Percent(0.25), 20.0));
+    }
+
+    #[test]
+    fn perspective_is_a_length_or_none_and_none_flips_at_the_middle() {
+        let colors = Colors::root();
+        let perspective = |value: serde_json::Value| AnimProp::Perspective.parse(&value, &colors).unwrap();
+        assert_eq!(perspective(serde_json::json!(800)), AnimValue::Number(800.0));
+        assert_eq!(perspective(serde_json::json!("20em")), AnimValue::Number(320.0));
+        assert_eq!(perspective(serde_json::json!("none")), AnimValue::Keyword(Some("none".to_string())));
+        assert!(AnimProp::Perspective.parse(&serde_json::json!(-1), &colors).is_err());
+        let mut style = StyleDesc::default();
+        AnimProp::Perspective.write(&mut style, AnimValue::Number(250.0));
+        assert_eq!(style.perspective.as_deref(), Some("250px"));
+        assert_eq!(AnimProp::Perspective.read(&style, &colors), Some(AnimValue::Number(250.0)));
+        AnimProp::Perspective.write(&mut style, AnimValue::Number(-5.0));
+        assert_eq!(style.perspective.as_deref(), Some("0px"));
+        AnimProp::Perspective.write(&mut style, perspective(serde_json::json!("none")));
+        assert_eq!(AnimProp::Perspective.read(&style, &colors), Some(AnimValue::Keyword(Some("none".to_string()))));
+        assert_eq!(AnimProp::Perspective.initial(None, &colors), Some(AnimValue::Keyword(Some("none".to_string()))));
+        let pair = crate::motion::value::pair("perspective", &AnimValue::Number(200.0), &AnimValue::Number(800.0)).unwrap();
+        assert_eq!(pair.at(0.5), AnimValue::Number(500.0));
+        for prop in [AnimProp::Perspective, AnimProp::PerspectiveOrigin] {
+            assert!(prop.paints_only() && !prop.is_transform() && !prop.is_motion_only(), "{}", prop.name());
+            assert_eq!(AnimProp::from_css_name(prop.name()), Some(prop));
+            assert_eq!(AnimProp::from_name(prop.name()), Some(prop));
+        }
+    }
+
+    #[test]
+    fn perspective_origin_is_two_lengths() {
+        let colors = Colors::root();
+        let origin = |text: &str| AnimProp::PerspectiveOrigin.parse(&serde_json::json!(text), &colors).unwrap();
         assert_eq!(origin("0 50%"), AnimValue::ellipse((0.0, 0.0), (0.0, 0.5)));
+        assert!(AnimProp::PerspectiveOrigin.parse(&serde_json::json!("0 0 10px"), &colors).is_err());
         let mut style = StyleDesc::default();
         let value = origin("10px 25%");
-        AnimProp::TransformOrigin.write(&mut style, value.clone());
-        assert_eq!(AnimProp::TransformOrigin.read(&style, &colors), Some(value));
-        assert_eq!(AnimProp::TransformOrigin.initial(None, &colors), Some(AnimValue::Percent(0.5)));
-        assert!(AnimProp::TransformOrigin.accepts(&origin("1px 2px")));
+        AnimProp::PerspectiveOrigin.write(&mut style, value.clone());
+        assert_eq!(AnimProp::PerspectiveOrigin.read(&style, &colors), Some(value));
+        assert_eq!(AnimProp::PerspectiveOrigin.initial(None, &colors), Some(AnimValue::Percent(0.5)));
+    }
+
+    #[test]
+    fn scale_z_and_origin_z_are_keys_of_motion_beside_the_others() {
+        let colors = Colors::root();
+        for name in ["scaleZ", "originZ"] {
+            let prop = AnimProp::from_name(name).unwrap();
+            assert_eq!(prop.name(), name);
+            assert!(prop.paints_only() && prop.is_positional() && prop.is_motion_only(), "{name}");
+            assert!(AnimProp::from_css_name(name).is_none(), "{name} is no CSS property");
+        }
+        assert!(AnimProp::ScaleZ.is_transform() && !AnimProp::OriginZ.is_transform());
+        assert_eq!(AnimProp::ScaleZ.initial(None, &colors), Some(AnimValue::Number(1.0)));
+        assert_eq!(AnimProp::OriginZ.parse(&serde_json::json!("12px"), &colors), Ok(AnimValue::Number(12.0)));
+        assert!(AnimProp::OriginZ.parse(&serde_json::json!("50%"), &colors).is_err());
+        let mut style = StyleDesc::default();
+        AnimProp::ScaleZ.write(&mut style, AnimValue::Number(2.0));
+        AnimProp::OriginZ.write(&mut style, AnimValue::Number(30.0));
+        assert_eq!((style.scale_z, style.origin_z.map(|length| length.px)), (Some(2.0), Some(30.0)));
     }
 
     #[test]
@@ -2010,7 +2190,7 @@ mod tests {
         assert!(!AnimProp::Visibility.is_discrete());
         assert!(AnimProp::from_name("visibility").is_some());
         assert!(!AnimProp::from_css_name("opacity").unwrap().is_discrete());
-        assert!(AnimProp::from_css_name("perspective").is_none());
+        assert!(AnimProp::from_css_name("bogus").is_none());
     }
 
     #[test]

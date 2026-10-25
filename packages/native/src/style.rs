@@ -956,6 +956,8 @@ pub struct StyleDesc {
     pub scale_x: Option<f64>,
     #[serde(default, deserialize_with = "deserialize_scale_factor")]
     pub scale_y: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_scale_factor")]
+    pub scale_z: Option<f64>,
     /// An angle: a number is degrees, a string a CSS angle.
     #[serde(default, deserialize_with = "deserialize_angle")]
     pub motion_rotate: Option<f64>,
@@ -977,6 +979,9 @@ pub struct StyleDesc {
     pub origin_x: Option<LinearLength>,
     #[serde(default, deserialize_with = "deserialize_origin")]
     pub origin_y: Option<LinearLength>,
+    /// Motion's `originZ`, in px and not a percentage, replaces the z of `transformOrigin`.
+    #[serde(default, deserialize_with = "deserialize_depth")]
+    pub origin_z: Option<LinearLength>,
     /// Motion's `transform`, a CSS transform list that an `animate`, `initial`, variant or motion value
     /// sets. Set, it is the list and Motion's keys above are ignored, as Motion builds no transform from
     /// them when `transform` is set. `none` is set.
@@ -1360,6 +1365,7 @@ impl StyleDesc {
             painted.motion_scale = other.motion_scale;
             painted.scale_x = other.scale_x;
             painted.scale_y = other.scale_y;
+            painted.scale_z = other.scale_z;
             painted.motion_rotate = other.motion_rotate;
             painted.rotate_z = other.rotate_z;
             painted.skew = other.skew;
@@ -1367,6 +1373,7 @@ impl StyleDesc {
             painted.skew_y = other.skew_y;
             painted.origin_x = other.origin_x;
             painted.origin_y = other.origin_y;
+            painted.origin_z = other.origin_z;
             painted.motion_transform = other.motion_transform.clone();
         }
         painted == *other

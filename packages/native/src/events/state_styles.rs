@@ -204,7 +204,7 @@ pub(crate) fn overlay(base: &StyleDesc, over: &StyleDesc) -> StyleDesc {
         mask_border_width, mask_border_outset, mask_border_repeat, mask_border_mode, mask_border,
         clip_path, transform, translate, rotate, scale, transform_origin, perspective, perspective_origin,
         transform_style, backface_visibility, x, y, z, translate_x, translate_y, translate_z, transform_perspective,
-        motion_scale, scale_x, scale_y, motion_rotate, rotate_x, rotate_y, rotate_z, skew, skew_x, skew_y, origin_x, origin_y, motion_transform, font_style,
+        motion_scale, scale_x, scale_y, scale_z, motion_rotate, rotate_x, rotate_y, rotate_z, skew, skew_x, skew_y, origin_x, origin_y, origin_z, motion_transform, font_style,
         border, border_block, border_inline, border_top, border_right, border_bottom, border_left, border_top_color,
         border_right_color, border_bottom_color, border_left_color,
         border_width, border_top_width, border_right_width, border_bottom_width,

@@ -300,6 +300,7 @@ fn motion_list(style: &StyleDesc, lengths: &LengthContext) -> Option<Value> {
     scale(style.motion_scale, |factor| TransformFunction::Scale(factor, factor));
     scale(style.scale_x, |factor| TransformFunction::Scale(factor, 1.0));
     scale(style.scale_y, |factor| TransformFunction::Scale(1.0, factor));
+    scale(style.scale_z, |factor| TransformFunction::Scale3d(1.0, 1.0, factor));
     let mut turn = |degrees: Option<f64>, function: fn(f32) -> TransformFunction| {
         functions.extend(degrees.filter(|degrees| *degrees != 0.0).map(|degrees| function(degrees.to_radians() as f32)));
     };
@@ -322,14 +323,14 @@ enum Axis {
 
 /// `transform-origin` with the axes `originX` and `originY` replace.
 fn motion_origin(style: &StyleDesc, lengths: &LengthContext, declared: Option<Origin>) -> Option<Origin> {
-    if style.origin_x.is_none() && style.origin_y.is_none() {
+    if style.origin_x.is_none() && style.origin_y.is_none() && style.origin_z.is_none() {
         return declared;
     }
     let base = declared.unwrap_or(DEFAULT_ORIGIN);
     Some(Origin {
         x: style.origin_x.as_ref().map_or(base.x, |length| transform_length(length, lengths)),
         y: style.origin_y.as_ref().map_or(base.y, |length| transform_length(length, lengths)),
-        z: base.z,
+        z: style.origin_z.as_ref().map_or(base.z, |length| lengths.resolve(length, 0.0) as f32),
     })
 }
 
@@ -435,6 +436,7 @@ pub(crate) fn has_motion_keys(style: &StyleDesc) -> bool {
             style.motion_scale,
             style.scale_x,
             style.scale_y,
+            style.scale_z,
             style.motion_rotate,
             style.rotate_z,
             style.skew,
@@ -1232,7 +1234,7 @@ mod tests {
         let transform = of(
             &style(
                 r#"{"rotateY":-30,"rotateX":"0.1turn","motionRotate":20,"scaleX":2,"translateZ":"7px","translateX":5,"z":40,"y":20,"x":10,
-                    "transformPerspective":600,"rotateZ":10}"#,
+                    "scaleZ":3,"transformPerspective":600,"rotateZ":10}"#,
             ),
             &lengths(),
         )
@@ -1248,6 +1250,7 @@ mod tests {
                 TransformFunction::Translate(px(5.0), zero),
                 TransformFunction::Translate3d(zero, zero, 7.0),
                 TransformFunction::Scale(2.0, 1.0),
+                TransformFunction::Scale3d(1.0, 1.0, 3.0),
                 TransformFunction::Rotate(20f32.to_radians()),
                 TransformFunction::Rotate3d(1.0, 0.0, 0.0, 36f32.to_radians()),
                 TransformFunction::Rotate3d(0.0, 1.0, 0.0, -30f32.to_radians()),
@@ -1265,6 +1268,15 @@ mod tests {
         assert_eq!(origin(r#"{"x":1,"originY":"10px"}"#), (fraction(0.5), px(10.0)));
         assert_eq!(origin(r#"{"x":1,"originX":1,"transformOrigin":"0 0"}"#), (fraction(1.0), px(0.0)));
         assert_eq!(origin(r#"{"x":1,"originX":"25%","originY":0.75}"#), (fraction(0.25), fraction(0.75)));
+    }
+
+    #[test]
+    fn origin_z_replaces_the_depth_of_the_origin() {
+        let depth = |json: &str| of(&style(json), &lengths()).unwrap().origin_z;
+        assert_eq!(depth(r#"{"x":1,"originZ":30}"#), 30.0);
+        assert_eq!(depth(r#"{"x":1,"originZ":"2em","transformOrigin":"0 0 5px"}"#), 40.0);
+        assert_eq!(depth(r#"{"x":1,"originX":0,"transformOrigin":"0 0 5px"}"#), 5.0);
+        assert!(serde_json::from_str::<StyleDesc>(r#"{"originZ":"50%"}"#).is_err());
     }
 
     #[test]
