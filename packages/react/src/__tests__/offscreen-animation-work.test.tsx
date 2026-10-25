@@ -935,7 +935,7 @@ function SpringPage({ cards, place, card }: { cards: number; place: SpringPlace;
 }
 
 /** What a page of springs does over `ticks` ticks of 16 ms: the tick each completion was delivered in, and the dormant ticks. */
-async function springRun(place: SpringPlace, card: (index: number, report: (step: number | undefined) => void) => React.ReactNode, cards: number, ticks = SPRING_TICKS, probe?: () => number) {
+async function springRun(place: SpringPlace, card: (index: number, report: (step: number | undefined) => void) => React.ReactNode, cards: number, ticks = SPRING_TICKS, probe?: (renderer) => number) {
   const root = createTestRoot({ width: SIZE.width, height: SIZE.height })
   const renderer = root.renderer
   const done: Array<[number, number]> = []
@@ -950,7 +950,7 @@ async function springRun(place: SpringPlace, card: (index: number, report: (step
     renderer.resetBuildCounters()
     const before = read(renderer)
     for (step = 1; step <= ticks; step++) elapse(renderer)
-    return { done, dormantTicks: read(renderer).dormantTicks - before.dormantTicks, paintedFrames: read(renderer).paintedFrames - before.paintedFrames, probed: probe?.() }
+    return { done, dormantTicks: read(renderer).dormantTicks - before.dormantTicks, paintedFrames: read(renderer).paintedFrames - before.paintedFrames, probed: probe?.(renderer) }
   } finally {
     root.unmount()
   }
@@ -1058,4 +1058,47 @@ describeNative("a spring motion value that nobody sees", { timeout: TIMEOUT }, (
     expect(visible.probed).toBeGreaterThan(0)
     expect(visible.probed).toBeLessThan(1)
   })
+
+  /** A follower of a value that loops: it retargets in every frame it is sampled in, and never completes. */
+  function LoopFollowerCard({ index }: { index: number }) {
+    const source = useMotionValue(0)
+    const own = useSpring(source, SPRING)
+    useEffect(() => {
+      values[index] = own
+      const off = own.on("animationComplete", () => {})
+      const controls = animate(source, 1, { duration: 1, ease: "linear", repeat: Infinity, repeatType: "reverse" })
+      return () => {
+        off()
+        controls.stop()
+      }
+    }, [])
+    return (
+      <div style={{ height: 120, flexShrink: 0 }}>
+        <div testId={`bound-${index}`} style={{ width: 50, height: 20, backgroundColor: "#ff0000", opacity: own }} />
+      </div>
+    )
+  }
+
+  for (const place of ["culled", "skipped"] as const)
+    it.skipIf(!retained || verifying)(`reads what it reads in view after the same ticks, and when it is revealed: a follower of a loop, ${place}`, async () => {
+      const render = (index: number) => <LoopFollowerCard index={index} />
+      const probe = () => values[0].get()
+      for (const ticks of [30, 90]) {
+        const visible = await springRun("visible", render, 3, ticks, probe)
+        const hidden = await springRun(place, render, 20, ticks, probe)
+        expect(hidden.probed, `the value after ${ticks} ticks`).toBe(visible.probed)
+        expect(hidden.dormantTicks, "a dormant tick for each tick").toBeGreaterThanOrEqual(ticks - 2)
+      }
+      if (place === "culled") {
+        const reveal = (renderer) => {
+          renderer.scrollTo(renderer.findByTestId("scroller").id, 0, BEFORE, "instant")
+          renderer.flush()
+          elapse(renderer)
+          return values[0].get()
+        }
+        const visible = await springRun("visible", render, 3, 31, probe)
+        const hidden = await springRun(place, render, 20, 30, reveal)
+        expect(hidden.probed, "the value of the tick after it is revealed").toBe(visible.probed)
+      }
+    })
 })

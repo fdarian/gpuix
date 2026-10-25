@@ -2319,6 +2319,17 @@ mod tests {
     }
 
     #[test]
+    fn a_follower_of_a_loop_is_sampled_in_every_frame_though_the_loop_has_no_end() {
+        let (clock, mut store) = follower_of_a_source(1.0);
+        let forever = json!({ "duration": 1.0, "ease": "linear", "repeat": "Infinity" });
+        store.animate(0.0, &json!(100), Some(&forever), clock.at(100)).unwrap();
+        store.frame([], &[], clock.at(116));
+        assert_eq!(store.dormant_wake(clock.at(116)), Wake::NextFrame);
+        store.frame([], &[], clock.at(5000));
+        assert_eq!(store.dormant_wake(clock.at(5000)), Wake::NextFrame);
+    }
+
+    #[test]
     fn a_follower_of_a_value_that_moves_is_sampled_in_every_frame() {
         let (clock, mut store) = follower_of_a_source(1.0);
         store.animate(0.0, &json!(100), Some(&linear(1.0)), clock.at(100)).unwrap();

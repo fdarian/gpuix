@@ -257,21 +257,36 @@ impl MotionValues {
     /// When the animation of `id` next needs a sample for anything but what the value is, which is a
     /// function of the time: the instant it ends, which its listeners are told of. An animation
     /// that does not end (a loop without a count), or is held, has none. A spring ends where it
-    /// comes to rest, which is known while nothing moves its target; a follower of a value that is
-    /// not at rest is sampled in every frame, for its target changes with the frames it is sampled in.
+    /// comes to rest, which is known while nothing moves its target; a follower of a value that moves
+    /// is sampled in every frame, for its target changes with the frames it is sampled in.
     pub(super) fn wake(&self, id: ValueId, now: Instant) -> Wake {
         match self.nodes.get(&id) {
             Some(Node::Source(source)) => source.run.as_ref().map_or(Wake::Never, |run| run.wake(now)),
             Some(Node::Transform(transform)) => self.wake(transform.input, now),
             Some(Node::Spring(follower)) => {
-                let source = follower.source.map_or(Wake::Never, |source| self.wake(source, now));
-                if source == Wake::Never {
-                    follower.track.wake(now)
-                } else {
+                if follower.source.is_some_and(|source| self.moves(source, now)) {
                     Wake::NextFrame
+                } else {
+                    follower.track.wake(now)
                 }
             }
             None => Wake::Never,
+        }
+    }
+
+    /// Whether the value of `id` is changing by itself at `now`, a loop without a count included,
+    /// which has no wake. A follower of such a value retargets with every frame it is sampled in.
+    fn moves(&self, id: ValueId, now: Instant) -> bool {
+        match self.nodes.get(&id) {
+            Some(Node::Source(source)) => source
+                .run
+                .as_ref()
+                .is_some_and(|run| run.sample(now).phase == Phase::Running && run.playback.rate() != 0.0),
+            Some(Node::Transform(transform)) => self.moves(transform.input, now),
+            Some(Node::Spring(follower)) => {
+                follower.track.sample(now).active || follower.source.is_some_and(|source| self.moves(source, now))
+            }
+            None => false,
         }
     }
 
