@@ -62,7 +62,8 @@ function run(shape: Shape, loop: Loop, seconds: number) {
   renderer.flush()
   const scroller = renderer.findByTestId('scroller')!
   let top = 0
-  let direction = 1
+  // -1: the first frame flips it, and scrolling up from 0 clamps (#101).
+  let direction = -1
   let frame = 0
   const step = () => {
     if (loop === 'scroll') {

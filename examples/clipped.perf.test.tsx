@@ -123,8 +123,9 @@ const SCROLL_RETAIN_OVER_OFF = 1.05
 /**
  * What a frame of a scroller whose rows a scroll moves may cost with retention on against off:
  * the rows are put where the scroll put them and not built again, so a frame that scrolls a few
- * pixels does a fifth of the work. Measured: 0.17 to 0.2 at 3 px a frame, 0.35 at 400 and 0.5 at
- * 2000; the margin is for a loaded machine.
+ * pixels does a tenth of the work. Measured: 0.09 to 0.10 at 3 px a frame (1.2 ms against 13 ms),
+ * with the scroller really moving, which `retentionOverOff` checks every frame (#101); the margin
+ * is for a loaded machine.
  */
 const SCROLL_RELOCATED_OVER_OFF = 0.5
 
@@ -157,6 +158,9 @@ function Cards() {
   )
 }
 
+const ROUNDS = 12
+const FRAMES = 40
+
 /** p50 of a frame with retention on and off, in blocks of frames that alternate so drift hits both. */
 function retentionOverOff(node: React.ReactNode, a11y: boolean, scrolls: boolean): { on: number; off: number } {
   const root = createTestRoot(WINDOW)
@@ -171,8 +175,10 @@ function retentionOverOff(node: React.ReactNode, a11y: boolean, scrolls: boolean
       renderer.setInlineDraws(false)
       renderer.drawFrame()
     }
+    // Starts downwards: the first frame flips the sign, so a start of 1 would scroll up from 0,
+    // which clamps, and nothing would move (#101). The run goes 3 .. 240 .. 0 and back.
     let top = 0
-    let direction = 1
+    let direction = -1
     let count = 0
     const frame = () => {
       if (scroller) {
@@ -185,15 +191,30 @@ function retentionOverOff(node: React.ReactNode, a11y: boolean, scrolls: boolean
       }
     }
     const times = { on: [] as number[], off: [] as number[] }
-    for (let round = 0; round < 12; round++) {
+    const scrolled = { on: 0, off: 0 }
+    for (let round = 0; round < ROUNDS; round++) {
       for (const mode of round % 2 === 0 ? (['on', 'off'] as const) : (['off', 'on'] as const)) {
         renderer.setRetainEnabled(mode === 'on')
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < FRAMES; i++) {
+          const painted = renderer.getPaintedFrameCount()
           const start = performance.now()
           frame()
-          if (i >= 8) times[mode].push(performance.now() - start)
+          const elapsed = performance.now() - start
+          if (scroller) {
+            const offset = renderer.getScrollOffset(scroller.id)
+            if (!offset) throw new Error('the scroller has no scroll offset')
+            expect(offset[1], `${mode}: frame ${count} scrolls to ${top}`).toBe(top)
+            expect(renderer.getPaintedFrameCount() - painted, `${mode}: frame ${count} paints`).toBe(1)
+            scrolled[mode]++
+          }
+          if (i >= 8) times[mode].push(elapsed)
         }
       }
+    }
+    if (scroller) {
+      expect(count, 'the scroll covers a down and an up leg').toBeGreaterThan(160)
+      expect(scrolled.on, 'every frame run with retention on scrolled and painted').toBe(ROUNDS * FRAMES)
+      expect(scrolled.off, 'every frame run with retention off scrolled and painted').toBe(ROUNDS * FRAMES)
     }
     return { on: percentile(times.on, 0.5), off: percentile(times.off, 0.5) }
   } finally {
