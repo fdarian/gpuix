@@ -480,8 +480,9 @@ describeNative("animations in hidden content", { timeout: 120_000 }, () => {
       for (let tick = 0; tick < 12; tick++) elapse(page.renderer)
       page.renderer.resetBuildCounters()
       expect(page.renderer.getElementBounds(page.renderer.findByTestId("card-3")!.id), "the read lays the card out").toBeDefined()
-      // The motion and the path of the card: a layout pass builds the content it forces and nothing else.
-      expect(page.renderer.getBuildCounters().motionsSynced).toBeLessThanOrEqual(2)
+      // The motion and the path of the card: a layout pass builds the content it forces and nothing else. The verifier
+      // runs the pass twice.
+      expect(page.renderer.getBuildCounters().motionsSynced).toBeLessThanOrEqual(verifying ? 4 : 2)
     } finally {
       page.root.unmount()
     }
