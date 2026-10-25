@@ -2415,6 +2415,84 @@ describeNative("animations in auto content that is skipped", { timeout: 120_000 
   }
 })
 
+describeNative("animations in auto content that is near but clipped away by an overflow hidden scroller", { timeout: 120_000 }, () => {
+  const TICKS = 60
+  const CARDS = 3
+  const CLIP = 120
+
+  /** The cards are `gap` px down a scroller that shows `CLIP`: inside the 150% margin of the window, and outside what the scroller shows once `gap` or the scroll takes them out. */
+  const Page = ({ gap, cards, kinds }: { gap: number; cards: number; kinds?: string[] }) => (
+    <div style={{ width: SIZE.width, height: SIZE.height, display: "flex", flexDirection: "column" }}>
+      <div testId="scroller" style={{ height: CLIP, flexShrink: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ height: gap, flexShrink: 0 }} />
+        {Array.from({ length: cards }, (_, index) => (
+          <div key={index} testId={`near-${index}`} style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px", flexShrink: 0 } as CSSProperties}>
+            <AnimatedCard index={index} kinds={kinds} />
+          </div>
+        ))}
+        <div style={{ height: 600, flexShrink: 0 }} />
+      </div>
+    </div>
+  )
+
+  type Scene = { name: string; gap: number; then?: (root: ReturnType<typeof createTestRoot>, props: { cards: number; kinds?: string[] }) => void }
+
+  /** The loops run for 10 ticks where the scene begins, drawn or not, and then the scene moves the cards out of the clip. */
+  const ABOVE: Scene = {
+    name: "visible when the loop began, scrolled out above the clip",
+    gap: 20,
+    then: (root) => root.renderer.scrollTo(root.renderer.findByTestId("scroller")!.id, 0, 400, "instant"),
+  }
+  const BELOW: Scene = { name: "below the clip from the start", gap: 400 }
+  const PUSHED: Scene = {
+    name: "visible when the loop began, pushed out below the clip",
+    gap: 20,
+    then: (root, props) => root.render(<Page gap={400} {...props} />),
+  }
+
+  const ticksOf = (scene: Scene, cards: number, kinds?: string[]) => {
+    const root = createTestRoot(SIZE)
+    const renderer = root.renderer
+    try {
+      renderer.clockPause()
+      root.render(<Page gap={scene.gap} cards={cards} kinds={kinds} />)
+      renderer.flush()
+      renderer.setInlineDraws(false)
+      renderer.setA11yActive(false)
+      for (let tick = 0; tick < 10; tick++) elapse(renderer)
+      scene.then?.(root, { cards, kinds })
+      const ticks = spent(renderer, TICKS, 12)
+      if (verifying) expect(renderer.getRetainedCounters().mismatches, renderer.getRetentionMismatches().join("\n")).toBe(0)
+      return ticks
+    } finally {
+      root.unmount()
+    }
+  }
+
+  /** What a page with no cards costs: the cards cost nothing over it. */
+  const costsNothing = (scene: Scene, kinds?: string[]) => {
+    const empty = ticksOf(scene, 0, kinds)
+    const full = ticksOf(scene, CARDS, kinds)
+    expect(full).toEqual(empty)
+    expect(full).toMatchObject({ paintedFrames: 0, patchedFrames: 0, declines: {}, dormantTicks: 0, motionsSynced: 0 })
+  }
+
+  const KINDS = [{ name: "a CSS loop", kinds: ["css"] }, { name: "motion, motion.path and CSS loops", kinds: undefined }]
+
+  describe.each(KINDS)("$name", ({ kinds }) => {
+    it(`costs a page what an empty one costs: ${ABOVE.name}`, () => costsNothing(ABOVE, kinds))
+
+    // gpui culls a child by its box against the content mask, and the mask inside a host the scroller clips away is empty:
+    // `Bounds::intersect` puts it at the later-starting edge, which is the top of the host for content below the clip, so
+    // the box of its child touches the mask and the child is painted under an empty mask. Nothing is culled, so nothing
+    // goes dormant (`Dormancy::holds` asks `was_culled`), and `Surroundings` of a root under an empty mask is not captured
+    // (`capture_surroundings`, patch.rs), so no patch unit is registered: every tick is `UnknownUnit` and drawn whole.
+    // Above the clip the mask sits at the clip, the child is apart from it and is culled. Remove `fails` with the fix.
+    it.fails(`costs a page what an empty one costs: ${BELOW.name}`, () => costsNothing(BELOW, kinds))
+    it.fails(`costs a page what an empty one costs: ${PUSHED.name}`, () => costsNothing(PUSHED, kinds))
+  })
+})
+
 defineAnimationEventTests("auto")
 
 describeNative("a read of a line in 300 hidden cards, after a paint-only write and a painted frame", { timeout: 120_000 }, () => {
