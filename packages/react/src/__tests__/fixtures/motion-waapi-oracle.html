@@ -1,0 +1,759 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Motion 14.1.0: which animations reach element.getAnimations()</title>
+<!-- Run by motion-waapi-oracle.py, which builds vendor/motion.js and vendor/motion-react.js next to this page. Every
+     case runs in its own page (?case=<id>); the result is the JSON the python script writes. -->
+<style>
+  #stage { position: relative; }
+  .box { position: absolute; left: 0; top: 0; width: 100px; height: 50px; color: rgb(10, 20, 30); background-color: rgb(200, 200, 200); }
+</style>
+<script src="vendor/motion.js"></script>
+<script src="vendor/motion-react.js"></script>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+(function () {
+/** What the case handed to Motion, in order: `animate()` calls and renders of a `motion.div`, with the keyframes,
+ *  options and props as data (a function is "<function>"), so a replay can make the same calls. */
+const CALLS = [];
+const plain = (value) => JSON.parse(JSON.stringify(value === undefined ? null : value, (k, v) => (typeof v === "function" ? "<function>" : v === Infinity ? "Infinity" : v === -Infinity ? "-Infinity" : v)));
+const animate = (el, keyframes, options) => {
+  CALLS.push({ kind: "animate", t: round(performance.now() - (window.__t0 || 0)), keyframes: plain(keyframes), options: plain(options) });
+  return Motion.animate(el, keyframes, options);
+};
+const R = window.MotionReact;
+const h = R.React.createElement;
+const stage = document.getElementById("stage");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const round = (n) => (typeof n === "number" && isFinite(n) ? Math.round(n * 10) / 10 : n);
+const peek = (f) => { try { return f(); } catch (e) { return "<error: " + e.message + ">"; } };
+
+const CSS_NAME = { x: "transform", y: "transform", scale: "transform", rotate: "transform", scaleX: "transform" };
+
+function describeAnimation(a) {
+  const eff = a.effect;
+  const t = eff.getTiming();
+  return {
+    ctor: a.constructor.name,
+    id: a.id,
+    playState: a.playState,
+    pending: a.pending,
+    currentTime: round(a.currentTime),
+    playbackRate: a.playbackRate,
+    startTimeRelative: a.startTime === null ? null : round(a.startTime - document.timeline.currentTime),
+    timing: {
+      delay: t.delay, endDelay: t.endDelay, duration: t.duration, iterations: t.iterations,
+      direction: t.direction, fill: t.fill, easing: t.easing, iterationStart: t.iterationStart,
+    },
+    keyframes: eff.getKeyframes().map((k) => {
+      const props = {};
+      for (const key of Object.keys(k)) {
+        if (key !== "offset" && key !== "computedOffset" && key !== "easing" && key !== "composite") props[key] = k[key];
+      }
+      return { offset: k.offset, easing: k.easing, props };
+    }),
+  };
+}
+
+function describeTracked(a) {
+  return { ctor: a.constructor.name, playState: a.playState, pending: a.pending, currentTime: round(a.currentTime), playbackRate: a.playbackRate, listed: a.effect && a.effect.target ? a.effect.target.getAnimations().includes(a) : false };
+}
+
+function describeCtrl(ctrl) {
+  if (!ctrl) return null;
+  return {
+    ctor: ctrl.constructor.name,
+    state: peek(() => ctrl.state),
+    time: peek(() => round(ctrl.time)),
+    speed: peek(() => ctrl.speed),
+    duration: peek(() => round(ctrl.duration)),
+  };
+}
+
+class Ctx {
+  constructor(def) { this.def = def; this.samples = []; this.tracked = {}; this.ctrl = null; this.ctrls = {}; this.watch = def.watch || []; this.t0 = window.__t0 = performance.now(); this.el = null; }
+  start() { this.t0 = window.__t0 = performance.now(); }
+  async at(ms) { const d = this.t0 + ms - performance.now(); if (d > 0) await sleep(d); }
+  track(name, a) { this.tracked[name] = a; }
+  sample(label) {
+    const el = this.el;
+    const anims = el ? el.getAnimations() : [];
+    const cs = el ? getComputedStyle(el) : null;
+    const computed = {};
+    for (const p of this.watch) computed[p] = cs[p];
+    const tracked = {};
+    for (const name of Object.keys(this.tracked)) tracked[name] = describeTracked(this.tracked[name]);
+    // Reading ctrl.state/time/speed goes through AsyncMotionValueAnimation.animation, which flushes every pending
+    // keyframe resolver; only controls cases opt in, and the getAnimations() read above happens first.
+    const ctrls = {};
+    if (this.def.peek) for (const name of Object.keys(this.ctrls)) ctrls[name] = describeCtrl(this.ctrls[name]);
+    this.samples.push({
+      label, t: round(performance.now() - this.t0), calls: CALLS.length, n: anims.length,
+      anims: anims.map(describeAnimation),
+      inlineStyle: el ? el.getAttribute("style") : null,
+      computed, tracked,
+      ctrl: this.def.peek ? describeCtrl(this.ctrl) : null,
+      ctrls,
+    });
+  }
+  async sampleAt(ms, label) { await this.at(ms); this.sample(label || "t=" + ms); }
+  async plan(list) {
+    const sorted = list.slice().sort((a, b) => a[0] - b[0]);
+    for (const e of sorted) await this.sampleAt(e[0], e[1]);
+  }
+}
+
+const defs = [];
+function watchFor(kf) {
+  const out = new Set();
+  for (const k of Object.keys(kf)) out.add(CSS_NAME[k] || k);
+  return [...out];
+}
+const SPRING_TIMES = [[0, "sync"], [40, "t40"], [150, "t150"], [400, "t400"], [1000, "t1000"], [2500, "t2500"], [5000, "t5000"]];
+
+// T: one animate() call, sampled on a standard timeline derived from the options.
+function T(id, group, desc, kf, opts, extra) {
+  extra = extra || {};
+  defs.push({
+    id, group, desc, kind: "vanilla", watch: watchFor(kf), style: extra.style || "", tag: extra.tag,
+    async run(c) {
+      c.ctrl = animate(c.el, kf, opts);
+      const o = opts || {};
+      if (extra.times) return c.plan(extra.times);
+      if (o.type === "spring" || o.duration === undefined || o.damping !== undefined || o.stiffness !== undefined) return c.plan(SPRING_TIMES);
+      const delay = (o.delay || 0) * 1000, dur = o.duration * 1000, rep = o.repeat === Infinity ? null : (o.repeat || 0), rd = (o.repeatDelay || 0) * 1000;
+      const plan = [[0, "sync"], [40, "t40"]];
+      if (delay >= 100) plan.push([delay / 2, "in-delay"]);
+      plan.push([delay + dur / 2, "mid"]);
+      if (rep === null) {
+        plan.push([delay + dur * 1.5, "mid-iter2"], [delay + dur * 3.2, "iter4"]);
+      } else {
+        if (rep > 0) plan.push([delay + dur + rd + dur / 2, "mid-iter2"]);
+        const total = delay + dur * (rep + 1) + rd * rep;
+        plan.push([total + 60, "after-finish"], [total + 500, "finish+500"]);
+      }
+      return c.plan(plan);
+    },
+  });
+}
+// C: free-form flow
+function C(id, group, desc, watch, run, extra) {
+  defs.push({ id, group, desc, kind: "vanilla", watch, style: (extra && extra.style) || "", run });
+}
+// RC: React motion.div flow; c.render(props) creates/updates the element
+function RC(id, desc, watch, run) {
+  defs.push({ id, group: "react", desc, kind: "react", watch, style: "", run });
+}
+
+const D = 0.4;
+// ---- opacity tween / easing
+T("opacity-default", "opacity", "opacity 1->0.5, no options", { opacity: 0.5 }, undefined, { times: [[0, "sync"], [40, "t40"], [150, "t150"], [300, "t300"], [600, "t600"], [1500, "t1500"]] });
+T("opacity-tween", "opacity", "opacity tween 0.4s default ease", { opacity: 0.5 }, { duration: D });
+T("opacity-tween-linear", "opacity", "ease linear", { opacity: 0.5 }, { duration: D, ease: "linear" });
+T("opacity-tween-easeIn", "opacity", "ease easeIn", { opacity: 0.5 }, { duration: D, ease: "easeIn" });
+T("opacity-tween-easeOut", "opacity", "ease easeOut", { opacity: 0.5 }, { duration: D, ease: "easeOut" });
+T("opacity-tween-easeInOut", "opacity", "ease easeInOut", { opacity: 0.5 }, { duration: D, ease: "easeInOut" });
+T("opacity-tween-bezier", "opacity", "ease [0.1,0.2,0.3,0.4]", { opacity: 0.5 }, { duration: D, ease: [0.1, 0.2, 0.3, 0.4] });
+T("opacity-tween-circOut", "opacity", "ease circOut (JS easing)", { opacity: 0.5 }, { duration: D, ease: "circOut" });
+T("opacity-tween-backOut", "opacity", "ease backOut", { opacity: 0.5 }, { duration: D, ease: "backOut" });
+T("opacity-tween-anticipate", "opacity", "ease anticipate", { opacity: 0.5 }, { duration: D, ease: "anticipate" });
+T("opacity-tween-fn", "opacity", "ease function x=>x*x", { opacity: 0.5 }, { duration: D, ease: (x) => x * x });
+T("opacity-tween-from-to", "opacity", "opacity [0,1] explicit", { opacity: [0, 1] }, { duration: D, ease: "linear" });
+T("opacity-tween-zero-duration", "opacity", "duration 0", { opacity: 0.5 }, { duration: 0 }, { times: [[0, "sync"], [40, "t40"], [300, "t300"]] });
+T("opacity-no-change", "opacity", "opacity 1->1 (no change)", { opacity: 1 }, { duration: D }, { times: [[0, "sync"], [40, "t40"], [200, "mid"], [600, "after"]] });
+T("opacity-wildcard", "opacity", "opacity [null,0.5]", { opacity: [null, 0.5] }, { duration: D, ease: "linear" });
+// ---- spring
+T("opacity-spring-default", "spring", "type spring, nothing else", { opacity: 0.5 }, { type: "spring" });
+T("opacity-spring-stiff-damp", "spring", "spring stiffness 300 damping 20", { opacity: 0.5 }, { type: "spring", stiffness: 300, damping: 20 });
+T("opacity-spring-stiff-only", "spring", "stiffness 300 without type", { opacity: 0.5 }, { stiffness: 300 });
+T("opacity-spring-damp-only", "spring", "damping 20 without type", { opacity: 0.5 }, { damping: 20 });
+T("opacity-spring-duration-bounce", "spring", "spring duration .5 bounce .3", { opacity: 0.5 }, { type: "spring", duration: 0.5, bounce: 0.3 }, { times: [[0, "sync"], [40, "t40"], [250, "mid"], [560, "after-finish"], [1500, "late"]] });
+T("opacity-spring-visualDuration", "spring", "spring visualDuration .4 bounce .2", { opacity: 0.5 }, { type: "spring", visualDuration: 0.4, bounce: 0.2 });
+T("opacity-spring-damping0", "spring", "spring damping 0", { opacity: 0.5 }, { type: "spring", damping: 0, stiffness: 100 }, { times: [[0, "sync"], [40, "t40"], [400, "t400"], [2000, "t2000"], [5000, "t5000"]] });
+T("opacity-spring-damping0-notype", "spring", "damping 0, no type", { opacity: 0.5 }, { damping: 0 }, { times: [[0, "sync"], [40, "t40"], [400, "t400"], [2000, "t2000"], [5000, "t5000"]] });
+T("opacity-spring-delay", "spring", "spring with delay .3", { opacity: 0.5 }, { type: "spring", delay: 0.3 });
+T("opacity-spring-repeat", "spring", "spring repeat 1", { opacity: 0.5 }, { type: "spring", repeat: 1 }, { times: [[0, "sync"], [40, "t40"], [1000, "t1000"], [2500, "t2500"], [5000, "t5000"], [8000, "t8000"]] });
+T("opacity-spring-repeat-reverse", "spring", "spring repeat 1 reverse", { opacity: 0.5 }, { type: "spring", repeat: 1, repeatType: "reverse" }, { times: [[0, "sync"], [40, "t40"], [1000, "t1000"], [2500, "t2500"], [5000, "t5000"], [8000, "t8000"]] });
+T("opacity-spring-keyframes3", "spring", "spring with 3 keyframes", { opacity: [1, 0.2, 0.8] }, { type: "spring" });
+T("opacity-spring-mass", "spring", "spring mass 2 stiffness 200 damping 10", { opacity: 0.5 }, { type: "spring", mass: 2, stiffness: 200, damping: 10 });
+T("opacity-inertia", "spring", "type inertia", { opacity: 0.5 }, { type: "inertia", velocity: 1 }, { times: [[0, "sync"], [40, "t40"], [400, "t400"], [2000, "t2000"]] });
+// ---- keyframes
+T("opacity-keyframes", "keyframes", "opacity [1,0.2,0.8] no times", { opacity: [1, 0.2, 0.8] }, { duration: D });
+T("opacity-keyframes-times", "keyframes", "opacity [1,0.2,0.8] times [0,0.3,1]", { opacity: [1, 0.2, 0.8] }, { duration: D, times: [0, 0.3, 1], ease: "linear" });
+T("opacity-keyframes-times-ease-arr", "keyframes", "keyframes + times + ease array", { opacity: [1, 0.2, 0.8] }, { duration: D, times: [0, 0.3, 1], ease: ["easeIn", "easeOut"] });
+T("opacity-keyframes-ease-single", "keyframes", "keyframes + ease easeInOut", { opacity: [1, 0.2, 0.8] }, { duration: D, ease: "easeInOut" });
+T("opacity-keyframes-4", "keyframes", "opacity 4 keyframes + times", { opacity: [0, 1, 0.5, 1] }, { duration: D, times: [0, 0.25, 0.5, 1], ease: "linear" });
+T("opacity-keyframes-times-short", "keyframes", "times not starting at 0/ending at 1", { opacity: [1, 0.2, 0.8] }, { duration: D, times: [0.2, 0.5, 0.9], ease: "linear" });
+// ---- colour
+T("bg-hex", "color", "backgroundColor #hex->#hex (inline start)", { backgroundColor: "#0000ff" }, { duration: D, ease: "linear" }, { style: "background-color: #ff0000" });
+T("bg-hex-computed", "color", "backgroundColor -> #hex, start from stylesheet", { backgroundColor: "#0000ff" }, { duration: D, ease: "linear" });
+T("bg-rgb", "color", "backgroundColor rgb()->rgb()", { backgroundColor: "rgb(0, 0, 255)" }, { duration: D, ease: "linear" }, { style: "background-color: rgb(255, 0, 0)" });
+T("bg-rgba", "color", "backgroundColor rgba alpha", { backgroundColor: "rgba(0, 0, 255, 0.5)" }, { duration: D, ease: "linear" }, { style: "background-color: rgba(255, 0, 0, 1)" });
+T("bg-hsl", "color", "backgroundColor hsl()", { backgroundColor: "hsl(240, 100%, 50%)" }, { duration: D, ease: "linear" }, { style: "background-color: hsl(0, 100%, 50%)" });
+T("bg-oklch", "color", "backgroundColor oklch", { backgroundColor: "oklch(0.5 0.2 250)" }, { duration: D, ease: "linear" }, { style: "background-color: oklch(0.7 0.2 30)" });
+T("bg-keyframes-hex", "color", "backgroundColor 3 hex keyframes", { backgroundColor: ["#ff0000", "#00ff00", "#0000ff"] }, { duration: D });
+T("bg-hex-spring", "color", "backgroundColor hex spring", { backgroundColor: "#0000ff" }, { type: "spring" }, { style: "background-color: #ff0000" });
+T("color-hex", "color", "color #hex->#hex (expect JS)", { color: "#0000ff" }, { duration: D, ease: "linear" }, { style: "color: #ff0000" });
+T("color-rgb", "color", "color rgb", { color: "rgb(0, 0, 255)" }, { duration: D, ease: "linear" }, { style: "color: rgb(255, 0, 0)" });
+T("color-oklch", "color", "color oklch->oklch (expect WAAPI)", { color: "oklch(0.5 0.2 250)" }, { duration: D, ease: "linear" }, { style: "color: oklch(0.7 0.2 30)" });
+T("color-oklch-from-computed", "color", "color -> oklch, start from computed rgb", { color: "oklch(0.5 0.2 250)" }, { duration: D, ease: "linear" });
+T("color-oklab", "color", "color oklab", { color: "oklab(0.5 0.1 0.1)" }, { duration: D, ease: "linear" }, { style: "color: oklab(0.7 0.1 -0.1)" });
+T("color-lab", "color", "color lab", { color: "lab(50% 40 59)" }, { duration: D, ease: "linear" }, { style: "color: lab(70% 20 -30)" });
+T("color-mix", "color", "color color-mix()", { color: "color-mix(in srgb, red 50%, blue)" }, { duration: D, ease: "linear" }, { style: "color: red" });
+T("color-oklch-delay", "color", "color oklch delay .2", { color: "oklch(0.5 0.2 250)" }, { duration: D, delay: 0.2, ease: "linear" }, { style: "color: oklch(0.7 0.2 30)" });
+T("color-oklch-mirror", "color", "color oklch repeat mirror (gate fails)", { color: "oklch(0.5 0.2 250)" }, { duration: D, repeat: 1, repeatType: "mirror", ease: "linear" }, { style: "color: oklch(0.7 0.2 30)" });
+T("bg-oklch-to-hex", "color", "backgroundColor oklch -> hex", { backgroundColor: "#0000ff" }, { duration: D, ease: "linear" }, { style: "background-color: oklch(0.7 0.2 30)" });
+T("borderColor-hex", "color", "borderColor hex", { borderColor: "#0000ff" }, { duration: D, ease: "linear" }, { style: "border: 2px solid #ff0000" });
+T("borderColor-oklch", "color", "borderColor oklch", { borderColor: "oklch(0.5 0.2 250)" }, { duration: D, ease: "linear" }, { style: "border: 2px solid oklch(0.7 0.2 30)" });
+T("outlineColor-oklch", "color", "outlineColor oklch", { outlineColor: "oklch(0.5 0.2 250)" }, { duration: D, ease: "linear" }, { style: "outline: 2px solid oklch(0.7 0.2 30)" });
+// ---- other properties
+T("width", "props", "width px (expect JS)", { width: 200 }, { duration: D, ease: "linear" });
+T("height-str", "props", "height '80px'", { height: "80px" }, { duration: D, ease: "linear" });
+T("borderRadius", "props", "borderRadius (JS)", { borderRadius: 20 }, { duration: D, ease: "linear" });
+T("x", "props", "x (JS)", { x: 100 }, { duration: D, ease: "linear" });
+T("y", "props", "y (JS)", { y: 100 }, { duration: D, ease: "linear" });
+T("scale", "props", "scale (JS)", { scale: 2 }, { duration: D, ease: "linear" });
+T("rotate", "props", "rotate (JS)", { rotate: 90 }, { duration: D, ease: "linear" });
+T("transform-str", "props", "transform string translateX (inline start)", { transform: "translateX(100px)" }, { duration: D, ease: "linear" }, { style: "transform: translateX(0px)" });
+T("transform-str-from-none", "props", "transform string, start from none", { transform: "translateX(100px)" }, { duration: D, ease: "linear" });
+T("transform-str-keyframes", "props", "transform string keyframes", { transform: ["translateX(0px)", "translateX(100px)"] }, { duration: D, ease: "linear" });
+T("transform-str-spring", "props", "transform string spring", { transform: "translateX(100px)" }, { type: "spring" }, { style: "transform: translateX(0px)" });
+T("transform-rotate-str", "props", "transform rotate(0)->rotate(90deg)", { transform: "rotate(90deg)" }, { duration: D, ease: "linear" }, { style: "transform: rotate(0deg)" });
+T("filter", "props", "filter blur(0px)->blur(5px)", { filter: "blur(5px)" }, { duration: D, ease: "linear" }, { style: "filter: blur(0px)" });
+T("filter-from-none", "props", "filter start none -> blur(5px)", { filter: "blur(5px)" }, { duration: D, ease: "linear" });
+T("filter-brightness", "props", "filter brightness(1)->brightness(0.5)", { filter: "brightness(0.5)" }, { duration: D, ease: "linear" }, { style: "filter: brightness(1)" });
+T("clipPath", "props", "clipPath inset", { clipPath: "inset(50px 0px 0px 0px)" }, { duration: D, ease: "linear" }, { style: "clip-path: inset(0px 0px 0px 0px)" });
+T("css-var", "props", "--var", { "--foo": "10px" }, { duration: D, ease: "linear" }, { style: "--foo: 0px" });
+// ---- multi-property
+T("multi-opacity-bg", "multi", "opacity + backgroundColor", { opacity: 0.5, backgroundColor: "#0000ff" }, { duration: D, ease: "linear" }, { style: "background-color: #ff0000" });
+T("multi-opacity-width", "multi", "opacity + width", { opacity: 0.5, width: 200 }, { duration: D, ease: "linear" });
+T("multi-opacity-x", "multi", "opacity + x", { opacity: 0.5, x: 100 }, { duration: D, ease: "linear" });
+T("multi-opacity-filter-clip", "multi", "opacity + filter + clipPath", { opacity: 0.5, filter: "blur(5px)", clipPath: "inset(10px 0px 0px 0px)" }, { duration: D, ease: "linear" }, { style: "filter: blur(0px); clip-path: inset(0px 0px 0px 0px)" });
+T("multi-per-prop-transition", "multi", "opacity (tween) + backgroundColor (spring) via per-value transition", { opacity: 0.5, backgroundColor: "#0000ff" }, { duration: D, ease: "linear", backgroundColor: { type: "spring" } }, { style: "background-color: #ff0000", times: SPRING_TIMES });
+// ---- repeat
+T("repeat-loop", "repeat", "repeat 2 loop", { opacity: 0.2 }, { duration: 0.3, repeat: 2, repeatType: "loop", ease: "linear" });
+T("repeat-default-type", "repeat", "repeat 2 (repeatType default)", { opacity: 0.2 }, { duration: 0.3, repeat: 2, ease: "linear" });
+T("repeat-reverse", "repeat", "repeat 2 reverse", { opacity: 0.2 }, { duration: 0.3, repeat: 2, repeatType: "reverse", ease: "linear" });
+T("repeat-mirror", "repeat", "repeat 2 mirror (gate fails)", { opacity: 0.2 }, { duration: 0.3, repeat: 2, repeatType: "mirror", ease: "linear" });
+T("repeat-infinity-loop", "repeat", "repeat Infinity loop", { opacity: 0.2 }, { duration: 0.3, repeat: Infinity, ease: "linear" });
+T("repeat-infinity-reverse", "repeat", "repeat Infinity reverse", { opacity: 0.2 }, { duration: 0.3, repeat: Infinity, repeatType: "reverse", ease: "linear" });
+T("repeat-infinity-mirror", "repeat", "repeat Infinity mirror", { opacity: 0.2 }, { duration: 0.3, repeat: Infinity, repeatType: "mirror", ease: "linear" });
+T("repeat-delay", "repeat", "repeat 1 repeatDelay .2 (gate fails)", { opacity: 0.2 }, { duration: 0.3, repeat: 1, repeatDelay: 0.2, ease: "linear" });
+T("repeat-delay-reverse", "repeat", "repeat 1 reverse repeatDelay .2", { opacity: 0.2 }, { duration: 0.3, repeat: 1, repeatType: "reverse", repeatDelay: 0.2, ease: "linear" });
+T("repeat-delay-no-repeat", "repeat", "repeatDelay .2 without repeat", { opacity: 0.2 }, { duration: 0.3, repeatDelay: 0.2, ease: "linear" });
+T("repeat-0-delay-explicit", "repeat", "repeat 1 repeatDelay 0", { opacity: 0.2 }, { duration: 0.3, repeat: 1, repeatDelay: 0, ease: "linear" });
+T("repeat-keyframes-reverse", "repeat", "keyframes+times repeat 1 reverse", { opacity: [1, 0.2, 0.8] }, { duration: 0.3, times: [0, 0.3, 1], repeat: 1, repeatType: "reverse", ease: "linear" });
+T("repeat-bg-reverse", "repeat", "backgroundColor repeat 1 reverse", { backgroundColor: "#0000ff" }, { duration: 0.3, repeat: 1, repeatType: "reverse", ease: "linear" }, { style: "background-color: #ff0000" });
+T("repeat-delay-and-delay", "repeat", "delay .2 repeat 1 reverse", { opacity: 0.2 }, { duration: 0.3, delay: 0.2, repeat: 1, repeatType: "reverse", ease: "linear" });
+// ---- delay
+T("delay", "delay", "delay .3", { opacity: 0.5 }, { duration: D, delay: 0.3, ease: "linear" });
+T("delay-negative", "delay", "delay -.2", { opacity: 0.5 }, { duration: D, delay: -0.2, ease: "linear" });
+T("delay-bg", "delay", "backgroundColor delay .3", { backgroundColor: "#0000ff" }, { duration: D, delay: 0.3, ease: "linear" }, { style: "background-color: #ff0000" });
+T("delay-width", "delay", "width delay .3 (JS)", { width: 200 }, { duration: D, delay: 0.3, ease: "linear" });
+T("delay-long", "delay", "delay 1s duration .2", { opacity: 0.5 }, { duration: 0.2, delay: 1, ease: "linear" }, { times: [[0, "sync"], [40, "t40"], [500, "in-delay"], [1100, "mid"], [1500, "after"]] });
+// ---- damping 0 on tween-ish
+T("damping0-tween", "gate", "damping 0 with duration tween", { opacity: 0.5 }, { duration: D, damping: 0 }, { times: [[0, "sync"], [40, "t40"], [200, "mid"], [600, "after"], [3000, "late"]] });
+T("damping-set-tween", "gate", "damping 10 with duration tween", { opacity: 0.5 }, { duration: D, damping: 10 }, { times: [[0, "sync"], [40, "t40"], [200, "mid"], [600, "after"], [3000, "late"]] });
+
+// ---- interrupts
+C("int-opacity-tween", "interrupt", "tween 1->0 .6s; at 250ms second animate ->1 .6s (same key)", ["opacity"], async (c) => {
+  c.ctrls.first = c.ctrl = animate(c.el, { opacity: 0 }, { duration: 0.6, ease: "linear" });
+  await c.sampleAt(0, "sync");
+  await c.at(100); c.track("first", c.el.getAnimations()[0]); c.sample("t100");
+  await c.at(250);
+  c.ctrls.second = animate(c.el, { opacity: 1 }, { duration: 0.6, ease: "linear" });
+  c.sample("sync-after-2nd");
+  await c.sampleAt(280, "2nd+30");
+  c.track("second", c.el.getAnimations().find((a) => a !== c.tracked.first) || c.el.getAnimations()[0]);
+  await c.plan([[300, "t300"], [550, "2nd+300"], [950, "2nd-finish+100"], [1500, "late"]]);
+});
+C("int-during-delay", "interrupt", "tween delay .3; at 150ms (in delay) second animate", ["opacity"], async (c) => {
+  c.ctrls.first = animate(c.el, { opacity: 0 }, { duration: 0.5, delay: 0.3, ease: "linear" });
+  await c.sampleAt(100, "t100");
+  c.track("first", c.el.getAnimations()[0]);
+  await c.at(150);
+  c.ctrls.second = animate(c.el, { opacity: 0.8 }, { duration: 0.4, ease: "linear" });
+  c.sample("sync-after-2nd");
+  await c.plan([[190, "2nd+40"], [350, "mid2"], [700, "after2"], [1200, "late"]]);
+});
+C("int-waapi-then-js-gate", "interrupt", "WAAPI tween then second opacity with repeatDelay (JS) at 250ms", ["opacity"], async (c) => {
+  c.ctrls.first = animate(c.el, { opacity: 0 }, { duration: 0.6, ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("first", c.el.getAnimations()[0]);
+  await c.at(250);
+  c.ctrls.second = animate(c.el, { opacity: 1 }, { duration: 0.3, repeat: 1, repeatDelay: 0.1, ease: "linear" });
+  c.sample("sync-after-2nd");
+  await c.plan([[290, "2nd+40"], [500, "2nd+250"], [1200, "after2"], [1800, "late"]]);
+});
+C("int-js-then-waapi", "interrupt", "JS (mirror) opacity then WAAPI tween at 250ms", ["opacity"], async (c) => {
+  c.ctrls.first = animate(c.el, { opacity: 0 }, { duration: 0.6, repeat: 1, repeatType: "mirror", ease: "linear" });
+  await c.sampleAt(100, "t100");
+  await c.at(250);
+  c.ctrls.second = animate(c.el, { opacity: 1 }, { duration: 0.4, ease: "linear" });
+  c.sample("sync-after-2nd");
+  await c.plan([[290, "2nd+40"], [450, "2nd+200"], [900, "after2"], [1500, "late"]]);
+});
+C("int-tween-then-spring", "interrupt", "tween then spring on same key at 250ms", ["opacity"], async (c) => {
+  c.ctrls.first = animate(c.el, { opacity: 0 }, { duration: 0.6, ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("first", c.el.getAnimations()[0]);
+  await c.at(250);
+  c.ctrls.second = animate(c.el, { opacity: 1 }, { type: "spring" });
+  c.sample("sync-after-2nd");
+  await c.plan([[290, "2nd+40"], [700, "2nd+450"], [1500, "2nd+1250"], [4000, "late"]]);
+});
+C("int-after-finish", "interrupt", "second animate after first finished", ["opacity"], async (c) => {
+  c.ctrls.first = animate(c.el, { opacity: 0 }, { duration: 0.3, ease: "linear" });
+  await c.sampleAt(100, "t100");
+  await c.sampleAt(500, "first-finished");
+  c.ctrls.second = animate(c.el, { opacity: 1 }, { duration: 0.3, ease: "linear" });
+  c.sample("sync-after-2nd");
+  await c.plan([[540, "2nd+40"], [650, "2nd-mid"], [1000, "2nd-finished"]]);
+});
+C("int-different-keys", "interrupt", "opacity then backgroundColor at 100ms (no interruption)", ["opacity", "backgroundColor"], async (c) => {
+  c.el.style.backgroundColor = "#ff0000";
+  c.ctrls.opacity = animate(c.el, { opacity: 0 }, { duration: 0.6, ease: "linear" });
+  await c.sampleAt(50, "t50"); c.track("opacity", c.el.getAnimations()[0]);
+  await c.at(100);
+  c.ctrls.bg = animate(c.el, { backgroundColor: "#0000ff" }, { duration: 0.6, ease: "linear" });
+  c.sample("sync-after-2nd");
+  await c.plan([[140, "2nd+40"], [400, "t400"], [800, "t800"], [1000, "t1000"]]);
+});
+C("int-same-tick", "interrupt", "two animate() calls in the same tick (->0 then ->0.5)", ["opacity"], async (c) => {
+  c.ctrls.first = animate(c.el, { opacity: 0 }, { duration: 0.4, ease: "linear" });
+  c.ctrls.second = animate(c.el, { opacity: 0.5 }, { duration: 0.4, ease: "linear" });
+  c.sample("sync");
+  await c.plan([[40, "t40"], [200, "mid"], [600, "after"], [1000, "late"]]);
+});
+C("int-three-rapid", "interrupt", "three animate() 60ms apart on opacity", ["opacity"], async (c) => {
+  c.ctrls.a = animate(c.el, { opacity: 0 }, { duration: 0.5, ease: "linear" });
+  await c.sampleAt(40, "t40"); c.track("a", c.el.getAnimations()[0]);
+  await c.at(60); c.ctrls.b = animate(c.el, { opacity: 1 }, { duration: 0.5, ease: "linear" });
+  await c.sampleAt(100, "t100");
+  await c.at(120); c.ctrls.c = animate(c.el, { opacity: 0.4 }, { duration: 0.5, ease: "linear" });
+  await c.plan([[160, "t160"], [400, "t400"], [700, "t700"], [1000, "t1000"]]);
+});
+C("int-waapi-then-width", "interrupt", "opacity WAAPI then width JS on same element", ["opacity", "width"], async (c) => {
+  c.ctrls.a = animate(c.el, { opacity: 0 }, { duration: 0.5, ease: "linear" });
+  await c.at(100);
+  c.ctrls.b = animate(c.el, { width: 200 }, { duration: 0.5, ease: "linear" });
+  await c.plan([[140, "t140"], [300, "t300"], [700, "t700"]]);
+});
+
+T("svg-opacity", "props", "SVG <rect> opacity", { opacity: 0.5 }, { duration: D, ease: "linear" }, { tag: "svg-rect" });
+T("svg-fill-hex", "props", "SVG <rect> fill hex (JS)", { fill: "#0000ff" }, { duration: D, ease: "linear" }, { tag: "svg-rect", style: "fill: #ff0000" });
+T("svg-fill-oklch", "props", "SVG <rect> fill oklch (WAAPI)", { fill: "oklch(0.5 0.2 250)" }, { duration: D, ease: "linear" }, { tag: "svg-rect", style: "fill: oklch(0.7 0.2 30)" });
+T("svg-transform-str", "props", "SVG <rect> transform string", { transform: "translateX(100px)" }, { duration: D, ease: "linear" }, { tag: "svg-rect", style: "transform: translateX(0px)" });
+
+// ---- when the Animation appears (timer context vs frame context)
+function creationCase(id, desc, opts, inFrame) {
+  C(id, "creation", desc, ["opacity"], async (c) => {
+    const go = async () => {
+      c.start();
+      c.ctrl = animate(c.el, { opacity: 0.5 }, opts);
+      c.sample("sync");
+      await Promise.resolve(); c.sample("microtask");
+      await sleep(0); c.sample("timeout0");
+      await frame(); c.sample("raf1");
+      await Promise.resolve(); c.sample("raf1+microtask");
+      await frame(); c.sample("raf2");
+      await frame(); c.sample("raf3");
+      await c.plan([[opts.duration * 1000 + (opts.delay || 0) * 1000 + 100, "after-finish"]]);
+    };
+    if (inFrame) { await frame(); await go(); } else await go();
+  });
+}
+creationCase("creation-timer", "opacity tween .3s, animate() from a timer task: when is it listed", { duration: 0.3, ease: "linear" }, false);
+creationCase("creation-raf", "opacity tween .3s, animate() inside a rAF callback", { duration: 0.3, ease: "linear" }, true);
+creationCase("creation-zero-duration", "opacity duration 0, probed every step", { duration: 0, ease: "linear" }, false);
+creationCase("creation-delay", "opacity delay .2 duration .2", { duration: 0.2, delay: 0.2, ease: "linear" }, false);
+T("type-tween", "gate", "type tween explicit", { opacity: 0.5 }, { type: "tween", duration: D, ease: "linear" });
+T("type-keyframes", "gate", "type keyframes explicit", { opacity: 0.5 }, { type: "keyframes", duration: D, ease: "linear" });
+T("type-spring-bg-oklch", "gate", "backgroundColor oklch spring", { backgroundColor: "oklch(0.5 0.2 250)" }, { type: "spring" }, { style: "background-color: oklch(0.7 0.2 30)", times: SPRING_TIMES });
+T("type-spring-damping0-oklch", "gate", "color oklch spring damping 0 (gate fails -> JS cannot parse?)", { color: "oklch(0.5 0.2 250)" }, { type: "spring", damping: 0 }, { style: "color: oklch(0.7 0.2 30)", times: [[0, "sync"], [40, "t40"], [400, "t400"], [2000, "t2000"]] });
+T("ease-circInOut", "opacity", "ease circInOut", { opacity: 0.5 }, { duration: D, ease: "circInOut" });
+T("ease-steps", "opacity", "ease steps(4)", { opacity: 0.5 }, { duration: D, ease: "steps(4)" });
+T("autoplay-false", "gate", "autoplay false", { opacity: 0.5 }, { duration: D, autoplay: false, ease: "linear" }, { times: [[0, "sync"], [40, "t40"], [200, "mid"], [600, "after"]] });
+T("opacity-duration-1s-delay-0-explicit", "opacity", "opacity 1s linear (long tween)", { opacity: 0 }, { duration: 1, ease: "linear" });
+
+// ---- controls
+function ctlCase(id, desc, flow) {
+  C(id, "controls", desc, ["opacity"], async (c) => {
+    c.ctrl = animate(c.el, { opacity: 0 }, { duration: 1, ease: "linear" });
+    await c.sampleAt(0, "sync");
+    await c.at(100); c.track("anim", c.el.getAnimations()[0]); c.sample("t100");
+    await flow(c);
+  });
+}
+ctlCase("ctl-pause-play", "pause at 300, play at 700", async (c) => {
+  await c.at(300); c.ctrl.pause(); c.sample("sync-after-pause()");
+  await c.sampleAt(500, "paused+200");
+  await c.at(700); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[760, "play+60"], [1100, "t1100"], [1500, "t1500"], [2200, "t2200"]]);
+});
+defs.push({ id: "ctl-pause-before-resolve", group: "controls", desc: "pause() synchronously after animate(), play at 300", kind: "vanilla", watch: ["opacity"], style: "", async run(c) {
+  c.ctrl = animate(c.el, { opacity: 0 }, { duration: 1, ease: "linear" });
+  c.sample("sync-before-pause()");
+  c.ctrl.pause(); c.sample("sync-after-pause()");
+  c.track("anim", c.el.getAnimations()[0]);
+  await c.plan([[40, "t40"], [200, "t200"]]);
+  await c.at(300); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[360, "play+60"], [800, "t800"], [1500, "t1500"], [2200, "t2200"]]);
+} });
+ctlCase("ctl-time-set", "time = 0.8s at 300", async (c) => {
+  await c.at(300); c.ctrl.time = 0.8; c.sample("sync-after-time=0.8");
+  await c.plan([[340, "t340"], [450, "t450"], [600, "t600"], [1000, "t1000"], [1600, "t1600"]]);
+});
+ctlCase("ctl-time-set-zero", "time = 0 at 600 (restart)", async (c) => {
+  await c.at(600); c.ctrl.time = 0; c.sample("sync-after-time=0");
+  await c.plan([[640, "t640"], [1000, "t1000"], [1700, "t1700"], [2300, "t2300"]]);
+});
+ctlCase("ctl-time-set-paused", "pause at 300, time=0.2 while paused, play at 700", async (c) => {
+  await c.at(300); c.ctrl.pause();
+  await c.at(400); c.ctrl.time = 0.2; c.sample("sync-after-time=0.2");
+  await c.sampleAt(600, "t600");
+  await c.at(700); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[800, "t800"], [1600, "t1600"], [2200, "t2200"]]);
+});
+ctlCase("ctl-time-set-after-finish", "time = 0.2 after finished (t=1500)", async (c) => {
+  await c.sampleAt(1500, "finished");
+  c.ctrl.time = 0.2; c.sample("sync-after-time=0.2");
+  await c.plan([[1560, "t1560"], [1900, "t1900"], [2600, "t2600"]]);
+});
+ctlCase("ctl-speed-2", "speed = 2 at 300", async (c) => {
+  await c.at(300); c.ctrl.speed = 2; c.sample("sync-after-speed=2");
+  await c.plan([[360, "t360"], [600, "t600"], [900, "t900"], [1500, "t1500"]]);
+});
+ctlCase("ctl-speed-half", "speed = 0.5 at 300", async (c) => {
+  await c.at(300); c.ctrl.speed = 0.5; c.sample("sync-after-speed=0.5");
+  await c.plan([[360, "t360"], [800, "t800"], [1500, "t1500"], [2700, "t2700"], [3300, "t3300"]]);
+});
+ctlCase("ctl-speed-negative", "speed = -1 at 400", async (c) => {
+  await c.at(400); c.ctrl.speed = -1; c.sample("sync-after-speed=-1");
+  await c.plan([[460, "t460"], [700, "t700"], [900, "t900"], [1200, "t1200"], [2000, "t2000"]]);
+});
+ctlCase("ctl-speed-zero", "speed = 0 at 300", async (c) => {
+  await c.at(300); c.ctrl.speed = 0; c.sample("sync-after-speed=0");
+  await c.plan([[500, "t500"], [900, "t900"]]);
+  c.ctrl.speed = 1; c.sample("sync-after-speed=1");
+  await c.plan([[1000, "t1000"], [1600, "t1600"], [2200, "t2200"]]);
+});
+ctlCase("ctl-stop", "stop() at 300", async (c) => {
+  await c.at(300); c.ctrl.stop(); c.sample("sync-after-stop()");
+  await c.plan([[340, "t340"], [600, "t600"], [1300, "t1300"], [1800, "t1800"]]);
+});
+ctlCase("ctl-cancel", "cancel() at 300", async (c) => {
+  await c.at(300); c.ctrl.cancel(); c.sample("sync-after-cancel()");
+  await c.plan([[340, "t340"], [600, "t600"], [1300, "t1300"], [1800, "t1800"]]);
+});
+ctlCase("ctl-complete", "complete() at 300", async (c) => {
+  await c.at(300); c.ctrl.complete(); c.sample("sync-after-complete()");
+  await c.plan([[340, "t340"], [600, "t600"], [1300, "t1300"]]);
+});
+ctlCase("ctl-play-while-running", "play() at 300 while already running", async (c) => {
+  await c.at(300); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[500, "t500"], [1200, "t1200"], [1700, "t1700"]]);
+});
+ctlCase("ctl-play-after-finish", "play() after finished (t=1500)", async (c) => {
+  await c.sampleAt(1500, "finished");
+  c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[1560, "t1560"], [2000, "t2000"], [2800, "t2800"]]);
+});
+ctlCase("ctl-stop-then-play", "stop() at 300, play() at 500", async (c) => {
+  await c.at(300); c.ctrl.stop();
+  await c.at(500); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[560, "t560"], [1000, "t1000"]]);
+});
+C("ctl-stop-in-delay", "controls", "stop() during delay (delay .5)", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0 }, { duration: 0.5, delay: 0.5, ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(200); c.ctrl.stop(); c.sample("sync-after-stop()");
+  await c.plan([[300, "t300"], [1000, "t1000"], [1500, "t1500"]]);
+});
+C("ctl-complete-in-delay", "controls", "complete() during delay (delay .5)", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0 }, { duration: 0.5, delay: 0.5, ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(200); c.ctrl.complete(); c.sample("sync-after-complete()");
+  await c.plan([[300, "t300"], [1000, "t1000"], [1500, "t1500"]]);
+});
+C("ctl-cancel-in-delay", "controls", "cancel() during delay (delay .5)", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0 }, { duration: 0.5, delay: 0.5, ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(200); c.ctrl.cancel(); c.sample("sync-after-cancel()");
+  await c.plan([[300, "t300"], [1000, "t1000"], [1500, "t1500"]]);
+});
+C("ctl-finished-promise", "controls", "sample inside ctrl.then() when finished resolves", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0 }, { duration: 0.3, ease: "linear" });
+  await c.sampleAt(0, "sync");
+  await c.ctrl.finished;
+  c.sample("after-finished-resolves");
+  await frame(); c.sample("next-frame");
+  await c.plan([[c.samples[c.samples.length - 1].t + 300, "later"]]);
+});
+C("ctl-spring-pause-play", "controls", "spring: pause at 200, play at 600", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0 }, { type: "spring" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(200); c.ctrl.pause(); c.sample("sync-after-pause()");
+  await c.at(600); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[700, "t700"], [2500, "t2500"], [5000, "t5000"]]);
+});
+C("ctl-spring-stop", "controls", "spring: stop() at 300", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0 }, { type: "spring" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(300); c.ctrl.stop(); c.sample("sync-after-stop()");
+  await c.plan([[340, "t340"], [1000, "t1000"], [3000, "t3000"]]);
+});
+C("ctl-bg-stop", "controls", "backgroundColor: stop() at 300", ["backgroundColor"], async (c) => {
+  c.el.style.backgroundColor = "#ff0000";
+  c.ctrl = animate(c.el, { backgroundColor: "#0000ff" }, { duration: 1, ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(300); c.ctrl.stop(); c.sample("sync-after-stop()");
+  await c.plan([[340, "t340"], [1300, "t1300"]]);
+});
+C("ctl-multi-pause", "controls", "opacity+bg: pause at 300 / play at 600 (group)", ["opacity", "backgroundColor"], async (c) => {
+  c.el.style.backgroundColor = "#ff0000";
+  c.ctrl = animate(c.el, { opacity: 0, backgroundColor: "#0000ff" }, { duration: 1, ease: "linear" });
+  await c.sampleAt(100, "t100");
+  await c.at(300); c.ctrl.pause(); c.sample("sync-after-pause()");
+  await c.at(600); c.ctrl.play(); c.sample("sync-after-play()");
+  await c.plan([[700, "t700"], [1300, "t1300"], [1800, "t1800"]]);
+});
+C("ctl-repeat-complete", "controls", "repeat 2 reverse: complete() at 150", ["opacity"], async (c) => {
+  c.ctrl = animate(c.el, { opacity: 0.2 }, { duration: 0.5, repeat: 2, repeatType: "reverse", ease: "linear" });
+  await c.sampleAt(100, "t100"); c.track("anim", c.el.getAnimations()[0]);
+  await c.at(150); c.ctrl.complete(); c.sample("sync-after-complete()");
+  await c.plan([[200, "t200"], [1000, "t1000"]]);
+});
+
+// ---- React motion.div
+function rc(c) {
+  const container = document.createElement("div");
+  stage.appendChild(container);
+  const root = R.createRoot(container);
+  c.render = (props) => {
+    CALLS.push({ kind: "render", t: round(performance.now() - (window.__t0 || 0)), props: plain(props) });
+    R.flushSync(() => root.render(h(R.motion.div, Object.assign({ className: "box" }, props))));
+    c.el = container.firstElementChild;
+  };
+  c.unmount = () => { CALLS.push({ kind: "unmount", t: round(performance.now() - (window.__t0 || 0)) }); R.flushSync(() => root.unmount()); };
+}
+RC("r-opacity-tween", "motion.div initial opacity 0 animate 1, tween .4s linear", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"], [900, "late"]]);
+});
+RC("r-opacity-default-transition", "motion.div opacity 0->1, no transition prop", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "t200"], [500, "t500"], [1000, "t1000"], [3000, "t3000"]]);
+});
+RC("r-opacity-spring", "motion.div opacity spring (type spring)", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { type: "spring" } });
+  await c.plan(SPRING_TIMES);
+});
+RC("r-opacity-spring-stiff-damp", "motion.div opacity spring stiffness 300 damping 20", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { type: "spring", stiffness: 300, damping: 20 } });
+  await c.plan(SPRING_TIMES);
+});
+RC("r-opacity-stiffness-only", "motion.div transition {stiffness: 300} without type", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { stiffness: 300 } });
+  await c.plan(SPRING_TIMES);
+});
+RC("r-opacity-type-tween", "motion.div transition {type tween, duration .4}", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { type: "tween", duration: 0.4 } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-opacity-keyframes", "motion.div opacity [0,1,0.5] times [0,.3,1]", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: [0, 1, 0.5] }, transition: { duration: 0.4, times: [0, 0.3, 1], ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"], [900, "late"]]);
+});
+RC("r-bg-hex", "motion.div backgroundColor hex", ["backgroundColor"], async (c) => {
+  c.start(); c.render({ initial: { backgroundColor: "#ff0000" }, animate: { backgroundColor: "#0000ff" }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"], [900, "late"]]);
+});
+RC("r-color-hex", "motion.div color hex (JS)", ["color"], async (c) => {
+  c.start(); c.render({ initial: { color: "#ff0000" }, animate: { color: "#0000ff" }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-color-oklch", "motion.div color oklch (WAAPI)", ["color"], async (c) => {
+  c.start(); c.render({ initial: { color: "oklch(0.7 0.2 30)" }, animate: { color: "oklch(0.5 0.2 250)" }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-x", "motion.div x (JS)", ["transform"], async (c) => {
+  c.start(); c.render({ initial: { x: 0 }, animate: { x: 100 }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-scale", "motion.div scale (JS)", ["transform"], async (c) => {
+  c.start(); c.render({ initial: { scale: 1 }, animate: { scale: 2 }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-width", "motion.div width (JS)", ["width"], async (c) => {
+  c.start(); c.render({ initial: { width: 100 }, animate: { width: 200 }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-opacity-x", "motion.div opacity + x", ["opacity", "transform"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0, x: 0 }, animate: { opacity: 1, x: 100 }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-filter", "motion.div filter", ["filter"], async (c) => {
+  c.start(); c.render({ initial: { filter: "blur(0px)" }, animate: { filter: "blur(5px)" }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-transform-str", "motion.div transform string in animate", ["transform"], async (c) => {
+  c.start(); c.render({ initial: { transform: "translateX(0px)" }, animate: { transform: "translateX(100px)" }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-delay", "motion.div delay .3", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.4, delay: 0.3, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [150, "in-delay"], [500, "mid"], [760, "after-finish"], [1200, "late"]]);
+});
+RC("r-repeat-loop", "motion.div repeat 2 loop", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, repeat: 2, repeatType: "loop", ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [150, "mid"], [450, "mid-iter2"], [960, "after-finish"], [1400, "late"]]);
+});
+RC("r-repeat-reverse", "motion.div repeat 2 reverse", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, repeat: 2, repeatType: "reverse", ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [150, "mid"], [450, "mid-iter2"], [960, "after-finish"], [1400, "late"]]);
+});
+RC("r-repeat-mirror", "motion.div repeat 2 mirror (JS)", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, repeat: 2, repeatType: "mirror", ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [150, "mid"], [450, "mid-iter2"], [960, "after-finish"]]);
+});
+RC("r-repeat-infinity-reverse", "motion.div repeat Infinity reverse", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, repeat: Infinity, repeatType: "reverse", ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [150, "mid"], [450, "mid-iter2"], [1000, "iter4"]]);
+  c.unmount();
+});
+RC("r-repeat-delay", "motion.div repeat 1 repeatDelay .2 (JS)", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, repeat: 1, repeatDelay: 0.2, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [150, "mid"], [700, "after-finish"]]);
+});
+RC("r-damping0", "motion.div spring damping 0 (JS)", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { type: "spring", damping: 0, stiffness: 100 } });
+  await c.plan([[0, "sync"], [40, "t40"], [400, "t400"], [2000, "t2000"]]);
+  c.unmount();
+});
+RC("r-onUpdate", "motion.div with onUpdate prop (JS)", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, onUpdate: () => {}, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-onAnimationComplete", "motion.div with onAnimationComplete only", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, onAnimationComplete: () => {}, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-transformTemplate-opacity", "motion.div transformTemplate + opacity", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transformTemplate: (_, g) => g, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-transformTemplate-transform-str", "motion.div transformTemplate + animate transform string (gate fails)", ["transform"], async (c) => {
+  c.start(); c.render({ initial: { transform: "translateX(0px)" }, animate: { transform: "translateX(100px)" }, transformTemplate: (_, g) => g, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-initial-false", "motion.div initial=false animate opacity 1 (no animation expected)", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: false, animate: { opacity: 1 }, transition: { duration: 0.4 } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [600, "after"]]);
+});
+RC("r-style-opacity-animate-same", "motion.div no initial, animate opacity 1 (same as computed)", ["opacity"], async (c) => {
+  c.start(); c.render({ animate: { opacity: 1 }, transition: { duration: 0.4 } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [600, "after"]]);
+});
+RC("r-interrupt-rerender", "motion.div animate opacity 0->1; at 250 re-render animate 0.2", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.6, ease: "linear" } });
+  await c.sampleAt(100, "t100"); c.track("first", c.el.getAnimations()[0]);
+  await c.at(250);
+  c.render({ initial: { opacity: 0 }, animate: { opacity: 0.2 }, transition: { duration: 0.6, ease: "linear" } });
+  c.sample("sync-after-rerender");
+  await c.plan([[290, "2nd+40"], [550, "2nd+300"], [950, "2nd-finish+100"], [1500, "late"]]);
+});
+RC("r-interrupt-to-js", "motion.div WAAPI opacity then re-render with repeatDelay (JS) at 250", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.6, ease: "linear" } });
+  await c.sampleAt(100, "t100"); c.track("first", c.el.getAnimations()[0]);
+  await c.at(250);
+  c.render({ initial: { opacity: 0 }, animate: { opacity: 0.2 }, transition: { duration: 0.3, repeat: 1, repeatDelay: 0.1, ease: "linear" } });
+  c.sample("sync-after-rerender");
+  await c.plan([[290, "2nd+40"], [500, "2nd+250"], [1200, "late"]]);
+});
+RC("r-unmount-during", "motion.div unmounted at 200ms mid-animation", ["opacity"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.6, ease: "linear" } });
+  await c.sampleAt(100, "t100"); c.track("first", c.el.getAnimations()[0]);
+  const el = c.el;
+  await c.at(200); c.unmount(); c.el = el; c.sample("sync-after-unmount");
+  await c.plan([[300, "t300"]]);
+});
+RC("r-prop-change-bg-and-opacity", "motion.div animate {opacity, backgroundColor} (2 WAAPI)", ["opacity", "backgroundColor"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0, backgroundColor: "#ff0000" }, animate: { opacity: 1, backgroundColor: "#0000ff" }, transition: { duration: 0.4, ease: "linear" } });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+RC("r-per-value-transition", "motion.div transition {default tween, opacity spring}", ["opacity", "backgroundColor"], async (c) => {
+  c.start(); c.render({ initial: { opacity: 0, backgroundColor: "#ff0000" }, animate: { opacity: 1, backgroundColor: "#0000ff" }, transition: { duration: 0.4, ease: "linear", opacity: { type: "spring" } } });
+  await c.plan(SPRING_TIMES);
+});
+RC("r-variants", "motion.div variants hidden->visible", ["opacity"], async (c) => {
+  c.start(); c.render({ variants: { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.4, ease: "linear" } } }, initial: "hidden", animate: "visible" });
+  await c.plan([[0, "sync"], [40, "t40"], [200, "mid"], [460, "after-finish"]]);
+});
+
+async function runDef(def) {
+  def.peek = def.group === "controls";
+  const c = new Ctx(def);
+  if (def.kind === "vanilla") {
+    let el;
+    if (def.tag === "svg-rect") {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      el = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      el.setAttribute("width", "50"); el.setAttribute("height", "50"); el.setAttribute("fill", "red");
+      svg.appendChild(el);
+      stage.appendChild(svg);
+    } else {
+      el = document.createElement("div");
+      el.className = "box";
+      stage.appendChild(el);
+    }
+    el.id = def.id;
+    if (def.style) el.style.cssText = def.style;
+    c.el = el;
+    c.initialStyle = el.getAttribute("style");
+  } else {
+    rc(c);
+  }
+  c.start();
+  let error = null;
+  try { await def.run(c); } catch (e) { error = String(e && e.stack || e); }
+  c.sample("final");
+  if (c.ctrl && c.ctrl.stop) { try { c.ctrl.stop(); } catch (e) {} }
+  const listedEver = c.samples.some((s) => s.n > 0);
+  return { id: def.id, group: def.group, desc: def.desc, kind: def.kind, tag: def.tag || null, style: def.style || "", initialStyle: c.initialStyle || null, error, listedEver, calls: CALLS, samples: c.samples };
+}
+
+function metaInfo() {
+  return {
+    userAgent: navigator.userAgent,
+    motionExports: ["animate", "supportsBrowserAnimation", "supportsLinearEasing"].map((k) => k + ":" + typeof Motion[k]),
+    supportsLinearEasing: peek(() => Motion.supportsLinearEasing()),
+    note: "vanilla cases use vendor/motion.js (motion@14.1.0 dist/motion.js UMD); react cases use vendor/motion-react.js (bun build of framer-motion@14.1.0 + react 19.3.0)",
+  };
+}
+
+// ?list=1 prints the case ids; ?case=<id> runs one case alone (own page = own Motion frameloop and keyframe-resolver
+// queue, so cases cannot flush each other's pending resolvers); no query runs every case concurrently.
+async function main() {
+  await frame();
+  const params = new URLSearchParams(location.search);
+  let out;
+  if (params.has("list")) {
+    out = { ids: defs.map((d) => d.id) };
+  } else if (params.has("case")) {
+    const def = defs.find((d) => d.id === params.get("case"));
+    out = { meta: metaInfo(), cases: [await runDef(def)] };
+  } else {
+    out = { meta: metaInfo(), cases: await Promise.all(defs.map(runDef)) };
+  }
+  window.__oracle = out;
+  const json = JSON.stringify(out, (k, v) => (v === Infinity ? "Infinity" : v === -Infinity ? "-Infinity" : Number.isNaN(v) ? "NaN" : v === undefined ? "<undefined>" : v));
+  document.documentElement.setAttribute("data-oracle", json);
+}
+main();
+})();
+</script>
+</body>
+</html>
