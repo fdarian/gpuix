@@ -9,7 +9,10 @@
  * - The 3D keys are accepted and draw nothing. The CSS `scale` and `rotate` of a plain element are still CSS.
  */
 
+import fs from "fs"
+import path from "path"
 import React from "react"
+import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
 import { animate, motion, useMotionValue } from "../index"
 import type { MotionValue } from "../index"
@@ -229,6 +232,298 @@ describeNative("a motion value in the style of a motion component", () => {
   }, TIMEOUT)
 })
 
+
+/** Mounts a tree that has motion values, runs `drive` on its renderer, and returns the box of `testId`. */
+function boundsDriven(
+  make: () => React.ReactNode,
+  drive: (renderer) => void = () => {}
+): [number, number, number, number] {
+  const { render, renderer, root } = createTestRoot(SIZE)
+  try {
+    renderer.clockPause()
+    render(<div style={{ display: "flex", padding: 200 }}>{make()}</div>)
+    renderer.flush()
+    drive(renderer)
+    renderer.flush()
+    renderer.dispatchNativeEvents()
+    return bounds(renderer, "box")
+  } finally {
+    // Not the test root's unmount: it disposes the window the bound values release through.
+    root.unmount()
+    renderer.dispose()
+  }
+}
+
+describeNative("an angle string in Motion", () => {
+  const cases: [string, number | string, string][] = [
+    ["degrees", "45deg", "45deg"],
+    ["turns", "0.5turn", "180deg"],
+    ["radians", "1rad", "1rad"],
+    ["gradians", "10grad", "10grad"],
+  ]
+  for (const [unit, written, css] of cases) {
+    it(`drives rotate from a motion value in ${unit} like the CSS angle`, () => {
+      const got = boundsDriven(() => <Rotated value={written} />)
+      expectBox(got, boundsOf(cssBox({ transform: `rotate(${css})` })), unit)
+      expect(got, "the angle turned the box").not.toEqual(boundsOf(cssBox({})))
+    }, TIMEOUT)
+  }
+
+  function Rotated({ value, key_ = "rotate" }: { value: number | string; key_?: string }) {
+    const angle = useMotionValue(value)
+    return <motion.div testId="box" style={{ ...BOX, backgroundColor: "#336699", [key_]: angle }} />
+  }
+
+  it("is the same as the number of degrees", () => {
+    expectBox(boundsDriven(() => <Rotated value="45deg" />), boundsOf(motionBox({ rotate: 45 })), "45deg")
+    expectBox(boundsDriven(() => <Rotated value="0.5turn" />), boundsOf(motionBox({ rotate: 180 })), "0.5turn")
+    for (const key of ["rotateZ", "skewX", "skewY", "skew"]) {
+      expectBox(boundsDriven(() => <Rotated value="0.1turn" key_={key} />), boundsOf(motionBox({ [key]: 36 })), key)
+    }
+  }, TIMEOUT)
+
+  it("mixes with a number in degrees as a motion value animates", () => {
+    let target!: MotionValue<number | string>
+    function Tracked({ from }: { from: number | string }) {
+      target = useMotionValue(from)
+      return <motion.div testId="box" style={{ ...BOX, backgroundColor: "#336699", rotate: target }} />
+    }
+    const run = (from: number | string, to: number | string) =>
+      boundsDriven(
+        () => <Tracked from={from} />,
+        (renderer) => {
+          animate(target, to, linear)
+          renderer.clockFastForward(500)
+        }
+      )
+    expectBox(run(0, "1turn"), boundsOf(motionBox({ rotate: 180 })), "number to turn")
+    expectBox(run("0.5turn", 360), boundsOf(motionBox({ rotate: 270 })), "turn to number")
+    expectBox(run("90deg", "0.75turn"), boundsOf(motionBox({ rotate: 180 })), "angle to angle")
+  }, TIMEOUT)
+
+  it("is skipped by a key that is no angle", () => {
+    expectBox(
+      boundsDriven(() => <Rotated value="45deg" key_="x" />),
+      boundsOf(motionBox({})),
+      "45deg bound to x"
+    )
+  }, TIMEOUT)
+
+  it("is a target of animate, and a tween passes half of it halfway", () => {
+    // The reference mounts a root of its own, which the root under test cannot be open beside.
+    const half = boundsOf(motionBox({ rotate: 180 }))
+    const { render, renderer, unmount } = createTestRoot(SIZE)
+    try {
+      renderer.clockPause()
+      render(
+        <div style={{ display: "flex", padding: 200 }}>
+          <motion.div testId="box" initial={{ rotate: 0 }} animate={{ rotate: "1turn" }} transition={linear} style={{ ...BOX, backgroundColor: "#336699" }} />
+        </div>
+      )
+      renderer.flush()
+      renderer.clockFastForward(500)
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      expectBox(bounds(renderer, "box"), half, "half of a turn")
+    } finally {
+      unmount()
+    }
+  }, TIMEOUT)
+})
+
+type Rect = [number, number, number, number]
+interface OracleCase {
+  property: string
+  frames: [number, string][]
+  extra: string
+  boxes: Record<string, Rect>
+}
+
+const ORACLE: Record<string, OracleCase> = JSON.parse(
+  fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/transform-animation-oracle.json"), "utf8")
+)
+
+/** The oracle's `transform` scenes that run over the whole animation, which a Motion tween of the lists can play. */
+const TRANSFORM_SCENES = Object.entries(ORACLE).filter(
+  ([, scene]) => scene.property === "transform" && scene.frames[0]![0] === 0 && scene.frames[scene.frames.length - 1]![0] === 1
+)
+
+describeNative("a Motion transform string animates as a CSS transform does", () => {
+  for (const [name, scene] of TRANSFORM_SCENES) {
+    it(`shows Chrome's box of the same lists at every time: ${name}`, () => {
+      const { render, renderer, unmount } = createTestRoot(SIZE)
+      try {
+        renderer.clockPause()
+        const lists = scene.frames.map(([, list]) => list)
+        const origin = /transform-origin:\s*([^;]+)/.exec(scene.extra)?.[1]
+        render(
+          <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600 }}>
+            <motion.div
+              testId="box"
+              initial={{ transform: lists[0] }}
+              animate={{ transform: lists }}
+              transition={{ duration: 1, ease: "linear", times: scene.frames.map(([offset]) => offset) }}
+              style={{ position: "absolute", left: 200, top: 200, width: 100, height: 50, ...(origin ? { transformOrigin: origin } : {}) }}
+            />
+          </div>
+        )
+        renderer.flush()
+        const wrong: string[] = []
+        let elapsed = 0
+        for (const [time, want] of Object.entries(scene.boxes).sort(([a], [b]) => +a - +b)) {
+          renderer.clockFastForward(Math.round((+time - elapsed) * 1000))
+          elapsed = +time
+          renderer.flush()
+          renderer.dispatchNativeEvents()
+          const got = bounds(renderer, "box")
+          if (got.some((value, index) => Math.abs(value - want[index]!) > 0.06)) {
+            wrong.push(`t=${time}: got [${got.map((value) => +value.toFixed(3))}] Chrome [${want.map((value) => +value.toFixed(3))}]`)
+          }
+        }
+        expect(wrong).toEqual([])
+      } finally {
+        unmount()
+      }
+    }, TIMEOUT)
+  }
+})
+
+describeNative("Motion's transform is the list and its keys beside it are ignored", () => {
+  const to = "translateX(100px) rotate(45deg)"
+
+  function finishes(props: object, style: object = {}, ms = 1000) {
+    const { render, renderer, unmount } = createTestRoot(SIZE)
+    try {
+      renderer.clockPause()
+      render(
+        <div style={{ display: "flex", padding: 200 }}>
+          <motion.div testId="box" transition={linear} style={{ ...BOX, backgroundColor: "#336699", ...style }} {...props} />
+        </div>
+      )
+      renderer.flush()
+      renderer.clockFastForward(ms)
+      renderer.flush()
+      renderer.dispatchNativeEvents()
+      return bounds(renderer, "box")
+    } finally {
+      unmount()
+    }
+  }
+
+  it("draws an animate target of transform", () => {
+    expectBox(finishes({ initial: { transform: "none" }, animate: { transform: to } }), boundsOf(cssBox({ transform: to })), "end")
+    expectBox(
+      finishes({ initial: { transform: "none" }, animate: { transform: to } }, {}, 500),
+      boundsOf(cssBox({ transform: "translateX(50px) rotate(22.5deg)" })),
+      "half way"
+    )
+  }, TIMEOUT)
+
+  it("takes an initial, variants, keyframes and a transition per key", () => {
+    expectBox(finishes({ initial: { transform: to }, animate: { transform: to } }, {}, 0), boundsOf(cssBox({ transform: to })), "initial")
+    expectBox(
+      finishes({ variants: { on: { transform: to } }, initial: false, animate: "on" }, {}, 0),
+      boundsOf(cssBox({ transform: to })),
+      "a variant"
+    )
+    expectBox(
+      finishes({ initial: { transform: "none" }, animate: { transform: ["translateX(0px)", "translateX(100px)", "translateX(0px)"] } }, {}, 500),
+      boundsOf(cssBox({ transform: "translateX(100px)" })),
+      "keyframes"
+    )
+    expectBox(
+      finishes({ initial: { transform: "none" }, animate: { transform: to }, transition: { transform: { duration: 2, ease: "linear" } } }, {}, 1000),
+      boundsOf(cssBox({ transform: "translateX(50px) rotate(22.5deg)" })),
+      "its own transition"
+    )
+  }, TIMEOUT)
+
+  it("is drawn alone: the keys beside it, animated or static, do nothing", () => {
+    const want = boundsOf(cssBox({ transform: to }))
+    expectBox(finishes({ initial: { transform: "none", x: 0 }, animate: { transform: to, x: 300, scale: 2, rotate: 90 } }), want, "animated keys")
+    expectBox(finishes({ animate: { transform: to } }, {}, 1000), want, "no initial")
+    expectBox(finishes({ initial: { transform: to, x: 30, scale: 3 }, animate: { transform: to } }, {}, 0), want, "initial keys")
+    expectBox(finishes({ initial: { transform: to }, whileHover: { x: 50 } }, { x: 10, rotate: 20 }, 0), want, "static keys")
+  }, TIMEOUT)
+
+  it("starts from what the keys or the style built, and `none` is a transform that turns the keys off", () => {
+    expectBox(
+      finishes({ animate: { transform: "translateX(100px)" } }, { x: 50 }, 500),
+      boundsOf(cssBox({ transform: "translateX(75px)" })),
+      "from the keys"
+    )
+    expectBox(
+      finishes({ animate: { transform: "translateX(100px)" } }, { transform: "translateX(50px)" }, 500),
+      boundsOf(cssBox({ transform: "translateX(75px)" })),
+      "from the style"
+    )
+    expectBox(finishes({ initial: { transform: "none" }, animate: { transform: "none" } }, { x: 50 }, 0), boundsOf(cssBox({})), "none stands for the keys")
+  }, TIMEOUT)
+
+  it("leaves a static style.transform to the keys, as before", () => {
+    expectBox(boundsOf(motionBox({ transform: "translateX(100px)", x: 5 })), boundsOf(cssBox({ transform: "translateX(5px)" })), "keys")
+    expectBox(boundsOf(motionBox({ transform: "translateX(100px)" })), boundsOf(cssBox({ transform: "translateX(100px)" })), "alone")
+  }, TIMEOUT)
+
+  it("is a stacking context and a containing block as a list, even one that moves nothing, and not as none", () => {
+    const hosts = (transform: string) => {
+      const { render, renderer, unmount } = createTestRoot(SIZE)
+      try {
+        renderer.clockPause()
+        render(
+          <div style={{ position: "relative", width: 800, height: 600 }}>
+            <motion.div testId="host" initial={{ transform }} animate={{ transform }} style={{ position: "absolute", left: 100, top: 100, width: 300, height: 300 }}>
+              <div testId="child" style={{ position: "fixed", left: 10, top: 10, width: 20, height: 20 }} />
+            </motion.div>
+          </div>
+        )
+        renderer.flush()
+        return bounds(renderer, "child")
+      } finally {
+        unmount()
+      }
+    }
+    expectBox(hosts("translateX(0px)"), [110, 110, 20, 20], "an identity list holds its fixed child")
+    expectBox(hosts("none"), [10, 10, 20, 20], "none does not")
+  }, TIMEOUT)
+})
+
+describeNative("a motion value that holds a transform string", () => {
+  function Moving({ initial, extra = {} }: { initial: string; extra?: object }) {
+    const transform = useMotionValue(initial)
+    handle = transform
+    return <motion.div testId="box" style={{ ...BOX, backgroundColor: "#336699", transform, ...extra }} />
+  }
+  let handle!: MotionValue<string>
+
+  it("drives the transform of the element, and a change moves it", () => {
+    const list = "translateX(10px) rotate(45deg)"
+    expectBox(boundsDriven(() => <Moving initial={list} />), boundsOf(cssBox({ transform: list })), "bound")
+    expectBox(
+      boundsDriven(
+        () => <Moving initial={list} />,
+        () => handle.set("translateX(40px) scale(2)")
+      ),
+      boundsOf(cssBox({ transform: "translateX(40px) scale(2)" })),
+      "set"
+    )
+  }, TIMEOUT)
+
+  it("animates between two lists as a CSS transition does, and ignores the keys beside it", () => {
+    expectBox(
+      boundsDriven(
+        () => <Moving initial="translateX(10px) rotate(0deg)" extra={{ x: 70, scale: 3 }} />,
+        (renderer) => {
+          animate(handle, "translateX(110px) rotate(90deg)", linear)
+          renderer.clockFastForward(500)
+        }
+      ),
+      boundsOf(cssBox({ transform: "translateX(60px) rotate(45deg)" })),
+      "half way"
+    )
+  }, TIMEOUT)
+})
+
 const WARM = 12
 const TICKS = 20
 
@@ -345,6 +640,32 @@ describeNative("a tick of an animation of the transform keys", { timeout: TIMEOU
         transition={{ duration: 1.6, ease: "linear", repeat: Infinity }}
       />
     ),
+    "a tween of a transform string": (
+      <motion.div
+        testId="head"
+        style={{ ...BOX, backgroundColor: "#336699" }}
+        initial={{ transform: "translateX(0px) rotate(0deg)" }}
+        animate={{ transform: "translateX(400px) rotate(90deg)" }}
+        transition={{ duration: 1.5, ease: "linear" }}
+      />
+    ),
+    "a looping tween of transform lists that do not pair up": (
+      <motion.div
+        testId="head"
+        style={{ ...BOX, backgroundColor: "#336699" }}
+        animate={{ transform: ["translateX(0px) rotate(30deg)", "scale(1.5) translateX(120px)", "translateX(0px) rotate(30deg)"] }}
+        transition={{ duration: 1.6, ease: "linear", repeat: Infinity }}
+      />
+    ),
+    "a spring of a transform string": (
+      <motion.div
+        testId="head"
+        style={{ ...BOX, backgroundColor: "#336699" }}
+        initial={{ transform: "translateX(0px)" }}
+        animate={{ transform: "translateX(300px) rotate(40deg)" }}
+        transition={{ type: "spring", stiffness: 20, damping: 2 }}
+      />
+    ),
     "a tween of a transformed element holding text": (
       <motion.div
         testId="head"
@@ -394,6 +715,30 @@ describeNative("a tick of an animation of the transform keys", { timeout: TIMEOU
     const done = await ticksOf(<Head />, (_renderer, tick) => {
       x.set(tick * 7)
       rotate.set(tick * 3)
+    })
+    expectPatched(done)
+  })
+
+  it("patches every tick of a motion value that animates a transform string", async () => {
+    let transform!: MotionValue<string>
+    function Head() {
+      transform = useMotionValue("translateX(0px) rotate(0deg)")
+      return <motion.div testId="head" style={{ ...BOX, backgroundColor: "#336699", transform }} />
+    }
+    const done = await ticksOf(<Head />, (_renderer, tick) => {
+      if (tick === 0) animate(transform, "translateX(500px) rotate(90deg)", { duration: 1.8, ease: "linear" })
+    })
+    expectPatched(done)
+  })
+
+  it("patches every tick of a motion value that animates an angle string", async () => {
+    let rotate!: MotionValue<number | string>
+    function Head() {
+      rotate = useMotionValue(0)
+      return <motion.div testId="head" style={{ ...BOX, backgroundColor: "#336699", rotate }} />
+    }
+    const done = await ticksOf(<Head />, (_renderer, tick) => {
+      if (tick === 0) animate(rotate, "1turn", { duration: 1.8, ease: "linear" })
     })
     expectPatched(done)
   })
