@@ -334,6 +334,8 @@ describeNative("an angle string in Motion", () => {
 type Rect = [number, number, number, number]
 interface OracleCase {
   property: string
+  /** A transition of a `var()` transform has none. */
+  kind?: "transition"
   frames: [number, string][]
   extra: string
   boxes: Record<string, Rect>
@@ -343,9 +345,14 @@ const ORACLE: Record<string, OracleCase> = JSON.parse(
   fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/transform-animation-oracle.json"), "utf8")
 )
 
-/** The oracle's `transform` scenes that run over the whole animation, which a Motion tween of the lists can play. */
+/** The oracle's `transform` scenes that run over the whole animation, which a Motion tween of the lists can play. Motion does not substitute `var()`. */
 const TRANSFORM_SCENES = Object.entries(ORACLE).filter(
-  ([, scene]) => scene.property === "transform" && scene.frames[0]![0] === 0 && scene.frames[scene.frames.length - 1]![0] === 1
+  ([, scene]) =>
+    scene.kind === undefined &&
+    scene.property === "transform" &&
+    scene.frames[0]![0] === 0 &&
+    scene.frames[scene.frames.length - 1]![0] === 1 &&
+    scene.frames.every(([, value]) => !value.includes("var("))
 )
 
 describeNative("a Motion transform string animates as a CSS transform does", () => {
