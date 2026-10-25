@@ -11673,6 +11673,10 @@ fn build_plan(
                     ctx.inherited = outside;
                 }
             }
+            crate::text::inline::Child::EmptyLine => {
+                placements.push(Placement { rank: 0, document: at });
+                content_elements.push(gpui::div().into_any_element());
+            }
             crate::text::inline::Child::AnonymousCell(_) | crate::text::inline::Child::AnonymousTable(_) => {
                 unreachable!("handled before")
             }

@@ -4,7 +4,8 @@
   element with an `id` that headless Chrome lays out for rows of `vertical-align: baseline` cells whose content has
   no text, at device scale 1 and 2: which cell takes part in aligning its row, where a cell without a baseline
   of its own puts its content, and the baseline the row (and with it an `inline-table` or a table in a flex row)
-  has when no cell is on it. The text is GpuixTestSquare (20px, whole em ascent, no descent, see
+  has when no cell is on it. Also an empty `<span>` in a cell and outside a table: the line of no height it makes, and
+  the line of the strut's height it makes with an inline margin, border or padding. The text is GpuixTestSquare (20px, whole em ascent, no descent, see
   text-baseline-oracle.html). Regenerate (`table-baseline-cell-oracle.json` and `-x2.json`) with
 
     sh dsf-oracle.sh table-baseline-cell
@@ -32,6 +33,11 @@ const VARIANTS = {
   'whitespace': ' ',
   'a line break of whitespace': '\n   ',
   'empty span': '<span></span>',
+  'empty span with whitespace inside': '<span> </span>',
+  'empty span between whitespace': ' <span></span> ',
+  'empty span then whitespace': '<span></span> ',
+  'nested empty spans': '<span><span></span></span>',
+  'empty span with vertical padding': '<span style="padding:5px 0;border-top:2px solid"></span>',
   'empty block': '<div id="x"></div>',
   'block with a height': '<div id="x" style="height:30px"></div>',
   'block with a size': '<div id="x" style="width:30px;height:30px"></div>',
@@ -77,6 +83,32 @@ for (const [name, content] of Object.entries(VARIANTS)) {
   }
 }
 
+// An empty span with inline margin, border or padding makes a line of the strut's height (line_breaker.cc, an open tag
+// that is not an empty item), with the span's box on it.
+const STRUT_SPANS = {
+  'empty span with inline padding': '<span id="x" style="padding:0 5px"></span>',
+  'empty span with a border': '<span id="x" style="border-left-width:2px;border-left-style:solid"></span>',
+  'empty span with a margin': '<span id="x" style="margin:0 5px"></span>',
+  'empty span with a margin on one side': '<span id="x" style="margin-right:5px"></span>',
+  'empty span with a percentage padding': '<span id="x" style="padding:0 10%"></span>',
+  'empty span with inline padding and a border': '<span id="x" style="padding:3px 5px;border:2px solid"></span>',
+  'empty span with a larger font and inline padding': '<span id="x" style="padding:0 5px;font-size:40px;line-height:40px"></span>',
+  'nested empty spans with inline padding': '<span><span id="x" style="padding:0 5px"></span></span>',
+  'nested empty spans, the outer with inline padding': '<span id="x" style="padding:0 5px"><span></span></span>',
+  'two empty spans with inline padding': '<span id="x" style="padding:0 5px"></span><span id="y" style="padding:0 3px"></span>',
+  'empty span with inline padding between whitespace': ' <span id="x" style="padding:0 5px"></span> ',
+};
+for (const [name, content] of Object.entries(STRUT_SPANS)) {
+  const a = td('a', '', text('as'));
+  for (const [padName, pad] of [['', ''], [' with padding and border', PAD]]) {
+    const v = td('v', pad, content);
+    add(`${name}${padName}: alone`, () => tbl(tr('r', v)));
+    add(`${name}${padName}: next to text`, () => tbl(tr('r', a + v)));
+    add(`${name}${padName}: inline-table`, () => inLine('inline-table', tbl(tr('r', v))));
+    add(`${name}${padName}: flex row`, () => inLine('flex', tbl(tr('r', v))));
+  }
+}
+
 // Rows where no cell has a baseline to line up by: the baseline of the row is above the least bottom padding and border.
 const NONE = {
   'empty cells with bottom padding': tr('r', td('a', 'padding-bottom:5px') + td('b', 'padding-bottom:3px;border-bottom-width:2px;border-bottom-style:solid')),
@@ -109,6 +141,41 @@ for (const [name, rows] of Object.entries(NONE)) {
 }
 add('no baseline, a table with only an empty row: inline-table', () => inLine('inline-table', tbl(tr('r', ''))));
 add('no baseline, a table with a caption: inline-table', () => inLine('inline-table', tbl(`<caption id="cap" style="height:12px"></caption>` + tr('r', td('a', 'height:30px;padding-bottom:4px')))));
+
+// An empty `<span>` outside a table cell: with nothing to size or paint it is an empty line (no height, no
+// baseline); with inline margin, border or padding the line has the height of the strut and the span's box is on it.
+const SPAN_A = '<span id="p">A</span>';
+const SPAN_B = '<span id="q">A</span>';
+const EMPTY_SPANS = {
+  'empty span': '<span></span>',
+  'empty span with whitespace inside': '<span> </span>',
+  'nested empty spans': '<span><span></span></span>',
+  'empty span with vertical padding': '<span style="padding:5px 0;border-top:2px solid"></span>',
+  ...Object.fromEntries(Object.entries(STRUT_SPANS).slice(0, 4).concat(Object.entries(STRUT_SPANS).slice(5, 8))),
+};
+for (const [name, span] of Object.entries(EMPTY_SPANS)) {
+  add(`${name} in a div`, () => `<div id="d">${span}</div>`);
+  add(`${name} in a div with padding`, () => `<div id="d" style="padding:4px 0 7px">${span}</div>`);
+  add(`${name} in a div with a line height`, () => `<div id="d" style="line-height:30px">${span}</div>`);
+  add(`${name} in a div between margins`, () => `<div id="a" style="margin-bottom:10px">A</div><div id="d" style="margin:3px 0">${span}</div><div id="b" style="margin-top:20px">A</div>`);
+  add(`${name} before text`, () => `<div id="d">${span}${SPAN_A}</div>`);
+  // The space of 'whitespace inside' is a visible one between the texts, and the font's space is 5 px in Chrome and 5.55 in gpuix.
+  if (!name.includes('whitespace inside')) add(`${name} between text`, () => `<div id="d">${SPAN_A}${span}${SPAN_B}</div>`);
+  add(`${name} between whitespace`, () => `<div id="d"> ${span} </div>`);
+  add(`${name} after a block`, () => `<div id="d"><div id="a">A</div>${span}</div>`);
+  add(`${name} between blocks`, () => `<div id="d"><div id="a">A</div>${span}<div id="b">A</div></div>`);
+  add(`${name} in an inline-block on a line of text`, () => `<div id="line">${SPAN_A}<span id="i" style="display:inline-block">${span}</span>${SPAN_B}</div>`);
+  add(`${name} in an inline-block with padding`, () => `<div id="line">${SPAN_A}<span id="i" style="display:inline-block;padding:5px 0 8px">${span}</span>${SPAN_B}</div>`);
+  add(`${name} in an inline-block with a height`, () => `<div id="line">${SPAN_A}<span id="i" style="display:inline-block;height:30px">${span}</span>${SPAN_B}</div>`);
+  add(`${name} in an inline-block with text`, () => `<div id="line">${SPAN_A}<span id="i" style="display:inline-block">${span}<span id="y">A</span></span>${SPAN_B}</div>`);
+  add(`${name} in an inline-block with a bottom margin`, () => `<div id="line">${SPAN_A}<span id="i" style="display:inline-block;margin-bottom:6px">${span}</span>${SPAN_B}</div>`);
+  add(`${name} in a flex item on the baseline`, () => `<div id="line" style="display:flex;align-items:baseline"><div id="p">A</div><div id="i" style="padding-bottom:6px">${span}</div></div>`);
+  add(`${name} in a flex item`, () => `<div id="line" style="display:flex"><div id="p">A</div><div id="i" style="padding-bottom:6px">${span}</div></div>`);
+  add(`${name} in a flex column`, () => `<div id="line" style="display:flex;flex-direction:column"><div id="p">A</div><div id="i">${span}</div><div id="q">A</div></div>`);
+  add(`${name} in a grid item on the baseline`, () => `<div id="line" style="display:grid;grid-template-columns:50px 50px;align-items:baseline"><div id="p">A</div><div id="i" style="padding-bottom:6px">${span}</div></div>`);
+  add(`${name} in a grid item`, () => `<div id="line" style="display:grid;grid-template-columns:50px 50px"><div id="p">A</div><div id="i" style="padding-bottom:6px">${span}</div></div>`);
+  add(`${name} as a flex item`, () => `<div id="line" style="display:flex;align-items:baseline"><div id="p">A</div>${span}</div>`);
+}
 
 document.fonts.load('20px GpuixTestSquare').then(() => {
 const out = {};

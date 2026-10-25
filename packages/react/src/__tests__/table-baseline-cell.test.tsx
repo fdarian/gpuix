@@ -1,4 +1,4 @@
-/// `vertical-align: baseline` cells whose content has no text, against headless Chrome at device scale 1 and 2: a cell
+/// `vertical-align: baseline` cells whose content has no text, and empty `<span>`s in a cell and out of one, against headless Chrome at device scale 1 and 2: a cell
 /// that has children but no baseline of its own is aligned by the bottom of its content, a cell with nothing in it takes
 /// no part in aligning its row, and a row that no cell is aligned in has its baseline above the least bottom padding
 /// and border of its cells, which is where an `inline-table` or a table in a flex row sits on the text beside it.
@@ -28,24 +28,23 @@ const ORACLES = [
 ]
 
 /**
- * Rows gpuix lays out differently, each `it.fails` so that fixing one fails the test and takes it off the list. An empty
- * `<span></span>` is a child of the cell in Chrome (its cell is on the baseline, with the bottom of its content for the
- * baseline); gpuix builds no box for it, so the cell has nothing in it.
+ * Rows gpuix lays out differently, each `it.fails` so that fixing one fails the test and takes it off the list: an empty
+ * `<span>` with inline margin, border or padding makes a line of the strut's height in Chrome, with the span's box on
+ * it. gpuix lays out an empty line for it (no height, like an empty span without any), because an inset has no glyph in
+ * an empty box to attach to. A span that is itself a flex item is a block, not an inline box, and is not one of them.
  */
-const KNOWN_GAPS = new Set([
-  "empty span with padding and border: next to text",
-  "no baseline, a cell with an empty span and a cell aligned to the top: inline-table",
-  "no baseline, a cell with an empty span and a cell aligned to the top: flex row",
-])
+const STRUT_SPAN =
+  /^(nested empty spans with inline padding|nested empty spans, the outer with inline padding|two empty spans with inline padding|empty span with (inline padding|a border|a margin|a percentage padding|a larger font and inline padding))/
+const isKnownGap = (name: string) => STRUT_SPAN.test(name) && !/^empty span with .* as a flex item$/.test(name)
 
 describeNative("baseline cells without text against Chrome", () => {
   it("lists only rows of the oracle as known gaps", () => {
-    for (const name of KNOWN_GAPS) expect(Object.keys(ORACLES[0]!.cases), name).toContain(name)
+    expect(Object.keys(ORACLES[0]!.cases).filter(isKnownGap).length).toBeGreaterThan(200)
   })
 
   for (const oracle of ORACLES) {
     for (const [name, source] of Object.entries(oracle.cases)) {
-      const test = KNOWN_GAPS.has(name) ? it.fails : it
+      const test = isKnownGap(name) ? it.fails : it
       test(`${name} at scale ${oracle.scale}`, () => {
         const { render, renderer, unmount } = createTestRoot()
         try {

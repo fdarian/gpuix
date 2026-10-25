@@ -621,7 +621,7 @@ mod tests {
             match child {
                 Child::Paragraph(paragraph) => out.push(paragraph),
                 Child::AnonymousCell(cell) => cell.iter().for_each(|(child, _)| collect(child, out)),
-                Child::Block(_) | Child::AnonymousTable(_) => {}
+                Child::Block(_) | Child::AnonymousTable(_) | Child::EmptyLine => {}
             }
         }
         let mut out = Vec::new();
@@ -636,6 +636,7 @@ mod tests {
             .map(|child| match child {
                 Child::Block(id) => format!("#{id}"),
                 Child::Paragraph(paragraph) => format!("{:?}", paragraph.text),
+                Child::EmptyLine => "line".to_string(),
                 Child::AnonymousCell(cell) => {
                     let cell: Vec<Child> = cell.iter().map(|(child, _)| child.clone()).collect();
                     format!("cell[{}]", shape(&cell))

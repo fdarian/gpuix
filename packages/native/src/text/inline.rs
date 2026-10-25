@@ -268,6 +268,11 @@ pub enum Child {
     /// A child that is built as an element of its own.
     Block(u64),
     Paragraph(Paragraph),
+    /// An inline formatting context whose only content is boxes that hold no text, such as an
+    /// empty `<span>`. Blink lays out an empty line box for it: no height and no baseline, but
+    /// the container has a child, which a table cell's baseline reads. Text, search,
+    /// accessibility and selection do not see it.
+    EmptyLine,
     /// The children of a table, row group or row that are not table parts, wrapped in the one
     /// cell CSS 2.1 section 17.2.1 puts around consecutive ones. It has no element: it is a
     /// plain block with the role of a cell.
@@ -285,6 +290,8 @@ struct Builder {
     /// Blocks seen so far in the container.
     index: usize,
     has_text: bool,
+    /// An in-flow inline box with a box of its own was entered, whether or not it holds text.
+    boxed: bool,
     text: String,
     pieces: Vec<Piece>,
     boxes: Vec<(u64, Range<usize>)>,
@@ -306,6 +313,7 @@ impl Builder {
             container,
             index: 0,
             has_text: false,
+            boxed: false,
             text: String::new(),
             pieces: Vec::new(),
             boxes: Vec::new(),
@@ -409,6 +417,7 @@ impl Builder {
             self.boxes.push((element.id, self.text.len()..self.text.len()));
             self.boxes.len() - 1
         });
+        self.boxed |= slot.is_some();
         chain.push(element.id);
         self.modes.push(white_space::of_box(element, self.mode()));
         if let Some(content) = element.content.as_deref() {
@@ -450,12 +459,17 @@ impl Builder {
 
     /// Ends the paragraph. A collapsible space at its end is removed, and so is
     /// a single final line feed, which ends the last line and starts no new
-    /// one. A paragraph with nothing left generates no box.
+    /// one. A paragraph with nothing left generates no box, unless an inline box was entered:
+    /// that is an empty line.
     fn finish(&mut self, out: &mut Vec<(Child, u32)>) {
         let mut next = Self::new(self.container, self.modes[0], self.blockified);
         next.index = self.index;
         let mut builder = std::mem::replace(self, next);
+        let empty_line = builder.boxed && !builder.blockified;
         if !builder.has_text {
+            if empty_line {
+                out.push((Child::EmptyLine, builder.at.unwrap_or(0)));
+            }
             return;
         }
         if builder.tail == Tail::Space {
@@ -464,6 +478,9 @@ impl Builder {
             builder.pop();
         }
         if builder.text.is_empty() || (builder.blockified && builder.only_whitespace) {
+            if empty_line {
+                out.push((Child::EmptyLine, builder.at.unwrap_or(0)));
+            }
             return;
         }
         builder.boxes.retain(|(_, range)| !range.is_empty());
@@ -621,7 +638,7 @@ pub fn accessible_text<'a>(plan: impl IntoIterator<Item = &'a Child>) -> Option<
                 text.extend(paragraph.text.chars().filter(|c| *c != gpui::OBJECT_REPLACEMENT_CHARACTER))
             }
             Child::AnonymousCell(cell) => cell.iter().for_each(|(child, _)| collect(child, text)),
-            Child::Block(_) | Child::AnonymousTable(_) => {}
+            Child::Block(_) | Child::AnonymousTable(_) | Child::EmptyLine => {}
         }
     }
     let mut text = String::new();
@@ -675,7 +692,7 @@ mod tests {
         plan.iter()
             .filter_map(|child| match child {
                 Child::Paragraph(paragraph) => Some(paragraph),
-                Child::Block(_) | Child::AnonymousCell(_) | Child::AnonymousTable(_) => None,
+                Child::Block(_) | Child::AnonymousCell(_) | Child::AnonymousTable(_) | Child::EmptyLine => None,
             })
             .collect()
     }
@@ -850,8 +867,56 @@ mod tests {
         f.text(1, 2, "  ");
         f.add(1, 3, "div");
         f.text(1, 4, "\n\t");
-        f.add(1, 5, "span").text(5, 6, " ");
         assert_eq!(f.plan(1), vec![Child::Block(3)]);
+    }
+
+    #[test]
+    fn a_span_with_no_text_is_an_empty_line() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "span");
+        assert_eq!(f.plan(1), vec![Child::EmptyLine]);
+        // White space the span holds collapses away, the box stays.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").text(2, 3, " ");
+        f.text(1, 4, " ");
+        assert_eq!(f.plan(1), vec![Child::EmptyLine]);
+        // Nested empty spans are still one line; text next to it is a paragraph, not a line.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").add(2, 3, "span");
+        assert_eq!(f.plan(1), vec![Child::EmptyLine]);
+        f.text(1, 4, "a");
+        assert_eq!(f.plan(1).len(), 1);
+        assert_eq!(paragraphs(&f.plan(1))[0].text, "a");
+        // Each side of a block has its own.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").add(1, 3, "div");
+        f.add(1, 4, "span");
+        assert_eq!(f.plan(1), vec![Child::EmptyLine, Child::Block(3), Child::EmptyLine]);
+    }
+
+    #[test]
+    fn what_has_no_box_makes_no_empty_line() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, serde_json::json!({"display": "contents"}));
+        f.add(1, 3, "span").styled(3, serde_json::json!({"display": "none"}));
+        f.text(1, 4, " ");
+        assert_eq!(f.plan(1), vec![]);
+        // A flex item is a block of its own, not a line.
+        let mut f = Fixture::new();
+        f.styled(1, serde_json::json!({"display": "flex"}));
+        f.add(1, 2, "span");
+        assert_eq!(f.plan(1), vec![Child::Block(2)]);
+        // Out of flow is not in the line.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, serde_json::json!({"position": "absolute"}));
+        assert_eq!(f.plan(1), vec![Child::Block(2)]);
+    }
+
+    #[test]
+    fn an_empty_line_is_no_text() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "span");
+        assert_eq!(accessible_text(&f.plan(1)), None);
     }
 
     #[test]
@@ -1529,6 +1594,7 @@ mod tests {
                     Child::Block(_) => "block",
                     Child::AnonymousCell(_) => "cell",
                     Child::AnonymousTable(_) => "table",
+                    Child::EmptyLine => "empty line",
                 })
                 .collect()
         };

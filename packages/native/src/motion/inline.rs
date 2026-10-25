@@ -312,7 +312,7 @@ mod tests {
         fn paragraph(&self) -> crate::text::inline::Paragraph {
             match plan_children(&self.tree, &self.tree.elements[&1]).remove(0) {
                 Child::Paragraph(paragraph) => paragraph,
-                Child::Block(_) | Child::AnonymousCell(_) | Child::AnonymousTable(_) => panic!("a paragraph"),
+                Child::Block(_) | Child::AnonymousCell(_) | Child::AnonymousTable(_) | Child::EmptyLine => panic!("a paragraph"),
             }
         }
 

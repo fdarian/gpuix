@@ -340,7 +340,7 @@ fn items<'a>(tree: &'a RetainedTree, container: &'a RetainedElement) -> Vec<Item
                 ordinal += 1;
                 Some(Item::Anonymous(BoxKey::Anonymous { container: container.id, ordinal: ordinal - 1 }))
             }
-            Child::Paragraph(_) | Child::AnonymousTable(_) => None,
+            Child::Paragraph(_) | Child::AnonymousTable(_) | Child::EmptyLine => None,
         })
         .collect()
 }
