@@ -1,10 +1,11 @@
 <!doctype html>
 <!--
   Oracle for transform-animation.test.tsx: what headless Chrome shows part of the way through a CSS animation of
-  `transform`, `translate`, `rotate`, `scale` and `transform-origin`. A case is the keyframes of an element of
-  100 x 50 at (200, 200) and a static style; the animation is paused at each of the fractions of its second (a
-  negative delay on a paused animation) and the border box is read with `getBoundingClientRect`, the computed
-  transform as a matrix. The cases with a `var()` in their keyframes set the custom properties on the element. After
+  `transform`, `translate`, `rotate`, `scale`, `transform-origin`, `perspective` and `perspective-origin`. A case is the
+  keyframes of an element of 100 x 50 at (200, 200) and a static style; the animation is paused at each of the fractions
+  of its second (a negative delay on a paused animation) and the border box is read with `getBoundingClientRect`, the
+  computed transform as a matrix. A case with a `wrap` has the element in a box of the page's size with that style (a
+  `perspective`), and with a `target` of "parent" it is that box which is animated. The cases with a `var()` in their keyframes set the custom properties on the element. After
   them come the transitions of a `var()` transform: `--p` (or the custom properties named) change from one value to
   another on the element or on its parent, the transition runs for a second, and it is paused at each of the fractions.
   Regenerate with
@@ -18,7 +19,8 @@ html, body { margin: 0; padding: 0; }
 </style></head><body>
 <div id="scene" style="position:absolute;left:0;top:0;width:800px;height:600px"></div>
 <script>
-// [name, property, keyframes as [offset, value][], static css]
+// [name, property, keyframes as [offset, value][], static css, wrap css, target]
+const P = "perspective: 600px;";
 const cases = [
   ["translate px", "transform", [[0, "translate(10px, 20px)"], [1, "translate(110px, -40px)"]]],
   ["translate percent", "transform", [[0, "translate(0, 0)"], [1, "translate(100%, 50%)"]]],
@@ -92,6 +94,69 @@ const cases = [
   ["origin one value", "transform-origin", [[0, "left"], [1, "100px"]], "transform: scale(2);"],
   ["origin and transform", "transform", [[0, "rotate(0deg)"], [1, "rotate(90deg)"]], "transform-origin: 0 0;"],
   ["origin and transform together", "all", [[0, "transform: rotate(0deg); transform-origin: 0 0"], [1, "transform: rotate(90deg); transform-origin: 100% 100%"]]],
+  // CSS Transforms 2: the 3D functions pair by primitive (translate*, scale*, rotate*), a pair of rotations about
+  // one axis blends the angles and about two the quaternions, and what does not pair is one matrix decomposed in 3D.
+  ["3d rotateX to rotateY", "transform", [[0, "rotateX(60deg)"], [1, "rotateY(60deg)"]], "", P],
+  ["3d rotateX to rotateY wide", "transform", [[0, "rotateX(170deg)"], [1, "rotateY(170deg)"]], "", P],
+  ["3d rotate3d one axis", "transform", [[0, "rotate3d(1, 1, 0, 20deg)"], [1, "rotate3d(2, 2, 0, 100deg)"]], "", P],
+  ["3d rotate3d opposite axes", "transform", [[0, "rotate3d(0, 1, 0, 60deg)"], [1, "rotate3d(0, -1, 0, 60deg)"]], "", P],
+  ["3d rotate3d two axes", "transform", [[0, "rotate3d(1, 0, 0, 90deg)"], [1, "rotate3d(1, 1, 1, 120deg)"]], "", P],
+  ["3d rotate3d zero axis", "transform", [[0, "rotate3d(0, 0, 0, 90deg)"], [1, "rotate3d(0, 1, 0, 90deg)"]], "", P],
+  ["3d rotateY half turn", "transform", [[0, "rotateY(0deg)"], [1, "rotateY(180deg)"]], "", P],
+  ["3d rotateY long way", "transform", [[0, "rotateY(0deg)"], [1, "rotateY(300deg)"]], "", P],
+  ["3d rotate against rotateY", "transform", [[0, "rotate(0deg)"], [1, "rotateY(60deg)"]], "", P],
+  ["3d rotateZ against rotateX", "transform", [[0, "rotateZ(80deg)"], [1, "rotateX(80deg)"]], "", P],
+  ["3d none to rotateY", "transform", [[0, "none"], [1, "rotateY(60deg)"]], "", P],
+  ["3d rotateY to none", "transform", [[0, "rotateY(100deg)"], [1, "none"]], "", P],
+  ["3d translateZ to translate3d", "transform", [[0, "translateZ(50px)"], [1, "translate3d(100px, 20px, -80px)"]], "", P],
+  ["3d translate to translateZ", "transform", [[0, "translate(40px, 10px)"], [1, "translateZ(200px)"]], "", P],
+  ["3d translateZ against none", "transform", [[0, "none"], [1, "translateZ(150px)"]], "", P],
+  ["3d scale3d", "transform", [[0, "rotateY(50deg) scale3d(1, 1, 1)"], [1, "rotateY(50deg) scale3d(2, 0.5, 3)"]], "", P],
+  ["3d scaleZ against scale", "transform", [[0, "rotateX(40deg) scaleZ(3)"], [1, "rotateX(40deg) scale(2)"]], "", P],
+  ["3d scale to scale3d", "transform", [[0, "scale(1)"], [1, "scale3d(2, 2, 5)"]], "", P],
+  ["3d perspective function", "transform", [[0, "perspective(100px) rotateY(30deg)"], [1, "perspective(400px) rotateY(30deg)"]]],
+  ["3d perspective function to none", "transform", [[0, "perspective(100px) rotateY(30deg)"], [1, "perspective(none) rotateY(30deg)"]]],
+  ["3d perspective function against nothing", "transform", [[0, "rotateY(30deg)"], [1, "perspective(150px) rotateY(30deg)"]]],
+  ["3d perspective close to the plane", "transform", [[0, "perspective(40px) rotateY(10deg)"], [1, "perspective(300px) rotateY(10deg)"]]],
+  ["3d perspective function against translate", "transform", [[0, "perspective(200px)"], [1, "translateX(30px)"]]],
+  ["3d matrix3d to matrix3d", "transform", [[0, "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)"], [1, "matrix3d(0.7,0,0.7,0, 0,1,0,0, -0.7,0,0.7,0, 30,10,60,1)"]], "", P],
+  ["3d matrix3d to rotateY", "transform", [[0, "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)"], [1, "rotateY(45deg)"]], "", P],
+  ["3d rotateY to matrix3d", "transform", [[0, "rotateY(70deg)"], [1, "matrix3d(1,0,0,0, 0.3,1,0,0, 0,0,1,-0.004, 20,0,0,1)"]], "", P],
+  ["3d matrix to matrix3d", "transform", [[0, "matrix(1, 0, 0, 1, 0, 0) translate(10px)"], [1, "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 40,0,50,1) translate(30px)"]], "", P],
+  ["3d matrix3d of the plane against rotate", "transform", [[0, "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 10,20,0,1)"], [1, "rotate(90deg)"]], "", P],
+  ["3d translateX to rotateY", "transform", [[0, "translateX(10px)"], [1, "rotateY(45deg)"]], "", P],
+  ["3d rotateY to translateX", "transform", [[0, "rotateY(80deg)"], [1, "translate(60px, 20px)"]], "", P],
+  ["3d scale against rotateX", "transform", [[0, "scale(2)"], [1, "rotateX(60deg)"]], "", P],
+  ["3d shorter against longer", "transform", [[0, "translateZ(20px)"], [1, "translateZ(80px) rotateX(30deg)"]], "", P],
+  ["3d longer against shorter", "transform", [[0, "rotateX(20deg) translateZ(50px) scale(1.5)"], [1, "rotateX(60deg)"]], "", P],
+  ["3d mismatch after a pair", "transform", [[0, "rotateY(20deg) translate3d(10px, 0, 30px)"], [1, "rotateY(60deg) rotateX(40deg) scale(1.2)"]], "", P],
+  ["3d mismatch in the first function", "transform", [[0, "rotateX(30deg) translateZ(40px)"], [1, "translateZ(100px) rotateY(50deg)"]], "", P],
+  ["3d keyframes of three", "transform", [[0, "rotateY(0deg)"], [0.4, "rotateY(100deg) translateZ(30px)"], [1, "rotateX(50deg)"]], "", P],
+  ["3d singular rest", "transform", [[0, "translate(10px) scaleZ(0)"], [1, "translate(50px) rotateY(30deg)"]], "", P],
+  ["3d singular matrix3d pair", "transform", [[0, "translate(10px) matrix3d(1,0,0,0, 0,1,0,0, 0,0,0,0, 0,0,0,1)"], [1, "translate(50px) matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)"]], "", P],
+  ["2d singular rest", "transform", [[0, "translate(10px) scale(0)"], [1, "translate(50px) rotate(30deg)"]]],
+  ["2d singular rest in the first function", "transform", [[0, "scale(0)"], [1, "rotate(30deg) translate(50px)"]]],
+  ["2d singular matrix pair", "transform", [[0, "translate(10px) matrix(0, 0, 0, 0, 0, 0)"], [1, "translate(50px) matrix(1, 0, 0, 1, 20, 0)"]]],
+  ["3d individual rotate with an axis", "rotate", [[0, "x 0deg"], [1, "y 90deg"]], "", P],
+  ["3d individual rotate one axis", "rotate", [[0, "1 1 0 20deg"], [1, "1 1 0 100deg"]], "", P],
+  ["3d individual rotate against none", "rotate", [[0, "none"], [1, "y 80deg"]], "", P],
+  ["3d individual rotate against an angle", "rotate", [[0, "30deg"], [1, "x 70deg"]], "", P],
+  ["3d individual translate", "translate", [[0, "0px 0px 0px"], [1, "20px 10px 90px"]], "transform: rotateY(40deg);", P],
+  ["3d individual translate from two", "translate", [[0, "10px 5px"], [1, "20px 10px 90px"]], "transform: rotateY(40deg);", P],
+  ["3d individual scale", "scale", [[0, "1 1 1"], [1, "2 1 3"]], "transform: rotateY(40deg);", P],
+  ["3d individual scale from two", "scale", [[0, "1 2"], [1, "2 1 3"]], "transform: rotateX(40deg);", P],
+  ["3d origin z", "transform-origin", [[0, "50% 50% 0px"], [1, "50% 50% 100px"]], "transform: rotateY(45deg);", P],
+  ["3d origin z with xy", "transform-origin", [[0, "0 0 -50px"], [1, "100% 50% 80px"]], "transform: rotateX(50deg) rotateY(20deg);", P],
+  ["3d origin two to three", "transform-origin", [[0, "left top"], [1, "right bottom 60px"]], "transform: rotateY(30deg);", P],
+  ["3d perspective property", "perspective", [[0, "200px"], [1, "800px"]], "transform: rotateY(50deg);", "", "parent"],
+  ["3d perspective property small", "perspective", [[0, "100px"], [1, "300px"]], "transform: rotateX(40deg) translateZ(20px);", "", "parent"],
+  ["3d perspective property from none", "perspective", [[0, "none"], [1, "300px"]], "transform: rotateY(50deg);", "", "parent"],
+  ["3d perspective property to none", "perspective", [[0, "300px"], [1, "none"]], "transform: rotateY(50deg);", "", "parent"],
+  ["3d perspective property three keyframes", "perspective", [[0, "500px"], [0.5, "150px"], [1, "900px"]], "transform: rotateY(60deg);", "", "parent"],
+  ["3d perspective origin", "perspective-origin", [[0, "0 0"], [1, "100% 100%"]], "transform: rotateY(50deg);", "perspective: 300px;", "parent"],
+  ["3d perspective origin lengths", "perspective-origin", [[0, "100px 20px"], [1, "50% 80%"]], "transform: rotateX(50deg);", "perspective: 300px;", "parent"],
+  ["3d perspective origin keywords", "perspective-origin", [[0, "left top"], [1, "center bottom"]], "transform: rotateY(-50deg) translateZ(40px);", "perspective: 300px;", "parent"],
+  ["3d perspective and its origin together", "all", [[0, "perspective: 200px; perspective-origin: 0 0"], [1, "perspective: 600px; perspective-origin: 100% 50%"]], "transform: rotateY(50deg);", "", "parent"],
   ["var keyframes translate", "transform", [[0, "translateX(calc(100% * var(--p)))"], [1, "translateX(calc(-100% * var(--p)))"]], "--p: 0.5;"],
   ["var keyframes fallback", "transform", [[0, "translate(var(--x, 10px), 0)"], [1, "translate(var(--x, 10px), var(--y, 40px))"]], "--x: 30px;"],
   ["var keyframes nested", "transform", [[0, "none"], [1, "rotate(var(--turn)) scale(var(--s))"]], "--turn: 0.25turn; --s: calc(var(--k) * 2); --k: 1.5;"],
@@ -133,22 +198,27 @@ const style = document.createElement("style");
 document.head.appendChild(style);
 const scene = document.getElementById("scene");
 const out = {};
-cases.forEach(([name, property, frames, extra = ""], index) => {
+cases.forEach(([name, property, frames, extra = "", wrap = null, target = "self"], index) => {
   const rule = frames
     .map(([offset, value]) => `${offset * 100}% { ${property === "all" ? value : `${property}: ${value}`} }`)
     .join(" ");
   style.textContent = `@keyframes k${index} { ${rule} }`;
-  const result = { property, frames, extra, boxes: {}, matrices: {}, origins: {} };
+  const result = { property, frames, extra, wrap, target, boxes: {}, matrices: {}, origins: {} };
   for (const time of TIMES) {
+    const holder = document.createElement("div");
+    holder.style.cssText = `position:absolute;left:0;top:0;width:800px;height:600px;${wrap ?? ""}`;
     const el = document.createElement("div");
     el.id = "s";
-    el.style.cssText = `${extra} animation: k${index} 1s linear paused both; animation-delay: -${time}s;`;
-    scene.appendChild(el);
+    const animation = `animation: k${index} 1s linear paused both; animation-delay: -${time}s;`;
+    el.style.cssText = `${extra} ${target === "self" ? animation : ""}`;
+    if (target === "parent") holder.style.cssText += animation;
+    holder.appendChild(el);
+    scene.appendChild(wrap === null ? el : holder);
     const rect = el.getBoundingClientRect();
     result.boxes[time] = [rect.x, rect.y, rect.width, rect.height];
     result.matrices[time] = getComputedStyle(el).transform;
     result.origins[time] = getComputedStyle(el).transformOrigin;
-    el.remove();
+    (wrap === null ? el : holder).remove();
   }
   out[name] = result;
 });

@@ -1,10 +1,16 @@
-/// A CSS animation of `transform`, `translate`, `rotate`, `scale` and `transform-origin`, against headless Chrome:
+/// A CSS animation of `transform`, `translate`, `rotate`, `scale`, `transform-origin`, `perspective` and `perspective-origin`,
+/// against headless Chrome:
 /// `fixtures/transform-animation-oracle.html` is the page and `fixtures/transform-animation-oracle.json` the border box
 /// Chrome shows part of the way through each animation (regenerate with `transform-animation-oracle.sh`).
 ///
 /// - Lists that pair up function by function blend by function, translate lengths in px and in percent apart; lists that
 ///   stop pairing blend the rest through the 2D matrix decomposition; `none` blends as the identity of the other list.
-/// - The individual `translate`, `rotate` and `scale` blend as their own values, and `transform-origin` as two lengths.
+/// - The 3D functions pair by primitive as Blink's do (`translate*`, `scale*`, `rotate*`, `perspective()`): rotations about one
+///   axis blend their angles, about two their quaternions; what does not pair is one matrix decomposed in 3D (CSS Transforms 2).
+///   A matrix that cannot be decomposed makes the whole list step at the middle.
+/// - The individual `translate`, `rotate` and `scale` blend as their own values (with z, and rotate with an axis), and
+///   `transform-origin` as two lengths and a depth. `perspective` is a length, and `none` steps against a length;
+///   `perspective-origin` is two lengths.
 /// - The element is a stacking context and a containing block for as long as the animation runs.
 /// - `var()` is substituted from the custom properties the element computes to: keyframes read it against the element, and
 ///   a transition of a transform that reads a custom property runs from the value it computed before the change to the one it
@@ -25,6 +31,10 @@ interface Case {
   property: string
   frames: [number, string][]
   extra: string
+  /** The style of a box between the page and the element, which a `perspective` goes on; `null` for none. */
+  wrap: string | null
+  /** What the animation is on: the element, or the box around it. */
+  target: "self" | "parent"
   boxes: Record<string, Rect>
   kind?: "transition"
   /** A transition: the value of the property, and each custom property it reads from its value before the change to the one after (`null` is unset). */
@@ -77,20 +87,40 @@ describeNative("a CSS animation of the transform properties follows Chrome", () 
       const { render, renderer, unmount } = createTestRoot({ width: 800, height: 600 })
       try {
         renderer.clockPause()
+        const animation = { animation: `${keyframes} 1s linear forwards` }
+        const box = (
+          <div
+            testId="box"
+            style={{
+              position: "absolute",
+              left: 200,
+              top: 200,
+              width: 100,
+              height: 50,
+              ...styleOf(scene.extra),
+              ...(scene.target === "self" ? animation : {}),
+            }}
+          />
+        )
         render(
           <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600 }}>
-            <div
-              testId="box"
-              style={{
-                position: "absolute",
-                left: 200,
-                top: 200,
-                width: 100,
-                height: 50,
-                ...styleOf(scene.extra),
-                animation: `${keyframes} 1s linear forwards`,
-              }}
-            />
+            {scene.wrap === null ? (
+              box
+            ) : (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: 800,
+                  height: 600,
+                  ...styleOf(scene.wrap),
+                  ...(scene.target === "parent" ? animation : {}),
+                }}
+              >
+                {box}
+              </div>
+            )}
           </div>
         )
         renderer.flush()
