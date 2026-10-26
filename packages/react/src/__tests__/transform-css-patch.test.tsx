@@ -1,7 +1,7 @@
 // @ts-nocheck
 /**
  * A tick of a CSS transition, a CSS animation or a Web Animations seek of `transform`, `translate`, `rotate` and `scale`
- * is patched: the element that runs is built alone and gpui paints its operations again (`getPatchCounters`).
+ * (their 3D forms, `transform-origin` with a depth, and the `perspective` and `perspective-origin` of a parent) is patched: the element that runs is built alone and gpui paints its operations again (`getPatchCounters`).
  */
 
 import React from "react"
@@ -113,6 +113,19 @@ defineKeyframes("tpatch-mismatch", {
   to: { transform: "none" },
 })
 defineKeyframes("tpatch-var", { from: { transform: "translateX(0px)" }, to: { transform: "translateX(calc(300% * var(--p)))" } })
+defineKeyframes("tpatch-3d", {
+  from: { transform: "rotateX(0deg) translateZ(0px)" },
+  "50%": { transform: "rotateY(100deg) translateZ(60px)" },
+  to: { transform: "none" },
+})
+defineKeyframes("tpatch-origin-z", {
+  from: { transformOrigin: "0 0 -80px" },
+  to: { transformOrigin: "100% 50% 120px" },
+})
+defineKeyframes("tpatch-perspective", {
+  from: { perspective: "120px", perspectiveOrigin: "0 0" },
+  to: { perspective: "900px", perspectiveOrigin: "100% 100%" },
+})
 defineKeyframes("tpatch-origin", {
   from: { transformOrigin: "0 0" },
   to: { transformOrigin: "100% 100%" },
@@ -173,6 +186,47 @@ describeNative("a tick of a CSS animation or transition of the transform", { tim
 
   it("patches every tick of an animation of transform-origin around a transform", async () => {
     expectPatched(await ticksOf(head({ transform: "rotate(30deg)", animation: "tpatch-origin 1.6s linear infinite" })))
+  })
+
+  it("patches every tick of a transition of rotateY under a perspective", async () => {
+    const seen = (transform: string) => (
+      <div style={{ perspective: 300 }}>{head({ transition: "transform 2s linear", transform })}</div>
+    )
+    const done = await ticksOf(seen("rotateY(0deg)"), (root, _renderer, tick) => {
+      if (tick === 0) root.render(<Page head={seen("rotateY(160deg) translateZ(40px)")} />)
+    })
+    expectPatched(done)
+  })
+
+  it("patches every tick of an animation of 3D lists that do not pair", async () => {
+    const seen = <div style={{ perspective: 400 }}>{head({ animation: "tpatch-3d 1.6s linear infinite" })}</div>
+    expectPatched(await ticksOf(seen))
+  })
+
+  it("patches every tick of an animation of the depth of transform-origin around a rotation", async () => {
+    const seen = (
+      <div style={{ perspective: 400 }}>
+        {head({ transform: "rotateY(40deg)", animation: "tpatch-origin-z 1.6s linear infinite" })}
+      </div>
+    )
+    expectPatched(await ticksOf(seen))
+  })
+
+  it("patches every tick of a transition of the perspective of the parent", async () => {
+    const seen = (perspective: string) => (
+      <div style={{ perspective, transition: "perspective 2s linear" }}>{head({ transform: "rotateY(50deg)" })}</div>
+    )
+    const done = await ticksOf(seen("100px"), (root, _renderer, tick) => {
+      if (tick === 0) root.render(<Page head={seen("900px")} />)
+    })
+    expectPatched(done)
+  })
+
+  it("patches every tick of an animation of the perspective and the perspective-origin of the parent", async () => {
+    const seen = (
+      <div style={{ animation: "tpatch-perspective 1.6s linear infinite alternate" }}>{head({ transform: "rotateX(50deg)" })}</div>
+    )
+    expectPatched(await ticksOf(seen))
   })
 
   it("patches every tick of a translate that Web Animations paused, seeked and played", async () => {

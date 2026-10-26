@@ -6,7 +6,7 @@
  *   they give is the one a plain element with that `transform` has, to the pixel.
  * - A tween, a spring and a motion value move an element through them and every tick of that is patched: the
  *   elements that run are built alone and gpui paints their operations again (`getPatchCounters`).
- * - The 3D keys (`z`, `translateZ`, `rotateX`, `rotateY`, `transformPerspective`) are the CSS functions they stand for, in Motion's
+ * - The 3D keys (`z`, `translateZ`, `scaleZ`, `rotateX`, `rotateY`, `transformPerspective`, `originZ`) are the CSS functions they stand for, in Motion's
  *   order, with the perspective of a parent (`perspective` is the CSS property) or of the key. The CSS `scale` and `rotate`
  *   of a plain element are still CSS.
  */
@@ -120,6 +120,22 @@ describeNative("Motion's transform keys compose like the CSS transform they stan
       ["angle strings", { rotateY: "0.1turn", rotateX: "50grad", transformPerspective: 400 }, { transform: "perspective(400px) rotateX(50grad) rotateY(0.1turn)" }],
       ["length strings", { z: "2em", translateZ: "10px", rotateY: 20, transformPerspective: 400 }, { transform: "perspective(400px) translateZ(2em) translateZ(10px) rotateY(20deg)" }],
       ["a key at its default", { rotateY: 0, z: 0, transformPerspective: 0, x: 5 }, { transform: "translateX(5px)" }],
+      [
+        "scaleZ after the scales and before the turns",
+        { rotateX: 50, scaleZ: 3, scale: 1.2, transformPerspective: 400 },
+        { transform: "perspective(400px) scale(1.2) scaleZ(3) rotateX(50deg)" },
+      ],
+      ["a scaleZ of 1", { rotateX: 50, scaleZ: 1, transformPerspective: 400 }, { transform: "perspective(400px) rotateX(50deg)" }],
+      [
+        "originZ",
+        { rotateY: 40, originZ: 60, transformPerspective: 400 },
+        { transform: "perspective(400px) rotateY(40deg)", transformOrigin: "50% 50% 60px" },
+      ],
+      [
+        "originZ beside originX",
+        { rotateY: 40, originX: 0, originZ: "2em", transformPerspective: 400 },
+        { transform: "perspective(400px) rotateY(40deg)", transformOrigin: "0% 50% 32px" },
+      ],
     ]
     for (const [name, motionStyle, cssStyle] of cases) {
       const got = boundsOf(motionBox(motionStyle))
@@ -151,6 +167,36 @@ describeNative("Motion's transform keys compose like the CSS transform they stan
       </div>
     )
     expectBox(parentMotion, want, "perspective on a motion.div")
+  }, TIMEOUT)
+
+  it("tweens the perspective of a parent as the CSS property, in px", () => {
+    const frame = (parent: React.ReactNode) => <div style={{ display: "flex", padding: 200 }}>{parent}</div>
+    const child = <div testId="box" style={{ ...BOX, backgroundColor: "#336699", transform: "rotateY(50deg)" }} />
+    const at = (ms: number) => {
+      const { render, renderer, unmount } = createTestRoot(SIZE)
+      try {
+        renderer.clockPause()
+        render(
+          frame(
+            <motion.div initial={{ perspective: 200, perspectiveOrigin: "0 0" }} animate={{ perspective: 800, perspectiveOrigin: "100% 100%" }} transition={linear} style={{ width: 200, height: 100 }}>
+              {child}
+            </motion.div>
+          )
+        )
+        renderer.flush()
+        renderer.clockFastForward(ms)
+        renderer.flush()
+        renderer.dispatchNativeEvents()
+        return bounds(renderer, "box")
+      } finally {
+        unmount()
+      }
+    }
+    const still = (perspective: string, perspectiveOrigin: string) =>
+      boundsOf(frame(<div style={{ width: 200, height: 100, perspective, perspectiveOrigin }}>{child}</div>))
+    expectBox(at(0), still("200px", "0 0"), "start")
+    expectBox(at(500), still("500px", "50% 50%"), "half way")
+    expectBox(at(1000), still("800px", "100% 100%"), "end")
   }, TIMEOUT)
 
   it("keeps the CSS scale and rotate of a plain element CSS", () => {
@@ -224,6 +270,8 @@ describeNative("an animation of the transform keys", () => {
   it("animates the 3D keys through their own curves", () => {
     const half = run({ x: 100, z: 50, rotateX: 90, rotateY: 40 }, { x: linear, z: linear, rotateX: { duration: 2, ease: "linear" }, rotateY: linear }, 500)
     expectBox(half, boundsOf(cssBox({ transform: "translateX(50px) translateZ(25px) rotateX(22.5deg) rotateY(20deg)" })), "3D keys")
+    const deep = run({ rotateY: 80, originZ: 100, scaleZ: 3, transformPerspective: 500 }, { rotateY: linear, originZ: linear, scaleZ: linear }, 500, { scaleZ: 1, rotateY: 0, originZ: 0 })
+    expectBox(deep, boundsOf(cssBox({ transform: "perspective(500px) scaleZ(2) rotateY(40deg)", transformOrigin: "50% 50% 50px" })), "scaleZ and originZ")
     const withPerspective = run({ transformPerspective: 600, rotateY: 80 }, { rotateY: linear, transformPerspective: linear }, 500, { transformPerspective: 200, rotateY: 0 })
     expectBox(withPerspective, boundsOf(cssBox({ transform: "perspective(400px) rotateY(40deg)" })), "transformPerspective")
   }, TIMEOUT)
@@ -383,6 +431,8 @@ interface OracleCase {
   kind?: "transition"
   frames: [number, string][]
   extra: string
+  /** The style of a box around the element, which a `perspective` goes on; `null` for none. */
+  wrap: string | null
   boxes: Record<string, Rect>
 }
 
@@ -408,17 +458,18 @@ describeNative("a Motion transform string animates as a CSS transform does", () 
         renderer.clockPause()
         const lists = scene.frames.map(([, list]) => list)
         const origin = /transform-origin:\s*([^;]+)/.exec(scene.extra)?.[1]
-        render(
-          <div style={{ position: "absolute", left: 0, top: 0, width: 800, height: 600 }}>
-            <motion.div
-              testId="box"
-              initial={{ transform: lists[0] }}
-              animate={{ transform: lists }}
-              transition={{ duration: 1, ease: "linear", times: scene.frames.map(([offset]) => offset) }}
-              style={{ position: "absolute", left: 200, top: 200, width: 100, height: 50, ...(origin ? { transformOrigin: origin } : {}) }}
-            />
-          </div>
+        const perspective = scene.wrap === null ? undefined : /perspective:\s*([^;]+)/.exec(scene.wrap)?.[1]
+        const box = (
+          <motion.div
+            testId="box"
+            initial={{ transform: lists[0] }}
+            animate={{ transform: lists }}
+            transition={{ duration: 1, ease: "linear", times: scene.frames.map(([offset]) => offset) }}
+            style={{ position: "absolute", left: 200, top: 200, width: 100, height: 50, ...(origin ? { transformOrigin: origin } : {}) }}
+          />
         )
+        const page = { position: "absolute", left: 0, top: 0, width: 800, height: 600 } as const
+        render(<div style={page}>{perspective === undefined ? box : <div style={{ ...page, perspective }}>{box}</div>}</div>)
         renderer.flush()
         const wrong: string[] = []
         let elapsed = 0
