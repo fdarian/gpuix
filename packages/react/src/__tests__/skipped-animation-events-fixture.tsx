@@ -102,6 +102,10 @@ const SCENES: Record<string, Scene> = {
   q3_before: { ...TRANSITION, steps: [[100, "change"], [150, "skip"], [1200, "reveal"], [1700, null]] },
   q3_inside: { ...TRANSITION, steps: [[100, "skip"], [300, "change"], [1200, "reveal"], [1700, null]] },
   q3_inside_mid: { ...TRANSITION, steps: [[100, "skip"], [300, "change"], [450, "reveal"], [1000, null]] },
+  // A transition made by a read tells `transitionrun` and `transitionstart` at the read, where an animation tells nothing
+  // until it renders; the end comes with the reveal when it is over by then.
+  q3_inside_read: { ...TRANSITION, steps: [[100, "skip"], [300, "change+readStyle"], [1200, "reveal"], [1700, null]] },
+  q3_inside_mid_read: { ...TRANSITION, made: true, steps: [[100, "skip"], [300, "change+readStyle"], [450, "reveal"], [1000, null]] },
   q6_load_tree: { ...LOOP, load: true, steps: [[600, "readTree"], [1500, "reveal"], [2000, null]] },
   // Reads of content that was never rendered, which Chrome styles for the read: the animations it makes run while skipped.
   // `getComputedStyle` (q6_load_style) has no counterpart in gpuix; a read of the geometry stands in for it below.

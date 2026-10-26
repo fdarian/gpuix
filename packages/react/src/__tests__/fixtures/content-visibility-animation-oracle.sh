@@ -5,7 +5,7 @@
 # The script also records a devtools trace of each scene; it is not kept, since no test reads it.
 set -eu
 cd "$(dirname "$0")"
-SCENES="q1_run q1_run_read q1_load q1_load_read q2_run q2_load q2_class q2_class_read q3_before q3_inside q3_inside_mid"
+SCENES="q1_run q1_run_read q1_load q1_load_read q2_run q2_load q2_class q2_class_read q3_before q3_inside q3_inside_read q3_inside_mid q3_inside_mid_read"
 SCENES="$SCENES q6_load_tree q6_load_geom q6_load_geom_fin q6_load_rect q6_load_rect_fin q6_load_style"
 SCENES="$SCENES q7_none q7_getanims q7_rect q7_bg q7_color q7_offsetw q7_doc"
 NAMES=""
