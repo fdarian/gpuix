@@ -10329,6 +10329,14 @@ fn animate_style_at(
     }
     let measurement = reads_measurement.then(|| ctx.measurements.get(id)).flatten();
     let svg = (element.element_type == "svg").then(|| crate::motion::SvgSource { own: props, ancestors: &[] });
+    // An `<svg>` that declares its first transition in the update that changes an SVG prop starts
+    // from the prop it had.
+    let props_before = (svg.is_some() && transitions_wanted && !ctx.css_transitions.tracks(id))
+        .then(|| element.custom_props_before())
+        .filter(|before| matches!(before, std::borrow::Cow::Owned(_)));
+    let svg_before = props_before
+        .as_deref()
+        .map(|own| crate::motion::SvgSource { own, ancestors: &[] });
     let mut dynamic = 0;
     if has_motion && ctx.motion_states.get(&id).is_some_and(|state| state.is_animating(ctx.now)) {
         dynamic |= Dynamic::Motion as u8;
@@ -10355,6 +10363,7 @@ fn animate_style_at(
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
             input.before_transition,
             svg.as_ref().map(|source| (source, crate::motion::PropTarget::SvgHost)),
+            svg_before.as_ref().map(|source| (source, crate::motion::PropTarget::SvgHost)),
             &ctx.inherited.colors,
             &ctx.inherited.parent_values(),
             input.pointer_states,

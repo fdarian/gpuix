@@ -152,6 +152,8 @@ struct Above<'a> {
     font: ParentValues,
     /// Their props, the nearest last.
     props: Vec<&'a HashMap<String, Value>>,
+    /// The same elements, for the props they had before the update.
+    elements: Vec<&'a crate::retained_tree::RetainedElement>,
 }
 
 /// The serialised markup of every `<svg>` with children, reused until a
@@ -190,8 +192,10 @@ impl SvgTrees {
             colors: *frame.colors,
             font: frame.font.clone(),
             props: vec![element.custom_props()],
+            elements: vec![element],
         };
         let children = nodes(tree, "svg", &element.children, &mut frame, &mut above);
+        element.svg_wrote();
         if children.is_empty() {
             self.cache.remove(&svg_id);
             return None;
@@ -287,8 +291,11 @@ fn nodes<'a>(
                 (std::mem::replace(&mut above.colors, colors), std::mem::replace(&mut above.font, font))
             });
             above.props.push(element.custom_props());
+            above.elements.push(element);
             let children = nodes(tree, &element.element_type, &element.children, frame, above);
             above.props.pop();
+            above.elements.pop();
+            element.svg_wrote();
             if let Some((colors, font)) = saved {
                 above.colors = colors;
                 above.font = font;
@@ -331,6 +338,9 @@ fn animate(
         }
     };
     let source = SvgSource { own: element.custom_props(), ancestors: &above.props };
+    if transitions && !frame.transitions.tracks(element.id) {
+        seed_from_before_update(element, frame, above);
+    }
     let covered = if animates {
         frame.animations.advance(element.id, declared, frame.keyframes, crate::motion::Scope::Element, frame.now)
     } else {
@@ -361,6 +371,33 @@ fn animate(
         Vec::new()
     };
     (running.map(|running| running.svg_attributes()).unwrap_or_default(), animated)
+}
+
+/// Starts tracking a shape that declares its first transition from the SVG properties it had before
+/// the update, so a change in the update that declares the transition runs it: CSS judges a change
+/// by the transition properties of the style after it. The properties it inherits are the ones its
+/// ancestors had before the update.
+fn seed_from_before_update(
+    element: &crate::retained_tree::RetainedElement,
+    frame: &mut Frame,
+    above: &Above,
+) {
+    let own = element.custom_props_before();
+    let ancestors: Vec<_> = above.elements.iter().map(|ancestor| ancestor.custom_props_before()).collect();
+    let replaced = |props: &std::borrow::Cow<HashMap<String, Value>>| matches!(props, std::borrow::Cow::Owned(_));
+    if !replaced(&own) && !ancestors.iter().any(replaced) {
+        return;
+    }
+    let ancestors: Vec<&HashMap<String, Value>> = ancestors.iter().map(|props| &**props).collect();
+    let before = SvgSource { own: &own, ancestors: &ancestors };
+    let no_style = StyleDesc::default();
+    frame.transitions.seed(
+        element.id,
+        element.style_before_transition().unwrap_or(&no_style),
+        Some((&before, crate::motion::PropTarget::SvgShape)),
+        &above.colors,
+        &above.font,
+    );
 }
 
 /// The string of a text node: React and Solid make a `text` element with

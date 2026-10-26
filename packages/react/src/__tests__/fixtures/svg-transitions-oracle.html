@@ -127,6 +127,40 @@ cases.push(
   { name: 'dropping the transition mid-way cancels it', nodes: [circle(only('r'), {})], change: [{ node: 't', attrs: { r: 30 } }], then: { seek: 500, change: [{ node: 't', style: { transition: 'none' } }] }, times: [0, 500], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
 );
 
+// The transition is declared in the same update as the first change of the property. Chrome judges a change by the style
+// the element has after it, so the declaration applies and the change runs; the same change without a declaration, or a
+// declaration without a change, runs nothing.
+const TOGETHER = ['fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'opacity', 'r', 'd'];
+for (const entry of PROPS.filter((candidate) => TOGETHER.includes(candidate.prop) && !candidate.label)) {
+  const name = kebab(entry.prop);
+  const label = `${name} of a ${entry.tag}`;
+  for (const via of ['attribute', 'style']) {
+    if (via === 'style' && !['fill', 'strokeWidth', 'r', 'd'].includes(entry.prop)) continue;
+    const together = only(name);
+    const change = via === 'attribute' ? { attrs: { [entry.prop]: entry.to }, style: together } : { style: Object.assign({ [name]: cssValue(entry.prop, entry.to) }, together) };
+    cases.push({
+      name: `${label} ${via === 'attribute' ? 'changes' : 'changes by style'} in the update that declares its transition`, via,
+      twin: via === 'style' ? `${label} changes in the update that declares its transition` : undefined,
+      nodes: [SHAPES[entry.tag](undefined, Object.assign({}, entry.base, { [entry.prop]: entry.from }))],
+      change: [Object.assign({ node: 't' }, change)], times: TIMES, reads: [read(entry)],
+    });
+  }
+}
+cases.push(
+  { name: 'all, declared with the change, takes every property that changes', nodes: [circle(undefined, { fill: '#ff0000', strokeWidth: 2 })], change: [{ node: 't', attrs: { fill: '#0000ff', r: 30, strokeWidth: 10 }, style: SLOW }], times: TIMES, reads: fillR },
+  { name: 'a list declared with the change gives each property its own duration', nodes: [circle(undefined, { fill: '#ff0000' })], change: [{ node: 't', attrs: { fill: '#0000ff', r: 30 }, style: { transition: 'fill 1s linear, r 2s linear' } }], times: [0, 500, 1000, 1500, 2000], reads: fillR },
+  { name: 'a delay declared with the change holds the start', nodes: [circle(undefined, {})], change: [{ node: 't', attrs: { r: 30 }, style: only('r', '500ms') }], times: [0, 250, 500, 1000, 1500], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a timing function declared with the change eases it', nodes: [circle(undefined, {})], change: [{ node: 't', attrs: { r: 30 }, style: { transition: 'r 1s ease-in-out' } }], times: [0, 250, 500, 750, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'adding an attribute in the update that declares its transition runs from the initial value', nodes: [circle(undefined, {})], change: [{ node: 't', attrs: { strokeWidth: 9 }, style: only('stroke-width') }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'removing an attribute in the update that declares its transition runs to the initial value', nodes: [circle(undefined, { fill: '#ff0000' })], change: [{ node: 't', attrs: { fill: null }, style: only('fill') }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'a transition declared with no change runs nothing', nodes: [circle(undefined, {})], change: [{ node: 't', style: only('r') }], times: [0], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a transition declared with the change of another property runs nothing', nodes: [circle(undefined, {})], change: [{ node: 't', attrs: { r: 30 }, style: only('fill') }], times: [0], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+  { name: 'a shape that declares its transition follows the group it inherits from in the same update', nodes: [node('g', 'g', { fill: '#ff0000' }, [circle(undefined, {})])], change: [{ node: 'g', attrs: { fill: '#0000ff' } }, { node: 't', style: only('fill') }], times: [0, 500, 1000], reads: [{ node: 'g', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'a group that declares its transition runs the change in the same update', nodes: [node('g', 'g', { strokeWidth: 2, stroke: '#000000' }, [path({}, { strokeWidth: undefined })])], change: [{ node: 'g', attrs: { strokeWidth: 10 }, style: only('stroke-width') }], times: [0, 500, 1000], reads: [{ node: 'g', prop: 'stroke-width', initial: '1px' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'two shapes declare their transitions with their changes', nodes: [circle(undefined, {}), Object.assign(circle(undefined, {}), { id: 'u' })], change: [{ node: 't', attrs: { r: 30 }, style: only('r') }, { node: 'u', attrs: { r: 40 }, style: only('r') }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }, { node: 'u', prop: 'r', initial: '10px' }] },
+  { name: 'a second change after the declaration with the first runs from the value showing', nodes: [circle(undefined, {})], change: [{ node: 't', attrs: { r: 30 }, style: only('r') }], then: { seek: 500, change: [{ node: 't', attrs: { r: 50 } }] }, times: [0, 250, 500, 999, 1000], reads: [{ node: 't', prop: 'r', initial: '10px' }] },
+);
+
 // Properties with no value in between: fill and stroke against `none`, a dash list against `none`, a path of other
 // commands, `auto` against a length. A transition does not run on them unless it allows discrete properties, and then
 // it swaps halfway.
@@ -193,9 +227,34 @@ cases.push(
   { name: 'the svg transitions fill and a width of its own together', svg: { attrs: { fill: '#ff0000' }, style: { width: '200px', height: '100px', transition: 'fill 1s linear, width 1s linear' } }, nodes: [circle({}, { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' }, style: { width: '100px' } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
 );
 
+// The <svg> declares its transition in the same update as the change, and so does a shape below it.
+for (const entry of ROOT.filter((candidate) => ['fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'strokeOpacity'].includes(candidate.prop))) {
+  const name = kebab(entry.prop);
+  for (const via of ['attribute', 'style']) {
+    if (via === 'style' && !['fill', 'strokeWidth'].includes(entry.prop)) continue;
+    const together = only(name);
+    const change = via === 'attribute' ? { attrs: { [entry.prop]: entry.to }, style: together } : { style: Object.assign({ [name]: cssValue(entry.prop, entry.to) }, together) };
+    cases.push({
+      name: `${name} of the svg changes ${via === 'attribute' ? '' : 'by style '}in the update that declares its transition`, via,
+      twin: via === 'style' ? `${name} of the svg changes in the update that declares its transition` : undefined,
+      svg: { attrs: { [entry.prop]: entry.from } },
+      nodes: [circle({}, { r: 20, stroke: entry.prop === 'stroke' ? undefined : '#000000', strokeWidth: entry.prop === 'strokeWidth' ? undefined : 4 })],
+      change: [Object.assign({ node: 'svg' }, change)], times: TIMES, reads: [{ node: 'svg', prop: name, initial: entry.initial }, { node: 't', prop: name, initial: entry.initial }],
+    });
+  }
+}
+cases.push(
+  { name: 'all on the svg, declared with the change, takes the attributes it sets', svg: { attrs: { fill: '#ff0000', strokeWidth: 2 } }, nodes: [circle({}, { r: 20, stroke: '#000000' })], change: [{ node: 'svg', attrs: { fill: '#0000ff', strokeWidth: 10 }, style: SLOW }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'stroke-width', initial: '1px' }] },
+  { name: 'the svg declares its transition with a change of fill and a width of its own', svg: { attrs: { fill: '#ff0000' }, style: { width: '200px', height: '100px' } }, nodes: [circle({}, { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' }, style: { width: '100px', transition: 'fill 1s linear, width 1s linear' } }], times: [0, 500, 1000], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'a shape that declares its transition follows the svg it inherits fill from in the same update', svg: { attrs: { fill: '#ff0000' } }, nodes: [circle(undefined, { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' } }, { node: 't', style: only('fill') }], times: [0, 500, 1000], reads: [{ node: 'svg', prop: 'fill', initial: 'rgb(0, 0, 0)' }, { node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+  { name: 'a svg that declares its transition with no change runs nothing', svg: { attrs: { fill: '#ff0000' } }, nodes: [circle({}, { r: 20 })], change: [{ node: 'svg', style: only('fill') }], times: [0], reads: [{ node: 't', prop: 'fill', initial: 'rgb(0, 0, 0)' }] },
+);
+
 // Events: no pausing. `wait` is how long to let the page run after the change (ms).
 const eventCases = [
   { name: 'a transition fires run, start and end', nodes: [circle({ transition: 'r 100ms linear' }, {})], change: [{ node: 't', attrs: { r: 30 } }], wait: 300 },
+  { name: 'a transition declared with the change fires run, start and end', nodes: [circle(undefined, {})], change: [{ node: 't', attrs: { r: 30 }, style: { transition: 'r 100ms linear' } }], wait: 300 },
+  { name: 'a svg that declares its transition with the change fires its own', svg: { attrs: { fill: '#ff0000' } }, nodes: [circle({}, { r: 20 })], change: [{ node: 'svg', attrs: { fill: '#0000ff' }, style: { transition: 'fill 100ms linear' } }], wait: 300 },
   { name: 'a delay puts start after run', nodes: [circle({ transition: 'r 100ms linear 100ms' }, {})], change: [{ node: 't', attrs: { r: 30 } }], wait: 400 },
   { name: 'a negative delay starts part-way in', nodes: [circle({ transition: 'r 200ms linear -100ms' }, {})], change: [{ node: 't', attrs: { r: 30 } }], wait: 400 },
   { name: 'two properties fire their own events', nodes: [circle({ transition: 'r 100ms linear, fill 200ms linear' }, { fill: '#ff0000' })], change: [{ node: 't', attrs: { r: 30, fill: '#0000ff' } }], wait: 400 },

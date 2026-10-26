@@ -97,6 +97,9 @@ pub struct RetainedElement {
     /// Take keyboard focus the first time this element gets a focus handle.
     /// Without it an `<input>` is dead until the user clicks it.
     pub auto_focus: bool,
+    /// Whether an `<svg>` wrote the element: only then do `set_custom_prop`s keep what they replace
+    /// (`ElementExtras::props_before`). An element still being created has nothing before it.
+    svg_written: std::cell::Cell<bool>,
     /// The `display` the last build found for the element once its `@container` blocks were
     /// folded in, which its parent decided its children by (`display: none` takes no part in
     /// layout, `inline-block` is a box on a line of its parent's text). The outer `None` until
@@ -135,6 +138,17 @@ struct ElementExtras {
     /// transitions of a change are the ones of the style after it, so without
     /// this the first change would be the first style native sees.
     before_transition: Option<Arc<StyleDesc>>,
+    /// The props an `<svg>` and its shapes had when the `<svg>` was last written, for the ones
+    /// replaced since (`None`: the prop was not set). A shape that declares a transition in the
+    /// update that changes an SVG property starts from these: native only tracks a shape once it
+    /// declares one, and the first style it is tracked with never transitions.
+    props_before: std::sync::Mutex<HashMap<String, Option<serde_json::Value>>>,
+}
+
+impl ElementExtras {
+    fn props_before_mut(&mut self) -> &mut HashMap<String, Option<serde_json::Value>> {
+        self.props_before.get_mut().expect("props_before is never held across a panic")
+    }
 }
 
 static EMPTY_EXTRAS: LazyLock<ElementExtras> = LazyLock::new(ElementExtras::default);
@@ -278,6 +292,7 @@ impl RetainedElement {
             parent: None,
             extras: None,
             auto_focus: false,
+            svg_written: std::cell::Cell::new(false),
             container_display: Default::default(),
             container_order: Default::default(),
             style_serial: 0,
@@ -293,6 +308,36 @@ impl RetainedElement {
 
     pub fn custom_props(&self) -> &HashMap<String, serde_json::Value> {
         &self.extras.as_deref().unwrap_or(&EMPTY_EXTRAS).custom_props
+    }
+
+    /// The custom props the element had when its `<svg>` was last written: borrowed when none
+    /// changed since, else a copy with the old values put back.
+    pub fn custom_props_before(&self) -> std::borrow::Cow<'_, HashMap<String, serde_json::Value>> {
+        let current = self.custom_props();
+        let Some(extras) = self.extras.as_deref() else {
+            return std::borrow::Cow::Borrowed(current);
+        };
+        let replaced = extras.props_before.lock().expect("props_before is never held across a panic");
+        if replaced.is_empty() {
+            return std::borrow::Cow::Borrowed(current);
+        }
+        let mut props = current.clone();
+        for (key, old) in replaced.iter() {
+            match old {
+                Some(old) => props.insert(key.clone(), old.clone()),
+                None => props.remove(key),
+            };
+        }
+        std::borrow::Cow::Owned(props)
+    }
+
+    /// Notes that an `<svg>` has just written the element, with the props it has now: what
+    /// `custom_props_before` gives from here is what they replace.
+    pub fn svg_wrote(&self) {
+        self.svg_written.set(true);
+        if let Some(extras) = self.extras.as_deref() {
+            extras.props_before.lock().expect("props_before is never held across a panic").clear();
+        }
     }
 
     pub fn style_before_transition(&self) -> Option<&StyleDesc> {
@@ -311,6 +356,7 @@ impl RetainedElement {
                 extras.events.is_empty()
                     && extras.custom_props.is_empty()
                     && extras.before_transition.is_none()
+                    && extras.props_before.lock().expect("props_before is never held across a panic").is_empty()
             })
         {
             self.extras = None;
@@ -1300,14 +1346,23 @@ impl RetainedTree {
             if relation_key.is_some() {
                 previous_relation = element.custom_props().get(&key).cloned();
             }
+            let written = element.svg_written.get();
             if value.is_null() {
-                changed = element
+                let removed = element
                     .extras
                     .as_mut()
-                    .is_some_and(|extras| extras.custom_props.remove(&key).is_some());
+                    .and_then(|extras| extras.custom_props.remove(&key));
+                changed = removed.is_some();
+                if written && removed.is_some() {
+                    element.extras_mut().props_before_mut().entry(key).or_insert(removed);
+                }
                 element.release_empty_extras();
             } else if element.custom_props().get(&key) != Some(&value) {
-                element.extras_mut().custom_props.insert(key, value);
+                let extras = element.extras_mut();
+                let old = extras.custom_props.insert(key.clone(), value);
+                if written {
+                    extras.props_before_mut().entry(key).or_insert(old);
+                }
                 changed = true;
             }
         }
@@ -2943,6 +2998,30 @@ mod tests {
         let plain = intern(&mut tree, r#"{"opacity":0.5}"#);
         tree.set_style(1, plain);
         assert!(tree.elements[&1].style_before_transition().is_none());
+    }
+
+    #[test]
+    fn the_props_an_svg_wrote_are_the_props_before_the_updates_since() {
+        let mut tree = tree_with_child();
+        tree.set_custom_prop(1, "r".into(), serde_json::json!(10));
+        assert!(
+            matches!(tree.elements[&1].custom_props_before(), std::borrow::Cow::Borrowed(_)),
+            "an element no <svg> wrote has nothing before it"
+        );
+        tree.elements[&1].svg_wrote();
+
+        tree.set_custom_prop(1, "r".into(), serde_json::json!(20));
+        tree.set_custom_prop(1, "r".into(), serde_json::json!(30));
+        tree.set_custom_prop(1, "fill".into(), serde_json::json!("#ff0000"));
+        tree.set_custom_prop(1, "r".into(), serde_json::Value::Null);
+        let before = tree.elements[&1].custom_props_before();
+        assert_eq!(before.get("r"), Some(&serde_json::json!(10)), "the first value the update replaced");
+        assert_eq!(before.get("fill"), None, "a prop that was not set");
+        assert_eq!(tree.elements[&1].custom_props().get("r"), None);
+        drop(before);
+
+        tree.elements[&1].svg_wrote();
+        assert!(matches!(tree.elements[&1].custom_props_before(), std::borrow::Cow::Borrowed(_)));
     }
 
     #[test]

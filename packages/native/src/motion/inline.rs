@@ -163,6 +163,7 @@ fn step(
         animations_wanted.then_some((&mut *animations, keyframes)),
         before,
         None,
+        None,
         colors,
         font,
         pointer,

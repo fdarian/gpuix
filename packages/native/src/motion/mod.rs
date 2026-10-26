@@ -1309,6 +1309,7 @@ pub(crate) fn resolve_declared_style(
     animations: Option<(&mut CssAnimations, &KeyframesRegistry)>,
     before: Option<&StyleDesc>,
     svg: Svg,
+    svg_before: Svg,
     parent_colors: &crate::color::ColorContext,
     parent_font: &ParentValues,
     pointer: crate::events::state_styles::PointerStates,
@@ -1321,9 +1322,24 @@ pub(crate) fn resolve_declared_style(
     scope: Scope,
     now: Instant,
 ) -> DeclaredStyle {
-    if let (Some(transitions), Some(before)) = (transitions.as_deref_mut(), before) {
-        let before = with_vars(fold_state_styles(before, focus_visible, pointer), parent_font);
-        transitions.seed(id, &before, svg, parent_colors, parent_font);
+    if let Some(transitions) = transitions.as_deref_mut() {
+        // An `<svg>` whose SVG props changed in the update that made it declare a transition has
+        // no style to seed from if it had none before; its props before the update are the
+        // source then.
+        match (before, svg_before) {
+            (before, Some(svg_before)) => {
+                let before = with_vars(
+                    fold_state_styles(before.unwrap_or(&StyleDesc::default()), focus_visible, pointer),
+                    parent_font,
+                );
+                transitions.seed(id, &before, Some(svg_before), parent_colors, parent_font);
+            }
+            (Some(before), None) => {
+                let before = with_vars(fold_state_styles(before, focus_visible, pointer), parent_font);
+                transitions.seed(id, &before, svg, parent_colors, parent_font);
+            }
+            (None, None) => {}
+        }
     }
     let mut after = with_vars(fold_state_styles(style, focus_visible, pointer), parent_font);
     let covered = animations
@@ -5929,6 +5945,8 @@ mod tests {
         fn frame(transitions: &mut CssTransitions, started: Instant, millis: u64, style: &StyleDesc, custom: &[(&str, &str)]) -> DeclaredStyle {
             resolve_declared_style(
                 Some(transitions),
+                None,
+                None,
                 None,
                 None,
                 &ColorContext::root(Scheme::Light),

@@ -1656,6 +1656,11 @@ impl CssTransitions {
             .collect()
     }
 
+    /// Whether `id` has transition state: a style it is seen with can transition from the one before.
+    pub(crate) fn tracks(&self, id: u64) -> bool {
+        self.states.contains_key(&id)
+    }
+
     /// Starts tracking `id` from `before`, the style it had before it first
     /// declared a transition. The transitions of a change come from the style
     /// after it, so a change that also adds the declaration must not be the
