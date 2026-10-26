@@ -6576,33 +6576,11 @@ impl GpuixView {
                     }
                 }
             } else if let (Some(handle), Some(window_box)) = (self.scroll_handles.get(&ancestor_id), target) {
-                target = self.scroll_in_its_space(window_id, ancestor_id, handle, window_box, options, &mut scrolled);
+                target = crate::scroll::scroll_in_its_space(window_id, ancestor_id, handle, window_box, options, &mut scrolled);
             }
             child = ancestor_id;
         }
         scrolled
-    }
-
-    /// Scrolls the scroller `id` to `window_box`, a box of the window, and gives the box that holds
-    /// the target after it. `None` where the scroller's transform flattens the plane.
-    fn scroll_in_its_space(
-        &self,
-        window_id: gpui::WindowId,
-        id: u64,
-        handle: &gpui::ScrollHandle,
-        window_box: crate::scroll::Rect,
-        options: crate::scroll::IntoView,
-        scrolled: &mut bool,
-    ) -> Option<crate::scroll::Rect> {
-        let space = crate::automation::get_bounds(window_id, id)?;
-        if !space.is_transformed() {
-            let mut target = window_box;
-            *scrolled |= crate::scroll::scroll_into_view(id, handle, &mut target, options);
-            return Some(target);
-        }
-        let mut target = window_box.through(&space.to_window.inverse()?)?;
-        *scrolled |= crate::scroll::scroll_into_view(id, handle, &mut target, options);
-        target.through(&space.to_window)
     }
 
     pub(crate) fn set_selection_change_listener(&mut self, enabled: bool, event_id: u64) {
@@ -7194,7 +7172,7 @@ impl BuildCtx<'_> {
             tree,
             paragraph,
             &inherited.colors,
-            &inherited.parent_font(),
+            &inherited.parent_values(),
             &states,
             crate::motion::Timeline {
                 values: &*self.motion_values,
@@ -7368,8 +7346,8 @@ pub(crate) struct GroupState {
 }
 
 impl Inherited {
-    /// The font the element being built inherits.
-    fn parent_font(&self) -> crate::motion::ParentValues {
+    /// The values the element being built inherits from its parent.
+    fn parent_values(&self) -> crate::motion::ParentValues {
         crate::motion::ParentValues {
             lengths: self.lengths,
             above_root: self.above_root,
@@ -9997,7 +9975,7 @@ fn animate_style_at(
             animations_wanted.then_some((&mut *ctx.css_animations, ctx.keyframes)),
             input.before_transition,
             &ctx.inherited.colors,
-            &ctx.inherited.parent_font(),
+            &ctx.inherited.parent_values(),
             input.pointer_states,
             ctx.motion_states.get(&id),
             id,
@@ -10051,7 +10029,7 @@ fn animate_style_at(
     // Motion values are inline style as well, and come after `motion`.
     let bound = motion_binding.map(|binding| {
         let mut resolved = Box::new(moved.as_deref().or(declared_style).cloned().unwrap_or_default());
-        ctx.motion_values.apply(binding, &mut resolved, &ctx.inherited.parent_font());
+        ctx.motion_values.apply(binding, &mut resolved, &ctx.inherited.parent_values());
         resolved
     });
     let underlying_style = bound.as_deref().or(moved.as_deref()).or(declared_style);
@@ -10068,7 +10046,7 @@ fn animate_style_at(
                 declared_style.unwrap_or(&EMPTY_STYLE),
                 &subject,
                 &ctx.inherited.colors,
-                &ctx.inherited.parent_font(),
+                &ctx.inherited.parent_values(),
                 measurement.as_ref(),
                 ctx.inherited.interpolate_size,
                 crate::motion::Scope::Element,
@@ -10596,7 +10574,7 @@ fn build_element_unpumped(
             }
             let svg_markup = is_svg
                 .then(|| {
-                    let font = ctx.inherited.parent_font();
+                    let font = ctx.inherited.parent_values();
                     ctx.svg_trees.markup(
                         ctx.tree,
                         id,

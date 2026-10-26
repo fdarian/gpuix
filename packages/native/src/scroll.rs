@@ -779,6 +779,27 @@ pub(crate) fn scroll_into_view(
     true
 }
 
+/// Scrolls the scroller `id` to `window_box`, a box of the window, and gives the box that holds
+/// the target after it. `None` where the scroller's transform flattens the plane.
+pub(crate) fn scroll_in_its_space(
+    window_id: gpui::WindowId,
+    id: u64,
+    handle: &gpui::ScrollHandle,
+    window_box: Rect,
+    options: IntoView,
+    scrolled: &mut bool,
+) -> Option<Rect> {
+    let space = crate::automation::get_bounds(window_id, id)?;
+    if !space.is_transformed() {
+        let mut target = window_box;
+        *scrolled |= scroll_into_view(id, handle, &mut target, options);
+        return Some(target);
+    }
+    let mut target = window_box.through(&space.to_window.inverse()?)?;
+    *scrolled |= scroll_into_view(id, handle, &mut target, options);
+    target.through(&space.to_window)
+}
+
 /// The `offset_in_item` that scrolls a virtual list's row (`top`, `height` in window
 /// coordinates, if it is painted) as `align` asks, given the list's viewport. `None` when
 /// `Nearest` finds the row already in view. A row that is not painted cannot be measured, so it
