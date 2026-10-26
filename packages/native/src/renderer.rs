@@ -574,8 +574,8 @@ pub(crate) fn read_after_layout<R>(
     let lay_out = if relevance.transforms_stale(&path) { gpui::Window::draw_for_transforms } else { lay_out };
     let view = window.root::<GpuixView>().flatten();
     // The instant a pass laid out now would sample: the one of the last draw, which the pass of a read
-    // that built something running sampled too if no frame has been built since.
-    let instant = view.as_ref().and_then(|view| view.read(cx).frame_instant);
+    // that built something running sampled too if no frame has been built since (see `read_instant`).
+    let instant = view.as_ref().and_then(|view| view.read(cx).read_instant());
     let shared = relevance.forced_by_last_read(window.layout_stamp(), window, &known, &path, instant);
     let mut forcing = shared.clone().unwrap_or_default();
     // A window nothing happened to since the forced pass has nothing to lay out but the content
@@ -625,7 +625,8 @@ pub(crate) fn read_after_layout<R>(
     if laid_out {
         crate::automation::keep_bounds(window_id);
         keep_scroll_state();
-        relevance.remember_forced_read(forcing, window.layout_stamp(), window);
+        let held = window.root::<GpuixView>().flatten().and_then(|view| view.read(cx).held_instant());
+        relevance.remember_forced_read(forcing, window.layout_stamp(), window, held);
     }
     Ok(read)
 }
@@ -3313,9 +3314,15 @@ impl GpuixRenderer {
     /// The CSS transitions, then the CSS animations, of an element that are
     /// running, paused or in effect through a fill, in the order of the DOM's
     /// `getAnimations()`, then the animations of a `motion` element that Motion hands to the browser.
+    ///
+    /// An element inside skipped content is styled first, as a read of its geometry would: Chrome
+    /// makes the CSS animations of content it never rendered when one of its elements is read.
     #[napi]
     pub fn get_animations(&self, element_id: f64) -> Result<Vec<WebAnimationInfo>> {
         let id = to_element_id(element_id)?;
+        if !crate::layout::content_visibility::skipped_ancestors(&self.tree.lock().unwrap(), id).is_empty() {
+            self.element_bounds(id, SkippedContent::Force)?;
+        }
         self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations(id, now)))
     }
 
@@ -6633,11 +6640,27 @@ impl GpuixView {
                 .expect("a reference pass is built right after the pass it is compared with");
         }
         if window.is_layout_pass() {
-            return *self.frame_instant.get_or_insert_with(|| self.clock.now());
+            let instant = self.read_instant().unwrap_or_else(|| self.clock.now());
+            self.frame_instant = Some(instant);
+            return instant;
         }
         let now = self.clock.now();
         self.frame_instant = Some(now);
         now
+    }
+
+    /// The instant a pass that only lays out would sample: the one of the last draw, but the clock's
+    /// while a read has made animations or transitions in skipped content (`CssAnimations::hold`).
+    /// Chrome draws frames for those whether or not the content renders and its animation clock is
+    /// that of the last of them, while here nothing draws for runs that sleep.
+    pub(crate) fn read_instant(&self) -> Option<web_time::Instant> {
+        self.held_instant().or(self.frame_instant)
+    }
+
+    /// The clock's instant while a read has made runs that sleep, which the pass that made them
+    /// answers the reads of as well, if the clock has not moved.
+    pub(crate) fn held_instant(&self) -> Option<web_time::Instant> {
+        (self.css_animations.holds_any() || self.css_transitions.holds_any()).then(|| self.clock.now())
     }
 
     pub(crate) fn new(
@@ -10241,18 +10264,33 @@ fn animate_style(
     element: &crate::retained_tree::RetainedElement,
     input: StyleInputs,
 ) -> Animated {
+    let id = element.id;
     if input.provisional || !crate::layout::content_visibility::is_forced_by_ancestor(ctx.tree, element) {
+        ctx.css_animations.release(id);
+        ctx.css_transitions.release(id);
         let steps = !input.provisional;
         return animate_style_at(ctx, window, element, input, steps);
     }
     // Content forced for a read shows what its animations are at this instant, and nothing of them
     // moves on: the runs, the clocks, the events and the wakes are what they were, so the frames
     // that skip the content find it as the last of them left it.
-    let animations = ctx.css_animations.rewind_point(element.id);
-    let transitions = ctx.css_transitions.rewind_point(element.id);
+    let animations_wanted = ctx.css_animations.wants(id, input.declared);
+    let transitions_wanted = ctx.css_transitions.wants(id, input.declared);
+    let animations = ctx.css_animations.rewind_point(id);
+    let transitions = ctx.css_transitions.rewind_point(id);
     let mut animated = animate_style_at(ctx, window, element, input, false);
     ctx.css_animations.rewind(animations, ctx.now);
     ctx.css_transitions.rewind(transitions);
+    // Chrome styles the element for the read and its animations and transitions run from there,
+    // whether or not it is ever rendered: the clock keeps them on time, and the DOM hears of them
+    // when the content renders (`CssAnimations::hold`). This is after the rewind, which puts back
+    // the wakes of the element.
+    if animations_wanted {
+        ctx.css_animations.hold(id);
+    }
+    if transitions_wanted {
+        ctx.css_transitions.hold(id);
+    }
     if animated.dynamic != 0 {
         ctx.tree.relevance.note_timed_read(ctx.now);
     }

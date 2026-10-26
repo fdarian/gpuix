@@ -17,6 +17,13 @@
     {loaf, dur, ...}                        a long-animation-frame entry
   `#host` (300x200 at top 100 of the scroller; contain-intrinsic-size) holds #t and #t2 (100x40, #t2 for the delayed
   animation) and, in q4, 2000 `.bulk` boxes. `#ctl`/`#ctl2` are the visible controls with the same animations.
+
+  q6 and q7 are about what a read of a never-rendered skipped element does. q6 reads #t (readGeom: getBoundingClientRect
+  and getAnimations, readRectOnly, readStyleOnly: getComputedStyle) and lists what the tree reads give (readTree:
+  host.getAnimations({subtree}), host.getAnimations(), document.getAnimations(), scroller.getAnimations({subtree})).
+  q7 (`q7_<read>`) builds host > #a > (#t > #c, #s) with the looping animation on all four and reads #t in the way <read>
+  names (none, getanims, rect, bg, color, offsetw: an unanimated property, doc: document.getAnimations()); `tree` entries
+  are {list, tl, subtree: [{el, n, id (the same object has the same id), state, pending, ct, st}]} of host.getAnimations({subtree}).
 -->
 <html><head><meta charset="utf-8">
 <style>
@@ -29,6 +36,8 @@ body { margin: 0; height: 900px; position: relative; background: #fff }
 #ctl, #ctl2 { position: absolute; left: 500px }
 #ctl { top: 20px } #ctl2 { top: 80px }
 .bulk { display: inline-block; width: 10px; height: 10px; background: #888 }
+.tree #a, .tree #t, .tree #c, .tree #s { background: rgb(255, 0, 0); margin: 5px; padding: 5px }
+.tree #t { width: 150px; height: 60px } .tree #c { width: 50px; height: 20px } .tree #s { width: 100px; height: 20px }
 .tr { transition: background-color 300ms linear }
 .loop { animation: bg 500ms linear infinite, op 500ms linear infinite }
 .fin { animation: bg 300ms linear 1 both }
@@ -42,6 +51,7 @@ body { margin: 0; height: 900px; position: relative; background: #fff }
 const FAR = 4000
 const [name, mode] = location.hash.slice(1).split(':')
 const scroller = document.getElementById('scroller'), host = document.getElementById('host')
+if (name.startsWith('q7')) host.innerHTML = '<div id="a"><div id="t"><div id="c"></div></div><div id="s"></div></div>'
 const t = document.getElementById('t'), t2 = document.getElementById('t2')
 const ctl = document.getElementById('ctl'), ctl2 = document.getElementById('ctl2')
 const els = { t, t2, ctl, ctl2 }
@@ -82,11 +92,33 @@ function probe(phase, style = true, which = ['t', 'ctl']) {
   L(o)
 }
 
+const ids = new Map()
+const idOf = (a) => { if (!ids.has(a)) ids.set(a, ids.size + 1); return ids.get(a) }
+let lists = 0
+const listTree = (label) => L({
+  list: label, tl: round(document.timeline.currentTime, 2),
+  subtree: host.getAnimations({ subtree: true }).map((a) => ({ el: a.effect.target.id, n: a.animationName, id: idOf(a), state: a.playState, pending: a.pending, ct: round(a.currentTime, 2), st: round(a.startTime, 2) })),
+})
+const TREE_READS = {
+  none: () => null,
+  getanims: () => t.getAnimations().length,
+  rect: () => { const r = t.getBoundingClientRect(); return [r.width, r.height] },
+  bg: () => getComputedStyle(t).backgroundColor,
+  color: () => getComputedStyle(t).color,
+  offsetw: () => t.offsetWidth,
+  doc: () => document.getAnimations().length,
+}
+
 const A = {
   skip: () => { modes.skip(); skipAt = performance.now(); L({ did: 'skip' }) },
   reveal: () => {
     modes.reveal(); revealAt = performance.now(); L({ did: 'reveal' })
     if (scene.syncRead) probe('sync')
+    if (scene.tree) {
+      requestAnimationFrame(() => { listTree('raf1'); requestAnimationFrame(() => listTree('raf2')) })
+      setTimeout(() => listTree('+400'), 400)
+      return
+    }
     requestAnimationFrame(() => {
       if (!scene.postOnly) probe('raf1')
       setTimeout(() => probe('post1'), 0)
@@ -98,10 +130,18 @@ const A = {
   readStyle: () => probe('readStyle', true),
   change: () => { ctl.style.backgroundColor = t.style.backgroundColor = 'rgb(0, 0, 255)'; L({ did: 'change bg=blue' }) },
   addClass: () => { ctl.classList.add('fin'); t.classList.add('fin'); ctl2.classList.add('fin2'); t2.classList.add('fin2'); L({ did: 'add animation classes' }) },
+  readGeom: () => { const r = t.getBoundingClientRect(); const o = { probe: true, phase: 'readGeom', rect: [r.x, r.y, r.width, r.height], tl: round(document.timeline.currentTime, 2), tgt: { anims: anims(t) } }; L(o) },
+  readRectOnly: () => { const r = t.getBoundingClientRect(); L({ did: 'rect only', rect: [r.x, r.y, r.width, r.height] }) },
+  readStyleOnly: () => { L({ did: 'style only', bg: getComputedStyle(t).backgroundColor }) },
+  readTree: () => { const m = (l) => l.map((a) => ({ target: a.effect.target.id, n: a.animationName || a.transitionProperty, state: a.playState, ct: round(a.currentTime, 2) })); L({ probe: true, phase: 'readTree', tl: round(document.timeline.currentTime, 2), host_subtree: m(host.getAnimations({ subtree: true })), host_plain: m(host.getAnimations()), doc: m(document.getAnimations()), scroller_subtree: m(scroller.getAnimations({ subtree: true })) }) },
+  listTree: () => listTree('read' + ++lists),
   mark: () => { console.timeStamp('mark'); L({ did: 'mark' }) },
 }
 
+for (const [kind, read] of Object.entries(TREE_READS)) A['read_' + kind] = () => L({ did: 'read ' + kind, value: read() })
+
 const R = { t: 'loop', ctl: 'loop' }
+const TREE = (kind) => ({ tree: true, load: true, steps: [[600, 'read_' + kind + '+listTree'], [1000, 'listTree'], [1300, 'read_' + kind + '+listTree'], [1600, 'reveal'], [2300, null]] })
 const scenes = {
   // 1: CSS animation, infinite loop (500 ms background-color + opacity), skipped after running 300 ms / from load
   q1_run: { ...R, steps: [[300, 'skip'], [1650, 'reveal'], [2200, null]] },
@@ -114,6 +154,14 @@ const scenes = {
   q2_load: { t: 'fin', ctl: 'fin', t2: 'fin2', ctl2: 'fin2', load: true, steps: [[1500, 'reveal'], [2000, null]] },
   q2_class: { steps: [[100, 'skip'], [300, 'addClass'], [1500, 'reveal'], [2000, null]] },
   q2_class_read: { steps: [[100, 'skip'], [300, 'addClass+readAnim'], [700, 'readAnim'], [1500, 'reveal'], [2000, null]] },
+  q6_load_tree: { ...R, load: true, steps: [[600, 'readTree'], [1500, 'reveal'], [2000, null]] },
+  q6_load_geom: { ...R, load: true, steps: [[600, 'readGeom'], [1000, 'readTree'], [1500, 'reveal'], [2000, null]] },
+  q6_load_geom_fin: { t: 'fin', ctl: 'fin', load: true, steps: [[600, 'readGeom'], [1000, 'readTree'], [1500, 'reveal'], [2000, null]] },
+  q6_load_rect: { ...R, load: true, steps: [[600, 'readRectOnly'], [1000, 'readTree'], [1500, 'reveal'], [2000, null]] },
+  q6_load_rect_fin: { t: 'fin', ctl: 'fin', load: true, steps: [[600, 'readRectOnly'], [1000, 'readTree'], [1500, 'reveal'], [2000, null]] },
+  q6_load_style: { ...R, load: true, steps: [[600, 'readStyleOnly'], [1000, 'readTree'], [1500, 'reveal'], [2000, null]] },
+  // 7: which elements of a never-rendered skipped host a read of #t styles
+  ...Object.fromEntries(Object.keys(TREE_READS).map((kind) => ['q7_' + kind, TREE(kind)])),
   // 3: transitions (300 ms background-color) triggered by a style change
   q3_before: { t: 'tr', ctl: 'tr', steps: [[100, 'change'], [150, 'skip'], [1200, 'reveal'], [1700, null]] },
   q3_sametask: { t: 'tr', ctl: 'tr', steps: [[100, 'change+skip'], [1200, 'reveal'], [1700, null]] },
@@ -140,6 +188,10 @@ if (scene) {
   host.classList.add('host')
   modes.init()
   if (scene.raf && scene.raf.writes === 2000) for (let i = 0; i < 2000; i++) { const b = document.createElement('div'); b.className = 'bulk'; host.appendChild(b) }
+  if (scene.tree) {
+    host.classList.add('tree')
+    for (const id of ['a', 't', 'c', 's']) document.getElementById(id).classList.add('loop')
+  }
   if (scene.t) t.classList.add(scene.t)
   if (scene.ctl) ctl.classList.add(scene.ctl)
   if (scene.t2) t2.classList.add(scene.t2)

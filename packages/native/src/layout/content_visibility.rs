@@ -685,12 +685,21 @@ impl Relevance {
 
     /// Records the pass that forced `forced`, with the stamp of the window after the read made
     /// it skip them again.
-    pub(crate) fn remember_forced_read(&self, forced: Vec<u64>, stamp: gpui::LayoutStamp, window: &gpui::Window) {
+    ///
+    /// `held`: the instant after the pass if it made runs that sleep. Reads are answered at the clock from
+    /// then on (`GpuixView::read_instant`), so it is the instant a timed pass answers, not the one it sampled.
+    pub(crate) fn remember_forced_read(
+        &self,
+        forced: Vec<u64>,
+        stamp: gpui::LayoutStamp,
+        window: &gpui::Window,
+        held: Option<web_time::Instant>,
+    ) {
         let hosts = forced.iter().map(|id| (*id, HostPlace::of(window, *id))).collect();
         let mut known = self.0.lock();
         let runs_at = known.layout_runs.clock;
         let transforms_at = known.transform_writes.clock;
-        let timed = known.read_timed.take();
+        let timed = known.read_timed.take().map(|sampled| held.unwrap_or(sampled));
         known.forced_read = Some(ForcedRead { forced, stamp, timed, hosts, runs_at, transforms_at });
     }
 

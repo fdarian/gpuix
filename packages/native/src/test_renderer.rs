@@ -2674,6 +2674,9 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_animations(&self, element_id: f64) -> Result<Vec<crate::renderer::WebAnimationInfo>> {
         let id = to_element_id(element_id)?;
+        if !crate::layout::content_visibility::skipped_ancestors(&self.tree.lock().unwrap(), id).is_empty() {
+            self.get_element_bounds(element_id)?;
+        }
         self.with_motion_state(Repaint::None, move |view, now| Ok(view.web_animations(id, now)))
     }
 

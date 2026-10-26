@@ -410,6 +410,9 @@ describeNative("a transform animation that runs between reads of skipped content
     const mounted = mountScene(mode, { [on]: { animation: "skipped-read-kf 1000ms linear both" } })
     try {
       mounted.rect("target")
+      // A read styles the content and its animation waits for a frame to start it, which Chrome draws within a frame of the
+      // read: the frame at the read's instant starts it, as the first frame of the visible scene started its own.
+      mounted.renderer.drawFrame()
       return [250, 250, 250].map((elapsed) => {
         mounted.renderer.clockAdvance(elapsed)
         mounted.renderer.drawFrame()
@@ -481,6 +484,8 @@ describeNative("a read of an animation in skipped content", () => {
         }
         expect(mounted.rects().target, "the same instant").toEqual(first)
         expect(mounted.passes() - start, "ten reads in one task run one pass").toBe(1)
+        // The frame a read is followed by, in the instant of the read, starts the animation the read made (it waits for one).
+        mounted.frames(1)
         mounted.renderer.clockAdvance(300)
         mounted.frames(1)
         const later = mounted.rect("target")
@@ -507,7 +512,9 @@ describeNative("a read of an animation in skipped content", () => {
         expect(read.skipped, "the target stays skipped").toBe(true)
         expect(read.paintedByReads, "a read paints no frame").toBe(0)
         expect(read.tickedByReads, "and ticks nothing").toBe(0)
-        expect(read.dormantTicks, "the frames after the reads tick no more than frames with none").toBe(alone.dormantTicks)
+        // The animation a read made waits for a frame to start it, as Chrome's does, and that one tick is all it costs:
+        // afterwards it sleeps until it has something to tell, and a read finds it by the clock.
+        expect(read.dormantTicks, "the frames after the reads tick once, to start the animation, and no more than frames with none").toBe(alone.dormantTicks + 1)
         expect(read.told, "and tell nothing").toEqual(alone.told)
         expect(read.told, "the frames tell nothing while it is skipped").toEqual([])
       }, SLOW)

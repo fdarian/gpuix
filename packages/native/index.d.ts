@@ -271,6 +271,9 @@ export declare class GpuixRenderer {
    * The CSS transitions, then the CSS animations, of an element that are
    * running, paused or in effect through a fill, in the order of the DOM's
    * `getAnimations()`, then the animations of a `motion` element that Motion hands to the browser.
+   *
+   * An element inside skipped content is styled first, as a read of its geometry would: Chrome
+   * makes the CSS animations of content it never rendered when one of its elements is read.
    */
   getAnimations(elementId: number): Array<WebAnimationInfo>
   /**

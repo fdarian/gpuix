@@ -970,6 +970,18 @@ impl View {
 
 // ── One running animation ────────────────────────────────────────────
 
+/// What a tick of the clocks of the runs stands for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Beat {
+    /// A layout pass a read forced: not a frame, so no play starts and the DOM hears of nothing.
+    Layout,
+    /// A frame that is drawn.
+    Frame,
+    /// A frame for runs the element of which is not rendered (`CssAnimations::hold`): their plays
+    /// start, but the DOM hears of them when the element renders again.
+    Held,
+}
+
 #[derive(Clone)]
 struct Run {
     name: String,
@@ -1316,11 +1328,12 @@ impl Run {
     /// The clock half of a frame: moves to `now` and reports a finish. It needs no style, which
     /// is what lets an element nothing is built for keep its animations on time.
     ///
-    /// `drawing` is false in a layout pass a read forced: that is not a frame, so nothing waits
+    /// `beat` is `Layout` in a layout pass a read forced: that is not a frame, so nothing waits
     /// for it, and no event of the DOM is made. In a frame a play that waits starts first, and
     /// the run is evaluated after, since it has no time of its own before; a pause is evaluated
     /// first, and held after.
-    fn tick(&mut self, id: u64, now: Instant, drawing: bool, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+    fn tick(&mut self, id: u64, now: Instant, beat: Beat, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
+        let drawing = beat != Beat::Layout;
         self.quiet_until = None;
         if self.clock.is_idle() {
             self.progress = None;
@@ -1340,7 +1353,7 @@ impl Run {
             self.styled = false;
         }
         self.shown = evaluation.phase;
-        if drawing && !self.clock.pending_play() {
+        if beat == Beat::Frame && !self.clock.pending_play() {
             let before = events.len();
             self.report(id, now, local, &evaluation, events);
             for scheduled in &mut events[before..] {
@@ -1666,6 +1679,11 @@ pub(crate) struct CssAnimations {
     /// The elements this frame leaves dormant (see `retain::Sources::dormant`): what keeps their
     /// animations going is a tick that builds nothing, so they do not ask for a drawn frame.
     dormant: HashSet<u64>,
+    /// The elements whose runs were made by a read of geometry or of `getAnimations()` inside
+    /// skipped content, and are kept on time there (all of them are in `dormant`). Chrome styles
+    /// such an element for the read and its animations run, but nothing is told of them before
+    /// the content renders: see `hold`.
+    held: HashSet<u64>,
     sleepers: Sleepers,
     /// The roots `display: none` has cancelled for, until they render again.
     hidden: HashSet<u64>,
@@ -1757,7 +1775,9 @@ impl CssAnimations {
             for run in after.runs {
                 let known = state.as_ref().is_some_and(|state| state.runs.iter().any(|kept| kept.name == run.name));
                 if !known {
-                    let fresh = Run::start(&run.name, run.keyframes, &run.params, now);
+                    let mut fresh = Run::start(&run.name, run.keyframes, &run.params, now);
+                    // What `getKeyframes()` reads is made by the build the pass did.
+                    fresh.view = run.view;
                     state.get_or_insert_with(ElementState::new).runs.push(fresh);
                 }
             }
@@ -1813,7 +1833,7 @@ impl CssAnimations {
 
         let mut covered = Vec::new();
         for run in &mut state.runs {
-            run.tick(id, now, !self.layout_only, &mut self.events, &mut self.api_events);
+            run.tick(id, now, if self.layout_only { Beat::Layout } else { Beat::Frame }, &mut self.events, &mut self.api_events);
             if run.progress.is_some() {
                 covered.extend(run.properties.iter().copied().filter(|key| match key {
                     PropKey::Style(prop) => scope.animates(*prop),
@@ -1894,11 +1914,12 @@ impl CssAnimations {
             return;
         };
         let mut ticked = false;
+        let beat = if self.held.contains(&id) { Beat::Held } else { Beat::Frame };
         for run in &mut state.runs {
             if run.quiet_until.is_some_and(|until| now < until) {
                 continue;
             }
-            run.tick(id, now, true, &mut self.events, &mut self.api_events);
+            run.tick(id, now, beat, &mut self.events, &mut self.api_events);
             run.quiet_until = run.quiet_after(now);
             run.events = run.events_after(now);
             ticked = true;
@@ -1960,8 +1981,38 @@ impl CssAnimations {
         }
     }
 
+    /// `id` is built for a read inside content that stays skipped: its runs go on with the clock
+    /// without a build, start at the next frame and tell the DOM nothing until a build that is not
+    /// forced reaches the element (`release`). Chrome's read styles the element and creates its
+    /// animations, which then run whether or not it is ever rendered.
+    pub(crate) fn hold(&mut self, id: u64) {
+        if self.held.insert(id) {
+            self.dormant.insert(id);
+        }
+        // A play that waits is started by the next frame, as Chrome starts a pending animation, and
+        // after that the run sleeps until it has something to tell: a read does not wake it.
+        if self.states.get(&id).is_some_and(|state| state.every_run().any(|run| run.clock.pending())) {
+            self.sleepers.next.insert(id);
+        }
+    }
+
+    /// Whether a read has made runs that are kept on time without a build.
+    pub(crate) fn holds_any(&self) -> bool {
+        !self.held.is_empty()
+    }
+
+    /// `id` is built for a frame: its runs are told to the DOM from here on.
+    pub(crate) fn release(&mut self, id: u64) {
+        if self.held.is_empty() || !self.held.remove(&id) {
+            return;
+        }
+        self.sleepers.next.remove(&id);
+        self.sleepers.forget(id);
+        self.dormant.remove(&id);
+    }
+
     pub(crate) fn leave_dormant(&mut self, id: u64) {
-        if !self.dormant.remove(&id) {
+        if self.held.contains(&id) || !self.dormant.remove(&id) {
             return;
         }
         self.sleepers.next.remove(&id);
@@ -2031,7 +2082,7 @@ impl CssAnimations {
             self.sleepers.boundaries.push(Reverse((at, id)));
             self.sleepers.boundary_at.insert(id, at);
         }
-        if let Some(at) = iteration.filter(|iteration| boundary.is_none_or(|boundary| *iteration < boundary)) {
+        if let Some(at) = iteration.filter(|iteration| !self.held.contains(&id) && boundary.is_none_or(|boundary| *iteration < boundary)) {
             self.sleepers.iterating.insert(id, at);
             self.sleepers.listening.unchecked.insert(id);
         }
@@ -2125,6 +2176,7 @@ impl CssAnimations {
             let Some(mut state) = self.states.remove(&hidden) else {
                 continue;
             };
+            self.release(hidden);
             self.sleepers.forget(hidden);
             for run in &mut state.runs {
                 run.cancel(hidden, now, &mut self.events, &mut self.api_events);
@@ -2142,6 +2194,7 @@ impl CssAnimations {
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
         self.states.retain(|id, _| keep(*id));
         self.hidden.retain(|id| keep(*id));
+        self.held.retain(|id| keep(*id));
     }
 
     /// Events queued since the last call, in the order they happened.
@@ -2647,18 +2700,23 @@ mod tests {
     }
 
     #[test]
-    fn a_rewound_pass_keeps_an_animation_it_started_where_the_clock_takes_it() {
+    fn a_rewound_pass_keeps_an_animation_it_started_waiting_for_the_next_frame() {
         let declared = fading("fade 1s linear");
         let mut frames = Frames::new();
         frames.define("fade", FADE);
+        // A read styles the element and the animation waits, as Chrome's does, for the next frame to start it.
+        frames.animations.set_layout_only(true);
         let point = frames.animations.rewind_point(1);
         near(opacity(&frames.frame(100, &declared)), 0.0);
         frames.animations.rewind(point, frames.at(100));
         assert!(frames.events().is_empty(), "it has told nothing yet");
         let point = frames.animations.rewind_point(1);
-        near(opacity(&frames.frame(600, &declared)), 0.5);
+        near(opacity(&frames.frame(600, &declared)), 0.0);
         frames.animations.rewind(point, frames.at(600));
-        near(opacity(&frames.frame(850, &declared)), 0.75);
+        frames.animations.set_layout_only(false);
+        // The first frame after the reads starts it, and the clock takes it from there.
+        near(opacity(&frames.frame(700, &declared)), 0.0);
+        near(opacity(&frames.frame(950, &declared)), 0.25);
         assert_eq!(frames.events().iter().map(|event| event.0).collect::<Vec<_>>(), vec![Start]);
     }
 
@@ -3976,6 +4034,40 @@ mod tests {
         let kinds: Vec<_> = frames.animations.take_api_events().iter().map(|event| event.kind).collect();
         assert_eq!(kinds, [ApiEventKind::Ready]);
         assert_eq!(frames.events().len(), 1, "the animationstart");
+    }
+
+    #[test]
+    fn a_run_held_for_a_read_inside_skipped_content_starts_with_the_clock_and_tells_the_dom_when_it_renders() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let animated = fading("fade 1s linear");
+        // The read forces the element: its run is made and held, pending.
+        frames.animations.set_layout_only(true);
+        frames.animations.hold(1);
+        frames.frame(0, &animated);
+        frames.animations.set_layout_only(false);
+        assert!(only(&frames, 0).pending);
+        assert!(frames.animations.is_dormant(1));
+
+        // The clock carries it on without a build: the play starts at the tick, and nothing is told.
+        frames.animations.advance_dormant(frames.at(16));
+        let started = only(&frames, 400);
+        assert!(!started.pending);
+        near(started.start_offset.expect("it has started"), -384.0);
+        assert!(frames.events().is_empty(), "the DOM hears of it when the element renders");
+        frames.animations.advance_dormant(frames.at(1500));
+        assert!(frames.events().is_empty());
+        assert!(listed(&frames, 1500).is_empty(), "it ended, with no fill to keep it in effect");
+
+        // Rendered, it is told from its first state: it started and ended.
+        frames.animations.release(1);
+        assert!(!frames.animations.is_dormant(1));
+        frames.frame(1600, &animated);
+        let seen = frames.events();
+        assert_eq!(
+            seen.iter().map(|(kind, name, _)| (*kind, name.as_str())).collect::<Vec<_>>(),
+            [(AnimationEventKind::Start, "fade"), (AnimationEventKind::End, "fade")]
+        );
     }
 
     #[test]

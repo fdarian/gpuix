@@ -17,7 +17,7 @@ use web_time::Instant;
 
 use super::curve::{parse_timing_function, Ease};
 use super::measure::Measurement;
-use super::css_animation::{Direction, FillMode, IterationCount, PropTarget, SvgSource};
+use super::css_animation::{Beat, Direction, FillMode, IterationCount, PropTarget, SvgSource};
 use super::effect::{DurationUpdate, EffectInfo, KeyframeInfo, Timing, TimingUpdate};
 use super::property::{expand_shorthand, AnimProp, Scope};
 use super::svg_attr::{attribute_text, SvgAttr};
@@ -1112,7 +1112,8 @@ impl ElementState {
             self.list = parse_config(id, after);
             self.config = config;
         }
-        self.advance(id, now, drawing, events);
+        let beat = if drawing { Beat::Frame } else { Beat::Layout };
+        self.advance(id, now, beat, events);
 
         // A new `color` or appearance (`colorScheme`, or the window's) resolves
         // `currentColor` and `light-dark()` to another colour in a style that did
@@ -1158,7 +1159,7 @@ impl ElementState {
             }
             self.previous_svg = after_svg;
         }
-        self.advance(id, now, drawing, events);
+        self.advance(id, now, beat, events);
         if let Some(measurement) = measurement {
             for (key, running) in &mut self.running {
                 running.follow(*key, measurement, now);
@@ -1188,7 +1189,8 @@ impl ElementState {
     /// The DOM hears of a run in a frame that is drawn (`drawing`), not in a layout pass a read
     /// forced, and a run whose play waits for a frame is not evaluated before it: see
     /// `Run::tick` of the animations, which this is the other half of.
-    fn advance(&mut self, id: u64, now: Instant, drawing: bool, events: &mut Events) {
+    fn advance(&mut self, id: u64, now: Instant, beat: Beat, events: &mut Events) {
+        let drawing = beat != Beat::Layout;
         let mut finished = Vec::new();
         let mut at_end = Vec::new();
         for (key, running) in &mut self.running {
@@ -1199,7 +1201,11 @@ impl ElementState {
             }
             running.clock.settle(now, end);
             events.tell(id, *key, running, now);
-            if !drawing || running.clock.pending_play() {
+            if beat == Beat::Held && running.clock.pending_pause() {
+                running.clock.resolve_pending(now, end);
+                events.tell(id, *key, running, now);
+            }
+            if beat != Beat::Frame || running.clock.pending_play() {
                 continue;
             }
             if running.announce && running.clock.is_finished(now, end) {
@@ -1553,6 +1559,8 @@ pub(crate) struct CssTransitions {
     active: bool,
     /// See `CssAnimations::dormant`.
     dormant: HashSet<u64>,
+    /// See `CssAnimations::held`.
+    held: HashSet<u64>,
     /// The dormant elements with a transition running, the only ones a tick has anything to do for.
     running_dormant: HashSet<u64>,
     /// The roots `display: none` has cancelled for, until they render again.
@@ -1581,7 +1589,18 @@ impl CssTransitions {
         }
     }
 
+    /// A transition the pass started stays, with what it told: a read styles the element as in
+    /// Chrome, and the transition runs from there (see `CssAnimations::rewind`).
     pub(crate) fn rewind(&mut self, point: Rewind) {
+        let started = self.states.get(&point.id).is_some_and(|after| {
+            after
+                .running
+                .keys()
+                .any(|key| !point.state.as_ref().is_some_and(|before| before.running.contains_key(key)))
+        });
+        if started {
+            return;
+        }
         match point.state {
             Some(state) => {
                 self.states.insert(point.id, state);
@@ -1756,7 +1775,8 @@ impl CssTransitions {
         let Some(state) = self.states.get_mut(&id) else {
             return;
         };
-        state.advance(id, now, true, &mut self.events);
+        let beat = if self.held.contains(&id) { Beat::Held } else { Beat::Frame };
+        state.advance(id, now, beat, &mut self.events);
     }
 
     /// Whether a transition of `opacity` is running on `id`.
@@ -1788,9 +1808,31 @@ impl CssTransitions {
     }
 
     pub(crate) fn leave_dormant(&mut self, id: u64) {
-        if self.dormant.remove(&id) {
+        if !self.held.contains(&id) && self.dormant.remove(&id) {
             self.running_dormant.remove(&id);
         }
+    }
+
+    /// `id` is built for a read inside content that stays skipped, see `CssAnimations::hold`.
+    pub(crate) fn hold(&mut self, id: u64) {
+        if self.held.insert(id) {
+            self.dormant.insert(id);
+        }
+        self.note_running(id);
+    }
+
+    /// Whether a read has made runs that are kept on time without a build.
+    pub(crate) fn holds_any(&self) -> bool {
+        !self.held.is_empty()
+    }
+
+    /// `id` is built for a frame: the DOM hears of its transitions from here on.
+    pub(crate) fn release(&mut self, id: u64) {
+        if self.held.is_empty() || !self.held.remove(&id) {
+            return;
+        }
+        self.dormant.remove(&id);
+        self.running_dormant.remove(&id);
     }
 
     fn note_running(&mut self, id: u64) {
@@ -1840,6 +1882,7 @@ impl CssTransitions {
             let Some(mut state) = self.states.remove(&hidden) else {
                 continue;
             };
+            self.release(hidden);
             self.running_dormant.remove(&hidden);
             let running: Vec<PropKey> = state.running.keys().copied().collect();
             for key in running {
@@ -1862,6 +1905,7 @@ impl CssTransitions {
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
         self.states.retain(|id, _| keep(*id));
         self.hidden.retain(|id| keep(*id));
+        self.held.retain(|id| keep(*id));
     }
 
     /// Events queued since the last call, in the order they happened.

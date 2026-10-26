@@ -33,8 +33,18 @@ type OracleEntry = {
   phase?: string
   tgt?: OracleSide
   ctl?: OracleSide
+  r2?: number
+  list?: string
+  tl?: number
+  subtree?: OracleRow[]
+  host_subtree?: OracleTreeRow[]
+  host_plain?: OracleTreeRow[]
+  doc?: OracleTreeRow[]
+  scroller_subtree?: OracleTreeRow[]
 }
-type OracleSide = { bg?: string; anims: { n: string; state: string; ct: number }[] }
+type OracleSide = { bg?: string; op?: string; anims: { n: string; state: string; ct: number; st: number | null }[] }
+type OracleRow = { el: string; n: string; id: number; state: string; pending: boolean; ct: number; st: number | null }
+type OracleTreeRow = { target: string; n: string; state: string; ct: number }
 
 const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures")
 const ORACLE = JSON.parse(fs.readFileSync(path.join(FIXTURES, "content-visibility-animation-oracle.json"), "utf8")) as {
@@ -70,6 +80,8 @@ type Scene = {
   load?: boolean
   /** Whether the target is compared with the control in the frames after the reveal, or with what Chrome showed. */
   likeControl?: boolean
+  /** A read while skipped made the animations of the target, which run from then: they do not start at the reveal. */
+  made?: boolean
   steps: [number, string | null][]
 }
 
@@ -82,22 +94,45 @@ const SCENES: Record<string, Scene> = {
   q1_run: { ...LOOP, likeControl: true, steps: [[300, "skip"], [1650, "reveal"], [2200, null]] },
   q1_run_read: { ...LOOP, likeControl: true, steps: [[300, "skip"], [600, "readAnim"], [900, "readAnim"], [1650, "reveal"], [2200, null]] },
   q1_load: { ...LOOP, load: true, steps: [[1500, "reveal"], [2000, null]] },
+  q1_load_read: { ...LOOP, load: true, made: true, steps: [[600, "readAnim"], [1000, "readStyle"], [1500, "reveal"], [2200, null]] },
   q2_run: { ...FINITE, steps: [[100, "skip"], [1500, "reveal"], [2000, null]] },
   q2_load: { ...FINITE, load: true, steps: [[1500, "reveal"], [2000, null]] },
   q2_class: { steps: [[100, "skip"], [300, "addClass"], [1500, "reveal"], [2000, null]] },
+  q2_class_read: { made: true, steps: [[100, "skip"], [300, "addClass+readAnim"], [700, "readAnim"], [1500, "reveal"], [2200, null]] },
   q3_before: { ...TRANSITION, steps: [[100, "change"], [150, "skip"], [1200, "reveal"], [1700, null]] },
   q3_inside: { ...TRANSITION, steps: [[100, "skip"], [300, "change"], [1200, "reveal"], [1700, null]] },
   q3_inside_mid: { ...TRANSITION, steps: [[100, "skip"], [300, "change"], [450, "reveal"], [1000, null]] },
+  q6_load_tree: { ...LOOP, load: true, steps: [[600, "readTree"], [1500, "reveal"], [2000, null]] },
+  // Reads of content that was never rendered, which Chrome styles for the read: the animations it makes run while skipped.
+  // `getComputedStyle` (q6_load_style) has no counterpart in gpuix; a read of the geometry stands in for it below.
+  q6_load_geom: { ...LOOP, load: true, made: true, steps: [[600, "readGeom"], [1000, "readTree"], [1500, "reveal"], [2200, null]] },
+  q6_load_geom_fin: { t: "fin", ctl: "fin", load: true, made: true, steps: [[600, "readGeom"], [1000, "readTree"], [1500, "reveal"], [2200, null]] },
+  q6_load_rect: { ...LOOP, load: true, made: true, steps: [[600, "readRectOnly"], [1000, "readTree"], [1500, "reveal"], [2200, null]] },
+  q6_load_rect_fin: { t: "fin", ctl: "fin", load: true, made: true, steps: [[600, "readRectOnly"], [1000, "readTree"], [1500, "reveal"], [2200, null]] },
 }
 
-/** Scenes with a read of `getAnimations()` that Chrome answers differently, see the test of `FORCED_READS`. */
-const FORCED_READS: Record<string, Scene> = {
-  q2_class_read: { steps: [[100, "skip"], [300, "addClass+readAnim"], [700, "readAnim"], [1500, "reveal"], [2000, null]] },
-  q1_load_read: { ...LOOP, load: true, steps: [[600, "readAnim"], [1500, "reveal"], [2000, null]] },
-}
+/** What a read lists and creates: these are held to Chrome's reads one by one (`readAnim` and `readStyle` are the page's). */
+const READ_SCENES = ["q1_load_read", "q2_class_read", "q6_load_geom", "q6_load_geom_fin"]
+
+/** The scenes that list the animations of the tree, `readTree` in the page. */
+const TREE_SCENES = ["q6_load_tree", "q6_load_geom", "q6_load_geom_fin", "q6_load_rect", "q6_load_rect_fin"]
 
 type Seen = { type: string; target: string; name: string; elapsed: number; at: number }
-type Look = { animations: { name: string; currentTime: number; playState: string }[]; color?: number[] }
+type Look = {
+  animations: {
+    id: number
+    name: string
+    currentTime: number
+    playState: string
+    pending: boolean
+    startTime: number | null
+    /** The `computedOffset` of each keyframe `getKeyframes()` gives. */
+    offsets: number[]
+  }[]
+  color?: number[]
+}
+/** What the reads of the tree list: the animation of an element is `target:name:state`. */
+type TreeLook = { at: number; host_subtree: string[]; host_plain: string[]; doc: string[]; scroller_subtree: string[] }
 type Played = {
   seen: Seen[]
   skipAt: number
@@ -107,6 +142,9 @@ type Played = {
   /** `getAnimations()` of the target and the control in the reads the scene makes while skipped. */
   reads: { at: number; t: Look; ctl: Look }[]
   readEvents: Seen[]
+  trees: TreeLook[]
+  /** The renderer's timeline when the scene began, which `startTime` counts from. */
+  timeline0: number
 }
 
 type State = { skipped: boolean; changed: boolean; classed: boolean }
@@ -162,9 +200,13 @@ function lookAt(renderer: Renderer, target: string, withColor: boolean, name: st
   const id = renderer.findByTestId(target).id
   const look: Look = {
     animations: renderer.getAnimations(id).map((info) => ({
+      id: info.id,
       name: info.animationName ?? info.transitionProperty,
       currentTime: info.currentTime,
       playState: info.playState,
+      pending: info.pending,
+      startTime: info.startTime ?? null,
+      offsets: info.kind === "animation" ? renderer.getAnimationKeyframes(info.id).map((frame) => frame.computedOffset) : [],
     })),
   }
   if (withColor) {
@@ -175,11 +217,11 @@ function lookAt(renderer: Renderer, target: string, withColor: boolean, name: st
 }
 
 function play(sceneName: string, mode: Mode): Played {
-  const scene = SCENES[sceneName] ?? FORCED_READS[sceneName]
+  const scene = SCENES[sceneName]
   const root = createTestRoot({ width: 700, height: 900 })
   const renderer = root.renderer
   const state: State = { skipped: false, changed: false, classed: false }
-  const played: Played = { seen: [], skipAt: -1, revealAt: -1, frames: [], reads: [], readEvents: [] }
+  const played: Played = { seen: [], skipAt: -1, revealAt: -1, frames: [], reads: [], readEvents: [], trees: [], timeline0: 0 }
   let now = 0
   const record = (event: Omit<Seen, "at">) => played.seen.push({ ...event, at: now })
   const render = () => root.render(<Page scene={scene} mode={mode} state={state} record={record} />)
@@ -224,6 +266,29 @@ function play(sceneName: string, mode: Mode): Played {
       renderer.dispatchNativeEvents()
       played.readEvents.push(...played.seen.slice(before))
     },
+    // The page reads the computed style, which gpuix has no call for: its `getAnimations()` is the read that styles.
+    readStyle: () => actions.readAnim(),
+    readRectOnly: () => {
+      renderer.getElementBounds(renderer.findByTestId("t").id)
+    },
+    readGeom: () => {
+      actions.readRectOnly()
+      actions.readAnim()
+    },
+    readTree: () => {
+      const names = ["t", "t2", "ctl", "ctl2", "host", "scroller"]
+      const testIds = new Map(names.map((name) => [renderer.findByTestId(name).id, name]))
+      const rows = (list: { elementId: number; info: { animationName?: string; transitionProperty?: string; playState: string } }[]) =>
+        list.map((entry) => `${testIds.get(entry.elementId)}:${entry.info.animationName ?? entry.info.transitionProperty}:${entry.info.playState}`)
+      const host = renderer.findByTestId("host").id
+      played.trees.push({
+        at: now,
+        host_subtree: rows(renderer.getSubtreeAnimations(host)),
+        host_plain: renderer.getAnimations(host).map((info) => `host:${info.animationName ?? info.transitionProperty}:${info.playState}`),
+        doc: rows(renderer.getDocumentAnimations()),
+        scroller_subtree: rows(renderer.getSubtreeAnimations(renderer.findByTestId("scroller").id)),
+      })
+    },
     change: () => {
       state.changed = true
       render()
@@ -243,6 +308,7 @@ function play(sceneName: string, mode: Mode): Played {
     }
     render()
     renderer.flush()
+    played.timeline0 = renderer.getAnimationTimelineTime()
     elapse(0)
     for (const step of scene.steps) {
       advanceTo(step[0])
@@ -273,6 +339,10 @@ function chromeOf(scene: string, mode: Mode) {
     })),
     raf1,
     reads: log.filter((entry) => entry.phase === "readAnim"),
+    /** Every read of the target's animations, whichever way the page made it. */
+    looks: log.filter((entry) => entry.phase === "readAnim" || entry.phase === "readStyle" || entry.phase === "readGeom"),
+    trees: log.filter((entry) => entry.phase === "readTree"),
+    reveal,
   }
 }
 
@@ -332,7 +402,9 @@ export function defineAnimationEventTests(mode: Mode) {
         expect(drawn, `the target is not drawn in the first frames: ${JSON.stringify(run.frames.map((frame) => frame.t.color))}`).toBeDefined()
         expect(drawn.frame, "frame of the first sight of the target").toBeLessThanOrEqual(mode === "auto" ? 1 : 0)
         const scene = SCENES[name]
-        const expected = scene.likeControl ? run.frames[drawn.frame].ctl.color : rgbOf(chrome.raf1.tgt.bg)
+        // What is drawn is the background over white at the opacity the animations give it.
+        const opacity = Number(chrome.raf1.tgt.op)
+        const expected = scene.likeControl ? run.frames[drawn.frame].ctl.color : rgbOf(chrome.raf1.tgt.bg).map((channel) => 255 - (255 - channel) * opacity)
         expect(apart(drawn.t.color, expected), `colour ${drawn.t.color} against ${scene.likeControl ? "the control" : "Chrome"} ${expected}`).toBeLessThanOrEqual(scene.likeControl ? 3 : COLOUR_TOLERANCE)
 
         const shown = drawn.t.animations
@@ -346,7 +418,14 @@ export function defineAnimationEventTests(mode: Mode) {
             const found = shown.find((animation) => (KEYFRAMES[was.n] ?? was.n) === animation.name)
             expect(found, `${was.n} is on the target`).toBeDefined()
             expect(found.playState, was.n).toBe(was.state)
-            if (was.state === "running") expect(found.currentTime, `${was.n} starts at the reveal`).toBeLessThanOrEqual(FRAME * (drawn.frame + 1))
+            if (was.state !== "running") continue
+            if (scene.made) {
+              // Made by a read while skipped: it ran on, and is where it would be had it been drawn all along.
+              const atReveal = was.ct - chrome.raf1.r
+              expect(Math.abs(found.currentTime - drawn.frame * FRAME - atReveal), `${was.n} runs on from the read`).toBeLessThanOrEqual(2 * FRAME)
+            } else {
+              expect(found.currentTime, `${was.n} starts at the reveal`).toBeLessThanOrEqual(FRAME * (drawn.frame + 1))
+            }
           }
         }
       })
@@ -368,18 +447,69 @@ export function defineAnimationEventTests(mode: Mode) {
       expect(run.readEvents, "a read dispatches nothing").toEqual([])
     })
 
-    // Chrome's `getAnimations()` styles the element it is read on, so it creates the animation of content that was never
-    // styled (or whose class was added while skipped) at once: it runs while skipped and `animationstart` and `animationend`
-    // come at the reveal. gpuix builds nothing of skipped content, so there is no animation to list, and it starts at the reveal.
-    for (const name of Object.keys(FORCED_READS)) {
-      it(`lists no animation for content that was never styled, and starts it at the reveal: ${name}`, () => {
+    // A read of an element in content that was never rendered styles the content of the skipped hosts around it, as Chrome
+    // does: the CSS animations it makes are pending until the next frame, then run (and `currentTime` advances) while the
+    // content is skipped, and are the same objects for every later read and after the reveal. The DOM hears of them after it.
+    for (const name of READ_SCENES) {
+      it(`lists the animations a read made, pending and then running while skipped, the same ones at the reveal: ${name}`, () => {
+        const chrome = chromeOf(name, mode)
         const run = playedScene(name)
-        for (const read of run.reads) expect(read.t.animations, `getAnimations() of the target at ${read.at}`).toEqual([])
-        const started = run.seen.find((seen) => seen.type === "animationstart" && seen.target === "t")
-        expect(started.at - run.revealAt, "starts in the first frames after the reveal").toBeGreaterThanOrEqual(0)
-        expect(started.at - run.revealAt).toBeLessThanOrEqual(FRAMES_TO_TELL * FRAME)
-        const drawn = run.frames.find((frame) => !isWhite(frame.t.color))
-        expect(drawn.t.animations[0].currentTime, "from its start").toBeLessThanOrEqual(FRAME * (drawn.frame + 1))
+        expect(run.reads.length, "reads of the target").toBe(chrome.looks.length)
+        const first = run.reads[0]
+        const ids = new Map(first.t.animations.map((animation) => [animation.name, animation.id]))
+        run.reads.forEach((read, at) => {
+          const was = chrome.looks[at].tgt
+          expect(read.t.animations.map((animation) => [animation.name, animation.playState]), `read ${at}`).toEqual(
+            was.anims.map((animation) => [KEYFRAMES[animation.n] ?? animation.n, animation.state]),
+          )
+          read.t.animations.forEach((animation, index) => {
+            const expected = was.anims[index]
+            expect(animation.id, `read ${at}: the same ${animation.name}`).toBe(ids.get(animation.name))
+            if (at === 0) {
+              expect(animation.pending, "it waits for a frame").toBe(true)
+              expect(animation.currentTime, "and has not started").toBe(0)
+              expect(animation.startTime, "with no start time").toBeNull()
+              return
+            }
+            expect(animation.pending, `read ${at}`).toBe(false)
+            const started = animation.startTime - run.timeline0 - first.at
+            expect(started, `started at the first frame after the read (${animation.name})`).toBeGreaterThan(0)
+            expect(started, `started at the first frame after the read (${animation.name})`).toBeLessThanOrEqual(2 * FRAME)
+            // A run that finished while nobody rendered it is at its end here; Chrome's time keeps counting until it renders.
+            if (expected.state === "finished") expect(animation.currentTime).toBeGreaterThanOrEqual(300)
+            else expect(Math.abs(animation.currentTime - expected.ct), `time of ${animation.name} at read ${at}`).toBeLessThanOrEqual(2 * FRAME)
+          })
+        })
+        expect(run.readEvents, "a read tells the DOM nothing").toEqual([])
+        for (const animation of first.t.animations) expect(animation.offsets, `getKeyframes() of ${animation.name}, made by the read`).toEqual([0, 1])
+        const revealed = run.frames.find((frame) => !isWhite(frame.t.color))
+        const last = run.reads.at(-1)
+        for (const animation of revealed.t.animations) {
+          const read = last.t.animations.find((listed) => listed.name === animation.name)
+          expect(animation.id, `${animation.name} is the object the read listed`).toBe(read.id)
+          const started = animation.startTime - run.timeline0 - first.at
+          expect(started, `${animation.name} did not start over`).toBeGreaterThan(0)
+          expect(started, `${animation.name} did not start over`).toBeLessThanOrEqual(2 * FRAME)
+          if (read.startTime !== null) expect(animation.startTime, `${animation.name} did not start over`).toBeCloseTo(read.startTime, 3)
+        }
+        const toldBeforeTheReveal = run.seen.filter((seen) => seen.target === "t" && seen.at < run.revealAt)
+        expect(toldBeforeTheReveal, "nothing of the target is told while it is skipped").toEqual([])
+      })
+    }
+
+    for (const name of TREE_SCENES) {
+      it(`lists what the reads made, and nothing else, in the lists of the tree: ${name}`, () => {
+        const chrome = chromeOf(name, mode)
+        const run = playedScene(name)
+        expect(run.trees.length).toBe(chrome.trees.length)
+        const named = (rows: OracleTreeRow[]) => rows.map((row) => `${row.target}:${KEYFRAMES[row.n] ?? row.n}:${row.state}`)
+        run.trees.forEach((tree, at) => {
+          const was = chrome.trees[at]
+          expect(tree.host_subtree, "host.getAnimations({ subtree: true })").toEqual(named(was.host_subtree))
+          expect(tree.host_plain, "host.getAnimations()").toEqual(named(was.host_plain))
+          expect(tree.doc, "document.getAnimations()").toEqual(named(was.doc))
+          expect(tree.scroller_subtree, "scroller.getAnimations({ subtree: true })").toEqual(named(was.scroller_subtree))
+        })
       })
     }
 

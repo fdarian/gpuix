@@ -15,6 +15,7 @@ import { animate, defineKeyframes, motion, motionValue } from "../index"
 import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from "../testing.js"
 import { verifying } from "./retained-harness.js"
 import { defineAnimationEventTests } from "./skipped-animation-events-fixture.js"
+import { defineAnimationScopeTests } from "./skipped-animation-scope-fixture.js"
 import { AnimatedCard, CARD, elapse, Filler, hovered, shotOf, Sidebar, spent, VisibleLoop } from "./skipped-animations-fixture.js"
 
 const SQUARE_FONT = fs.readFileSync(new URL("./fixtures/gpuix-test-square.ttf", import.meta.url))
@@ -1670,7 +1671,7 @@ describeNative("consecutive reads and a layout animation that does not move the 
 })
 
 describeNative("a read of geometry below a skipped element, for what else it could change", { timeout: 120_000 }, () => {
-  it("remembers no size, starts no animation and tells nothing, for an auto and a hidden element", () => {
+  it("remembers no size and tells nothing of the animation it makes, for an auto and a hidden element", () => {
     const seen: string[] = []
     const events: Events = []
     const root = createTestRoot(SIZE)
@@ -1713,10 +1714,15 @@ describeNative("a read of geometry below a skipped element, for what else it cou
       expect([height("held"), height("far")], "skipped, at the length").toEqual([30, 20])
       events.length = 0
 
+      expect(renderer.getDocumentAnimations(), "nothing has styled the content yet, and a list of the document does not").toEqual([])
       expect(renderer.getElementBounds(ids.get("loop")!)!.height, "the content is laid out").toBe(100)
       expect(renderer.getElementBounds(ids.get("held-child")!)!.height).toBe(70)
       for (let step = 0; step < 36; step++) frame()
-      expect(seen, "no animation started or looped below them").toEqual([])
+      // Chrome styles what a read of its geometry reaches, so the loop exists and runs while it is skipped; the DOM hears of it when it renders.
+      const made = renderer.getAnimations(ids.get("loop")!)
+      expect(made.map((animation) => [animation.animationName, animation.playState, animation.pending])).toEqual([["cv-auto-pulse", "running", false]])
+      expect(made[0].currentTime, "it ran on with the clock: 36 frames of 100 ms").toBeGreaterThan(3000)
+      expect(seen, "nothing started or looped for the DOM below them").toEqual([])
       expect(events, "nothing is told").toEqual([])
       expect([height("held"), height("far")], "and they did not remember the size they were laid out at").toEqual([30, 20])
       expect(renderer.getBuiltElementBounds(ids.get("loop")!)).toBeFalsy()
@@ -2741,6 +2747,7 @@ describeNative("animations in auto content that is near but clipped away by an o
 })
 
 defineAnimationEventTests("auto")
+defineAnimationScopeTests("auto")
 
 describeNative("a read of a line in 300 hidden cards, after a paint-only write and a painted frame", { timeout: 120_000 }, () => {
   const CARDS = 300
