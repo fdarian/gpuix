@@ -1757,10 +1757,15 @@ A `motion` component takes Motion's transform keys in `animate`, `initial`, `exi
 | `scale`, `scaleX`, `scaleY` | a number, or a percentage in a static `style` | `1` |
 | `rotate`, `rotateZ`, `skew`, `skewX`, `skewY` | degrees, or a CSS angle (`"0.25turn"`, `"1rad"`), also in a motion value | `0` |
 | `originX`, `originY` | a fraction of the border box (`0.5`, the default, is the middle) or a CSS length | `0.5` |
+| `z`, `translateZ` | a number (px) or a CSS length without `%`, toward the viewer | `0` |
+| `rotateX`, `rotateY` | degrees, or a CSS angle | `0` |
+| `scaleZ` | a number | `1` |
+| `transformPerspective` | a distance in px, from 0 up: `perspective(<n>px)` in front of the element's own transform | `0` (none) |
+| `originZ` | a number (px) or a CSS length without `%`; replaces the depth of `transformOrigin` | `0` |
 
-- **They compose in Motion's order**, around the origin: `x`, `y`, `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`,
-  `rotate`, `rotateZ`, `skew`, `skewX`, `skewY`. Any one of them replaces the `transform` string of the same element, as in
-  Motion, so use one or the other.
+- **They compose in Motion's order**, around the origin: `transformPerspective`, `x`, `y`, `z`, `translateX`, `translateY`,
+  `translateZ`, `scale`, `scaleX`, `scaleY`, `scaleZ`, `rotate`, `rotateX`, `rotateY`, `rotateZ`, `skew`, `skewX`, `skewY`.
+  Any one of them replaces the `transform` string of the same element, as in Motion, so use one or the other.
 - **On a `motion` component `scale` and `rotate` are Motion's**, a factor and degrees; on a plain element they are the CSS
   properties of [Transforms](#transforms), which take strings too. Tweens, springs, keyframes, `transition` per key and
   [motion values](#motion-values) bind to every key (`style={{ x: motionValue }}`). A motion value that drives an angle key
@@ -1784,7 +1789,12 @@ A `motion` component takes Motion's transform keys in `animate`, `initial`, `exi
   animate={{ transform: 'translateX(0) rotate(0deg)' }}
 />
 ```
-- **3D keys** (`z`, `translateZ`, `rotateX`, `rotateY`, `transformPerspective`, `perspective`) are accepted and ignored.
+- **The depth keys** (`z`, `translateZ`, `scaleZ`, `rotateX`, `rotateY`, `originZ`) are seen the way the CSS functions they stand for
+  are: through a `perspective` on the parent or the element's own `transformPerspective`, or inside a
+  `transformStyle: 'preserve-3d'` chain (see [Three dimensions](#three-dimensions)). Without either, a `rotateX` is a vertical
+  squash and `z` moves nothing. `perspective` and `perspectiveOrigin` are the CSS properties of the element: put them on the
+  parent, in `style` or in `animate`, where they tween like any length (`perspective: 'none'` against a length flips at the
+  middle). The depth keys tween, spring and bind to motion values like the others, and their ticks are patched frames.
 - **Reduced motion** makes the keys jump to their target, as it does `width` and `top` (see
   [MotionConfig and reduced motion](#motionconfig-and-reduced-motion)). CSS transforms are not reduced.
 - A `<span>` ignores all of them (see [Animate an inline span](#animate-an-inline-span)).
@@ -5348,6 +5358,8 @@ ones each element was painted with, so a `hover`, `active` or focus state, a
 group or `has*` state, an `@container` block, a transition, a CSS animation or a
 `motion` value that changes them counts, as `document.elementsFromPoint` does.
 A deferred [`<anchored>`](#overlay-menus) layer is listed too, below what it holds.
+A [transformed](#transforms) element is listed where it is drawn, in perspective too (a point at or behind the
+horizon lists nothing of it), and not while `backfaceVisibility: "hidden"` hides it.
 `overflow: hidden` and
 `scroll` clip what lies outside them (not an `absolute` or `fixed` descendant whose
 containing block is outside), `pointer-events: none` is skipped (and
@@ -6601,7 +6613,7 @@ CSS-like styling via the `style` prop:
 
 **Visual:** `background`, `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`, `backgroundRepeat`, `backgroundOrigin`, `backgroundClip`, `color`, `colorScheme`, `opacity`, `cursor`, `pointerEvents`, `appRegion` (`"drag"` | `"no-drag"`, see [Window drag regions](#window-drag-regions)), `borderRadius`, `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius`, `borderBottomRightRadius`, `borderWidth` (one to four values), `borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderColor`, `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStyle`, `borderTopStyle`, `borderRightStyle`, `borderBottomStyle`, `borderLeftStyle`, `border`, `borderBlock`, `borderInline`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `boxShadow`, `filter`, `backdropFilter`, `mask`, `maskImage`, `maskSize`, `maskPosition`, `maskRepeat`, `maskOrigin`, `maskClip`, `maskMode`, `maskComposite`, `maskBorder`, `maskBorderSource`, `maskBorderSlice`, `maskBorderWidth`, `maskBorderOutset`, `maskBorderRepeat`, `maskBorderMode`, `clipPath`, `outline`, `outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset` (see [Outline](#outline))
 
-**Transform:** `transform`, `translate`, `rotate`, `scale` and `transformOrigin`; see [Transforms](#transforms)
+**Transform:** `transform`, `translate`, `rotate`, `scale`, `transformOrigin`, `perspective`, `perspectiveOrigin`, `transformStyle` (`"flat"` | `"preserve-3d"`) and `backfaceVisibility` (`"visible"` | `"hidden"`); see [Transforms](#transforms) and [Three dimensions](#three-dimensions)
 
 ### Lengths
 
@@ -6937,12 +6949,12 @@ so that animation starts at `0`.
   with a `zIndex`, whatever its `position` (`zIndex` applies to an item without
   one, but not to any other static box, and `auto` leaves it in tree order);
   and an element composited as a whole (`opacity` below 1, `filter`,
-  `backdropFilter`, `maskImage`, `clipPath`) or with a [transform](#transforms), which paints in the 0 layer with
+  `backdropFilter`, `maskImage`, `clipPath`) or with a [transform](#transforms) (a `perspective` and `transformStyle: "preserve-3d"` count), which paints in the 0 layer with
   the positioned `auto` and 0 elements, in tree order, though it is not
   positioned (it takes its `zIndex` where one applies). Layout is unaffected.
   These form a context: the window root, a positioned element with a `zIndex`
   (not `auto`), `position: fixed` and `sticky`, a flex or grid item with a
-  `zIndex` (not `auto`), anything composited as a whole, and an element with a transform. A `zIndex` inside
+  `zIndex` (not `auto`), anything composited as a whole, and an element with a transform, a `perspective` or `preserve-3d`. A `zIndex` inside
   one cannot rise above what is outside it. An `<anchored>` layer and each row
   of a `<virtual-list>` is a context of its own too, and nothing is lifted out
   of a row: a row's content never rises above the next row. The children of a
@@ -7183,31 +7195,35 @@ size, since a moving transform lays nothing out.
 ```
 
 - **`transform`** is `none` or a list of `translate()`, `translateX()`, `translateY()`, `scale()`, `scaleX()`, `scaleY()`,
-  `rotate()`, `skew()`, `skewX()`, `skewY()` and `matrix()`. Translations take any [length](#lengths), and a `%` is of the
-  element's own border box. Angles are `deg`, `rad`, `grad` or `turn`, or a bare `0`, and `calc()` sums angles and scales
+  `rotate()`, `skew()`, `skewX()`, `skewY()` and `matrix()`, and the 3D functions `translate3d()`, `translateZ()`,
+  `scale3d()`, `scaleZ()`, `rotateX()`, `rotateY()`, `rotate3d()`, `perspective()` and `matrix3d()` (`rotateZ()` is `rotate()`).
+  Translations take any [length](#lengths), and a `%` is of the
+  element's own border box (not along z). Angles are `deg`, `rad`, `grad` or `turn`, or a bare `0`, and `calc()` sums angles and scales
   them by numbers (`rotate(calc(45deg + 0.125turn))`, `skewX(calc(1turn / 4))`). A string that does not parse is
   ignored as a whole, as in CSS.
-- **`var()`** works in `transform`, `translate`, `rotate`, `scale` and `transformOrigin`, from the custom properties the
+- **`var()`** works in `transform`, `translate`, `rotate`, `scale`, `transformOrigin`, `perspective` and `perspectiveOrigin`, from the custom properties the
   element computes to, its own included, with a fallback (`var(--gap, 8px)`). A `--p` set from JS on an ancestor moves
   the box like the literal value does, which makes `translateX(calc(-100% * var(--p)))` a carousel track. A `var()` that
   cannot be resolved (a missing name with no fallback, a cycle) makes the property `none`, as in CSS, and not "ignored". A
   custom property whose value holds `var()` is computed where it is declared. Other properties do not substitute `var()`
   (see [`style()` and custom properties](#style-and-custom-properties)).
-- **`translate`, `rotate` and `scale`** are the individual properties. `rotate` takes an angle or a number of degrees, `scale`
-  one or two numbers or percentages. Around the origin they apply in the order `translate`, `rotate`, `scale`, then `transform`.
-- **`transformOrigin`** is one or two of `left`, `center`, `right`, `top`, `bottom`, lengths and percentages, `50% 50%` by default.
-- **3D is not drawn.** `translate3d()`, `scale3d()`, `translateZ()`, `scaleZ()` and `rotateZ()` are accepted and draw in 2D.
-  `rotateX()`, `rotateY()`, `perspective()` and `matrix3d()` are invalid, so the whole `transform` is ignored.
-- **A transform other than `none` makes the element a stacking context and the containing block of its `absolute` and `fixed`
-  descendants**, as in CSS, even when its value is the identity (`translateZ(0)`). `none` and an invalid value do neither.
+- **`translate`, `rotate` and `scale`** are the individual properties. `translate` takes one or two lengths or percentages and
+  a length along z. `rotate` takes an angle, a number of degrees, or an axis (`x`, `y`, `z` or three numbers) and an angle
+  (`rotate: 'y 30deg'`). `scale` takes one to three numbers or percentages. Around the origin they apply in the order
+  `translate`, `rotate`, `scale`, then `transform`.
+- **`transformOrigin`** is one or two of `left`, `center`, `right`, `top`, `bottom`, lengths and percentages, `50% 50%` by default,
+  and a length along z (`'50% 50% 40px'`).
+- **A transform, a `perspective` other than `none` or `transformStyle: 'preserve-3d'` makes the element a stacking context and the
+  containing block of its `absolute` and `fixed` descendants**, as in CSS, even when a transform's value is the identity
+  (`translateZ(0)`). `none` and an invalid value do neither. `backfaceVisibility` makes neither.
 - **What the transform moves.** Painting, hit testing, `getBoundingClientRect()` (the smallest box that holds the four
-  corners of the border box after the transforms around the element and its own), `getElementsAt`, `scrollIntoView` and
+  corners of the border box after the transforms around the element and its own, in perspective too), `getElementsAt`, `scrollIntoView` and
   `IntersectionObserver`. `scrollIntoView` maps the box through every scroller around the element, in each one's own space
   (a turn between two scrollers enlarges it, as in Chrome), and a selection drag's autoscroll, a virtual list's row and Tab into
   skipped content use the drawn box. Text selection works through a transform: a press, a drag, a double and a triple click
   select what the same gesture selects in the text's own space. A scroller scrolls as far as the transformed boxes inside it
   reach, and the `scrollWidth` and `scrollHeight` of that scroller follow the transform while it animates. `offsetX` and `offsetY` of a
-  pointer event are in the target's own, untransformed space. `offsetWidth`, `clientWidth`, `scrollWidth`, `ResizeObserver` and
+  pointer event are in the target's own, untransformed space (in the plane of a box seen in perspective, too). `offsetWidth`, `clientWidth`, `scrollWidth`, `ResizeObserver` and
   `onLayout` still report the layout box.
 - **A `<span>` takes no transform while it is an inline box.** CSS does not transform a non-atomic inline box, and neither does
   GPUIX; the same span with `display: inline-block` (an atomic inline) does. A `motion.span` drops the Motion keys whatever its
@@ -7223,17 +7239,75 @@ size, since a moving transform lays nothing out.
   transforms around its trigger, and is placed against the trigger's transformed bounding box in the window, as floating-ui
   does with `getBoundingClientRect`. An explicit `position={{ x, y }}` is in window coordinates. `deferred={false}` stays in
   the tree: it is drawn inside the transform and flips against the window in its space.
-- **State styles** (`hover`, `focus`, ...) take all five keys.
-- **Animating.** The five properties take `transition` and `defineKeyframes` like any other. Two `transform` lists with the same
-  functions in the same order blend function by function (`rotate(0)` to `rotate(270deg)` turns three quarters, not a quarter back),
-  the shorter list padded with identity functions, and `none` blends as the identity of the other list. From the first pair
-  of functions that do not match, the rest of both lists blends as 2D matrices, as in Chrome. A tick of any of this is a patched
+- **State styles** (`hover`, `focus`, ...) take every property of this section, `transformStyle` and `backfaceVisibility` included.
+- **Animating.** `transform`, `translate`, `rotate`, `scale`, `transformOrigin`, `perspective` and `perspectiveOrigin` take
+  `transition` and `defineKeyframes` like any other (`transformStyle` and `backfaceVisibility` are not animatable). Two
+  `transform` lists with the same functions in the same order blend function by function (`rotate(0)` to `rotate(270deg)` turns
+  three quarters, not a quarter back), the shorter list padded with identity functions, and `none` blends as the identity of
+  the other list. Chrome pairs the functions that share a primitive: `translate()`, `translateX()` and `translateZ()` blend as
+  translations (so do the `scale` forms), `rotate()`, `rotateX()` and `rotate3d()` as rotations (angles on a common axis, a
+  quaternion between two axes), and `perspective()` blends as the reciprocal of its distance. From the first pair
+  that does not match, the rest of both lists blends as two matrices, decomposed in 3D (translation, scale, skew, perspective
+  and a quaternion) when either holds a 3D function, as in Chrome. A pair of matrices that cannot be decomposed (one that
+  flattens space, as `matrix(0, 0, 0, 0, 0, 0)` does) steps the whole list at the halfway point. `perspective` is a length and
+  `none` flips against one; `transformOrigin` blends its depth with its two positions. A tick of any of this is a patched
   frame. [Motion's keys](#move-scale-and-turn) are the way to animate from `animate`, springs and motion values. A transition or
   an animation of a transform that reads `var()` compares the computed values: changing `--p` under `transition: transform 1s`
   runs from where the box was, and a keyframe's `var()` is read against the element each frame.
 
+#### Three dimensions
+
+A box turns in depth when the viewer is in front of it. `perspective` goes on the parent, since it sets how far the viewer
+is from the plane of the element it is on and shows its children through it. A card that flips:
+
+```tsx
+<div style={{ perspective: 600, perspectiveOrigin: '50% 50%' }}>
+  <div style={{ transformStyle: 'preserve-3d', transform: 'rotateY(180deg)', transition: 'transform 600ms' }}>
+    <div style={{ backfaceVisibility: 'hidden' }}>front</div>
+    <div style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>back</div>
+  </div>
+</div>
+```
+
+- **`perspective`** is `none` or a length from 0 up (a number is px), **`perspectiveOrigin`**
+  is where the viewer looks at the box, `50% 50%` by default. Neither is inherited: they reach the children, and the
+  grandchildren only through `transformStyle: 'preserve-3d'`. Put the perspective on the element itself with the
+  `perspective()` function at the start of its `transform`. Without a perspective, `rotateX()` and `rotateY()` squash the
+  box and `translateZ()` moves nothing.
+- **`transformStyle: 'preserve-3d'`** makes the children planes of the same 3D rendering context as the element, so a
+  child's depth adds to its parent's turn. The default, `'flat'`, flattens the children onto the element's plane before the
+  element is turned. The used value is `flat` whatever is declared when the element has a grouping property: `opacity`
+  below 1 (or a current animation of it), `filter`, `backdropFilter`, `clipPath`, a mask, or `overflow` other than
+  `visible` on either axis. This is the list Chrome uses, minus `isolation`, `mix-blend-mode` and `will-change`, which gpuix
+  does not have. A declared `preserve-3d` is still a stacking context and a containing block when a grouping property
+  overrides it.
+- **`backfaceVisibility: 'hidden'`** draws nothing of the element and what is in it, and hits nothing, while its back
+  faces the viewer. Which way it faces is decided by Chrome's test on the transforms accumulated in its 3D context: a
+  card of two hidden faces shows one at a time, and a flat card whose faces turn with it shows its front, mirrored, at 180deg.
+  A card that a `motion` tween turns hides the face that turns away on every tick.
+- **Measuring and aiming.** `getBoundingClientRect()` is the box that holds the four projected corners, and a corner that
+  would be behind the viewer is cut where the plane reaches it. `getElementsAt`, pointer events, `offsetX` and `offsetY` map the
+  pointer back through the projection into the box's own plane; a point at or behind the horizon hits nothing, and a back that
+  `backfaceVisibility` hides is not hit. A scroller scrolls as far as the projected boxes inside it reach.
+- **Motion's depth keys** (`z`, `translateZ`, `scaleZ`, `rotateX`, `rotateY`, `transformPerspective`, `originZ`) are in
+  [Move, scale and turn](#move-scale-and-turn).
+
 Differences from Chrome:
 
+Differences from Chrome:
+
+- The planes of a 3D rendering context paint in paint order, not sorted by depth, and two planes that cross are not cut along
+  the line where they meet. A card that turns past another one in the same context can show the wrong one in front.
+- A scroller's extent counts a `preserve-3d` chain level by level, each level through its own parent's perspective.
+- A clip around a `preserve-3d` context that is itself turned (an `overflow: hidden` ancestor under a rotation) cuts the planes in
+  the context to its bounding box in the window, with its rounded corners dropped.
+- A corner whose projection divisor is below 0.001 (a hair from the viewer's plane) is cut there, so the bounding box of a box
+  that nearly touches the viewer differs from Chrome's.
+- Edges at a grazing angle under perspective are antialiased by their average pixel footprint and look slightly jagged. Text
+  under a perspective is resampled from a raster at a nearby scale, so it is softer than Chrome's. A curve of a path under
+  perspective is mapped through its control points, so it is not exact.
+- `isolation`, `mix-blend-mode` and `will-change` do not exist, so they cannot force a flat context. The wgpu and DirectX shaders
+  still read the 2D matrix (macOS only).
 - A rotated child that has its own `overflow: hidden` inside a rotated, clipping ancestor is cut to the ancestor's bounding box,
   with its rounded corners dropped, where Chrome cuts to the rotated shape. A pointer aimed at such a clip is loose in the same way.
 - `layout="size"` still does not scale a box (see [Layout animations](#layout-animations)).
@@ -8249,8 +8323,8 @@ render per frame.
   Every property `motion` can animate (see [Targets and timing](#targets-and-timing))
   can transition. Shorthand names (`padding`, `margin`, `border-radius`, `inset`,
   `flex`, ...) cover their longhands. `transform`, `translate`, `rotate`, `scale` and
-  `transform-origin` transition too (see [Transforms](#transforms)); a valid CSS name
-  gpuix does not animate (`perspective`) is accepted and matches nothing. A camelCase name, a bad time or
+  `transform-origin`, `perspective` and `perspective-origin` transition too (see [Transforms](#transforms)); a valid CSS name
+  gpuix does not animate (`transform-style`) is accepted and matches nothing. A camelCase name, a bad time or
   timing function, or an unparsable value is rejected when the style is set, like
   any other invalid style
 - **Inline boxes.** A `<span>` transitions what an inline box shows too, and only that (see
