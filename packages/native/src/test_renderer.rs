@@ -2741,6 +2741,16 @@ impl TestGpuixRenderer {
         })
     }
 
+    /// See the renderer's `forgetAnimation`.
+    #[napi]
+    pub fn forget_animation(&self, animation_id: f64) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::None, move |view, _now| {
+            view.forget_web_animation(id);
+            Ok(())
+        })
+    }
+
     /// `animation.pause()`: holds the current time at once, and from here the
     /// style's `animation-play-state` no longer decides.
     #[napi]

@@ -38,6 +38,7 @@ function fakeRenderer(listed: ElementWebAnimationInfo[]): NativeRenderer {
     updateAnimationPlaybackRate() {},
     setAnimationStartTime() {},
     releaseAnimation() {},
+    forgetAnimation() {},
     updateAnimationTiming() {},
   } as unknown as NativeRenderer
 }

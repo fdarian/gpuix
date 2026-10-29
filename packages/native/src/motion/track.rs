@@ -96,6 +96,11 @@ pub(super) struct Track {
     /// Where the track stands for good once its animation is over: what Motion committed when the animation
     /// finished, or the value it never left when the animation was cancelled.
     held: Option<Vec<f64>>,
+    /// The animation whose end `held` is: it finished, or was cancelled.
+    ended_by: Option<u64>,
+    /// That animation, idle, while JS holds its `Animation`: Chrome plays a cancelled one again, and
+    /// the track is driven by it from then on, see [`Self::revive`].
+    idle: Option<Script>,
     /// Seconds a repeating spring takes to settle, which is the length of one
     /// of its iterations. Zero for everything else.
     pub(super) settle: f64,
@@ -240,6 +245,8 @@ impl Track {
             script: None,
             unscreened: true,
             held: None,
+            ended_by: None,
+            idle: None,
             settle: 0.0,
             rest: OnceLock::new(),
         };
@@ -289,13 +296,44 @@ impl Track {
     /// The animation finished and Motion committed the final keyframe, or the first when it ran backwards.
     pub(super) fn finish_animation(&mut self, backwards: bool) -> Option<Script> {
         self.held = Some(self.final_position(backwards));
-        self.script.take()
+        let script = self.script.take();
+        self.ended_by = script.as_ref().map(Script::id);
+        script
     }
 
     /// The animation was cancelled: Motion never hears of that, so the value it had is the one the track started from.
-    pub(super) fn cancel_animation(&mut self) {
+    pub(super) fn cancel_animation(&mut self) -> Option<Script> {
         self.held = Some(self.frames[0].clone());
-        self.script = None;
+        let script = self.script.take();
+        self.ended_by = script.as_ref().map(Script::id);
+        script
+    }
+
+    /// Keeps `script`, which ended this track and was cancelled, for a command to bring back. Not
+    /// another one's: a track that was replaced since has its own.
+    pub(super) fn park(&mut self, script: Script) {
+        if self.ended_by == Some(script.id()) && self.script.is_none() {
+            self.idle = Some(script);
+        }
+    }
+
+    pub(super) fn idle_animation(&self) -> Option<&Script> {
+        self.idle.as_ref()
+    }
+
+    pub(super) fn idle_animation_mut(&mut self) -> Option<&mut Script> {
+        self.idle.as_mut()
+    }
+
+    pub(super) fn take_idle(&mut self) -> Option<Script> {
+        self.idle.take()
+    }
+
+    /// The parked animation plays again: the track shows what it does from here.
+    pub(super) fn revive(&mut self, script: Script) {
+        self.held = None;
+        self.ended_by = None;
+        self.script = Some(script);
     }
 
     /// The rate of change of the first channel per second at the start, which a spring takes from the motion it interrupted.

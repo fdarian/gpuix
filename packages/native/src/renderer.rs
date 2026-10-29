@@ -3389,6 +3389,18 @@ impl GpuixRenderer {
         })
     }
 
+    /// JS no longer holds an `Animation` for the run: native drops what it kept of a run that was
+    /// cancelled, for a command to bring it back. A run that plays is not affected, and a call
+    /// for a run native has already dropped is nothing.
+    #[napi]
+    pub fn forget_animation(&self, animation_id: f64) -> Result<()> {
+        let id = to_element_id(animation_id)?;
+        self.with_motion_state(Repaint::None, move |view, _now| {
+            view.forget_web_animation(id);
+            Ok(())
+        })
+    }
+
     /// `animation.pause()`: holds the current time at once, and from here the
     /// style's `animation-play-state` no longer decides.
     #[napi]
@@ -6453,10 +6465,19 @@ impl GpuixView {
             .filter(|_| !gone)
             .map(|state| state.script_list(now))
             .unwrap_or_default();
+        // What the style let go of has no owner any more, which puts it among the animations of a script.
+        let mut others: Vec<_> = self
+            .css_transitions
+            .list_disowned(element, now)
+            .into_iter()
+            .chain(self.css_animations.list_disowned(element, now))
+            .chain(scripts)
+            .collect();
+        others.sort_by_key(|info| info.id);
         transitions
             .into_iter()
             .chain(animations)
-            .chain(scripts)
+            .chain(others)
             .map(|info| WebAnimationInfo::at(info, &self.clock))
             .collect()
     }
@@ -6476,8 +6497,14 @@ impl GpuixView {
             let Some(at) = self.api_instant(Some(*element), now) else { continue };
             listed.extend(self.css_animations.list(*element, at).into_iter().map(|info| (*element, info)));
         }
-        // Script animations come after both, in the order they were made wherever they run.
+        // Script animations, and what the style let go of, come after both, in the order they were made
+        // wherever they run.
         let mut scripts = Vec::new();
+        for element in &order {
+            let Some(at) = self.api_instant(Some(*element), now) else { continue };
+            scripts.extend(self.css_transitions.list_disowned(*element, at).into_iter().map(|info| (*element, info)));
+            scripts.extend(self.css_animations.list_disowned(*element, at).into_iter().map(|info| (*element, info)));
+        }
         for element in &order {
             let (Some(state), Some(at)) = (self.motion_states.get(element), self.api_instant(Some(*element), now)) else {
                 continue;
@@ -6564,6 +6591,16 @@ impl GpuixView {
     /// JS consumed an event of the run `id`.
     pub(crate) fn release_web_animation(&mut self, id: u64) {
         self.retired_animations.release(id);
+    }
+
+    /// JS holds no `Animation` for the run `id` any more: what was kept of it for a command to
+    /// bring back goes.
+    pub(crate) fn forget_web_animation(&mut self, id: u64) {
+        self.css_animations.forget(id);
+        self.css_transitions.forget(id);
+        if let Some((element, _)) = self.script_state(id) {
+            self.motion_states.get_mut(&element).expect("the state of an animation that was just found").forget_script(id);
+        }
     }
 
     /// Applies `command` at the time the animation reads as. The caller requests the frame that

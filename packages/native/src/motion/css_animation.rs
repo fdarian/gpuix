@@ -12,6 +12,7 @@
 //! win over everything else the element declares, as animations do in CSS.
 
 use std::cmp::Reverse;
+use std::cell::Cell;
 use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -1013,6 +1014,13 @@ struct Run {
     /// first thing a frame finds is that it ended (`finish()` of a cancelled animation), Chrome
     /// tells nothing.
     silent: bool,
+    /// The style no longer owns the run (its name left `animation-name`, or it was cancelled and
+    /// the style then let go of it) and JS still holds its `Animation`, which a command brings back
+    /// as Chrome does: the same keyframes and timing, not changed by any later style, and no event
+    /// of the DOM.
+    disowned: bool,
+    /// An `Animation` object was handed to JS for the run, so the style letting go of it keeps it.
+    handed: Cell<bool>,
     iteration: u64,
     /// The keyframe progress `CssAnimations::advance` found this frame, `None`
     /// while the animation has no effect.
@@ -1062,6 +1070,8 @@ impl Run {
             shown: Phase::Before,
             begun: false,
             silent: false,
+            disowned: false,
+            handed: Cell::new(false),
             iteration: 0,
             progress: None,
             plan: None,
@@ -1353,7 +1363,7 @@ impl Run {
             self.styled = false;
         }
         self.shown = evaluation.phase;
-        if beat == Beat::Frame && !self.clock.pending_play() {
+        if beat == Beat::Frame && !self.clock.pending_play() && !self.disowned {
             let before = events.len();
             self.report(id, now, local, &evaluation, events);
             for scheduled in &mut events[before..] {
@@ -1404,12 +1414,23 @@ impl Run {
     /// `animation.cancel()`: the run stays, idle, for `play()` and the like to bring back.
     fn cancel_by_api(&mut self, id: u64, now: Instant, events: &mut Vec<Scheduled>, api: &mut Vec<ApiEvent>) {
         self.cancel(id, now, events, api);
+        self.rewind();
+        self.silent = true;
+    }
+
+    fn rewind(&mut self) {
         self.phase = Phase::Before;
         self.shown = Phase::Before;
         self.begun = false;
-        self.silent = true;
         self.iteration = 0;
         self.progress = None;
+    }
+
+    /// The style lets go of the run, which was cancelled by it or by the API: it stays idle for a
+    /// command to bring back, and no style touches it again.
+    fn disown(&mut self) {
+        self.rewind();
+        self.disowned = true;
     }
 
     /// A command of the API. `id` is the element.
@@ -1515,6 +1536,12 @@ impl Run {
     fn info(&self, now: Instant) -> Info {
         Info::of(Kind::Animation, self.name.clone(), &self.clock, now, self.end_time())
     }
+
+    /// [`Self::info`] for what the API reads, which is the `Animation` object JS holds from here on.
+    fn handed_info(&self, now: Instant) -> Info {
+        self.handed.set(true);
+        self.info(now)
+    }
 }
 
 // ── Per-element state ────────────────────────────────────────────────
@@ -1526,6 +1553,9 @@ struct ElementState {
     config: Config,
     list: AnimationList,
     runs: Vec<Run>,
+    /// The runs the style let go of that JS holds, in the order they were made, which sort after
+    /// the ones the style owns as the animations of a script do.
+    disowned: Vec<Run>,
     /// What the element's last update animated.
     target: PropTarget,
     /// Some animation was moving at the last update.
@@ -1538,9 +1568,23 @@ impl ElementState {
             config: Default::default(),
             list: AnimationList::default(),
             runs: Vec::new(),
+            disowned: Vec::new(),
             target: PropTarget::Element,
             moving: false,
         }
+    }
+
+    fn wants_frame(&self, now: Instant) -> bool {
+        self.every_run().any(|run| run.wants_frame(now))
+    }
+
+    /// Every run of the element: the ones the style owns, then the ones it let go of.
+    fn every_run(&self) -> impl Iterator<Item = &Run> {
+        self.runs.iter().chain(&self.disowned)
+    }
+
+    fn every_run_mut(&mut self) -> impl Iterator<Item = &mut Run> {
+        self.runs.iter_mut().chain(&mut self.disowned)
     }
 
     /// Whether what the animations show can change without the style or the
@@ -1606,8 +1650,13 @@ impl ElementState {
                 }
             }
         }
-        for mut run in unclaimed.into_iter().flatten() {
+        // Chrome cancels the last of them first.
+        for mut run in unclaimed.into_iter().flatten().rev() {
             run.cancel(id, now, events, api);
+            if run.handed.get() {
+                run.disown();
+                self.disowned.push(run);
+            }
         }
         self.runs = runs;
     }
@@ -1832,7 +1881,7 @@ impl CssAnimations {
         }
 
         let mut covered = Vec::new();
-        for run in &mut state.runs {
+        for run in state.every_run_mut() {
             run.tick(id, now, if self.layout_only { Beat::Layout } else { Beat::Frame }, &mut self.events, &mut self.api_events);
             if run.progress.is_some() {
                 covered.extend(run.properties.iter().copied().filter(|key| match key {
@@ -1869,7 +1918,7 @@ impl CssAnimations {
             .unwrap_or(inherited)
             .allows_keywords();
         let mut values: BTreeMap<PropKey, Option<AnimValue>> = BTreeMap::new();
-        for run in &mut state.runs {
+        for run in state.every_run_mut() {
             run.observe(subject, parent_colors, parent_font);
             if let Some(progress) = run.progress {
                 // Later in the list is higher in the cascade.
@@ -1887,9 +1936,9 @@ impl CssAnimations {
                 self.active |= run.wants_frame(now);
             }
         }
-        state.moving = state.runs.iter().any(|run| run.wants_frame(now));
+        state.moving = state.wants_frame(now);
 
-        if state.runs.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
+        if state.runs.is_empty() && state.disowned.is_empty() && state.list.0.iter().all(|animation| animation.name.is_none()) {
             self.states.remove(&id);
         }
         let mut animated = AnimationStyle { style: Vec::new(), svg: Vec::new() };
@@ -1915,7 +1964,7 @@ impl CssAnimations {
         };
         let mut ticked = false;
         let beat = if self.held.contains(&id) { Beat::Held } else { Beat::Frame };
-        for run in &mut state.runs {
+        for run in state.every_run_mut() {
             if run.quiet_until.is_some_and(|until| now < until) {
                 continue;
             }
@@ -1925,7 +1974,7 @@ impl CssAnimations {
             ticked = true;
         }
         if ticked {
-            state.moving = state.runs.iter().any(|run| run.wants_frame(now));
+            state.moving = state.wants_frame(now);
         }
     }
 
@@ -1943,7 +1992,7 @@ impl CssAnimations {
             })
         });
         defined
-            && state.runs.iter().all(|run| {
+            && state.every_run().all(|run| {
                 run.properties.iter().all(|key| match key {
                     PropKey::Style(prop) => prop.paints_only(),
                     // The attributes of an SVG shape change the picture of the `<svg>`, never its box.
@@ -1956,8 +2005,7 @@ impl CssAnimations {
     pub(crate) fn animates_opacity(&self, id: u64) -> bool {
         self.states.get(&id).is_some_and(|state| {
             state
-                .runs
-                .iter()
+                .every_run()
                 .any(|run| run.is_current() && run.properties.contains(&PropKey::Style(AnimProp::Opacity)))
         })
     }
@@ -1965,7 +2013,7 @@ impl CssAnimations {
     /// Whether an animation of `id` that is current animates a property that moves, scales or turns the element.
     pub(crate) fn animates_transform(&self, id: u64) -> bool {
         self.states.get(&id).is_some_and(|state| {
-            state.runs.iter().any(|run| {
+            state.every_run().any(|run| {
                 run.is_current()
                     && run.properties.iter().any(|key| matches!(key, PropKey::Style(prop) if prop.is_transform()))
             })
@@ -2065,7 +2113,7 @@ impl CssAnimations {
         let mut earliest: Option<Instant> = None;
         let mut boundary: Option<Instant> = None;
         let mut iteration: Option<Instant> = None;
-        for run in &state.runs {
+        for run in state.every_run() {
             let Some(until) = run.quiet_until else {
                 self.sleepers.next.insert(id);
                 return;
@@ -2213,13 +2261,20 @@ impl CssAnimations {
     /// position) that are relevant: current, or in effect through a fill.
     pub(crate) fn list(&self, element: u64, now: Instant) -> Vec<Info> {
         self.states.get(&element).map_or_else(Vec::new, |state| {
-            state.runs.iter().filter(|run| run.is_relevant()).map(|run| run.info(now)).collect()
+            state.runs.iter().filter(|run| run.is_relevant()).map(|run| run.handed_info(now)).collect()
         })
     }
 
-    /// The animation `id`, relevant or not. `None` once it is cancelled.
+    /// The animations of `element` the style let go of that are relevant, in the order they were made.
+    pub(crate) fn list_disowned(&self, element: u64, now: Instant) -> Vec<Info> {
+        self.states.get(&element).map_or_else(Vec::new, |state| {
+            state.disowned.iter().filter(|run| run.is_relevant()).map(|run| run.handed_info(now)).collect()
+        })
+    }
+
+    /// The animation `id`, relevant or not. `None` once it is cancelled for good.
     pub(crate) fn info(&self, id: u64, now: Instant) -> Option<Info> {
-        self.run(id).map(|run| run.info(now))
+        self.run(id).map(|run| run.handed_info(now))
     }
 
     /// Whether the pass being built is a layout pass a read forced rather than a frame that is
@@ -2244,7 +2299,7 @@ impl CssAnimations {
         let (element, run) = self
             .states
             .iter_mut()
-            .flat_map(|(element, state)| state.runs.iter_mut().map(move |run| (*element, run)))
+            .flat_map(|(element, state)| state.every_run_mut().map(move |run| (*element, run)))
             .find(|(_, run)| run.clock.id() == id)?;
         run.update_timing(element, update, now, &mut self.api_events);
         self.commanded.push(element);
@@ -2260,7 +2315,7 @@ impl CssAnimations {
         let (element, run) = self
             .states
             .iter_mut()
-            .flat_map(|(element, state)| state.runs.iter_mut().map(move |run| (*element, run)))
+            .flat_map(|(element, state)| state.every_run_mut().map(move |run| (*element, run)))
             .find(|(_, run)| run.clock.id() == id)?;
         let outcome = run.command(element, command, now, &mut self.events, &mut self.api_events);
         self.commanded.push(element);
@@ -2279,12 +2334,19 @@ impl CssAnimations {
     pub(crate) fn element_of(&self, id: u64) -> Option<u64> {
         self.states
             .iter()
-            .find(|(_, state)| state.runs.iter().any(|run| run.clock.id() == id))
+            .find(|(_, state)| state.every_run().any(|run| run.clock.id() == id))
             .map(|(element, _)| *element)
     }
 
     fn run(&self, id: u64) -> Option<&Run> {
-        self.states.values().flat_map(|state| state.runs.iter()).find(|run| run.clock.id() == id)
+        self.states.values().flat_map(ElementState::every_run).find(|run| run.clock.id() == id)
+    }
+
+    /// JS holds no `Animation` for the run `id` any more: a run the style let go of is dropped.
+    pub(crate) fn forget(&mut self, id: u64) {
+        for state in self.states.values_mut() {
+            state.disowned.retain(|run| run.clock.id() != id);
+        }
     }
 
     /// The elements a command reached since the last call, which the frame has to build again.
@@ -4129,13 +4191,15 @@ mod tests {
         assert_eq!(back.status, Status::Running);
         assert_eq!(frames.events().len(), 1, "it starts again");
 
-        // The name leaving the style ends the run for good, silently, as it was idle.
+        // The name leaving the style lets the idle run go silently, for a command to bring back while JS holds it.
         command(&mut frames, 616, id, Command::Cancel);
         frames.events();
         api_events(&mut frames);
         frames.frame(700, &fading("none"));
         assert!(frames.events().is_empty());
         assert!(api_events(&mut frames).is_empty());
+        assert_eq!(frames.animations.info(id, frames.at(700)).unwrap().status, Status::Idle);
+        frames.animations.forget(id);
         assert!(frames.animations.command(id, Command::Play, frames.at(700)).is_none());
     }
 
@@ -4554,6 +4618,9 @@ mod tests {
         let ids: Vec<u64> = listed(&frames, 0).iter().map(|info| info.id).collect();
         frames.frame(300, &fading("fade 1s linear"));
         assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, ids[1])]);
+        let kept = frames.animations.info(ids[1], frames.at(300)).expect("JS holds it, so a command can bring it back");
+        assert_eq!(kept.status, Status::Idle);
+        frames.animations.forget(ids[1]);
         assert!(frames.animations.info(ids[1], frames.at(300)).is_none());
         assert!(frames.animations.command(ids[1], Command::Pause, frames.at(300)).is_none());
 
@@ -4562,6 +4629,49 @@ mod tests {
         assert_eq!(api_events(&mut frames), [(ApiEventKind::Finish, ids[0])]);
         frames.frame(2100, &fading("none"));
         assert_eq!(api_events(&mut frames), [(ApiEventKind::Cancel, ids[0])]);
+    }
+
+    #[test]
+    fn a_run_the_style_let_go_of_plays_again_when_a_command_asks_and_no_style_touches_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        let id = only(&frames, 0).id;
+        frames.frame(300, &fading("none"));
+        assert!(listed(&frames, 300).is_empty());
+        assert_eq!(frames.animations.info(id, frames.at(300)).unwrap().status, Status::Idle);
+        frames.animations.take_events();
+        api_events(&mut frames);
+
+        command(&mut frames, 300, id, Command::Play);
+        frames.frame(316, &fading("none"));
+        let info = frames.animations.list_disowned(1, frames.at(316)).remove(0);
+        assert_eq!((info.id, info.status, info.pending), (id, Status::Running, false));
+        near(opacity(&frames.frame(816, &fading("none"))), 0.5);
+
+        // A style that names it again starts a new run beside it, and one that changes the timing leaves it alone.
+        frames.frame(900, &fading("fade 2s linear"));
+        let owned: Vec<u64> = listed(&frames, 900).iter().map(|info| info.id).collect();
+        assert_eq!(owned.len(), 1);
+        assert_ne!(owned[0], id, "a new run is made for the name");
+        assert_eq!(frames.animations.list_disowned(1, frames.at(900)).iter().map(|info| info.id).collect::<Vec<_>>(), [id]);
+
+        // The DOM hears nothing of it: no start, no iteration, no end.
+        frames.animations.take_events();
+        frames.frame(2000, &fading("fade 2s linear"));
+        assert!(frames.animations.take_events().is_empty());
+        let run = frames.animations.run(id).unwrap();
+        assert!(run.disowned && !run.begun);
+    }
+
+    #[test]
+    fn a_run_nobody_held_is_not_kept_when_the_style_lets_go_of_it() {
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        frames.frame(0, &fading("fade 1s linear"));
+        let id = frames.animations.states[&1].runs[0].clock.id();
+        frames.frame(300, &fading("none"));
+        assert!(frames.animations.info(id, frames.at(300)).is_none());
     }
 
     #[test]

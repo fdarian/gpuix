@@ -91,8 +91,6 @@ const DEFAULT_CURVE =
   "no transition at all: Motion gives the browser cubic-bezier(0.25, 0.1, 0.35, 1) where gpuix runs its own default, ease-out"
 const STOP =
   "stop() commits a value that Motion samples from a JavaScript replica of the animation at wall-clock time, then cancels the Animation: a motion component has no such replica to sample"
-const REVIVE =
-  "play() or the time setter on the Animation Motion cancelled restarts it in Chrome, where gpuix's is gone with its track, as a cancelled CSS animation is"
 const BEFORE_FIRST_FRAME =
   "the control acts on the Animation Motion makes before any frame, which gpuix lists from the first frame that is drawn"
 const ZERO_DURATION = "a duration of 0: Motion lists it for one frame, and not reliably"
@@ -156,9 +154,6 @@ for (const [id, reason] of [
   ["ctl-spring-stop", STOP],
   ["ctl-bg-stop", STOP],
   ["ctl-stop-then-play", STOP],
-  ["ctl-time-set-after-finish", REVIVE],
-  ["ctl-play-after-finish", REVIVE],
-  ["wa-cancel-play", REVIVE],
   ["ctl-pause-before-resolve", BEFORE_FIRST_FRAME],
 ]) {
   NOT_EXPRESSIBLE.set(id, reason)
@@ -452,9 +447,9 @@ async function replay(scenario: Case): Promise<void> {
       )
     }
   }
-  /** The command of Motion's control, which Motion passes on to its animations. */
+  /** The command of Motion's control, which Motion passes on to its animations: the ones it made, listed or not. */
   const control = (op: string, arg: unknown) => {
-    for (const animation of holder.current!.getAnimations()) {
+    for (const animation of new Set([...Object.values(tracked), ...holder.current!.getAnimations()])) {
       switch (op) {
         case "pause":
         case "play":

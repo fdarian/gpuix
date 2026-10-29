@@ -498,6 +498,21 @@ impl Playback {
         report
     }
 
+    /// Whether the time of the clock is at `end` or past it going forward, finished or held there.
+    pub(super) fn reached_end(&self, now: Instant, end: f64) -> bool {
+        self.rate() >= 0.0 && self.current_time(now, end).is_some_and(|time| time >= end)
+    }
+
+    /// True once per arrival: when the time of the clock reaches `end` going forward, whether the clock
+    /// runs or holds it (a seek), until it is before it again. A run the style let go of tells the DOM
+    /// of its end by where its time is, as a run that plays from the start does.
+    pub(super) fn take_end_reached(&mut self, now: Instant, end: f64) -> bool {
+        let reached = self.reached_end(now, end);
+        let report = reached && !self.end_reported;
+        self.end_reported = reached;
+        report
+    }
+
     /// The effect now ends at `end`, which `updateTiming()` moved: the finished state is looked at
     /// again against it.
     pub(super) fn retime(&mut self, now: Instant, end: f64) {

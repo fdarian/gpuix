@@ -315,6 +315,12 @@ export declare class GpuixRenderer {
    */
   releaseAnimation(animationId: number): void
   /**
+   * JS no longer holds an `Animation` for the run: native drops what it kept of a run that was
+   * cancelled, for a command to bring it back. A run that plays is not affected, and a call
+   * for a run native has already dropped is nothing.
+   */
+  forgetAnimation(animationId: number): void
+  /**
    * `animation.pause()`: holds the current time at once, and from here the
    * style's `animation-play-state` no longer decides.
    */
@@ -1239,6 +1245,8 @@ export declare class TestGpuixRenderer {
   updateAnimationTiming(animationId: number, timing: WebAnimationTimingUpdate): void
   /** See the renderer's `releaseAnimation`. */
   releaseAnimation(animationId: number): void
+  /** See the renderer's `forgetAnimation`. */
+  forgetAnimation(animationId: number): void
   /**
    * `animation.pause()`: holds the current time at once, and from here the
    * style's `animation-play-state` no longer decides.

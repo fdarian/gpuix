@@ -2721,6 +2721,7 @@ export type NativeRenderer = MutationHost &
       | "setAnimationStartTime"
       | "getAnimationTimelineTime"
       | "releaseAnimation"
+      | "forgetAnimation"
       | "getAnimationEffect"
       | "getAnimationKeyframes"
       | "updateAnimationTiming"

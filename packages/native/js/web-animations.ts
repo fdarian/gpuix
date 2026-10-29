@@ -38,6 +38,7 @@ export type WebAnimationHost = Required<
     | "setAnimationStartTime"
     | "getAnimationTimelineTime"
     | "releaseAnimation"
+    | "forgetAnimation"
     | "getAnimationEffect"
     | "getAnimationKeyframes"
     | "updateAnimationTiming"
@@ -60,6 +61,7 @@ const HOST_METHODS = [
   "setAnimationStartTime",
   "getAnimationTimelineTime",
   "releaseAnimation",
+  "forgetAnimation",
   "getAnimationEffect",
   "getAnimationKeyframes",
   "updateAnimationTiming",
@@ -135,6 +137,17 @@ interface State {
   cancelEvents: number
   /** `finished` was renewed because the animation went idle, which its cancel event then finds done. */
   renewedForCancel: boolean
+  /**
+   * Native cancelled the animation (the style, Motion) and a read saw it idle before the `cancel` event came: whether a play
+   * or pause was waiting then, which is what the cancel does to `ready`. The event comes in a task of its own, by when a
+   * command can have played the animation again.
+   */
+  cancelNoticed: { pending: boolean } | undefined
+  /**
+   * The animation was finished when the cancel replaced `finished` by a pending promise, which stays pending: nothing finishes
+   * it again, and the `finish` event that comes after is not its finish.
+   */
+  holdFinished: boolean
   handlers: Map<string, EventHandler | null>
 }
 
@@ -211,7 +224,12 @@ function isGone(state: State): boolean {
 
 function readLive(state: State): WebAnimationInfo {
   try {
-    state.last = state.host.getAnimation(state.id)
+    const info = state.host.getAnimation(state.id)
+    if (info.playState === "idle" && state.last.playState !== "idle" && state.cancelEvents === 0) {
+      state.cancelNoticed = { pending: state.last.pending }
+    }
+    if (info.playState !== "finished") state.holdFinished = false
+    state.last = info
   } catch (error) {
     if (!isUnknownAnimation(error)) throw error
     // The idle run of a `cancel()` that the style stopped naming: native dropped it without a word.
@@ -250,6 +268,8 @@ function command(animation: Animation, action: string, send: (state: State) => v
   } catch (error) {
     throw isUnknownAnimation(error) ? cancelled() : refusal(error)
   }
+  // A command can bring back an animation that was idle and only weakly held: it plays now, and events are owed to it.
+  register(state.registry, state.elementId, state.id, animation)
   settle(animation, state, before)
 }
 
@@ -576,7 +596,8 @@ export class KeyframeEffect {
  * Not built: `replaceState`, `persist()`, `commitStyles()`,
  * `onremove`, and setting `effect`. Every command works on an animation of the motion engine as it does on the one Motion
  * makes with the browser: the motion shows what the animation does, `finish()` completes it, `cancel()` takes it back to
- * where it started without a completion (Motion never hears of a cancel), and a cancelled one cannot be played again.
+ * where it started without a completion (Motion never hears of a cancel). An animation the style or Motion cancelled is idle,
+ * and a command plays it again as in Chrome, without the style owning it any more, for as long as the app holds it.
  */
 export class Animation extends GpuixEventTarget {
   /** Empty for what `getAnimations()` lists: the animations of CSS and of Motion have no id. */
@@ -599,6 +620,8 @@ export class Animation extends GpuixEventTarget {
       ready: deferred(),
       cancelEvents: 0,
       renewedForCancel: false,
+      cancelNoticed: undefined,
+      holdFinished: false,
       handlers: new Map(),
     }
     states.set(this, state)
@@ -881,12 +904,27 @@ export class CSSTransition extends Animation {
   }
 }
 
-/** The animations a renderer has handed out, by native id and by element. */
+/**
+ * The animations a renderer has handed out, by native id and by element.
+ *
+ * An animation the style or Motion cancelled is idle and out of every list, and native keeps the run for a command to
+ * bring back as long as JS holds the animation. It is held by `weak` then, so an app that lets go of it lets native
+ * drop the run (`forgetAnimation`, from `finalizer`); a command that brings it back holds it again.
+ */
 interface Registry {
   readonly byId: Map<number, Animation>
   readonly byElement: Map<number, Set<Animation>>
+  readonly weak: Map<number, WeakRef<Animation>>
+  readonly finalizer: FinalizationRegistry<number>
+  /** The window is gone: there is nothing left to forget. */
+  closed: boolean
   /** Made with the first animation listed. */
   timeline?: DocumentTimeline
+}
+
+/** The animation of a run native has, held or not. */
+function lookup(registry: Registry, id: number): Animation | undefined {
+  return registry.byId.get(id) ?? registry.weak.get(id)?.deref()
 }
 
 // Shared through `globalThis` like the renderer states: the JSX runtime can load
@@ -902,10 +940,30 @@ function registryOf(renderer: object): Registry {
   }
   let registry = all.get(renderer)
   if (!registry) {
-    registry = { byId: new Map(), byElement: new Map() }
+    const weak = new Map<number, WeakRef<Animation>>()
+    const made: Registry = {
+      byId: new Map(),
+      byElement: new Map(),
+      weak,
+      closed: false,
+      finalizer: new FinalizationRegistry((id) => {
+        // A new object for the same run, made since, holds it.
+        if (weak.get(id)?.deref()) return
+        weak.delete(id)
+        if (!made.closed) (renderer as NativeRenderer).forgetAnimation?.(id)
+      }),
+    }
+    registry = made
     all.set(renderer, registry)
   }
   return registry
+}
+
+/** The window of `renderer` is gone, which the animations it handed out outlive: native has nothing left for them. */
+export function closeWebAnimations(renderer: object): void {
+  const all = Reflect.get(globalThis, REGISTRIES_KEY) as WeakMap<object, Registry> | undefined
+  const registry = all?.get(renderer)
+  if (registry) registry.closed = true
 }
 
 function hostOf(renderer: NativeRenderer): WebAnimationHost {
@@ -922,12 +980,14 @@ function isUnknownAnimation(error: unknown): boolean {
 
 function unregister(registry: Registry, state: State, animation: Animation): void {
   registry.byId.delete(state.id)
+  if (registry.weak.delete(state.id)) registry.finalizer.unregister(animation)
   const siblings = registry.byElement.get(state.elementId)
   siblings?.delete(animation)
   if (siblings?.size === 0) registry.byElement.delete(state.elementId)
 }
 
 function register(registry: Registry, elementId: number, id: number, animation: Animation): void {
+  if (registry.weak.delete(id)) registry.finalizer.unregister(animation)
   registry.byId.set(id, animation)
   const siblings = registry.byElement.get(elementId) ?? new Set()
   siblings.add(animation)
@@ -954,8 +1014,11 @@ function adopt(
   elementId: number,
   info: WebAnimationInfo
 ): Animation {
-  const known = registry.byId.get(info.id)
-  if (known) return known
+  const known = lookup(registry, info.id)
+  if (known) {
+    register(registry, elementId, info.id, known)
+    return known
+  }
   const init = { host, registry, timeline, target, elementId, info }
   const animation = animationOf(info.kind, init)
   register(registry, elementId, info.id, animation)
@@ -1012,8 +1075,11 @@ function adoptListed(
   readOn: number | undefined,
   readOnTarget: object | undefined
 ): Animation {
-  const known = registry.byId.get(listed.info.id)
-  if (known) return known
+  const known = lookup(registry, listed.info.id)
+  if (known) {
+    register(registry, listed.elementId, listed.info.id, known)
+    return known
+  }
   const target = listed.elementId === readOn ? readOnTarget : elementOf(renderer, listed.elementId)
   if (target === undefined) {
     throw new Error(`Element ${listed.elementId} has an animation but its root has no element for it`)
@@ -1051,11 +1117,37 @@ function startFinished(animation: Animation): void {
 function lose(animation: Animation): void {
   const state = stateOf(animation)
   state.mode = "gone"
+  cancelPromises(state)
+}
+
+function cancelPromises(state: State): void {
+  const pending = state.cancelNoticed?.pending ?? state.last.pending
+  state.cancelNoticed = undefined
   if (state.renewedForCancel) {
     state.renewedForCancel = false
     return
   }
-  abort(state, state.last.pending)
+  abort(state, pending)
+}
+
+/**
+ * The style or Motion cancelled the animation and native keeps the run: it is idle, a command brings it back, and the
+ * registry holds it weakly until one does.
+ */
+function detach(animation: Animation): void {
+  const state = stateOf(animation)
+  cancelPromises(state)
+  const now = readLive(state)
+  // A command can have played it again since the cancel, which the event only now tells of.
+  if (now.playState === "finished") state.holdFinished = true
+  if (now.playState !== "idle") return
+  const registry = state.registry
+  registry.byId.delete(state.id)
+  const siblings = registry.byElement.get(state.elementId)
+  siblings?.delete(animation)
+  if (siblings?.size === 0) registry.byElement.delete(state.elementId)
+  registry.weak.set(state.id, new WeakRef(animation))
+  registry.finalizer.register(animation, state.id, animation)
 }
 
 function dispatchPlaybackEvent(
@@ -1116,10 +1208,15 @@ export function deliverWebAnimationEvent(renderer: NativeRenderer, event: EventP
   if (event.animationId === undefined) {
     throw new Error(`Event "${event.eventType}" arrived without its animationId`)
   }
+  let released = false
   try {
     const registry = registryOf(renderer)
-    const animation = registry.byId.get(event.animationId)
-    if (!animation) return
+    const animation = lookup(registry, event.animationId)
+    if (!animation) {
+      // No object is left to bring a cancelled run back.
+      if (event.eventType === CANCEL_EVENT) renderer.forgetAnimation?.(event.animationId)
+      return
+    }
     const state = stateOf(animation)
     const timelineTime = event.timelineTime ?? null
     switch (event.eventType) {
@@ -1128,7 +1225,9 @@ export function deliverWebAnimationEvent(renderer: NativeRenderer, event: EventP
         return
       case FINISH_EVENT:
         // A command that finished the animation resolved it then. This is the finish by itself.
-        if (state.finished.settled === "pending" && readLive(state).playState === "finished") {
+        if (state.holdFinished) {
+          state.holdFinished = false
+        } else if (state.finished.settled === "pending" && readLive(state).playState === "finished") {
           state.finished.resolve(animation)
         }
         dispatchPlaybackEvent(animation, "finish", event.currentTime ?? null, timelineTime)
@@ -1137,13 +1236,32 @@ export function deliverWebAnimationEvent(renderer: NativeRenderer, event: EventP
         if (state.cancelEvents > 0) {
           state.cancelEvents--
         } else {
-          lose(animation)
+          renderer.releaseAnimation?.(event.animationId)
+          released = true
+          if (keptByNative(renderer, state)) detach(animation)
+          else lose(animation)
         }
         if (state.mode === "gone") unregister(registry, state, animation)
         dispatchPlaybackEvent(animation, "cancel", null, timelineTime)
     }
   } finally {
-    if (event.eventType !== READY_EVENT) renderer.releaseAnimation?.(event.animationId)
+    if (event.eventType !== READY_EVENT && !released) {
+      renderer.releaseAnimation?.(event.animationId)
+    }
+  }
+}
+
+/**
+ * Whether native still has the run of a cancel it just told of, and not one that went with its element or was replaced.
+ * Until the event is released native answers for the run as it ended, so release it first.
+ */
+function keptByNative(renderer: NativeRenderer, state: State): boolean {
+  try {
+    renderer.getAnimation?.(state.id)
+    return true
+  } catch (error) {
+    if (!isUnknownAnimation(error)) throw error
+    return false
   }
 }
 

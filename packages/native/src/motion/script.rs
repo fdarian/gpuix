@@ -354,6 +354,22 @@ impl Script {
         self.clock.id()
     }
 
+    /// The animation was cancelled and no command has brought it back.
+    pub(super) fn is_idle(&self) -> bool {
+        self.clock.is_idle()
+    }
+
+    /// An `Animation` object was handed to JS for it.
+    pub(super) fn is_observed(&self) -> bool {
+        self.observed.get()
+    }
+
+    /// A command brought the animation back from a cancel: Motion's own handler is still on it, which no
+    /// cancel of the API removed.
+    pub(super) fn revived(&mut self) {
+        self.cancelled = false;
+    }
+
     fn end(&self) -> f64 {
         self.timing.end_time()
     }
@@ -843,6 +859,81 @@ mod tests {
             drawn(&mut state, later, &mut events);
             assert!((opacity(&state, at(origin, 800)) - 0.75).abs() < 1e-9);
             assert!(drawn(&mut state, at(origin, 1000), &mut events).just_settled);
+        }
+
+        #[test]
+        fn a_cancelled_animation_plays_again_from_the_start_and_the_motion_completes_when_it_ends() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            command(&mut state, id, Command::Cancel, at(origin, 300), &mut events);
+            drawn(&mut state, at(origin, 316), &mut events);
+            assert_eq!(opacity(&state, at(origin, 316)), 1.0);
+
+            command(&mut state, id, Command::Play, at(origin, 500), &mut events);
+            drawn(&mut state, at(origin, 516), &mut events);
+            let [info] = &state.script_list(at(origin, 716))[..] else { panic!("it is listed again") };
+            assert_eq!((info.id, info.status), (id, Status::Running));
+            assert!((opacity(&state, at(origin, 716)) - 0.8).abs() < 1e-9);
+            assert!(!drawn(&mut state, at(origin, 1000), &mut events).just_settled);
+            assert!(drawn(&mut state, at(origin, 1530), &mut events).just_settled, "Motion never heard the cancel, so it completes now");
+            assert_eq!(opacity(&state, at(origin, 1530)), 0.0);
+        }
+
+        #[test]
+        fn a_finished_animation_plays_again_and_the_motion_does_not_complete_twice() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            assert!(drawn(&mut state, at(origin, 1100), &mut events).just_settled);
+            drawn(&mut state, at(origin, 1116), &mut events);
+            assert_eq!(opacity(&state, at(origin, 1116)), 0.0);
+
+            command(&mut state, id, Command::Play, at(origin, 1200), &mut events);
+            drawn(&mut state, at(origin, 1216), &mut events);
+            assert!((opacity(&state, at(origin, 1416)) - 0.8).abs() < 1e-9);
+            assert!(!drawn(&mut state, at(origin, 2300), &mut events).just_settled);
+            assert_eq!(opacity(&state, at(origin, 2300)), 0.0);
+        }
+
+        #[test]
+        fn a_time_set_on_a_finished_animation_holds_it_there() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 1100), &mut events);
+            drawn(&mut state, at(origin, 1116), &mut events);
+            command(&mut state, id, Command::SetCurrentTime(200.0), at(origin, 1200), &mut events);
+            let [info] = &state.script_list(at(origin, 1200))[..] else { panic!("it is listed again") };
+            assert_eq!((info.status, info.current_time), (Status::Paused, 200.0));
+            for millis in [1200, 5000] {
+                assert!((opacity(&state, at(origin, millis)) - 0.8).abs() < 1e-9, "{millis}");
+            }
+        }
+
+        #[test]
+        fn an_animation_nobody_holds_any_more_is_not_kept() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            command(&mut state, id, Command::Cancel, at(origin, 300), &mut events);
+            drawn(&mut state, at(origin, 316), &mut events);
+            assert!(state.script_info(id, at(origin, 316)).is_some(), "kept, idle");
+            state.forget_script(id);
+            assert!(state.script_info(id, at(origin, 316)).is_none());
+            assert!(state.script_command(1, id, Command::Play, at(origin, 400), &mut events).is_none());
+        }
+
+        #[test]
+        fn a_replaced_track_does_not_keep_the_animation_that_ended_the_one_before() {
+            let origin = Instant::now();
+            let (mut state, id, mut events) = fading(origin);
+            drawn(&mut state, at(origin, 300), &mut events);
+            let later = at(origin, 400);
+            state
+                .sync(&json!({ "animate": { "opacity": 0.5 }, "transition": { "duration": 1.0, "ease": "linear" } }), None, Colors::root(), None, 0, later)
+                .unwrap();
+            drawn(&mut state, later, &mut events);
+            assert!(state.script_info(id, later).is_none());
         }
 
         #[test]

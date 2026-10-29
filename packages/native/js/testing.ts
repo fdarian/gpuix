@@ -41,6 +41,7 @@ import { forgetElementSource, forgetFocusSource } from "./events/window-target.j
 import type { HostDropEffect } from "./events/types.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
+import { closeWebAnimations } from "./web-animations.js"
 import { flushObservations, settleObservations } from "./observers.js"
 import { readFontFiles, type WindowFontsOption } from "./fonts.js"
 import {
@@ -266,6 +267,7 @@ interface NativeTestRendererApi
   getSvgMarkup(elementId: number): string | null
   getAnimation(animationId: number): WebAnimationInfo
   releaseAnimation(animationId: number): void
+  forgetAnimation(animationId: number): void
   getAnimationEffect(animationId: number): WebAnimationEffectInfo
   getAnimationKeyframes(animationId: number): WebAnimationKeyframeInfo[]
   updateAnimationTiming(animationId: number, timing: WebAnimationTimingUpdate): void
@@ -609,6 +611,7 @@ export class TestRenderer implements NativeRenderer {
     if (process.env.GPUIX_RETAIN_VERIFY !== undefined) reportRetentionMismatches(this.native)
     forgetElementSource(this)
     unregisterKeyframesHost(this.native)
+    closeWebAnimations(this)
     this.native.setSyncEventHandler(null)
     this.native.dispose()
   }
@@ -1505,6 +1508,10 @@ export class TestRenderer implements NativeRenderer {
 
   releaseAnimation(animationId: number): void {
     this.native.releaseAnimation(animationId)
+  }
+
+  forgetAnimation(animationId: number): void {
+    this.native.forgetAnimation(animationId)
   }
 
   getAnimationEffect(animationId: number): WebAnimationEffectInfo {

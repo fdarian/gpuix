@@ -539,8 +539,9 @@ pub(crate) struct MotionState {
     /// What the description animates to without a gesture.
     resting: Goals,
     resting_transition: Option<Transitions>,
-    /// The animations of tracks that were replaced or removed, until `advance_scripts` has cancelled them.
-    cancelled: Vec<Script>,
+    /// The animations of tracks that were replaced, removed or finished, until `advance_scripts` has cancelled them.
+    /// The key is the track a finished animation ended, which keeps it for a command to bring back.
+    cancelled: Vec<(Option<PropKey>, Script)>,
     /// An animation Motion handed to the browser was cancelled there, which Motion never hears: the animations of
     /// the call it belongs to never complete, until the next one replaces them.
     silenced: bool,
@@ -813,7 +814,7 @@ impl MotionState {
         let kept: Vec<u64> = tracks.values().filter_map(|track| track.animation().map(Script::id)).collect();
         for track in self.tracks.values_mut() {
             if track.animation().is_some_and(|script| !kept.contains(&script.id())) {
-                self.cancelled.extend(track.take_animation());
+                self.cancelled.extend(track.take_animation().map(|script| (None, script)));
             }
         }
         self.tracks = tracks;
@@ -1118,19 +1119,26 @@ impl MotionState {
         drawing: bool,
         events: &mut Vec<web_animation::ApiEvent>,
     ) {
-        for mut script in std::mem::take(&mut self.cancelled) {
+        for (key, mut script) in std::mem::take(&mut self.cancelled) {
             script.cancel(element, now, events);
+            if let Some(track) = key.and_then(|key| self.tracks.get_mut(&key)).filter(|_| script.is_observed()) {
+                track.park(script);
+            }
         }
-        for track in self.tracks.values_mut() {
+        for (key, track) in &mut self.tracks {
             let Some(script) = track.animation_mut() else {
                 continue;
             };
             match script.advance(element, now, drawing, events) {
                 Advance::Running => {}
                 // Motion's handler cancels the animation, which the browser tells a frame after the finish.
-                Advance::Finished { backwards } => self.cancelled.extend(track.finish_animation(backwards)),
+                Advance::Finished { backwards } => {
+                    self.cancelled.extend(track.finish_animation(backwards).map(|script| (Some(*key), script)));
+                }
                 Advance::Cancelled => {
-                    track.cancel_animation();
+                    if let Some(script) = track.cancel_animation().filter(Script::is_observed) {
+                        track.park(script);
+                    }
                     self.silenced = true;
                 }
             }
@@ -1139,7 +1147,7 @@ impl MotionState {
 
     /// Cancels every animation: the state is going. JS hears of it.
     pub(crate) fn cancel_scripts(&mut self, element: u64, now: Instant, events: &mut Vec<web_animation::ApiEvent>) {
-        for mut script in std::mem::take(&mut self.cancelled) {
+        for (_, mut script) in std::mem::take(&mut self.cancelled) {
             script.cancel(element, now, events);
         }
         for track in self.tracks.values_mut() {
@@ -1159,8 +1167,26 @@ impl MotionState {
         now: Instant,
         events: &mut Vec<web_animation::ApiEvent>,
     ) -> Option<Result<(), String>> {
-        let script = self.tracks.values_mut().filter_map(Track::animation_mut).find(|script| script.id() == id)?;
-        Some(script.command(element, command, now, events))
+        if let Some(script) = self.tracks.values_mut().filter_map(Track::animation_mut).find(|script| script.id() == id) {
+            return Some(script.command(element, command, now, events));
+        }
+        let track = self.tracks.values_mut().find(|track| track.idle_animation().is_some_and(|script| script.id() == id))?;
+        let mut script = track.take_idle().expect("the animation that was just found");
+        let outcome = script.command(element, command, now, events);
+        if script.is_idle() {
+            track.park(script);
+        } else {
+            // Motion's handler of the finish is still on it, so the motion completes when it ends: once, if it never did.
+            if self.silenced {
+                self.silenced = false;
+            } else if !self.needs_settle {
+                self.silenced = true;
+            }
+            script.revived();
+            track.revive(script);
+            self.needs_settle = true;
+        }
+        Some(outcome)
     }
 
     /// `effect.updateTiming(update)` on the animation `id`.
@@ -1172,13 +1198,37 @@ impl MotionState {
         now: Instant,
         events: &mut Vec<web_animation::ApiEvent>,
     ) -> Option<()> {
-        let script = self.tracks.values_mut().filter_map(Track::animation_mut).find(|script| script.id() == id)?;
-        script.update_timing(element, update, now, events);
-        Some(())
+        for track in self.tracks.values_mut() {
+            if let Some(script) = track.animation_mut().filter(|script| script.id() == id) {
+                script.update_timing(element, update, now, events);
+                return Some(());
+            }
+            if let Some(script) = track.idle_animation_mut().filter(|script| script.id() == id) {
+                script.update_timing(element, update, now, events);
+                return Some(());
+            }
+        }
+        None
     }
 
+    /// The animations of the tracks, the ones that were cancelled and are kept last.
     fn animations(&self) -> impl Iterator<Item = (PropKey, &Track, &Script)> {
         self.tracks.iter().filter_map(|(key, track)| Some((*key, track, track.animation()?)))
+    }
+
+    fn every_animation(&self) -> impl Iterator<Item = (PropKey, &Track, &Script)> {
+        self.animations().chain(
+            self.tracks.iter().filter_map(|(key, track)| Some((*key, track, track.idle_animation()?))),
+        )
+    }
+
+    /// JS holds no `Animation` for the animation `id` any more: one that was cancelled is dropped.
+    pub(crate) fn forget_script(&mut self, id: u64) {
+        for track in self.tracks.values_mut() {
+            if track.idle_animation().is_some_and(|script| script.id() == id) {
+                track.take_idle();
+            }
+        }
     }
 
     /// The animations Motion would have in the browser for this element, in the order it made them.
@@ -1194,7 +1244,7 @@ impl MotionState {
 
     /// The animation `id`, if it is this element's and has not been cancelled.
     fn script_of(&self, id: u64) -> Option<(PropKey, &Track, &Script)> {
-        self.animations().find(|(_, _, script)| script.id() == id)
+        self.every_animation().find(|(_, _, script)| script.id() == id)
     }
 
     /// Whether any track has an animation to list.

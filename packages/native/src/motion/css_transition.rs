@@ -11,6 +11,7 @@
 //! animations ([`CssTransitions::animate_shape`]) and the values come back as attributes; the
 //! `<svg>` itself steps its style properties and its attributes together.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use web_time::Instant;
@@ -697,6 +698,12 @@ struct Running {
     /// The border box the transition started in, which Chrome resolves a `transform-origin` against
     /// when it writes the endpoints.
     border_box: Option<(f64, f64)>,
+    /// An `Animation` object was handed to JS for the transition, so the style letting go of it
+    /// keeps it, see [`ElementState::disowned`].
+    handed: Cell<bool>,
+    /// The style let go of it. A transition the API cancelled and the style still owns tells the DOM
+    /// nothing of a run that finishes without playing; this one tells all of it.
+    disowned: bool,
 }
 
 impl Running {
@@ -745,6 +752,8 @@ impl Running {
             border_box: measurement.map(|measurement| {
                 (f64::from(measurement.border_box.width.as_f32()), f64::from(measurement.border_box.height.as_f32()))
             }),
+            handed: Cell::new(false),
+            disowned: false,
         })
     }
 
@@ -882,6 +891,12 @@ impl Running {
 
     fn info(&self, key: PropKey, now: Instant) -> Info {
         Info::of(Kind::Transition, kebab_case(key.name()), &self.clock, now, self.end_time())
+    }
+
+    /// [`Self::info`] for what the API reads, which is the `Animation` object JS holds from here on.
+    fn handed_info(&self, key: PropKey, now: Instant) -> Info {
+        self.handed.set(true);
+        self.info(key, now)
     }
 
     /// Whether `getAnimations()` lists it: current (active, before its active
@@ -1034,6 +1049,108 @@ struct ElementState {
     /// API can still read and play them as in a browser.
     completed: BTreeMap<PropKey, Completed>,
     cancelled: BTreeMap<PropKey, Cancelled>,
+    /// The transitions the style let go of (the property is no longer transitioned, or has a new
+    /// target) that JS holds, in the order they were made. A command brings one back as Chrome does:
+    /// the same endpoints and timing, driving its property whatever the style says from here on.
+    disowned: Vec<(PropKey, Running)>,
+}
+
+/// Where an element keeps a transition, see [`ElementState::take_run`].
+enum Held {
+    Running,
+    Completed,
+    Cancelled,
+    /// At this place among the disowned ones.
+    Disowned(usize),
+}
+
+/// What one tick of a transition found.
+struct Tick {
+    /// The run turned finished: its `transitionend` is owed, see [`told_end`].
+    finished: bool,
+    /// It is at its end, going forward.
+    at_end: bool,
+}
+
+/// The clock half of a frame for one transition: starts a play that waits, tells the Web Animations
+/// objects what the clock noted and the DOM what began.
+fn tick(id: u64, key: PropKey, running: &mut Running, now: Instant, beat: Beat, events: &mut Events) -> Tick {
+    let drawing = beat != Beat::Layout;
+    let mut outcome = Tick { finished: false, at_end: false };
+    let end = running.end_time();
+    let started = drawing && running.clock.pending_play();
+    if started {
+        running.clock.resolve_pending(now, end);
+    }
+    running.clock.settle(now, end);
+    events.tell(id, key, running, now);
+    if beat == Beat::Held && running.clock.pending_pause() {
+        running.clock.resolve_pending(now, end);
+        events.tell(id, key, running, now);
+    }
+    if beat != Beat::Frame || running.clock.pending_play() {
+        return outcome;
+    }
+    if running.announce && running.clock.is_finished(now, end) && !running.disowned {
+        // Cancelled, then finished: Chrome tells nothing of a run that did not play.
+        running.announce = false;
+        running.began = true;
+        running.clock.take_end(now, end);
+    }
+    if running.announce {
+        running.announce = false;
+        events.push(TransitionEvent::new(id, TransitionEventKind::Run, key, running.initial_elapsed()).late(started));
+    }
+    let elapsed = running.elapsed(now);
+    if !running.began && elapsed >= running.delay {
+        running.began = true;
+        events.push(TransitionEvent::new(id, TransitionEventKind::Start, key, running.initial_elapsed()).late(started));
+    }
+    let rate = running.clock.rate();
+    if let Some(restart) = running.restart {
+        let inside = elapsed > running.delay || (elapsed == running.delay && rate >= 0.0);
+        let at_end = if running.disowned { running.clock.reached_end(now, end) } else { running.clock.is_finished(now, end) };
+        if inside && !at_end {
+            running.restart = None;
+            events.push(TransitionEvent::new(id, TransitionEventKind::Start, key, restart).late(started));
+        }
+    }
+    let ended = if running.disowned && rate >= 0.0 {
+        running.clock.take_end_reached(now, end)
+    } else {
+        running.clock.take_end(now, end)
+    };
+    if ended {
+        outcome.finished = true;
+    } else if running.began && running.restart.is_none() && (elapsed < running.delay || (elapsed == running.delay && rate < 0.0)) {
+        // Told it began, and now back before its active interval without having finished
+        // there: it ended at that edge.
+        running.restart = Some(running.initial_elapsed());
+        events.push(TransitionEvent::new(id, TransitionEventKind::End, key, running.initial_elapsed()).late(started));
+    }
+    if running.clock.status(now, end) == Status::Finished && running.clock.rate() >= 0.0 {
+        outcome.at_end = true;
+    }
+    if running.clock.pending_pause() {
+        running.clock.resolve_pending(now, end);
+        events.tell(id, key, running, now);
+    }
+    outcome
+}
+
+/// The `transitionend` of a transition that finished, as the DOM tells it.
+fn told_end(id: u64, key: PropKey, running: &mut Running, events: &mut Events) {
+    if running.clock.rate() >= 0.0 {
+        let active = running.effect_timing().active_duration();
+        running.restart = Some(active);
+        events.push(TransitionEvent::new(id, TransitionEventKind::End, key, active));
+    } else if running.began {
+        // Run back to its start, it ends at the other edge of its
+        // active interval.
+        running.restart = Some(running.initial_elapsed());
+        events.push(TransitionEvent::new(id, TransitionEventKind::End, key, running.initial_elapsed()));
+    }
+    // Still before its active interval: the DOM saw nothing begin.
 }
 
 /// A transition that ran to its end and left the running ones. It stays until
@@ -1079,12 +1196,40 @@ impl ElementState {
             generation: 0,
             completed: BTreeMap::new(),
             cancelled: BTreeMap::new(),
+            disowned: Vec::new(),
         }
     }
 
     /// Nothing runs and nothing finished that a later style could repeat.
     fn is_idle(&self) -> bool {
-        self.running.is_empty() && self.completed.is_empty()
+        self.running.is_empty() && self.completed.is_empty() && self.disowned.is_empty()
+    }
+
+    /// Some transition is running, or one the style let go of is playing.
+    fn drives(&self) -> bool {
+        !self.running.is_empty() || self.disowned.iter().any(|(_, running)| !running.clock.is_idle())
+    }
+
+    /// The style lets go of `running`, which stays for a command to bring back if JS holds it.
+    fn disown(&mut self, key: PropKey, mut running: Running) {
+        if !running.handed.get() {
+            return;
+        }
+        running.began = false;
+        running.restart = None;
+        running.announce = false;
+        running.disowned = true;
+        self.disowned.push((key, running));
+    }
+
+    /// The properties the disowned transitions drive right now, which no style change starts a
+    /// transition on: they are in effect, running or filling.
+    fn disowned_keys(&self, now: Instant) -> Vec<PropKey> {
+        self.disowned
+            .iter()
+            .filter(|(_, running)| !running.clock.is_idle() && running.is_relevant(now))
+            .map(|(key, _)| *key)
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1114,6 +1259,13 @@ impl ElementState {
         }
         let beat = if drawing { Beat::Frame } else { Beat::Layout };
         self.advance(id, now, beat, events);
+        let driven;
+        let covered = if self.disowned.is_empty() {
+            covered
+        } else {
+            driven = covered.iter().copied().chain(self.disowned_keys(now)).collect::<Vec<_>>();
+            &driven
+        };
 
         // A new `color` or appearance (`colorScheme`, or the window's) resolves
         // `currentColor` and `light-dark()` to another colour in a style that did
@@ -1190,61 +1342,15 @@ impl ElementState {
     /// forced, and a run whose play waits for a frame is not evaluated before it: see
     /// `Run::tick` of the animations, which this is the other half of.
     fn advance(&mut self, id: u64, now: Instant, beat: Beat, events: &mut Events) {
-        let drawing = beat != Beat::Layout;
         let mut finished = Vec::new();
         let mut at_end = Vec::new();
         for (key, running) in &mut self.running {
-            let end = running.end_time();
-            let started = drawing && running.clock.pending_play();
-            if started {
-                running.clock.resolve_pending(now, end);
-            }
-            running.clock.settle(now, end);
-            events.tell(id, *key, running, now);
-            if beat == Beat::Held && running.clock.pending_pause() {
-                running.clock.resolve_pending(now, end);
-                events.tell(id, *key, running, now);
-            }
-            if beat != Beat::Frame || running.clock.pending_play() {
-                continue;
-            }
-            if running.announce && running.clock.is_finished(now, end) {
-                // Cancelled, then finished: Chrome tells nothing of a run that did not play.
-                running.announce = false;
-                running.began = true;
-                running.clock.take_end(now, end);
-            }
-            if running.announce {
-                running.announce = false;
-                events.push(TransitionEvent::new(id, TransitionEventKind::Run, *key, running.initial_elapsed()).late(started));
-            }
-            let elapsed = running.elapsed(now);
-            if !running.began && elapsed >= running.delay {
-                running.began = true;
-                events.push(TransitionEvent::new(id, TransitionEventKind::Start, *key, running.initial_elapsed()).late(started));
-            }
-            let rate = running.clock.rate();
-            if let Some(restart) = running.restart {
-                let inside = elapsed > running.delay || (elapsed == running.delay && rate >= 0.0);
-                if inside && !running.clock.is_finished(now, end) {
-                    running.restart = None;
-                    events.push(TransitionEvent::new(id, TransitionEventKind::Start, *key, restart).late(started));
-                }
-            }
-            if running.clock.take_end(now, end) {
+            let outcome = tick(id, *key, running, now, beat, events);
+            if outcome.finished {
                 finished.push(*key);
-            } else if running.began && running.restart.is_none() && (elapsed < running.delay || (elapsed == running.delay && rate < 0.0)) {
-                // Told it began, and now back before its active interval without having finished
-                // there: it ended at that edge.
-                running.restart = Some(running.initial_elapsed());
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, *key, running.initial_elapsed()).late(started));
             }
-            if running.clock.status(now, end) == Status::Finished && running.clock.rate() >= 0.0 {
+            if outcome.at_end {
                 at_end.push(*key);
-            }
-            if running.clock.pending_pause() {
-                running.clock.resolve_pending(now, end);
-                events.tell(id, *key, running, now);
             }
         }
         // Events come in the order of the times they are scheduled at.
@@ -1255,21 +1361,19 @@ impl ElementState {
             let Some(running) = self.running.get_mut(&key) else {
                 continue;
             };
-            if running.clock.rate() >= 0.0 {
-                let active = running.effect_timing().active_duration();
-                running.restart = Some(active);
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, key, active));
-            } else if running.began {
-                // Run back to its start, it ends at the other edge of its
-                // active interval.
-                running.restart = Some(running.initial_elapsed());
-                events.push(TransitionEvent::new(id, TransitionEventKind::End, key, running.initial_elapsed()));
-            }
-            // Still before its active interval: the DOM saw nothing begin.
+            told_end(id, key, running, events);
         }
         for key in at_end {
             if let Some(running) = self.running.remove(&key) {
                 self.completed.insert(key, Completed { end: running.end_computed.clone(), run: running });
+            }
+        }
+        for (key, running) in &mut self.disowned {
+            if running.clock.is_idle() {
+                continue;
+            }
+            if tick(id, *key, running, now, beat, events).finished {
+                told_end(id, *key, running, events);
             }
         }
     }
@@ -1292,6 +1396,7 @@ impl ElementState {
                 key,
                 active.clamp(0.0, running.effect_timing().active_duration()),
             ));
+            self.disown(key, running);
         }
     }
 
@@ -1303,6 +1408,7 @@ impl ElementState {
             let end = completed.run.end_time();
             completed.run.clock.apply(Command::Cancel, now, end).expect("cancelling cannot fail");
             events.tell(id, key, &mut completed.run, now);
+            self.disown(key, completed.run);
         }
     }
 
@@ -1348,7 +1454,9 @@ impl ElementState {
         let Some(entry) = entry else {
             self.cancel(id, key, now, events);
             self.forget(id, key, now, events);
-            self.cancelled.remove(&key);
+            if let Some(cancelled) = self.cancelled.remove(&key) {
+                self.disown(key, cancelled.run);
+            }
             return;
         };
 
@@ -1358,7 +1466,9 @@ impl ElementState {
             self.forget(id, key, now, events);
         }
         if self.cancelled.get(&key).is_some_and(|cancelled| after_computed.as_ref() != Some(&cancelled.end)) {
-            self.cancelled.remove(&key);
+            if let Some(cancelled) = self.cancelled.remove(&key) {
+                self.disown(key, cancelled.run);
+            }
         }
         let has_duration = entry.duration + entry.delay > 0.0;
 
@@ -1437,17 +1547,19 @@ impl ElementState {
         }
     }
 
-    /// Takes the transition `id` out of wherever this element keeps it, and whether it was
-    /// running.
-    fn take_run(&mut self, id: u64) -> Option<(PropKey, Running, bool)> {
+    /// Takes the transition `id` out of wherever this element keeps it, and where it was.
+    fn take_run(&mut self, id: u64) -> Option<(PropKey, Running, Held)> {
         let is = |running: &Running| running.clock.id() == id;
         if let Some(key) = self.running.iter().find(|(_, run)| is(run)).map(|(key, _)| *key) {
-            Some((key, self.running.remove(&key)?, true))
+            Some((key, self.running.remove(&key)?, Held::Running))
         } else if let Some(key) = self.completed.iter().find(|(_, done)| is(&done.run)).map(|(key, _)| *key) {
-            Some((key, self.completed.remove(&key)?.run, false))
+            Some((key, self.completed.remove(&key)?.run, Held::Completed))
+        } else if let Some(key) = self.cancelled.iter().find(|(_, held)| is(&held.run)).map(|(key, _)| *key) {
+            Some((key, self.cancelled.remove(&key)?.run, Held::Cancelled))
         } else {
-            let key = self.cancelled.iter().find(|(_, held)| is(&held.run)).map(|(key, _)| *key)?;
-            Some((key, self.cancelled.remove(&key)?.run, false))
+            let at = self.disowned.iter().position(|(_, run)| is(run))?;
+            let (key, run) = self.disowned.remove(at);
+            Some((key, run, Held::Disowned(at)))
         }
     }
 
@@ -1461,10 +1573,12 @@ impl ElementState {
         now: Instant,
         events: &mut Events,
     ) -> Option<()> {
-        let (key, mut run, _) = self.take_run(id)?;
+        let (key, mut run, held) = self.take_run(id)?;
         run.update_timing(update, now);
         events.tell(element, key, &mut run, now);
-        if run.clock.is_idle() {
+        if let Held::Disowned(at) = held {
+            self.disowned.insert(at, (key, run));
+        } else if run.clock.is_idle() {
             self.cancelled.insert(key, Cancelled { end: run.end_computed.clone(), run });
         } else {
             // The next step puts a finished one back.
@@ -1483,7 +1597,8 @@ impl ElementState {
         now: Instant,
         events: &mut Events,
     ) -> Option<Result<(), String>> {
-        let (key, mut run, was_running) = self.take_run(id)?;
+        let (key, mut run, held) = self.take_run(id)?;
+        let was_running = matches!(held, Held::Running | Held::Disowned(_));
         let end = run.end_time();
         let was_idle = run.clock.is_idle();
         // What the DOM is owed for a run that is stopped while it runs.
@@ -1497,23 +1612,40 @@ impl ElementState {
         if run.clock.is_idle() {
             run.began = false;
             run.restart = None;
-            self.cancelled.insert(key, Cancelled { end: run.end_computed.clone(), run });
+            match held {
+                Held::Disowned(at) => self.disowned.insert(at, (key, run)),
+                _ => {
+                    self.cancelled.insert(key, Cancelled { end: run.end_computed.clone(), run });
+                }
+            }
         } else {
             if was_idle {
                 run.announce = true;
                 run.began = false;
                 run.restart = None;
             }
-            // The next step puts a finished one back.
-            self.running.insert(key, run);
+            match held {
+                Held::Disowned(at) => self.disowned.insert(at, (key, run)),
+                // The next step puts a finished one back.
+                _ => {
+                    self.running.insert(key, run);
+                }
+            }
         }
         Some(outcome)
     }
 
     fn values(&self, now: Instant) -> Vec<(PropKey, AnimValue)> {
+        // The ones the style let go of come last, which wins: they are the highest in the stack.
+        let disowned = self
+            .disowned
+            .iter()
+            .filter(|(_, running)| !running.clock.is_idle() && running.is_relevant(now))
+            .map(|(key, running)| (*key, key.clamp_value(running.value(now))));
         self.running
             .iter()
             .map(|(key, running)| (*key, key.clamp_value(running.value(now))))
+            .chain(disowned)
             .collect()
     }
 }
@@ -1723,6 +1855,7 @@ impl CssTransitions {
             self.active |= state
                 .running
                 .values()
+                .chain(state.disowned.iter().map(|(_, running)| running))
                 .any(|running| running.clock.wants_frame(now, running.end_time()));
         }
         let values = state.values(now);
@@ -1764,7 +1897,7 @@ impl CssTransitions {
     pub(crate) fn svg_shapes(&self) -> impl Iterator<Item = u64> + '_ {
         self.states
             .iter()
-            .filter(|(_, state)| state.target == PropTarget::SvgShape && !state.running.is_empty())
+            .filter(|(_, state)| state.target == PropTarget::SvgShape && state.drives())
             .map(|(id, _)| *id)
     }
 
@@ -1772,7 +1905,7 @@ impl CssTransitions {
     pub(crate) fn shape_moves(&self, id: u64) -> bool {
         self.states
             .get(&id)
-            .is_some_and(|state| state.target == PropTarget::SvgShape && !state.running.is_empty())
+            .is_some_and(|state| state.target == PropTarget::SvgShape && state.drives())
     }
 
     /// Brings the transitions of `id` up to `now` without a style, see `CssAnimations::advance_clock`.
@@ -1786,20 +1919,25 @@ impl CssTransitions {
 
     /// Whether a transition of `opacity` is running on `id`.
     pub(crate) fn animates_opacity(&self, id: u64) -> bool {
-        self.states.get(&id).is_some_and(|state| state.running.contains_key(&PropKey::Style(AnimProp::Opacity)))
+        self.states.get(&id).is_some_and(|state| {
+            state.running.contains_key(&PropKey::Style(AnimProp::Opacity))
+                || state.disowned.iter().any(|(key, _)| *key == PropKey::Style(AnimProp::Opacity))
+        })
     }
 
     /// Whether a transition of a property that moves, scales or turns the element is running on `id`.
     pub(crate) fn animates_transform(&self, id: u64) -> bool {
         self.states
             .get(&id)
-            .is_some_and(|state| state.running.keys().any(|key| matches!(key, PropKey::Style(prop) if prop.is_transform())))
+            .is_some_and(|state| {
+                state.running.keys().chain(state.disowned.iter().map(|(key, _)| key)).any(|key| matches!(key, PropKey::Style(prop) if prop.is_transform()))
+            })
     }
 
     /// Whether every transition running on `id` is on a property that only changes what it paints.
     pub(crate) fn paints_only(&self, id: u64) -> bool {
         self.states.get(&id).is_none_or(|state| {
-            state.running.keys().all(|key| match key {
+            state.running.keys().chain(state.disowned.iter().map(|(key, _)| key)).all(|key| match key {
                 PropKey::Style(prop) => prop.paints_only(),
                 // The attributes of an `<svg>` and its shapes change its picture, never its box.
                 PropKey::Svg(_) => true,
@@ -1844,7 +1982,7 @@ impl CssTransitions {
         if self.dormant.is_empty() {
             return;
         }
-        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(|state| !state.running.is_empty()) {
+        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(ElementState::drives) {
             self.running_dormant.insert(id);
         } else {
             self.running_dormant.remove(&id);
@@ -1928,12 +2066,25 @@ impl CssTransitions {
             .running
             .iter()
             .filter(|(_, running)| running.is_relevant(now))
-            .map(|(key, running)| (running.generation, running.info(*key, now)))
+            .map(|(key, running)| (running.generation, running.handed_info(*key, now)))
             .collect();
         running.sort_by(|(first_generation, first), (second_generation, second)| {
             first_generation.cmp(second_generation).then_with(|| first.name.cmp(&second.name))
         });
         running.into_iter().map(|(_, info)| info).collect()
+    }
+
+    /// The transitions on `element` that the style let go of and are relevant, in the order they were made.
+    pub(crate) fn list_disowned(&self, element: u64, now: Instant) -> Vec<Info> {
+        let Some(state) = self.states.get(&element) else {
+            return Vec::new();
+        };
+        state
+            .disowned
+            .iter()
+            .filter(|(_, running)| !running.clock.is_idle() && running.is_relevant(now))
+            .map(|(key, running)| running.handed_info(*key, now))
+            .collect()
     }
 
     /// The transition `id`, relevant or not, running or finished at its end.
@@ -1945,14 +2096,22 @@ impl CssTransitions {
                 .iter()
                 .chain(state.completed.iter().map(|(key, completed)| (key, &completed.run)))
                 .chain(state.cancelled.iter().map(|(key, cancelled)| (key, &cancelled.run)))
+                .chain(state.disowned.iter().map(|(key, running)| (key, running)))
                 .find(|(_, running)| running.clock.id() == id)
-                .map(|(key, running)| running.info(*key, now))
+                .map(|(key, running)| running.handed_info(*key, now))
         })
     }
 
     /// Whether the last frame left `id` dormant.
     pub(crate) fn is_dormant(&self, id: u64) -> bool {
         self.dormant.contains(&id)
+    }
+
+    /// JS holds no `Animation` for the transition `id` any more: one the style let go of is dropped.
+    pub(crate) fn forget(&mut self, id: u64) {
+        for state in self.states.values_mut() {
+            state.disowned.retain(|(_, running)| running.clock.id() != id);
+        }
     }
 
     fn run(&self, id: u64) -> Option<(PropKey, &Running)> {
@@ -1962,6 +2121,7 @@ impl CssTransitions {
                 .iter()
                 .chain(state.completed.iter().map(|(key, completed)| (key, &completed.run)))
                 .chain(state.cancelled.iter().map(|(key, cancelled)| (key, &cancelled.run)))
+                .chain(state.disowned.iter().map(|(key, running)| (key, running)))
                 .find(|(_, running)| running.clock.id() == id)
                 .map(|(key, running)| (*key, running))
         })
@@ -2002,6 +2162,7 @@ impl CssTransitions {
                 state.running.values().any(|running| running.clock.id() == id)
                     || state.completed.values().any(|completed| completed.run.clock.id() == id)
                     || state.cancelled.values().any(|cancelled| cancelled.run.clock.id() == id)
+                    || state.disowned.iter().any(|(_, running)| running.clock.id() == id)
             })
             .map(|(element, _)| *element)
     }
@@ -4629,8 +4790,61 @@ mod tests {
         let replaced = only(&clock, 700).id;
         assert_ne!(replaced, id);
         assert_eq!(api_events(&mut clock), [(ApiEventKind::Cancel, id)]);
+        let kept = clock.transitions.info(id, clock.at(700)).expect("JS holds it, so a command can bring it back");
+        assert_eq!(kept.status, Status::Idle);
+        clock.transitions.forget(id);
         assert!(clock.transitions.info(id, clock.at(700)).is_none());
         assert!(clock.transitions.command(id, Command::Pause, clock.at(700)).is_none());
+    }
+
+    #[test]
+    fn a_transition_the_style_let_go_of_plays_again_by_a_command_and_drives_its_property() {
+        let (mut clock, _, id) = moving();
+        close(width_of(&clock.frame(500, &sized(100.0, "width 1s linear"))), 40.0);
+        close(width_of(&clock.frame(600, &sized(100.0, "none"))), 100.0);
+        assert!(listed(&clock, 600).is_empty());
+        assert_eq!(clock.transitions.info(id, clock.at(600)).unwrap().status, Status::Idle);
+        clock.events();
+
+        command(&mut clock, 600, id, Command::Play);
+        let none = sized(100.0, "none");
+        close(width_of(&clock.frame(616, &none)), 0.0);
+        let info = only_disowned(&clock, 616);
+        assert_eq!((info.id, info.status), (id, Status::Running));
+        close(width_of(&clock.frame(1116, &none)), 50.0);
+        assert_eq!(clock.events(), [(Run, "width".to_string(), 0.0), (Start, "width".to_string(), 0.0)]);
+
+        // The style moves the property and transitions it again: the one that plays drives it, so nothing starts.
+        let moved = sized(30.0, "width 1s linear");
+        close(width_of(&clock.frame(1216, &moved)), 60.0);
+        assert!(listed(&clock, 1216).is_empty());
+        close(width_of(&clock.frame(1700, &moved)), 30.0);
+        assert_eq!(clock.events(), [(End, "width".to_string(), 1.0)]);
+    }
+
+    #[test]
+    fn a_transition_the_style_let_go_of_that_is_sought_to_its_end_tells_the_dom_it_ended_once() {
+        let (mut clock, _, id) = moving();
+        clock.frame(500, &sized(100.0, "width 1s linear"));
+        let none = sized(100.0, "none");
+        clock.frame(600, &none);
+        command(&mut clock, 600, id, Command::SetCurrentTime(1000.0));
+        clock.events();
+        clock.frame(616, &none);
+        clock.frame(700, &none);
+        assert_eq!(
+            clock.events(),
+            [(Run, "width".to_string(), 0.0), (Start, "width".to_string(), 0.0), (End, "width".to_string(), 1.0)],
+            "held at its end it is not finished, and it ended"
+        );
+        let held = clock.transitions.info(id, clock.at(700)).unwrap();
+        assert_eq!((held.status, held.current_time), (Status::Paused, 1000.0));
+    }
+
+    fn only_disowned(clock: &Clock, millis: u64) -> Info {
+        let mut listed = clock.transitions.list_disowned(1, clock.at(millis));
+        assert_eq!(listed.len(), 1, "{listed:?}");
+        listed.remove(0)
     }
 
     #[test]
@@ -4929,6 +5143,8 @@ mod tests {
         let events = finishes_and_cancels(&mut clock);
         assert_eq!(events.iter().map(|event| (event.kind, event.run)).collect::<Vec<_>>(), [(ApiEventKind::Cancel, id)]);
         assert_eq!(events[0].info.status, Status::Idle);
+        assert_eq!(clock.transitions.info(id, clock.at(1500)).unwrap().status, Status::Idle);
+        clock.transitions.forget(id);
         assert!(clock.transitions.info(id, clock.at(1500)).is_none());
         assert!(clock.transitions.command(id, Command::Play, clock.at(1500)).is_none());
         assert!(clock.events().iter().all(|(kind, ..)| *kind != Cancel), "the DOM has no cancel for it");

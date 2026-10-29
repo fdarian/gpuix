@@ -11,6 +11,7 @@ import {
 } from "./automation/client.js"
 import { bindClipboard } from "./clipboard.js"
 import { bindEyeDropper } from "./eyedropper.js"
+import { closeWebAnimations } from "./web-animations.js"
 import { flushPendingMutations } from "./bounds.js"
 import {
   registerKeyframesHost,
@@ -96,7 +97,10 @@ export function createNativeRenderer(
   }
   renderer.tick = () => {
     const running = tick()
-    if (!running) unregisterKeyframesHost(renderer)
+    if (!running) {
+      unregisterKeyframesHost(renderer)
+      closeWebAnimations(renderer)
+    }
     return running
   }
   return renderer
