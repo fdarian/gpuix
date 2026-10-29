@@ -605,6 +605,89 @@ const API = (() => {
   add('a style change of the timing of a running transition', T, W,
     [['settle'], ['style', { transitionDuration: '2s' }], ['timing', 0], ['style', { transitionDelay: '100ms' }], ['timing', 0],
      ['style', { transitionTimingFunction: 'ease-in' }], ['timing', 0], ['list']]);
+
+  // An animation the style cancelled (the name removed, the property no longer transitioned, a new target) or that the
+  // API cancelled and the style then let go of is not owned by the style any more, and play(), a seek, finish() and the
+  // others run it again: it is still a CSSAnimation or CSSTransition, and a later style does not touch it.
+  const NONE = { animation: 'none' };
+  const NO_TRANSITION = { transitionProperty: 'none' };
+  add('play an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['seek', 0, 300], ['settle'], ['style', NONE], ['list'], ['settle'], ['play', 0], ['list'], ['settle'], ['play', 0], ['settle']]);
+  add('play an animation whose name was removed before its first frame', { animation: G }, null,
+    [['style', NONE], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('seek an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['style', NONE], ['seek', 0, 400], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('seek an animation whose name was removed to its end', { animation: G }, null,
+    [['settle'], ['style', NONE], ['seek', 0, 1000], ['list'], ['settle'], ['seek', 0, 200], ['list'], ['settle']]);
+  add('finish an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['style', NONE], ['finish', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('finish an animation with a forwards fill whose name was removed', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['style', NONE], ['finish', 0], ['list'], ['settle']]);
+  add('reverse an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['style', NONE], ['reverse', 0], ['list'], ['settle']]);
+  add('pause an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['style', NONE], ['pause', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('set the rate of an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['style', NONE], ['rate', 0, 2], ['updateRate', 0, 3], ['play', 0], ['list'], ['settle']]);
+  add('set the start time of an animation whose name was removed', { animation: G }, null,
+    [['settle'], ['style', NONE], ['startTime', 0, 'now-300'], ['list'], ['settle']]);
+  add('cancel an animation whose name was removed and play it', { animation: G }, null,
+    [['settle'], ['style', NONE], ['play', 0], ['settle'], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play an animation that was cancelled and then lost its name', { animation: G }, null,
+    [['settle'], ['cancel', 0], ['settle'], ['style', NONE], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play an animation that lost its name when it had ended', { animation: 'grow 1s linear forwards' }, null,
+    [['settle'], ['finish', 0], ['settle'], ['style', NONE], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play an animation that lost its name in its delay', { animation: 'grow 1s linear 500ms' }, null,
+    [['settle'], ['style', NONE], ['play', 0], ['list'], ['settle']]);
+  add('an animation whose name was removed is not changed by a style that names it again', { animation: G }, null,
+    [['settle'], ['style', NONE], ['play', 0], ['settle'], ['style', { animation: G }], ['list'], ['track'], ['list'], ['settle']]);
+  add('an animation whose name was removed is not changed by a style that changes its timing', { animation: G }, null,
+    [['settle'], ['style', NONE], ['play', 0], ['settle'], ['style', { animation: 'grow 2s linear' }], ['track'], ['timing', 0], ['timing', 1], ['list'], ['settle']]);
+  add('an animation whose name was removed lists after the animations the style owns', { animation: 'grow 1s linear, tall 1s linear' }, null,
+    [['settle'], ['style', { animation: 'tall 1s linear' }], ['play', 0], ['list'], ['track'], ['list'], ['settle']]);
+  add('the keyframes and the timing of an animation whose name was removed', { animation: 'grow 1s linear 500ms 2 alternate' }, null,
+    [['settle'], ['style', NONE], ['keyframes', 0], ['timing', 0], ['computed', 0], ['play', 0], ['settle'], ['keyframes', 0], ['timing', 0], ['computed', 0]]);
+  add('the keyframes of an animation whose name was removed, read after the style under it changed', { animation: 'onlyfrom 1s linear' }, null,
+    [['settle'], ['keyframes', 0], ['style', { animation: 'none', width: '70px' }], ['keyframes', 0], ['play', 0], ['settle'], ['keyframes', 0], ['style', { width: '90px' }], ['keyframes', 0]]);
+
+  add('seek a transition whose property is no longer transitioned', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['seek', 0, 400], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('seek a transition whose property is no longer transitioned to its end', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['seek', 0, 1000], ['list'], ['settle'], ['seek', 0, 200], ['list'], ['settle']]);
+  add('finish a transition whose property is no longer transitioned', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['finish', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('reverse a transition whose property is no longer transitioned', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['reverse', 0], ['list'], ['settle']]);
+  add('pause a transition whose property is no longer transitioned', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['pause', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('set the rate of a transition whose property is no longer transitioned', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['rate', 0, 2], ['updateRate', 0, 3], ['play', 0], ['list'], ['settle']]);
+  add('set the start time of a transition whose property is no longer transitioned', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['startTime', 0, 'now-300'], ['list'], ['settle']]);
+  add('cancel a transition whose property is no longer transitioned and play it', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['play', 0], ['settle'], ['cancel', 0], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play a transition that was cancelled and whose property is then no longer transitioned', T, W,
+    [['settle'], ['cancel', 0], ['settle'], ['style', NO_TRANSITION], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play a transition that was replaced by a transition to a new target', T, W,
+    [['settle'], ['seek', 0, 400], ['settle'], ['style', { width: '90px' }], ['track'], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play a transition that was replaced by a transition back to where it started', T, W,
+    [['settle'], ['seek', 0, 400], ['settle'], ['style', { width: '50px' }], ['track'], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play a transition that the same value set again leaves alone', T, W,
+    [['settle'], ['style', { width: '150px' }], ['list'], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play a transition that finished and lost its property', T, W,
+    [['settle'], ['finish', 0], ['settle'], ['style', NO_TRANSITION], ['settle'], ['play', 0], ['list'], ['settle']]);
+  add('play a transition that lost its property in its delay', { transition: 'width 1s linear 500ms' }, W,
+    [['settle'], ['style', NO_TRANSITION], ['play', 0], ['list'], ['settle']]);
+  add('a transition whose property is no longer transitioned is not changed by a style that transitions it again', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['play', 0], ['settle'], ['style', { transitionProperty: 'width' }], ['list'], ['track'], ['list'], ['settle']]);
+  add('a transition whose property is no longer transitioned is not changed by a style that changes the timing', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['play', 0], ['settle'], ['style', { transitionProperty: 'width', transitionDuration: '2s' }], ['timing', 0], ['list'], ['settle']]);
+  add('a transition whose property is no longer transitioned does not end the next change of the property', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['play', 0], ['settle'], ['style', { transitionProperty: 'width', width: '90px' }], ['track'], ['list'], ['settle'], ['seek', 1, 1000], ['settle'], ['list']]);
+  add('the keyframes and the timing of a transition whose property is no longer transitioned', { transition: 'width 1s linear 500ms' }, W,
+    [['settle'], ['style', NO_TRANSITION], ['keyframes', 0], ['timing', 0], ['computed', 0], ['play', 0], ['settle'], ['keyframes', 0], ['timing', 0], ['computed', 0]]);
+  add('a transition whose property is no longer transitioned runs on while the style moves the property', T, W,
+    [['settle'], ['style', NO_TRANSITION], ['play', 0], ['settle'], ['style', { width: '30px' }], ['seek', 0, 500], ['settle'], ['seek', 0, 1000], ['settle']]);
   return cases;
 })();
 
