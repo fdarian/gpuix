@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   document,
   elementOf,
-  forgetFocusSource,
+  forgetWindowSource,
   installElementSource,
   noteFocusEvent,
 } from "../events/window-target.js"
@@ -66,7 +66,7 @@ describe("document.activeElement across roots", () => {
     const element = {}
     const only = root({ 1: element })
     only.state.focused = 1
-    forgetFocusSource(only.renderer)
+    forgetWindowSource(only.renderer)
     expect(document.activeElement).toBeNull()
     expect(elementOf(only.renderer, 1)).toBe(element)
     only.remove()

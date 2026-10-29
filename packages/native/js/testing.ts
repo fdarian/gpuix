@@ -37,7 +37,7 @@ import type {
   WindowKeyEventHandlers,
 } from "./host.js"
 import { bindClipboard } from "./clipboard.js"
-import { forgetElementSource, forgetFocusSource } from "./events/window-target.js"
+import { forgetElementSource, forgetWindowSource } from "./events/window-target.js"
 import type { HostDropEffect } from "./events/types.js"
 import { matchableText } from "./text-match.js"
 import { flushPendingMutations } from "./bounds.js"
@@ -560,11 +560,12 @@ export class TestRenderer implements NativeRenderer {
     const fonts = readFontFiles(options.fonts)
     this.native = new NativeTestRenderer(options, options.scaleFactor)
     if (latestRenderer) {
-      forgetFocusSource(latestRenderer)
       // The native side keeps one window per thread and this constructor replaced it, so the
       // earlier renderer is as dead as a disposed one: it would reach the new window's state, and
       // throw once that is disposed.
+      forgetWindowSource(latestRenderer)
       unregisterKeyframesHost(latestRenderer.native)
+      closeWebAnimations(latestRenderer)
     }
     latestRenderer = this
     for (const font of fonts) this.native.registerFont(font)

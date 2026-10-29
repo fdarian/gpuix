@@ -916,8 +916,10 @@ interface Registry {
   readonly byElement: Map<number, Set<Animation>>
   readonly weak: Map<number, WeakRef<Animation>>
   readonly finalizer: FinalizationRegistry<number>
-  /** The window is gone: there is nothing left to forget. */
+  /** The window is gone: there is nothing left to forget, and no event is left to tell. */
   closed: boolean
+  /** The tasks that tell animations of removed elements of their cancel, which `closeWebAnimations` drops. */
+  readonly cancelTasks: Set<ReturnType<typeof setTimeout>>
   /** Made with the first animation listed. */
   timeline?: DocumentTimeline
 }
@@ -946,6 +948,7 @@ function registryOf(renderer: object): Registry {
       byElement: new Map(),
       weak,
       closed: false,
+      cancelTasks: new Set(),
       finalizer: new FinalizationRegistry((id) => {
         // A new object for the same run, made since, holds it.
         if (weak.get(id)?.deref()) return
@@ -963,7 +966,10 @@ function registryOf(renderer: object): Registry {
 export function closeWebAnimations(renderer: object): void {
   const all = Reflect.get(globalThis, REGISTRIES_KEY) as WeakMap<object, Registry> | undefined
   const registry = all?.get(renderer)
-  if (registry) registry.closed = true
+  if (!registry) return
+  registry.closed = true
+  for (const task of registry.cancelTasks) clearTimeout(task)
+  registry.cancelTasks.clear()
 }
 
 function hostOf(renderer: NativeRenderer): WebAnimationHost {
@@ -1103,7 +1109,7 @@ function abort(state: State, wasPending: boolean): void {
 /** Runs the play of an animation that was made finished, which has no frame to wait for. */
 function startFinished(animation: Animation): void {
   const state = stateOf(animation)
-  if (state.mode !== "live") return
+  if (state.mode !== "live" || state.registry.closed) return
   try {
     if (!readLive(state).pending) return
     command(animation, "start", (live) => live.host.setAnimationCurrentTime(live.id, readLive(live).currentTime))
@@ -1282,7 +1288,12 @@ export function cancelAnimationsOfElements(renderer: object, elementIds: readonl
       unregister(registry, state, animation)
       if (wasIdle) continue
       const timelineTime = state.timeline.currentTime
-      setTimeout(() => dispatchPlaybackEvent(animation, "cancel", null, timelineTime), 0)
+      if (registry.closed) continue
+      const task = setTimeout(() => {
+        registry.cancelTasks.delete(task)
+        dispatchPlaybackEvent(animation, "cancel", null, timelineTime)
+      }, 0)
+      registry.cancelTasks.add(task)
     }
   }
 }

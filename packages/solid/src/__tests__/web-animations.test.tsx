@@ -459,6 +459,50 @@ describe.skipIf(!hasNativeTestRenderer)("Solid Web animations", () => {
     expect(document.getAnimations()).toHaveLength(0)
   })
 
+  it("lists the animations of the latest window only when an earlier root was never unmounted", () => {
+    // The test window is one per thread: `left` is never unmounted, and its renderer would answer
+    // for the window of `app`.
+    const left = createTestRoot()
+    left.render(() => <div testId="left" style={{ width: 50, height: 20 }} />)
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    let box!: HostElement
+    app.render(() => <div ref={(element) => (box = element)} style={{ width: 50, height: 20, animation: "solid-wa-grow 1s linear" }} />)
+    app.renderer.clockFastForward(0)
+    const listed = document.getAnimations()
+    expect(listed).toHaveLength(1)
+    expect(listed[0]).toBe(box.getAnimations()[0])
+    app.unmount()
+  })
+
+  it("does not tell a disposed renderer's removed element of its animation's cancel", async () => {
+    const app = createTestRoot()
+    app.renderer.clockPause()
+    const [shown, setShown] = createSignal(true)
+    let box: HostElement | undefined
+    app.render(() => (
+      <div>
+        {shown() && <div ref={(element) => (box = element)} style={{ width: 50, height: 20, animation: "solid-wa-grow 1s linear" }} />}
+      </div>
+    ))
+    app.renderer.clockFastForward(0)
+    const heard: string[] = []
+    const animation = box!.getAnimations()[0]
+    animation.oncancel = () => {
+      heard.push("cancel")
+      animation.finish()
+    }
+    setShown(false)
+    app.unmount()
+    const errors: unknown[] = []
+    const record = (error: unknown) => errors.push(error)
+    process.on("uncaughtException", record)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    process.off("uncaughtException", record)
+    expect(heard).toEqual([])
+    expect(errors).toEqual([])
+  })
+
   it("has no animations for an element that is not mounted", () => {
     const app = createTestRoot()
     let box!: HostElement

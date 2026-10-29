@@ -141,8 +141,8 @@ type ElementSource = {
 
 type ElementSourceEntry = {
   source: ElementSource
-  /** The renderer's window was replaced: it can still name elements but no longer reports focus. */
-  focusStale: boolean
+  /** The renderer's window was replaced or closed: it can still name elements but reports no focus and lists no animations. */
+  windowGone: boolean
   /** Order in which the roots last heard a focus event; higher is more recent. */
   focusedAt: number
 }
@@ -179,7 +179,7 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
   get activeElement(): Element | null {
     let chosen: { entry: ElementSourceEntry; id: number } | undefined
     for (const entry of elementSources.values()) {
-      if (entry.focusStale) continue
+      if (entry.windowGone) continue
       const id = entry.source.focusedId()
       if (id === null) continue
       if (!chosen || entry.focusedAt > chosen.entry.focusedAt) chosen = { entry, id }
@@ -199,7 +199,7 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
    */
   get pointerLockElement(): Element | null {
     for (const entry of elementSources.values()) {
-      if (entry.focusStale) continue
+      if (entry.windowGone) continue
       const id = entry.source.pointerLockId()
       if (id === null) continue
       const element = entry.source.elementById(id)
@@ -219,7 +219,7 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
   getAnimations(): Animation[] {
     const list = Reflect.get(globalThis, DOCUMENT_ANIMATIONS_KEY) as ((renderer: object) => Animation[]) | undefined
     if (!list) throw new Error("Web Animations are not loaded: import @gpuix/native/host before document.getAnimations()")
-    return [...elementSources.keys()].flatMap((renderer) => list(renderer))
+    return [...elementSources].flatMap(([renderer, entry]) => (entry.windowGone ? [] : list(renderer)))
   }
 }
 
@@ -257,7 +257,7 @@ export function installElementSource(
       pointerLockId: () => (getPointerLockElement ? getPointerLockElement.call(renderer) : null),
       elementById,
     },
-    focusStale: false,
+    windowGone: false,
     focusedAt: 0,
   }
   elementSources.set(renderer, entry)
@@ -272,13 +272,13 @@ export function forgetElementSource(renderer: object): void {
 }
 
 /**
- * Stops asking `renderer` what is focused, for a renderer whose window another
- * took over: its root still names its elements, but the window it would ask
- * about is not its own any more.
+ * Stops asking `renderer` what is focused or animating, for a renderer whose
+ * window another took over or that was closed: its root still names its
+ * elements, but the window it would ask about is not its own any more.
  */
-export function forgetFocusSource(renderer: object): void {
+export function forgetWindowSource(renderer: object): void {
   const entry = elementSources.get(renderer)
-  if (entry) entry.focusStale = true
+  if (entry) entry.windowGone = true
 }
 
 /**
