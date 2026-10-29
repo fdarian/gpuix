@@ -55,7 +55,7 @@ describeNative("motion properties", () => {
     expect(done.padding).toBeCloseTo(30, 0)
   })
 
-  it("animates a colour through Oklab", () => {
+  it("animates a hex backgroundColor through sRGB, as the browser Motion hands it to does", () => {
     const { render, renderer } = createTestRoot()
     const file = path.join(SHOTS_DIR, "motion-background-color.png")
     fs.mkdirSync(SHOTS_DIR, { recursive: true })
@@ -80,14 +80,12 @@ describeNative("motion properties", () => {
 
     renderer.clockFastForward(500)
     const [red, green, blue] = sample()
-    // oklab(0.539985 0.0962 -0.09284), the midpoint of red and blue in Oklab,
-    // is rgb(140, 83, 162). The sRGB midpoint would be (128, 0, 128).
-    expect(red).toBeGreaterThan(135)
-    expect(red).toBeLessThan(146)
-    expect(green).toBeGreaterThan(78)
-    expect(green).toBeLessThan(88)
-    expect(blue).toBeGreaterThan(157)
-    expect(blue).toBeLessThan(168)
+    // Motion hands backgroundColor to the browser, which blends two hex colours in sRGB: (127.5, 0, 127.5).
+    expect(red).toBeGreaterThan(125)
+    expect(red).toBeLessThan(130)
+    expect(green).toBeLessThan(3)
+    expect(blue).toBeGreaterThan(125)
+    expect(blue).toBeLessThan(130)
 
     renderer.clockFastForward(1000)
     expect(sample().slice(0, 3)).toEqual([0, 0, 255])

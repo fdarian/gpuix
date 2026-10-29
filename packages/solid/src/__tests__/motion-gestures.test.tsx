@@ -12,7 +12,7 @@ import { AnimatePresence, motion } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { readLogicalPixels } from "./pixels.js"
 
-const ORACLE: { widthAtHalf: string; oklabRedBlueAtHalf: [number, number, number] } = JSON.parse(
+const ORACLE: { widthAtHalf: string; srgbRedBlueAtHalf: [number, number, number] } = JSON.parse(
   fs.readFileSync(
     path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
@@ -98,7 +98,7 @@ describe.skipIf(!hasNativeTestRenderer)("Solid whileHover on a motion.div", () =
     page.advance(1)
     page.advance(499)
     expect(page.width("d")).toBeCloseTo(HALF_WIDTH, 0)
-    expectNear(page.pixel("d", 20, 20), ORACLE.oklabRedBlueAtHalf)
+    expectNear(page.pixel("d", 20, 20), ORACLE.srgbRedBlueAtHalf)
     page.advance(500)
     expect(page.width("d")).toBeCloseTo(200, 0)
     page.leave()

@@ -592,6 +592,20 @@ mod tests {
     }
 
     #[test]
+    fn a_colour_motion_hands_to_the_browser_blends_in_srgb_as_css_does() {
+        let now = Instant::now();
+        let linear = json!({ "duration": 1.0, "ease": "linear" });
+        let middle = |prop: &str| {
+            let state = tween(json!({ prop: "#0000ff" }), json!({ prop: "#ff0000" }), linear.clone(), now);
+            let mut style = crate::style::StyleDesc::default();
+            state.visible_style(at(now, 500)).unwrap().apply_to(&mut style);
+            style.background_color.or(style.color).unwrap()
+        };
+        assert_eq!(middle("backgroundColor"), "rgba(127.500, 0.000, 127.500, 1.00000)", "an animation of the browser's");
+        assert_ne!(middle("color"), "rgba(127.500, 0.000, 127.500, 1.00000)", "a value Motion keeps blends in Oklab");
+    }
+
+    #[test]
     fn a_repeat_delay_and_a_mirrored_repeat_keep_the_animation_to_motion() {
         let now = Instant::now();
         for (transition, expected) in [

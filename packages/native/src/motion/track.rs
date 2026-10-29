@@ -251,6 +251,21 @@ impl Track {
     pub(super) fn screen(&mut self, key: PropKey, now: Instant) {
         self.unscreened = false;
         self.script = Script::of(key, self, now);
+        if self.script.is_some() {
+            self.blend_as_css(key);
+        }
+    }
+
+    /// Motion hands the value to the browser, which blends two legacy colours in sRGB as CSS does
+    /// where a value Motion keeps to itself is blended in Oklab.
+    fn blend_as_css(&mut self, key: PropKey) {
+        if !matches!(self.layout, Layout::Color(_)) {
+            return;
+        }
+        let values: Vec<&AnimValue> = self.literal.iter().collect();
+        let aligned = align_in(key.name(), &values, Interpolation::Css)
+            .expect("the values of a track align as they did when it was made");
+        self.layout = aligned.layout;
     }
 
     /// The track has not been through [`Self::screen`].

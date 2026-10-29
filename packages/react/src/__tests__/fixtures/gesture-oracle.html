@@ -1,28 +1,23 @@
 <!doctype html>
 <!--
-  Oracle for motion-gestures.test.tsx: the midpoint of a width and of a colour that move for 1s linearly, as headless
-  Chrome computes them. A paused animation reads the width at half way; the colour is the Oklab mix a gpuix motion
-  blends in (README: "every pair blends in Oklab, like color-mix(in oklab, ...)"). Regenerate with
+  Oracle for motion-gestures.test.tsx: the midpoint of a width and of a hex backgroundColor that move for 1s linearly, as
+  headless Chrome computes them. A paused animation reads both at half way. Motion 14.1.0 hands backgroundColor to the
+  browser, which blends two hex colours in sRGB, so that is the colour a gpuix motion shows. Regenerate with
 
     sh gesture-oracle.sh
 -->
 <html><head><meta charset="utf-8"><style>
 @keyframes grow { from { width: 100px } to { width: 200px } }
+@keyframes tint { from { background-color: #ff0000 } to { background-color: #0000ff } }
 #a { height: 10px; width: 100px; animation: grow 1s linear -0.5s paused both }
+#b { height: 10px; animation: tint 1s linear -0.5s paused both }
 </style></head><body>
-<div id="a"></div>
+<div id="a"></div><div id="b"></div>
 <script>
 const cell = document.getElementById("a")
-function rgbOf(color) {
-  const canvas = document.createElement("canvas")
-  canvas.width = canvas.height = 1
-  const context = canvas.getContext("2d")
-  context.fillStyle = color
-  context.fillRect(0, 0, 1, 1)
-  return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3))
-}
 document.documentElement.setAttribute("data-oracle", JSON.stringify({
   widthAtHalf: getComputedStyle(cell).width,
-  oklabRedBlueAtHalf: rgbOf("color-mix(in oklab, #ff0000, #0000ff)"),
+  srgbRedBlueAtHalf: getComputedStyle(document.getElementById("b")).backgroundColor
+    .match(/[\d.]+/g).slice(0, 3).map((channel) => Math.round(Number(channel))),
 }))
 </script></body></html>

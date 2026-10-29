@@ -14,7 +14,7 @@ import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
-const ORACLE: { widthAtHalf: string; oklabRedBlueAtHalf: [number, number, number] } = JSON.parse(
+const ORACLE: { widthAtHalf: string; srgbRedBlueAtHalf: [number, number, number] } = JSON.parse(
   fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/gesture-oracle.json"), "utf8")
 )
 
@@ -93,7 +93,7 @@ describeNative("whileHover on a motion.div", () => {
     page.advance(1)
     page.advance(499)
     expect(page.width("d")).toBeCloseTo(HALF_WIDTH, 0)
-    expectNear(page.pixel("d", 20, 20), ORACLE.oklabRedBlueAtHalf)
+    expectNear(page.pixel("d", 20, 20), ORACLE.srgbRedBlueAtHalf)
     page.advance(500)
     expect(page.width("d")).toBeCloseTo(200, 0)
     expectNear(page.pixel("d", 20, 20), [0, 0, 255])

@@ -3433,14 +3433,14 @@ mod tests {
     fn animates_a_colour_through_oklab_and_settles_on_the_target() {
         let started = Instant::now();
         let description = serde_json::json!({
-            "initial": { "backgroundColor": "#ff0000" },
-            "animate": { "backgroundColor": "#0000ff" },
+            "initial": { "color": "#ff0000" },
+            "animate": { "color": "#0000ff" },
             "transition": { "duration": 1.0, "ease": "linear" }
         });
         let mut state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
 
         let middle = style_at(&state, at(started, 0.5));
-        let middle = rgba(middle.background_color.as_deref().unwrap());
+        let middle = rgba(middle.color.as_deref().unwrap());
         let oklab_middle = rgba("oklab(0.539985 0.096200 -0.092840)");
         for (actual, expected) in middle.iter().zip(oklab_middle) {
             assert!((actual - expected).abs() < 1.5 / 255.0, "{middle:?}");
@@ -3449,7 +3449,7 @@ mod tests {
         let frame = state.frame(at(started, 1.0));
         assert!(frame.just_settled);
         let end = style_at(&state, at(started, 1.0));
-        let end = rgba(end.background_color.as_deref().unwrap());
+        let end = rgba(end.color.as_deref().unwrap());
         for (actual, expected) in end.iter().zip(rgba("#0000ff")) {
             assert!((actual - expected).abs() < 1.0 / 255.0, "{end:?}");
         }

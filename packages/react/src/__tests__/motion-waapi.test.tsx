@@ -349,14 +349,6 @@ function fastest(scenario: Case): number {
 /** A frame of Chrome's. */
 const FRAME = 17
 
-/**
- * A `backgroundColor` between its two ends: gpuix blends the colours of a motion in Lab where Motion hands them to the
- * browser, which blends in sRGB, so the colour between the ends is not the same.
- */
-function isBlended(computed: Record<string, string>): boolean {
-  return computed.backgroundColor !== undefined && !/^rgb\((255, 0, 0|0, 0, 255)\)$/.test(computed.backgroundColor)
-}
-
 /** The names of what happened to the animations the case holds, in the order they did. */
 type Log = Noted[]
 
@@ -587,7 +579,7 @@ async function replay(scenario: Case): Promise<void> {
       if (!measured) continue
       // Chrome's frame is up to the lag behind, and the colours it computed are what the element showed then. An element
       // that is gone computes to nothing.
-      const gone = Object.values(sample.computed).some((value) => value === "") || isBlended(sample.computed)
+      const gone = Object.values(sample.computed).some((value) => value === "")
       const after = gone ? null : pixelOf(root.renderer, element!)
       const wanted = after ? shownBy(sample.computed) : []
       wanted.forEach((channel, index) => {
