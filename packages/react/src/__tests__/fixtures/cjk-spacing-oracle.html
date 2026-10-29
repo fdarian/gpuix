@@ -1,0 +1,129 @@
+<!doctype html>
+<!--
+  Oracle for cjk-spacing.test.tsx: how far headless Chrome sets each grapheme cluster of a text of CJK punctuation, where
+  `text-spacing-trim: normal` (the default) trims the empty half of a bracket or a full stop that meets another, and where
+  Chrome sets the punctuation in the font of the script run it is in (Hiragino after kana, PingFang after Han) and not in the
+  one CoreText cascades to. A case is a family, a size and a text (`family|size|textIx`), set `white-space: pre` on one line;
+  `widths` is the width of the Range from the start of the text to the end of each grapheme cluster, in CSS px (the Range
+  around one cluster is the difference of a floor and a ceil to 1/64 px and up to 1/32 px off its advance). `hits` are the
+  offsets `caretPositionFromPoint` gives for points a quarter and three quarters in the box of each opening bracket that is
+  trimmed (a box under three quarters of the size) and half a pixel after it, as `[x, offset]`, three to a bracket. Device scale 1 and 2 are the two files.
+  `wrap|family|textIx|width` is the text in a box of that width at 14px: `starts` are the offsets that start a row and
+  `firstWidths` the width of the first cluster of each.
+  Regenerate with
+
+    sh cjk-spacing-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{position:relative}
+.case{position:absolute;left:0;top:0;white-space:pre}
+.wrapped{position:absolute;left:0;top:0}
+</style></head><body>
+<script>
+  const FAMILIES = ['Helvetica Neue', 'Menlo']
+  const SIZES = [12, 14, 17]
+  const TEXTS = [
+    '「こんにちは」、と彼は言った。',
+    '（注）これはテストです。',
+    '『吾輩は猫である。』夏目漱石',
+    'これは、テストです。「いいえ」と答えた。',
+    '東京都（とうきょうと）は、日本の首都です。',
+    '価格：1,000円（税込）',
+    'ＡＢＣ１２３、ｘｙｚ。',
+    '中文、English，混合。「引用」（括号）！',
+    '他说：“你好！”然后离开了。',
+    '‘single’ and “double” 日本語',
+    '한국어 문장입니다. 「인용」 “따옴표”',
+    'ーカタカナ・ミドル・ドット',
+    'ＡＢ、「ＣＤ」',
+    'ｱｲｳｴｵ｡｢ﾃｽﾄ｣',
+    '。。。「「（（',
+    '漢字、。かな「」',
+    '「始まり」',
+    '。終わり',
+    '日本語、中国語（簡体字）、韓国語。',
+    'Hello、世界。「テスト」です。OK。',
+    'テスト）（テスト',
+    'これは「テスト」（test）です。',
+    '春は、あけぼの。やうやう白くなりゆく山ぎは、少しあかりて、紫だちたる雲の細くたなびきたる。',
+    '你好，世界。这是一个测试：「引用」；结束。',
+    '你好，世界！（测试）——结束……',
+    '日本語のテキスト、これはテスト。「かぎ」、（丸）。',
+    '东京（Tokyo）、大阪（Osaka）。',
+    'あいう」えお',
+    'あいう。」えお',
+    'あいうえお。「かきくけこ',
+    '「あ」「い」「う」「え」',
+  ]
+  const WRAPPED = [['Helvetica Neue', [0, 1, 2, 3, 4, 15, 19, 21, 23, 25, 27, 28, 29, 30]], ['Hiragino Sans', [27, 28, 29, 30]]]
+  const OPENING = /^[「『（〈《【〔［｛“‘]$/
+  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+  addEventListener('load', () => {
+    const rects = {}
+    for (const family of FAMILIES) {
+      for (const size of SIZES) {
+        TEXTS.forEach((text, textIx) => {
+          const probe = document.createElement('div')
+          probe.className = 'case'
+          probe.style.font = `${size}px "${family}"`
+          const node = document.createTextNode(text)
+          probe.append(node)
+          document.body.append(probe)
+          const widths = []
+          const hits = []
+          let previous = 0
+          for (const grapheme of segmenter.segment(text)) {
+            const range = document.createRange()
+            range.setStart(node, 0)
+            range.setEnd(node, grapheme.index + grapheme.segment.length)
+            const width = range.getBoundingClientRect().width
+            widths.push(width)
+            if (OPENING.test(grapheme.segment) && width - previous < size * 0.75) {
+              // A quarter in, three quarters in, and half a pixel past the box, in the glyph after it.
+              for (const x of [0.25, 0.75].map((part) => previous + (width - previous) * part).concat(width + 0.5)) {
+                const caret = document.caretPositionFromPoint(x, size / 2)
+                hits.push([x, caret.offset])
+              }
+            }
+            previous = width
+          }
+          rects[`${family}|${size}|${textIx}`] = { widths, hits }
+          probe.remove()
+        })
+      }
+    }
+    // Where the text breaks in a box of each width: the clusters that start a row, and how wide the first of each is (a
+    // trimmed opening bracket is whole where a row starts with it, and a closing one is trimmed to make a row fit).
+    for (const [family, indices] of WRAPPED) for (const textIx of indices) {
+      for (let boxWidth = 50; boxWidth <= 300; boxWidth += 7) {
+        const probe = document.createElement('div')
+        probe.className = 'wrapped'
+        probe.style.font = `14px "${family}"`
+        probe.style.width = `${boxWidth}px`
+        const node = document.createTextNode(TEXTS[textIx])
+        probe.append(node)
+        document.body.append(probe)
+        const starts = []
+        const firstWidths = []
+        let top = null
+        for (const grapheme of segmenter.segment(TEXTS[textIx])) {
+          const range = document.createRange()
+          range.setStart(node, grapheme.index)
+          range.setEnd(node, grapheme.index + grapheme.segment.length)
+          const rect = range.getClientRects()[0]
+          if (top === null || rect.top > top + 1) {
+            starts.push(grapheme.index)
+            firstWidths.push(rect.width)
+          }
+          top = rect.top
+        }
+        rects[`wrap|${family}|${textIx}|${boxWidth}`] = { starts, firstWidths }
+        probe.remove()
+      }
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>

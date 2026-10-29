@@ -27,6 +27,9 @@ const TEXTS = [
   "Mixed 中文 and 😀 한국어 end",
   "😀😁😂👨‍👩‍👧🇺🇸🇯🇵❤️👍🏽",
   "Hello, World! Typography 123",
+  "日本語のテキストです。これはテスト。",
+  "「こんにちは」、と彼は言った。",
+  "（注）これはテストです。",
 ]
 
 const SCALES = [
@@ -41,8 +44,8 @@ const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" })
 
 /** The families whose text falls back to other fonts, and the families asked for by name with the texts they have glyphs for. */
 const FALLBACK_FAMILIES: Record<string, number[]> = {
-  "Helvetica Neue": [0, 1, 2, 3, 4, 5],
-  Menlo: [0, 1, 2, 3, 4, 5],
+  "Helvetica Neue": [0, 1, 2, 3, 4, 5, 8, 9, 10],
+  Menlo: [0, 1, 2, 3, 4, 5, 8, 9, 10],
 }
 /** Fonts that need no change: their text is in the font that was asked for and CoreText advances it as Chrome does. */
 const CONTROL_FAMILIES: Record<string, number[]> = {
