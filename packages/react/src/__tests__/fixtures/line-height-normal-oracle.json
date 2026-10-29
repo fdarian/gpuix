@@ -1,0 +1,2378 @@
+{
+ "Helvetica Neue|10|latin|normal": [
+  12,
+  10,
+  0,
+  12
+ ],
+ "Helvetica Neue|10|han|normal": [
+  14,
+  11,
+  1,
+  12
+ ],
+ "Helvetica Neue|10|han|24px": [
+  24,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|10|han|1.5": [
+  15,
+  11,
+  1,
+  12
+ ],
+ "Helvetica Neue|10|kana|normal": [
+  15,
+  11,
+  1,
+  12
+ ],
+ "Helvetica Neue|10|hangul|normal": [
+  13,
+  10,
+  0,
+  12
+ ],
+ "Helvetica Neue|10|emoji|normal": [
+  17,
+  13,
+  3,
+  12
+ ],
+ "Helvetica Neue|10|emoji|24px": [
+  24,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|10|emoji|1.5": [
+  15,
+  11,
+  1,
+  12
+ ],
+ "Helvetica Neue|10|mixed|normal": [
+  17,
+  13,
+  3,
+  12
+ ],
+ "Helvetica Neue|10|mixed|24px": [
+  24,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|10|mixed|1.5": [
+  15,
+  11,
+  1,
+  12
+ ],
+ "Helvetica Neue|10|lines|normal": [
+  38,
+  10,
+  0,
+  12,
+  23,
+  13,
+  12,
+  36,
+  26,
+  12
+ ],
+ "Helvetica Neue|10|lines|24px": [
+  72,
+  16,
+  6,
+  12,
+  40,
+  30,
+  12,
+  64,
+  54,
+  12
+ ],
+ "Helvetica Neue|10|lines|1.5": [
+  45,
+  11,
+  1,
+  12,
+  26,
+  16,
+  12,
+  41,
+  31,
+  12
+ ],
+ "Helvetica Neue|10|lines2|normal": [
+  42,
+  13,
+  3,
+  12,
+  27,
+  17,
+  12,
+  39,
+  29,
+  12
+ ],
+ "Helvetica Neue|10|spanBig|normal": [
+  17,
+  14,
+  4,
+  12
+ ],
+ "Helvetica Neue|10|spanBigHan|normal": [
+  21,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|11|latin|normal": [
+  12,
+  10,
+  0,
+  12
+ ],
+ "Helvetica Neue|11|han|normal": [
+  16,
+  12,
+  2,
+  12
+ ],
+ "Helvetica Neue|11|han|24px": [
+  24,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|11|han|1.5": [
+  16.5,
+  12,
+  2,
+  12
+ ],
+ "Helvetica Neue|11|kana|normal": [
+  17,
+  13,
+  3,
+  12
+ ],
+ "Helvetica Neue|11|hangul|normal": [
+  13,
+  10,
+  0,
+  12
+ ],
+ "Helvetica Neue|11|emoji|normal": [
+  18,
+  14,
+  4,
+  12
+ ],
+ "Helvetica Neue|11|emoji|24px": [
+  24,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|11|emoji|1.5": [
+  16.5,
+  12,
+  2,
+  12
+ ],
+ "Helvetica Neue|11|mixed|normal": [
+  18,
+  14,
+  4,
+  12
+ ],
+ "Helvetica Neue|11|mixed|24px": [
+  24,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|11|mixed|1.5": [
+  16.5,
+  12,
+  2,
+  12
+ ],
+ "Helvetica Neue|11|lines|normal": [
+  40,
+  10,
+  0,
+  12,
+  24,
+  14,
+  12,
+  38,
+  28,
+  12
+ ],
+ "Helvetica Neue|11|lines|24px": [
+  72,
+  16,
+  6,
+  12,
+  40,
+  30,
+  12,
+  64,
+  54,
+  12
+ ],
+ "Helvetica Neue|11|lines|1.5": [
+  49.5,
+  12,
+  2,
+  12,
+  28.5,
+  18.5,
+  12,
+  45,
+  35,
+  12
+ ],
+ "Helvetica Neue|11|lines2|normal": [
+  43,
+  14,
+  4,
+  12,
+  28,
+  18,
+  12,
+  40,
+  30,
+  12
+ ],
+ "Helvetica Neue|11|spanBig|normal": [
+  20,
+  16,
+  6,
+  12
+ ],
+ "Helvetica Neue|11|spanBigHan|normal": [
+  23,
+  17,
+  7,
+  12
+ ],
+ "Helvetica Neue|12|latin|normal": [
+  14,
+  11,
+  0,
+  14
+ ],
+ "Helvetica Neue|12|han|normal": [
+  17,
+  13,
+  2,
+  14
+ ],
+ "Helvetica Neue|12|han|24px": [
+  24,
+  16,
+  5,
+  14
+ ],
+ "Helvetica Neue|12|han|1.5": [
+  18,
+  13,
+  2,
+  14
+ ],
+ "Helvetica Neue|12|kana|normal": [
+  18,
+  14,
+  3,
+  14
+ ],
+ "Helvetica Neue|12|hangul|normal": [
+  15,
+  11,
+  0,
+  14
+ ],
+ "Helvetica Neue|12|emoji|normal": [
+  20,
+  15,
+  4,
+  14
+ ],
+ "Helvetica Neue|12|emoji|24px": [
+  24,
+  16,
+  5,
+  14
+ ],
+ "Helvetica Neue|12|emoji|1.5": [
+  18,
+  13,
+  2,
+  14
+ ],
+ "Helvetica Neue|12|mixed|normal": [
+  20,
+  15,
+  4,
+  14
+ ],
+ "Helvetica Neue|12|mixed|24px": [
+  24,
+  16,
+  5,
+  14
+ ],
+ "Helvetica Neue|12|mixed|1.5": [
+  18,
+  13,
+  2,
+  14
+ ],
+ "Helvetica Neue|12|lines|normal": [
+  45,
+  11,
+  0,
+  14,
+  27,
+  16,
+  14,
+  42,
+  31,
+  14
+ ],
+ "Helvetica Neue|12|lines|24px": [
+  72,
+  16,
+  5,
+  14,
+  40,
+  29,
+  14,
+  64,
+  53,
+  14
+ ],
+ "Helvetica Neue|12|lines|1.5": [
+  54,
+  13,
+  2,
+  14,
+  31,
+  20,
+  14,
+  49,
+  38,
+  14
+ ],
+ "Helvetica Neue|12|lines2|normal": [
+  49,
+  15,
+  4,
+  14,
+  31,
+  20,
+  14,
+  45,
+  34,
+  14
+ ],
+ "Helvetica Neue|12|spanBig|normal": [
+  22,
+  17,
+  6,
+  14
+ ],
+ "Helvetica Neue|12|spanBigHan|normal": [
+  25,
+  19,
+  8,
+  14
+ ],
+ "Helvetica Neue|13|latin|normal": [
+  15,
+  12,
+  0,
+  15
+ ],
+ "Helvetica Neue|13|han|normal": [
+  18,
+  14,
+  2,
+  15
+ ],
+ "Helvetica Neue|13|han|24px": [
+  24,
+  16,
+  4,
+  15
+ ],
+ "Helvetica Neue|13|han|1.5": [
+  19.5,
+  14,
+  2,
+  15
+ ],
+ "Helvetica Neue|13|kana|normal": [
+  20,
+  14,
+  2,
+  15
+ ],
+ "Helvetica Neue|13|hangul|normal": [
+  16,
+  12,
+  0,
+  15
+ ],
+ "Helvetica Neue|13|emoji|normal": [
+  21,
+  16,
+  4,
+  15
+ ],
+ "Helvetica Neue|13|emoji|24px": [
+  24,
+  16,
+  4,
+  15
+ ],
+ "Helvetica Neue|13|emoji|1.5": [
+  19.5,
+  14,
+  2,
+  15
+ ],
+ "Helvetica Neue|13|mixed|normal": [
+  21,
+  16,
+  4,
+  15
+ ],
+ "Helvetica Neue|13|mixed|24px": [
+  24,
+  16,
+  4,
+  15
+ ],
+ "Helvetica Neue|13|mixed|1.5": [
+  19.5,
+  14,
+  2,
+  15
+ ],
+ "Helvetica Neue|13|lines|normal": [
+  48,
+  12,
+  0,
+  15,
+  29,
+  17,
+  15,
+  45,
+  33,
+  15
+ ],
+ "Helvetica Neue|13|lines|24px": [
+  72,
+  16,
+  4,
+  15,
+  40,
+  28,
+  15,
+  64,
+  52,
+  15
+ ],
+ "Helvetica Neue|13|lines|1.5": [
+  58.5,
+  14,
+  2,
+  15,
+  33.5,
+  21.5,
+  15,
+  53,
+  41,
+  15
+ ],
+ "Helvetica Neue|13|lines2|normal": [
+  52,
+  16,
+  4,
+  15,
+  33,
+  21,
+  15,
+  48,
+  36,
+  15
+ ],
+ "Helvetica Neue|13|spanBig|normal": [
+  24,
+  19,
+  7,
+  15
+ ],
+ "Helvetica Neue|13|spanBigHan|normal": [
+  28,
+  21,
+  9,
+  15
+ ],
+ "Helvetica Neue|14|latin|normal": [
+  16,
+  13,
+  0,
+  16
+ ],
+ "Helvetica Neue|14|han|normal": [
+  20,
+  15,
+  2,
+  16
+ ],
+ "Helvetica Neue|14|han|24px": [
+  24,
+  17,
+  4,
+  16
+ ],
+ "Helvetica Neue|14|han|1.5": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Helvetica Neue|14|kana|normal": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Helvetica Neue|14|hangul|normal": [
+  17,
+  13,
+  0,
+  16
+ ],
+ "Helvetica Neue|14|emoji|normal": [
+  23,
+  18,
+  5,
+  16
+ ],
+ "Helvetica Neue|14|emoji|24px": [
+  24,
+  17,
+  4,
+  16
+ ],
+ "Helvetica Neue|14|emoji|1.5": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Helvetica Neue|14|mixed|normal": [
+  23,
+  18,
+  5,
+  16
+ ],
+ "Helvetica Neue|14|mixed|24px": [
+  24,
+  17,
+  4,
+  16
+ ],
+ "Helvetica Neue|14|mixed|1.5": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Helvetica Neue|14|lines|normal": [
+  52,
+  13,
+  0,
+  16,
+  31,
+  18,
+  16,
+  49,
+  36,
+  16
+ ],
+ "Helvetica Neue|14|lines|24px": [
+  72,
+  17,
+  4,
+  16,
+  41,
+  28,
+  16,
+  65,
+  52,
+  16
+ ],
+ "Helvetica Neue|14|lines|1.5": [
+  63,
+  15,
+  2,
+  16,
+  36,
+  23,
+  16,
+  57,
+  44,
+  16
+ ],
+ "Helvetica Neue|14|lines2|normal": [
+  56,
+  18,
+  5,
+  16,
+  36,
+  23,
+  16,
+  52,
+  39,
+  16
+ ],
+ "Helvetica Neue|14|spanBig|normal": [
+  25,
+  20,
+  7,
+  16
+ ],
+ "Helvetica Neue|14|spanBigHan|normal": [
+  29,
+  22,
+  9,
+  16
+ ],
+ "Helvetica Neue|16|latin|normal": [
+  18,
+  15,
+  0,
+  18
+ ],
+ "Helvetica Neue|16|han|normal": [
+  22,
+  17,
+  2,
+  18
+ ],
+ "Helvetica Neue|16|han|24px": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|han|1.5": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|kana|normal": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|hangul|normal": [
+  20,
+  15,
+  0,
+  18
+ ],
+ "Helvetica Neue|16|emoji|normal": [
+  26,
+  20,
+  5,
+  18
+ ],
+ "Helvetica Neue|16|emoji|24px": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|emoji|1.5": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|mixed|normal": [
+  26,
+  20,
+  5,
+  18
+ ],
+ "Helvetica Neue|16|mixed|24px": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|mixed|1.5": [
+  24,
+  18,
+  3,
+  18
+ ],
+ "Helvetica Neue|16|lines|normal": [
+  58,
+  15,
+  0,
+  18,
+  35,
+  20,
+  18,
+  55,
+  40,
+  18
+ ],
+ "Helvetica Neue|16|lines|24px": [
+  72,
+  18,
+  3,
+  18,
+  42,
+  27,
+  18,
+  66,
+  51,
+  18
+ ],
+ "Helvetica Neue|16|lines|1.5": [
+  72,
+  18,
+  3,
+  18,
+  42,
+  27,
+  18,
+  66,
+  51,
+  18
+ ],
+ "Helvetica Neue|16|lines2|normal": [
+  64,
+  20,
+  5,
+  18,
+  41,
+  26,
+  18,
+  59,
+  44,
+  18
+ ],
+ "Helvetica Neue|16|spanBig|normal": [
+  29,
+  23,
+  8,
+  18
+ ],
+ "Helvetica Neue|16|spanBigHan|normal": [
+  33,
+  25,
+  10,
+  18
+ ],
+ "Helvetica Neue|18|latin|normal": [
+  22,
+  17,
+  0,
+  21
+ ],
+ "Helvetica Neue|18|han|normal": [
+  25,
+  19,
+  2,
+  21
+ ],
+ "Helvetica Neue|18|han|24px": [
+  24,
+  18,
+  1,
+  21
+ ],
+ "Helvetica Neue|18|han|1.5": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Helvetica Neue|18|kana|normal": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Helvetica Neue|18|hangul|normal": [
+  22,
+  17,
+  0,
+  21
+ ],
+ "Helvetica Neue|18|emoji|normal": [
+  28,
+  21,
+  4,
+  21
+ ],
+ "Helvetica Neue|18|emoji|24px": [
+  24,
+  18,
+  1,
+  21
+ ],
+ "Helvetica Neue|18|emoji|1.5": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Helvetica Neue|18|mixed|normal": [
+  28,
+  21,
+  4,
+  21
+ ],
+ "Helvetica Neue|18|mixed|24px": [
+  24,
+  18,
+  1,
+  21
+ ],
+ "Helvetica Neue|18|mixed|1.5": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Helvetica Neue|18|lines|normal": [
+  69,
+  17,
+  0,
+  21,
+  41,
+  24,
+  21,
+  64,
+  47,
+  21
+ ],
+ "Helvetica Neue|18|lines|24px": [
+  72,
+  18,
+  1,
+  21,
+  42,
+  25,
+  21,
+  66,
+  49,
+  21
+ ],
+ "Helvetica Neue|18|lines|1.5": [
+  81,
+  20,
+  3,
+  21,
+  47,
+  30,
+  21,
+  74,
+  57,
+  21
+ ],
+ "Helvetica Neue|18|lines2|normal": [
+  72,
+  21,
+  4,
+  21,
+  45,
+  28,
+  21,
+  67,
+  50,
+  21
+ ],
+ "Helvetica Neue|18|spanBig|normal": [
+  33,
+  26,
+  9,
+  21
+ ],
+ "Helvetica Neue|18|spanBigHan|normal": [
+  38,
+  29,
+  12,
+  21
+ ],
+ "Helvetica Neue|20|latin|normal": [
+  24,
+  19,
+  0,
+  23
+ ],
+ "Helvetica Neue|20|han|normal": [
+  28,
+  21,
+  2,
+  23
+ ],
+ "Helvetica Neue|20|han|24px": [
+  24,
+  19,
+  0,
+  23
+ ],
+ "Helvetica Neue|20|han|1.5": [
+  30,
+  22,
+  3,
+  23
+ ],
+ "Helvetica Neue|20|kana|normal": [
+  30,
+  23,
+  4,
+  23
+ ],
+ "Helvetica Neue|20|hangul|normal": [
+  25,
+  19,
+  0,
+  23
+ ],
+ "Helvetica Neue|20|emoji|normal": [
+  29,
+  22,
+  3,
+  23
+ ],
+ "Helvetica Neue|20|emoji|24px": [
+  24,
+  19,
+  0,
+  23
+ ],
+ "Helvetica Neue|20|emoji|1.5": [
+  30,
+  22,
+  3,
+  23
+ ],
+ "Helvetica Neue|20|mixed|normal": [
+  29,
+  22,
+  3,
+  23
+ ],
+ "Helvetica Neue|20|mixed|24px": [
+  24,
+  19,
+  0,
+  23
+ ],
+ "Helvetica Neue|20|mixed|1.5": [
+  30,
+  22,
+  3,
+  23
+ ],
+ "Helvetica Neue|20|lines|normal": [
+  76,
+  19,
+  0,
+  23,
+  45,
+  26,
+  23,
+  71,
+  52,
+  23
+ ],
+ "Helvetica Neue|20|lines|24px": [
+  72,
+  19,
+  0,
+  23,
+  43,
+  24,
+  23,
+  67,
+  48,
+  23
+ ],
+ "Helvetica Neue|20|lines|1.5": [
+  90,
+  22,
+  3,
+  23,
+  52,
+  33,
+  23,
+  82,
+  63,
+  23
+ ],
+ "Helvetica Neue|20|lines2|normal": [
+  78,
+  22,
+  3,
+  23,
+  48,
+  29,
+  23,
+  72,
+  53,
+  23
+ ],
+ "Helvetica Neue|20|spanBig|normal": [
+  36,
+  29,
+  10,
+  23
+ ],
+ "Helvetica Neue|20|spanBigHan|normal": [
+  42,
+  32,
+  13,
+  23
+ ],
+ "Helvetica Neue|24|latin|normal": [
+  29,
+  23,
+  0,
+  28
+ ],
+ "Helvetica Neue|24|han|normal": [
+  33,
+  25,
+  2,
+  28
+ ],
+ "Helvetica Neue|24|han|24px": [
+  24,
+  21,
+  -2,
+  28
+ ],
+ "Helvetica Neue|24|han|1.5": [
+  36,
+  27,
+  4,
+  28
+ ],
+ "Helvetica Neue|24|kana|normal": [
+  36,
+  27,
+  4,
+  28
+ ],
+ "Helvetica Neue|24|hangul|normal": [
+  30,
+  23,
+  0,
+  28
+ ],
+ "Helvetica Neue|24|emoji|normal": [
+  32,
+  24,
+  1,
+  28
+ ],
+ "Helvetica Neue|24|emoji|24px": [
+  24,
+  21,
+  -2,
+  28
+ ],
+ "Helvetica Neue|24|emoji|1.5": [
+  36,
+  27,
+  4,
+  28
+ ],
+ "Helvetica Neue|24|mixed|normal": [
+  33,
+  25,
+  2,
+  28
+ ],
+ "Helvetica Neue|24|mixed|24px": [
+  24,
+  21,
+  -2,
+  28
+ ],
+ "Helvetica Neue|24|mixed|1.5": [
+  36,
+  27,
+  4,
+  28
+ ],
+ "Helvetica Neue|24|lines|normal": [
+  91,
+  23,
+  0,
+  28,
+  54,
+  31,
+  28,
+  85,
+  62,
+  28
+ ],
+ "Helvetica Neue|24|lines|24px": [
+  72,
+  21,
+  -2,
+  28,
+  45,
+  22,
+  28,
+  69,
+  46,
+  28
+ ],
+ "Helvetica Neue|24|lines|1.5": [
+  108,
+  27,
+  4,
+  28,
+  63,
+  40,
+  28,
+  99,
+  76,
+  28
+ ],
+ "Helvetica Neue|24|lines2|normal": [
+  91,
+  24,
+  1,
+  28,
+  55,
+  32,
+  28,
+  84,
+  61,
+  28
+ ],
+ "Helvetica Neue|24|spanBig|normal": [
+  43,
+  34,
+  11,
+  28
+ ],
+ "Helvetica Neue|24|spanBigHan|normal": [
+  50,
+  38,
+  15,
+  28
+ ],
+ "Menlo|10|latin|normal": [
+  11,
+  9,
+  0,
+  11
+ ],
+ "Menlo|10|han|normal": [
+  14,
+  11,
+  2,
+  11
+ ],
+ "Menlo|10|han|24px": [
+  24,
+  15,
+  6,
+  11
+ ],
+ "Menlo|10|han|1.5": [
+  15,
+  11,
+  2,
+  11
+ ],
+ "Menlo|10|kana|normal": [
+  15,
+  11,
+  2,
+  11
+ ],
+ "Menlo|10|hangul|normal": [
+  12,
+  9,
+  0,
+  11
+ ],
+ "Menlo|10|emoji|normal": [
+  17,
+  13,
+  4,
+  11
+ ],
+ "Menlo|10|emoji|24px": [
+  24,
+  15,
+  6,
+  11
+ ],
+ "Menlo|10|emoji|1.5": [
+  15,
+  11,
+  2,
+  11
+ ],
+ "Menlo|10|mixed|normal": [
+  17,
+  13,
+  4,
+  11
+ ],
+ "Menlo|10|mixed|24px": [
+  24,
+  15,
+  6,
+  11
+ ],
+ "Menlo|10|mixed|1.5": [
+  15,
+  11,
+  2,
+  11
+ ],
+ "Menlo|10|lines|normal": [
+  36,
+  9,
+  0,
+  11,
+  22,
+  13,
+  11,
+  34,
+  25,
+  11
+ ],
+ "Menlo|10|lines|24px": [
+  72,
+  15,
+  6,
+  11,
+  39,
+  30,
+  11,
+  63,
+  54,
+  11
+ ],
+ "Menlo|10|lines|1.5": [
+  45,
+  11,
+  2,
+  11,
+  26,
+  17,
+  11,
+  41,
+  32,
+  11
+ ],
+ "Menlo|10|lines2|normal": [
+  40,
+  13,
+  4,
+  11,
+  26,
+  17,
+  11,
+  37,
+  28,
+  11
+ ],
+ "Menlo|10|spanBig|normal": [
+  18,
+  14,
+  5,
+  11
+ ],
+ "Menlo|10|spanBigHan|normal": [
+  21,
+  16,
+  7,
+  11
+ ],
+ "Menlo|11|latin|normal": [
+  13,
+  10,
+  0,
+  13
+ ],
+ "Menlo|11|han|normal": [
+  16,
+  12,
+  2,
+  13
+ ],
+ "Menlo|11|han|24px": [
+  24,
+  15,
+  5,
+  13
+ ],
+ "Menlo|11|han|1.5": [
+  16.5,
+  11,
+  1,
+  13
+ ],
+ "Menlo|11|kana|normal": [
+  17,
+  13,
+  3,
+  13
+ ],
+ "Menlo|11|hangul|normal": [
+  13,
+  10,
+  0,
+  13
+ ],
+ "Menlo|11|emoji|normal": [
+  18,
+  14,
+  4,
+  13
+ ],
+ "Menlo|11|emoji|24px": [
+  24,
+  15,
+  5,
+  13
+ ],
+ "Menlo|11|emoji|1.5": [
+  16.5,
+  11,
+  1,
+  13
+ ],
+ "Menlo|11|mixed|normal": [
+  18,
+  14,
+  4,
+  13
+ ],
+ "Menlo|11|mixed|24px": [
+  24,
+  15,
+  5,
+  13
+ ],
+ "Menlo|11|mixed|1.5": [
+  16.5,
+  11,
+  1,
+  13
+ ],
+ "Menlo|11|lines|normal": [
+  42,
+  10,
+  0,
+  13,
+  25,
+  15,
+  13,
+  39,
+  29,
+  13
+ ],
+ "Menlo|11|lines|24px": [
+  72,
+  15,
+  5,
+  13,
+  39,
+  29,
+  13,
+  63,
+  53,
+  13
+ ],
+ "Menlo|11|lines|1.5": [
+  49.5,
+  11,
+  1,
+  13,
+  27.5,
+  17.5,
+  13,
+  44,
+  34,
+  13
+ ],
+ "Menlo|11|lines2|normal": [
+  44,
+  14,
+  4,
+  13,
+  28,
+  18,
+  13,
+  41,
+  31,
+  13
+ ],
+ "Menlo|11|spanBig|normal": [
+  19,
+  15,
+  5,
+  13
+ ],
+ "Menlo|11|spanBigHan|normal": [
+  23,
+  17,
+  7,
+  13
+ ],
+ "Menlo|12|latin|normal": [
+  14,
+  11,
+  0,
+  14
+ ],
+ "Menlo|12|han|normal": [
+  17,
+  13,
+  2,
+  14
+ ],
+ "Menlo|12|han|24px": [
+  24,
+  16,
+  5,
+  14
+ ],
+ "Menlo|12|han|1.5": [
+  18,
+  13,
+  2,
+  14
+ ],
+ "Menlo|12|kana|normal": [
+  18,
+  14,
+  3,
+  14
+ ],
+ "Menlo|12|hangul|normal": [
+  15,
+  11,
+  0,
+  14
+ ],
+ "Menlo|12|emoji|normal": [
+  20,
+  15,
+  4,
+  14
+ ],
+ "Menlo|12|emoji|24px": [
+  24,
+  16,
+  5,
+  14
+ ],
+ "Menlo|12|emoji|1.5": [
+  18,
+  13,
+  2,
+  14
+ ],
+ "Menlo|12|mixed|normal": [
+  20,
+  15,
+  4,
+  14
+ ],
+ "Menlo|12|mixed|24px": [
+  24,
+  16,
+  5,
+  14
+ ],
+ "Menlo|12|mixed|1.5": [
+  18,
+  13,
+  2,
+  14
+ ],
+ "Menlo|12|lines|normal": [
+  45,
+  11,
+  0,
+  14,
+  27,
+  16,
+  14,
+  42,
+  31,
+  14
+ ],
+ "Menlo|12|lines|24px": [
+  72,
+  16,
+  5,
+  14,
+  40,
+  29,
+  14,
+  64,
+  53,
+  14
+ ],
+ "Menlo|12|lines|1.5": [
+  54,
+  13,
+  2,
+  14,
+  31,
+  20,
+  14,
+  49,
+  38,
+  14
+ ],
+ "Menlo|12|lines2|normal": [
+  49,
+  15,
+  4,
+  14,
+  31,
+  20,
+  14,
+  45,
+  34,
+  14
+ ],
+ "Menlo|12|spanBig|normal": [
+  21,
+  17,
+  6,
+  14
+ ],
+ "Menlo|12|spanBigHan|normal": [
+  25,
+  19,
+  8,
+  14
+ ],
+ "Menlo|13|latin|normal": [
+  15,
+  12,
+  0,
+  15
+ ],
+ "Menlo|13|han|normal": [
+  18,
+  14,
+  2,
+  15
+ ],
+ "Menlo|13|han|24px": [
+  24,
+  16,
+  4,
+  15
+ ],
+ "Menlo|13|han|1.5": [
+  19.5,
+  14,
+  2,
+  15
+ ],
+ "Menlo|13|kana|normal": [
+  20,
+  14,
+  2,
+  15
+ ],
+ "Menlo|13|hangul|normal": [
+  16,
+  12,
+  0,
+  15
+ ],
+ "Menlo|13|emoji|normal": [
+  21,
+  16,
+  4,
+  15
+ ],
+ "Menlo|13|emoji|24px": [
+  24,
+  16,
+  4,
+  15
+ ],
+ "Menlo|13|emoji|1.5": [
+  19.5,
+  14,
+  2,
+  15
+ ],
+ "Menlo|13|mixed|normal": [
+  21,
+  16,
+  4,
+  15
+ ],
+ "Menlo|13|mixed|24px": [
+  24,
+  16,
+  4,
+  15
+ ],
+ "Menlo|13|mixed|1.5": [
+  19.5,
+  14,
+  2,
+  15
+ ],
+ "Menlo|13|lines|normal": [
+  48,
+  12,
+  0,
+  15,
+  29,
+  17,
+  15,
+  45,
+  33,
+  15
+ ],
+ "Menlo|13|lines|24px": [
+  72,
+  16,
+  4,
+  15,
+  40,
+  28,
+  15,
+  64,
+  52,
+  15
+ ],
+ "Menlo|13|lines|1.5": [
+  58.5,
+  14,
+  2,
+  15,
+  33.5,
+  21.5,
+  15,
+  53,
+  41,
+  15
+ ],
+ "Menlo|13|lines2|normal": [
+  52,
+  16,
+  4,
+  15,
+  33,
+  21,
+  15,
+  48,
+  36,
+  15
+ ],
+ "Menlo|13|spanBig|normal": [
+  23,
+  18,
+  6,
+  15
+ ],
+ "Menlo|13|spanBigHan|normal": [
+  28,
+  21,
+  9,
+  15
+ ],
+ "Menlo|14|latin|normal": [
+  16,
+  13,
+  0,
+  16
+ ],
+ "Menlo|14|han|normal": [
+  20,
+  15,
+  2,
+  16
+ ],
+ "Menlo|14|han|24px": [
+  24,
+  17,
+  4,
+  16
+ ],
+ "Menlo|14|han|1.5": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Menlo|14|kana|normal": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Menlo|14|hangul|normal": [
+  17,
+  13,
+  0,
+  16
+ ],
+ "Menlo|14|emoji|normal": [
+  23,
+  18,
+  5,
+  16
+ ],
+ "Menlo|14|emoji|24px": [
+  24,
+  17,
+  4,
+  16
+ ],
+ "Menlo|14|emoji|1.5": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Menlo|14|mixed|normal": [
+  23,
+  18,
+  5,
+  16
+ ],
+ "Menlo|14|mixed|24px": [
+  24,
+  17,
+  4,
+  16
+ ],
+ "Menlo|14|mixed|1.5": [
+  21,
+  15,
+  2,
+  16
+ ],
+ "Menlo|14|lines|normal": [
+  52,
+  13,
+  0,
+  16,
+  31,
+  18,
+  16,
+  49,
+  36,
+  16
+ ],
+ "Menlo|14|lines|24px": [
+  72,
+  17,
+  4,
+  16,
+  41,
+  28,
+  16,
+  65,
+  52,
+  16
+ ],
+ "Menlo|14|lines|1.5": [
+  63,
+  15,
+  2,
+  16,
+  36,
+  23,
+  16,
+  57,
+  44,
+  16
+ ],
+ "Menlo|14|lines2|normal": [
+  56,
+  18,
+  5,
+  16,
+  36,
+  23,
+  16,
+  52,
+  39,
+  16
+ ],
+ "Menlo|14|spanBig|normal": [
+  24,
+  19,
+  6,
+  16
+ ],
+ "Menlo|14|spanBigHan|normal": [
+  29,
+  22,
+  9,
+  16
+ ],
+ "Menlo|16|latin|normal": [
+  19,
+  15,
+  0,
+  19
+ ],
+ "Menlo|16|han|normal": [
+  22,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|han|24px": [
+  24,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|han|1.5": [
+  24,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|kana|normal": [
+  24,
+  18,
+  3,
+  19
+ ],
+ "Menlo|16|hangul|normal": [
+  20,
+  15,
+  0,
+  19
+ ],
+ "Menlo|16|emoji|normal": [
+  26,
+  20,
+  5,
+  19
+ ],
+ "Menlo|16|emoji|24px": [
+  24,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|emoji|1.5": [
+  24,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|mixed|normal": [
+  26,
+  20,
+  5,
+  19
+ ],
+ "Menlo|16|mixed|24px": [
+  24,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|mixed|1.5": [
+  24,
+  17,
+  2,
+  19
+ ],
+ "Menlo|16|lines|normal": [
+  60,
+  15,
+  0,
+  19,
+  36,
+  21,
+  19,
+  56,
+  41,
+  19
+ ],
+ "Menlo|16|lines|24px": [
+  72,
+  17,
+  2,
+  19,
+  41,
+  26,
+  19,
+  65,
+  50,
+  19
+ ],
+ "Menlo|16|lines|1.5": [
+  72,
+  17,
+  2,
+  19,
+  41,
+  26,
+  19,
+  65,
+  50,
+  19
+ ],
+ "Menlo|16|lines2|normal": [
+  65,
+  20,
+  5,
+  19,
+  41,
+  26,
+  19,
+  60,
+  45,
+  19
+ ],
+ "Menlo|16|spanBig|normal": [
+  28,
+  22,
+  7,
+  19
+ ],
+ "Menlo|16|spanBigHan|normal": [
+  33,
+  25,
+  10,
+  19
+ ],
+ "Menlo|18|latin|normal": [
+  21,
+  17,
+  0,
+  21
+ ],
+ "Menlo|18|han|normal": [
+  25,
+  19,
+  2,
+  21
+ ],
+ "Menlo|18|han|24px": [
+  24,
+  18,
+  1,
+  21
+ ],
+ "Menlo|18|han|1.5": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Menlo|18|kana|normal": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Menlo|18|hangul|normal": [
+  22,
+  17,
+  0,
+  21
+ ],
+ "Menlo|18|emoji|normal": [
+  28,
+  21,
+  4,
+  21
+ ],
+ "Menlo|18|emoji|24px": [
+  24,
+  18,
+  1,
+  21
+ ],
+ "Menlo|18|emoji|1.5": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Menlo|18|mixed|normal": [
+  28,
+  21,
+  4,
+  21
+ ],
+ "Menlo|18|mixed|24px": [
+  24,
+  18,
+  1,
+  21
+ ],
+ "Menlo|18|mixed|1.5": [
+  27,
+  20,
+  3,
+  21
+ ],
+ "Menlo|18|lines|normal": [
+  67,
+  17,
+  0,
+  21,
+  40,
+  23,
+  21,
+  63,
+  46,
+  21
+ ],
+ "Menlo|18|lines|24px": [
+  72,
+  18,
+  1,
+  21,
+  42,
+  25,
+  21,
+  66,
+  49,
+  21
+ ],
+ "Menlo|18|lines|1.5": [
+  81,
+  20,
+  3,
+  21,
+  47,
+  30,
+  21,
+  74,
+  57,
+  21
+ ],
+ "Menlo|18|lines2|normal": [
+  71,
+  21,
+  4,
+  21,
+  45,
+  28,
+  21,
+  66,
+  49,
+  21
+ ],
+ "Menlo|18|spanBig|normal": [
+  31,
+  25,
+  8,
+  21
+ ],
+ "Menlo|18|spanBigHan|normal": [
+  38,
+  29,
+  12,
+  21
+ ],
+ "Menlo|20|latin|normal": [
+  24,
+  19,
+  0,
+  24
+ ],
+ "Menlo|20|han|normal": [
+  28,
+  21,
+  2,
+  24
+ ],
+ "Menlo|20|han|24px": [
+  24,
+  19,
+  0,
+  24
+ ],
+ "Menlo|20|han|1.5": [
+  30,
+  22,
+  3,
+  24
+ ],
+ "Menlo|20|kana|normal": [
+  30,
+  23,
+  4,
+  24
+ ],
+ "Menlo|20|hangul|normal": [
+  25,
+  19,
+  0,
+  24
+ ],
+ "Menlo|20|emoji|normal": [
+  29,
+  22,
+  3,
+  24
+ ],
+ "Menlo|20|emoji|24px": [
+  24,
+  19,
+  0,
+  24
+ ],
+ "Menlo|20|emoji|1.5": [
+  30,
+  22,
+  3,
+  24
+ ],
+ "Menlo|20|mixed|normal": [
+  29,
+  22,
+  3,
+  24
+ ],
+ "Menlo|20|mixed|24px": [
+  24,
+  19,
+  0,
+  24
+ ],
+ "Menlo|20|mixed|1.5": [
+  30,
+  22,
+  3,
+  24
+ ],
+ "Menlo|20|lines|normal": [
+  76,
+  19,
+  0,
+  24,
+  45,
+  26,
+  24,
+  71,
+  52,
+  24
+ ],
+ "Menlo|20|lines|24px": [
+  72,
+  19,
+  0,
+  24,
+  43,
+  24,
+  24,
+  67,
+  48,
+  24
+ ],
+ "Menlo|20|lines|1.5": [
+  90,
+  22,
+  3,
+  24,
+  52,
+  33,
+  24,
+  82,
+  63,
+  24
+ ],
+ "Menlo|20|lines2|normal": [
+  78,
+  22,
+  3,
+  24,
+  48,
+  29,
+  24,
+  72,
+  53,
+  24
+ ],
+ "Menlo|20|spanBig|normal": [
+  35,
+  28,
+  9,
+  24
+ ],
+ "Menlo|20|spanBigHan|normal": [
+  42,
+  32,
+  13,
+  24
+ ],
+ "Menlo|24|latin|normal": [
+  28,
+  22,
+  0,
+  28
+ ],
+ "Menlo|24|han|normal": [
+  33,
+  25,
+  3,
+  28
+ ],
+ "Menlo|24|han|24px": [
+  24,
+  20,
+  -2,
+  28
+ ],
+ "Menlo|24|han|1.5": [
+  36,
+  26,
+  4,
+  28
+ ],
+ "Menlo|24|kana|normal": [
+  36,
+  27,
+  5,
+  28
+ ],
+ "Menlo|24|hangul|normal": [
+  29,
+  22,
+  0,
+  28
+ ],
+ "Menlo|24|emoji|normal": [
+  32,
+  24,
+  2,
+  28
+ ],
+ "Menlo|24|emoji|24px": [
+  24,
+  20,
+  -2,
+  28
+ ],
+ "Menlo|24|emoji|1.5": [
+  36,
+  26,
+  4,
+  28
+ ],
+ "Menlo|24|mixed|normal": [
+  33,
+  25,
+  3,
+  28
+ ],
+ "Menlo|24|mixed|24px": [
+  24,
+  20,
+  -2,
+  28
+ ],
+ "Menlo|24|mixed|1.5": [
+  36,
+  26,
+  4,
+  28
+ ],
+ "Menlo|24|lines|normal": [
+  89,
+  22,
+  0,
+  28,
+  53,
+  31,
+  28,
+  83,
+  61,
+  28
+ ],
+ "Menlo|24|lines|24px": [
+  72,
+  20,
+  -2,
+  28,
+  44,
+  22,
+  28,
+  68,
+  46,
+  28
+ ],
+ "Menlo|24|lines|1.5": [
+  108,
+  26,
+  4,
+  28,
+  62,
+  40,
+  28,
+  98,
+  76,
+  28
+ ],
+ "Menlo|24|lines2|normal": [
+  89,
+  24,
+  2,
+  28,
+  54,
+  32,
+  28,
+  82,
+  60,
+  28
+ ],
+ "Menlo|24|spanBig|normal": [
+  41,
+  33,
+  11,
+  28
+ ],
+ "Menlo|24|spanBigHan|normal": [
+  50,
+  38,
+  16,
+  28
+ ]
+}

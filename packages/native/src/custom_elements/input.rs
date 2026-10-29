@@ -1959,6 +1959,7 @@ impl TextEditorState {
             strikethrough: None,
             font_size: None,
             line_height: None,
+            normal_line_height: false,
             overline: None,
             extra_decorations: Vec::new(),
             group: 0,

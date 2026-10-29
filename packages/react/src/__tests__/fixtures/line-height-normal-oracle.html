@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Oracle for line-height-normal.test.tsx: how tall Chrome makes a line, and where it puts the baseline, when the text on it
+  is in a font other than the one the box asks for (Han, kana, Hangul and emoji fall back to PingFang, Hiragino, Apple SD
+  Gothic Neo and Apple Color Emoji). With `line-height: normal` the line box unites the content area, with its line gap
+  split in half and floored to a device pixel, of every font used on the line (Blink `InlineBoxState::AccumulateUsedFonts`);
+  a number or a length is the same line height for any font, so the line is as tall as it is without the fallback.
+  A case is `family|size|kind|lineHeight`. Its value is `[block height, then for each line: baseline, top, height]`, where
+  the baseline is the bottom of an empty `inline-block` at the start of the line, and top and height are those of the
+  `<span>` around the line (the content area of the box's own font), all in CSS px relative to the top of the block.
+  Device scale 1 and 2 are the two files. Regenerate with
+
+    sh line-height-normal-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{position:relative;width:1280px}
+.case{position:absolute;left:0;top:0;width:1280px;color:#000;white-space:pre-line}
+.probe{display:inline-block;width:0;height:0}
+</style></head><body>
+<script>
+  const FAMILIES = ['Helvetica Neue', 'Menlo']
+  const SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24]
+  const BIG = 'style="font-size:1.5em"'
+  const KINDS = {
+    latin: ['Hxg'],
+    han: ['中文'],
+    kana: ['こんにちは'],
+    hangul: ['한국어'],
+    emoji: ['😀'],
+    mixed: ['Hxg 中文 😀'],
+    lines: ['Hxg', '中文', 'Hxg'],
+    lines2: ['😀', 'Hxg', '한국어'],
+    spanBig: [`Hxg <span ${BIG}>Hxg</span>`],
+    spanBigHan: [`Hxg <span ${BIG}>中文</span>`],
+  }
+  // An explicit line height does not change the line, whatever is on it.
+  const EXPLICIT = ['han', 'emoji', 'mixed', 'lines']
+  const LINE_HEIGHTS = ['24px', '1.5']
+  addEventListener('load', () => {
+    const rects = {}
+    const measure = (family, size, kind, lineHeight) => {
+      const box = document.createElement('div')
+      box.className = 'case'
+      box.style.font = `${size}px/${lineHeight} "${family}"`
+      box.innerHTML = KINDS[kind]
+        .map((line) => `<span class="t"><span class="probe"></span>${line}</span>`)
+        .join('\n')
+      document.body.append(box)
+      const top = box.getBoundingClientRect().top
+      const out = [box.getBoundingClientRect().height]
+      for (const line of box.querySelectorAll('.t')) {
+        const span = line.getBoundingClientRect()
+        out.push(line.querySelector('.probe').getBoundingClientRect().bottom - top, span.top - top, span.height)
+      }
+      rects[`${family}|${size}|${kind}|${lineHeight}`] = out
+      box.remove()
+    }
+    for (const family of FAMILIES) {
+      for (const size of SIZES) {
+        for (const kind of Object.keys(KINDS)) {
+          measure(family, size, kind, 'normal')
+          if (EXPLICIT.includes(kind)) for (const lineHeight of LINE_HEIGHTS) measure(family, size, kind, lineHeight)
+        }
+      }
+    }
+    document.body.setAttribute('data-rects', JSON.stringify(rects))
+  })
+</script>
+</body>
+</html>

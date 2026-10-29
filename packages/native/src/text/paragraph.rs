@@ -622,6 +622,8 @@ impl InlineText {
             run.font_smoothing = smoothing;
         }
         run.line_height = run_line_height(style, &run.font, run.font_size, base, rem_size, heights);
+        run.normal_line_height =
+            style.line_height.unwrap_or(base.line_height) == gpui::LineHeight::Normal;
         // The lines the text inherits from the boxes around the paragraph
         // stay under the ones the run's own boxes declare.
         if let Some(underline) = style.underline {
