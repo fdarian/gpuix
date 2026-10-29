@@ -55,8 +55,18 @@ body{position:relative}
     'あいう。」えお',
     'あいうえお。「かきくけこ',
     '「あ」「い」「う」「え」',
+    'テストのテキストです',
+    'キスキスキスキス',
+    '日本語のテキストです。これはテスト。',
   ]
-  const WRAPPED = [['Helvetica Neue', [0, 1, 2, 3, 4, 15, 19, 21, 23, 25, 27, 28, 29, 30]], ['Hiragino Sans', [27, 28, 29, 30]]]
+  // The family, the texts and the step of the box widths, from 50 to 300 px.
+  const WRAPPED = [
+    ['Helvetica Neue', [0, 1, 2, 3, 4, 15, 19, 21, 23, 25, 27, 28, 29, 30], 7],
+    ['Hiragino Sans', [27, 28, 29, 30], 7],
+    // Kana that the font kerns, with a line that may end between any two of them.
+    ['Helvetica Neue', [31, 32, 33], 1],
+    ['Menlo', [31, 32, 33], 1],
+  ]
   const OPENING = /^[「『（〈《【〔［｛“‘]$/
   const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
   addEventListener('load', () => {
@@ -95,8 +105,8 @@ body{position:relative}
     }
     // Where the text breaks in a box of each width: the clusters that start a row, and how wide the first of each is (a
     // trimmed opening bracket is whole where a row starts with it, and a closing one is trimmed to make a row fit).
-    for (const [family, indices] of WRAPPED) for (const textIx of indices) {
-      for (let boxWidth = 50; boxWidth <= 300; boxWidth += 7) {
+    for (const [family, indices, step] of WRAPPED) for (const textIx of indices) {
+      for (let boxWidth = 50; boxWidth <= 300; boxWidth += step) {
         const probe = document.createElement('div')
         probe.className = 'wrapped'
         probe.style.font = `14px "${family}"`
