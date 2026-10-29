@@ -558,7 +558,7 @@ function TextEntry({ index, value, events, intrinsic = "auto 40px" }: { index: n
       <div testId={`row-${index}`} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
         <div testId={`bar-${index}`} style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#999999" }} />
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <text style={{ fontSize: 14, color: "#222222" }}>{`Entry ${index}: the sidebar row keeps its fluid hover while the page behind it swaps`}</text>
+          <text style={{ fontSize: 14, lineHeight: "16px", color: "#222222" }}>{`Entry ${index}: the sidebar row keeps its fluid hover while the page behind it swaps`}</text>
         </div>
         <div style={{ display: "flex", flexDirection: "row", gap: 2 }}>
           <div style={{ width: 6, height: 6, backgroundColor: "#dddddd" }} />
@@ -2276,7 +2276,7 @@ describeNative("content a read forced keeps its layout across the draws that ski
           {Array.from({ length: CARDS }, (_, card) => (
             <div key={card} testId={`card-${card}`} style={{ height: 50, width: 160, marginLeft: 30, flexShrink: 0 }}>
               <div testId={`part-${card}`} style={{ height: 20, width: 100, flexShrink: 0 }} />
-              <text style={{ fontSize: 12 }}>{`Card ${card}`}</text>
+              <text style={{ fontSize: 12, lineHeight: "12px" }}>{`Card ${card}`}</text>
             </div>
           ))}
         </div>
