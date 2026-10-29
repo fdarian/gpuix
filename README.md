@@ -3431,6 +3431,12 @@ family or size is a box of its own on the line, and the line is as tall as the s
 every box together need, so a bold span in a regular paragraph can make its line a pixel
 taller. `normal` on a span is the height of the span's font.
 
+Under `lineHeight: 'normal'` a line is also as tall as the font of every glyph on it, as in Chrome: a line of
+Han, kana, Hangul or emoji in Helvetica Neue 13px is the height of the fallback font's line box where the
+font asked for is shorter (a number or a length is not affected). Text in a fallback font has Chrome's
+advances, is set in the font Chrome picks for its script, and fullwidth CJK punctuation is trimmed where two
+marks meet, as `text-spacing-trim: normal` does (there is no property for it).
+
 ### Space around an inline box
 
 `marginLeft`, `marginRight`, `paddingLeft`, `paddingRight`, `borderLeftWidth` and
@@ -3827,10 +3833,12 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 - A line fits as Chrome's line breaker has it: the pieces of the line (one per text node), each ceiled
   to 1/64 of a device pixel from where it starts on the line, add up to at most the width of the box
   cut to 1/64 of a device pixel and one 1/64 more. So a text within a hair of the width of its box
-  breaks where Chrome's does, at both scales. Where a line breaks between two letters that kern
-  (`wordBreak: 'break-all'`, a word cut by `overflowWrap`) Chrome shapes the end of the line again
-  without the kern, and gpuix does not: such a line can hold one letter more than in Chrome, at a
-  width within a fraction of a pixel of the one it fits.
+  breaks where Chrome's does, at both scales. The pieces are added as Blink adds them, each glyph's
+  advance cut to a 65536th of a device pixel and a kern a whole number of them. Where a line breaks
+  between two letters that kern (`wordBreak: 'break-all'`, a word cut by `overflowWrap`, kana the font
+  kerns) Chrome shapes the end of the line again without the kern, and so does gpuix: the line is as
+  wide as its end shaped alone, and has to fit that. A `-` that starts a line does not break from a
+  digit after it (`-20`) unless `break-all`.
 - `break-all` adds the places of Blink's table for it (`kBreakAllLineBreakClassTable`) to the ones
   above: between two letters or numbers (of any script that has them), before a hyphen and an opening
   bracket (`a(b` breaks before the bracket), and after closing punctuation. It does not break before
@@ -6608,7 +6616,7 @@ CSS-like styling via the `style` prop:
 >   style, or pad the parent wrapper. The input clips to its own
 >   `borderRadius` automatically.
 
-**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values, `"inline-table"` among them; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flex`, `flexFlow`, `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `placeItems`, `placeContent`, `placeSelf`, `gap` (one or two lengths), `rowGap`, `columnGap`. Grid: see [Grid](#grid). The shorthands are in [Shorthands](#shorthands)
+**Layout:** `display` (`"flex"` | `"grid"` | `"block"` | `"flow-root"` | `"inline-block"` | `"inline-flex"` | `"inline-grid"` | `"none"` | `"contents"` | the [table](#tables) values, `"inline-table"` among them; the `inline-*` values are [atomic inlines](#inline-block-inline-flex-inline-grid-and-inline-table)), `verticalAlign` (`"baseline"` | `"sub"` | `"super"` | `"text-top"` | `"text-bottom"` | `"middle"` | `"top"` | `"bottom"` | a length | a percentage of the line height; see [Vertical alignment](#vertical-alignment)), `flex`, `flexFlow`, `flexDirection` (`"row"` | `"row-reverse"` | `"column"` | `"column-reverse"`), `flexWrap` (`"nowrap"` | `"wrap"` | `"wrap-reverse"`), `flexGrow`, `flexShrink`, `flexBasis`, `order`, `alignItems` (`"start"` | `"center"` | `"end"` | `"stretch"` | `"baseline"`), `alignSelf`, `alignContent`, `justifyContent` (adds `"space-between"`, `"space-around"` and `"space-evenly"`), `justifyItems`, `justifySelf`, `placeItems`, `placeContent`, `placeSelf`, `gap` (one or two lengths), `rowGap`, `columnGap`. Grid: see [Grid](#grid). The shorthands are in [Shorthands](#shorthands)
 
 **Sizing:** `width`, `height`, `minWidth`, `minHeight`, `maxWidth`, `maxHeight` — accepts pixels (number), any [length](#lengths) or `calc()` (string like `"100%"`, `"20rem"`, `"calc(100% - 2em)"`) or `"auto"`. `width`, `minWidth`, `maxWidth` and `flexBasis` also take the [intrinsic keywords](#intrinsic-widths) `min-content`, `max-content` and `fit-content`, and `flexBasis` `content`. `aspectRatio` is a number or a CSS ratio (`"16 / 9"`, `"1"`) and sizes whichever axis has no definite size
 
@@ -7176,7 +7184,9 @@ direction of its paragraph's container.
 ```
 
 `textAlign`'s `start` (the default) and `end` are the right and the left of the element's own `direction`, and a
-child that declares another `direction` gets its own side, as it does in CSS. Positions and hit tests of text,
+child that declares another `direction` gets its own side, as it does in CSS. A row wider than its box starts at the start
+edge of the box's direction whatever its `textAlign` (the left edge in `ltr`, the right edge in `rtl`), as
+CSS Text 3 §7.1 says. Positions and hit tests of text,
 which the selection, the highlights and the bounds of a `<span>` are made of, follow `textAlign`
 (`'center'` and `'right'` included).
 
