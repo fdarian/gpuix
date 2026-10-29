@@ -1391,6 +1391,13 @@ impl StyleDesc {
             || (&self.motion_scale, &self.scale_x, &self.scale_y, &self.motion_rotate, &self.rotate_z, &self.skew, &self.skew_x, &self.skew_y)
                 != (&other.motion_scale, &other.scale_x, &other.scale_y, &other.motion_rotate, &other.rotate_z, &other.skew, &other.skew_x, &other.skew_y)
             || self.motion_transform != other.motion_transform
+            || (&self.perspective, &self.perspective_origin, &self.transform_style, &self.z, &self.translate_z, &self.transform_perspective)
+                != (&other.perspective, &other.perspective_origin, &other.transform_style, &other.z, &other.translate_z, &other.transform_perspective)
+            || (&self.rotate_x, &self.rotate_y, &self.scale_z, &self.origin_z)
+                != (&other.rotate_x, &other.rotate_y, &other.scale_z, &other.origin_z)
+            // The transform properties read `var()`, and a custom property is inherited: the style of a
+            // descendant that reads it is the same.
+            || self.custom_properties != other.custom_properties
     }
 
     /// [`Self::differs_only_in_paint`] that also lets the custom properties differ. They are read
@@ -1855,6 +1862,17 @@ mod tests {
             ("originX", "1", "2"),
             ("originY", "1", "2"),
             ("motionTransform", r#""scale(2)""#, r#""scale(3)""#),
+            ("perspective", r#""200px""#, r#""300px""#),
+            ("perspectiveOrigin", r#""0 0""#, r#""10px 0""#),
+            ("transformStyle", r#""flat""#, r#""preserve-3d""#),
+            ("z", "1", "2"),
+            ("translateZ", "1", "2"),
+            ("transformPerspective", "100", "200"),
+            ("rotateX", "1", "2"),
+            ("rotateY", "1", "2"),
+            ("scaleZ", "1", "2"),
+            ("originZ", "1", "2"),
+            ("--p", "1", "2"),
         ] {
             assert!(touches(&format!(r#"{{"{key}":{from}}}"#), &format!(r#"{{"{key}":{to}}}"#)), "{key}");
             assert!(!touches(&format!(r#"{{"{key}":{from},"opacity":1}}"#), &format!(r#"{{"{key}":{from},"opacity":0.5}}"#)), "{key}");

@@ -1064,9 +1064,9 @@ impl AnimProp {
     }
 
     /// Whether a change of this property changes the transform the element is seen through: its
-    /// origin included, which only places one.
+    /// origin included, which only places one, and the perspective of the viewer of what is inside it.
     pub(super) fn is_transform_key(self) -> bool {
-        self.is_motion_only() || self.is_css_transform()
+        self.is_motion_only() || self.is_css_transform() || matches!(self, Self::Perspective | Self::PerspectiveOrigin)
     }
 
     /// Whether a value of the property may be a `var()`, which is substituted from the element's custom
