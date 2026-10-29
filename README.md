@@ -1979,7 +1979,7 @@ defineKeyframes('draw', { from: { strokeDashoffset: 180 }, to: { strokeDashoffse
   element it reaches (`r` on a `<div>`, `backgroundColor` on a `<circle>`) is
   ignored, as a browser computes it and never paints it
 - **Where it runs.** On a shape, a group or any other element in the `<svg>`
-  (`style` takes the `animation` properties only, as the shape is painted by its
+  (`style` takes the `animation` and `transition` properties only, as the shape is painted by its
   `<svg>`), and on the `<svg>` itself. The `<svg>`'s values are written on its
   root, so the shapes inherit them as in CSS (`fill`, `stroke`, `strokeWidth`,
   the dash properties and `fontSize` inherit; a shape's own attribute wins over
@@ -1994,17 +1994,35 @@ defineKeyframes('draw', { from: { strokeDashoffset: 180 }, to: { strokeDashoffse
   `ry`, `width` and `height` are `auto`
 - **Events and Web Animations.** `onAnimationStart`, `onAnimationEnd` and the
   rest fire from the shape and bubble, and `getAnimations()` on its ref lists its
-  `CSSAnimation`s, which can be paused, played and sought
+  `CSSAnimation`s and `CSSTransition`s, which play back like any other
+  ([Web Animations](#web-animations))
 - **Paint.** A paint of `none` against a colour swaps halfway, as in Chrome (it
-  does not fade, as in `motion`). A property whose value is `none` or `auto`
-  (a missing endpoint of `strokeDasharray`, `d`, `rx`, `ry`, `width` or
-  `height` included) is discrete against one that has a number, a dash list or
-  a path. Dash lists of different lengths repeat to a common length, and
-  paths blend when their commands match and swap halfway otherwise
+  does not fade, as in `motion`). A keyframe may write `none` or `auto` against a
+  value (`strokeDasharray`, `d`, `rx`, `ry`, `width`, `height`, and a missing
+  endpoint of them): that interval swaps halfway, and each interval of a property
+  with several keyframes decides on its own, so a blend followed by a swap blends
+  first. Dash lists of different lengths repeat to a common length, and
+  paths blend when their commands match (relative commands are made absolute and
+  implicit repeats written out) and swap halfway otherwise. The flags of an arc
+  never decide it: the radii, rotation and end point blend, and each flag is its
+  blend rounded half up
+- **Transitions.** A change of an SVG attribute on a shape or the `<svg>` runs a
+  [CSS transition](#css-transitions) when that element declares one in its
+  `style` (`style={{ transition: 'fill 1s' }}`), for the properties above, as
+  Chrome runs it for the same change of the attribute or of the inline style.
+  Adding an attribute runs from the property's initial value and removing one runs
+  to it. A transition declared in the same update as the change runs it. A shape
+  follows a change of an inherited property above it (`fill`, `strokeWidth`, ...)
+  unless it sets its own, and the `<svg>` transitions the attributes it sets, with
+  its shapes showing the value in between. A property that does not blend (a paint,
+  a dash list or a path against `none`, a path of other commands, `auto` against a
+  length) does not run, and swaps halfway under `transition-behavior: allow-discrete`.
+  `getAnimations()` lists a `CSSTransition` per property with the CSS name
+  (`stroke-dashoffset`), and the events are the ones of a box and bubble to the
+  `<svg>`. A property a `motion` animation drives is not transitioned, as on a box
 
-Not built: CSS transitions of SVG properties (a changed prop jumps; use `motion`
-or an animation), and the attributes that are not CSS properties above
-([deviations](./docs/fork/deviations.md#motion)).
+The attributes that are not CSS properties above are neither keyframed nor
+transitioned ([deviations](./docs/fork/deviations.md#motion)).
 
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
 image every frame. The `<svg>` keeps the image it last painted and drops it from
@@ -2386,7 +2404,10 @@ needs it, then gives it back. A value drives one window at a time.
   a running animation alone, as in Motion; `stop()` ends the animation, and
   `jump(v)` writes the value and ends it. To take over mid-flight, call `stop()`
   and then `set(v)`: the next animation starts from where the value is.
-  `isAnimating()` and `getVelocity()` (numbers only) read the current state.
+  `isAnimating()` is whether the value has an animation, as in Motion: it stays
+  true after the controls' `stop()` and `cancel()` and is false once the animation
+  finishes, the value's own `stop()` or `jump()` runs, or another `animate()`
+  replaces it. `getVelocity()` (numbers only) reads the current speed.
 - **`animate(value, target, transition?)`** takes the same `transition` as
   `motion` (tweens and springs, in seconds) and a `target`. The target may be a
   list of keyframes (`animate(x, [null, 100, 0], { repeat: Infinity })`, see
@@ -2396,11 +2417,23 @@ needs it, then gives it back. A value drives one window at a time.
   - `pause()` holds the value where it is and `play()` goes on from there. The
     animation stays in effect, `isAnimating()` is true and no frame is asked for
     until it plays. `play()` on a finished animation starts it again.
-  - `time` (seconds since the delay ended, up to the end of the last repeat) and
-    `speed` (2 is twice as fast, a negative speed runs backwards and finishes at
-    the first keyframe, 0 holds) read and assign. `duration` is one iteration, a
-    spring's from the time it takes to settle (`Infinity` if it does not in 20 s),
-    and `iterationDuration` adds the delay.
+  - `time` (seconds from the start of the delay, which it counts, and not held at
+    the end: a seek past it reads back as set) and `speed` (2 is twice as fast, a
+    negative speed runs backwards and finishes at the first keyframe) read and
+    assign. A `speed` of 0 holds the value until `play()`, also if the speed is set
+    to another number meanwhile, and the state stays `"running"`. `duration` is one
+    iteration, a spring's from the time it takes to settle (`Infinity` if it does
+    not in 20 s), and `iterationDuration` adds the delay.
+  - `startTime` is milliseconds on the window's clock since it began (`null`
+    before the animation starts, after it finishes and after `stop()` or
+    `cancel()`), set by `play()` and the `time` setter. Only differences are
+    comparable with Motion's, which counts from `performance.now()`.
+  - `attachTimeline(timeline)` hands the clock to a timeline, as Motion does for
+    `scroll()`: the animation no longer follows frames, `timeline.observe(controls)`
+    is called (before the value is bound, when the animation starts) and may pause
+    the controls and set `time`, and the function returned stops them. `play()`
+    gives the frames back. There is no `scroll()`, `useScroll` or `ScrollTimeline`
+    here, so the timeline is one you write.
   - `state` is `"running"`, `"paused"`, `"finished"` or `"idle"`.
   - `stop()` keeps the value and ends the controls for good. `cancel()` takes the
     value back to the first keyframe, and a later `play()` runs it again from
@@ -2412,11 +2445,9 @@ needs it, then gives it back. A value drives one window at a time.
     again. After `stop()`, `cancel()` or a replacement they stay pending, and they
     never reject.
   - Controls used before the value is bound to a window apply when the animation
-    starts; only `duration` and `iterationDuration` throw, as they are not known
-    until then.
+    starts, and `duration` and `iterationDuration` are known at once.
 
-  It differs from Motion in the edges of `time`, `speed`, `isAnimating()` and `finished`, and
-  `startTime` and `attachTimeline` are not built ([deviations](./docs/fork/deviations.md#motion)). A paused
+  It differs from Motion in a few edges ([deviations](./docs/fork/deviations.md#motion)). A paused
   animation holds its value's node, so stop it when its component goes
   (`useEffect(() => () => controls.stop(), [])`).
 - **Lengths.** A motion value reads `"20px"`, `"50%"`, `"2em"`, `"calc(100% - 20px)"`
@@ -3280,9 +3311,15 @@ and the extent changes as they are built.
   when it shows, from the start, and so does the animation of content that was skipped
   from its first frame. `getAnimations()` of an animation that was running when the
   content began to skip reads the live time (`currentTime` follows the clock) and dispatches
-  nothing; of content never built it lists nothing until a geometry read of it has laid it
-  out, where Chrome's `getAnimations()` would style the element and create the animation (and
-  then tell `animationstart` and `animationend` at the reveal). The `motion` and motion values of skipped content show the instant they are
+  nothing. A read of an element in content that was never built (skipped from load, or
+  given an animation while skipped) styles it, as in Chrome: `getAnimations()` of the
+  element, its geometry or its style creates the CSS animations and transitions of the
+  skipped hosts around it. They wait for the next frame, run with the clock while skipped,
+  are the same objects for every later read and after the reveal, and the DOM hears of
+  their starts, iterations and ends after the reveal. A transition a read makes tells
+  `transitionrun` and `transitionstart` at the read and `transitionend` at the reveal.
+  `getAnimations({ subtree: true })` and `document.getAnimations()` do not style anything and
+  list only what a read made. The `motion` and motion values of skipped content show the instant they are
   shown at.
 
 </details>
@@ -4705,6 +4742,9 @@ and `focus` and `blur` (which do not bubble, so only capture listeners hear
 them). One event runs window capture, document capture, the element path,
 document bubble, window bubble. The `onKeyDown` and `onKeyUp` options of
 `render()` are window bubble listeners that also receive the renderer.
+
+`document.getAnimations()` lists the CSS transitions and animations of every
+window ([Web Animations](#web-animations)).
 
 A `window` or `document` listener hears every event that bubbles to the top of
 the tree (pointer, mouse, click, wheel), whether or not any element on the path
@@ -8449,7 +8489,10 @@ render per frame.
   `"background-color"`), `elapsedTime` in seconds and `pseudoElement: ""`. They
   bubble like the DOM (`target` is the transitioning element) and cannot be
   cancelled; `onTransitionEndCapture` and the other `…Capture` props listen in the
-  capture phase
+  capture phase. The events of one time come in
+  Chrome's order: a transition's start follows its own run, and ends come by
+  their time. Transitions on [SVG properties](#css-keyframes-on-svg-properties)
+  fire the same events
 
 ### CSS animations
 
@@ -8547,8 +8590,9 @@ Differences from a browser:
 #### Web Animations
 
 `element.getAnimations()` on a ref returns the element's running CSS transitions,
-then its CSS animations, as `CSSTransition` and `CSSAnimation` objects. A
-transition is listed in the order of the style changes that started them, then by
+then its CSS animations, as `CSSTransition` and `CSSAnimation` objects, then the
+[animations of `motion`](#animations-of-motion) that Motion hands to the browser.
+A transition is listed in the order of the style changes that started them, then by
 property name; animations in the order of `animation-name`. An animation is listed
 while it is before or in its active phase, running back from its end, or held by
 a fill (`forwards`, `both`): one that is paused at the end of its effect without a
@@ -8562,31 +8606,84 @@ animation.currentTime = 250 // the next frame paints it
 await animation.finished // resolves with the animation
 ```
 
-- **Members.** `pause()`, `play()`, `currentTime` (milliseconds, read and set,
-  `null` when idle), `playbackRate` (read and set, negative allowed), `playState`
-  (`idle`, `running`, `paused`, `finished`), `finished`, `animationName` on a
+- **Members.** `pause()`, `play()`, `cancel()`, `finish()`, `reverse()`,
+  `updatePlaybackRate(rate)`, `currentTime` (milliseconds, read and set, `null` when
+  idle), `startTime` (read and set), `playbackRate` (read and set, negative allowed),
+  `playState` (`idle`, `running`, `paused`, `finished`), `pending`, `ready`,
+  `finished`, `effect`, `timeline`, `onfinish`, `oncancel` and the `finish` and
+  `cancel` events (an `Animation` is an event target), `animationName` on a
   `CSSAnimation` and `transitionProperty` (`background-color`) on a `CSSTransition`
 - **Time.** `currentTime` is 0 at the start whatever the delay, which lives inside
-  the effect, and reads the time of the last frame. `pause()` holds it at once,
-  `play()` continues from it at the next frame and starts a finished animation
-  over (from the end when the rate is negative), and setting it seeks at once.
-  After `pause()` or `play()`, `animationPlayState` changes are ignored
-- **`finished`.** Resolves with the animation. It is a new promise once the
-  animation leaves `finished` again. Cancelling (the name leaves `animation`, a
-  transition is replaced, the element goes) rejects the promise that was held with
-  an `AbortError` and leaves the animation `idle`
+  the effect, and reads the time of the last frame. Setting it seeks at once.
+  `pause()` and `play()` wait for the next drawn frame, as in Chrome: `pending` is
+  true and `ready` resolves then, and `play()` continues from the paused time and
+  starts a finished animation over (from the end when the rate is negative).
+  `reverse()` flips the rate at the next frame, `updatePlaybackRate()` changes it at
+  the next frame for a running animation and at once for the others, and `finish()`
+  goes to the end (it throws an `InvalidStateError` for a rate of 0 or an
+  animation that never ends). After `pause()` or `play()`, `animationPlayState`
+  changes are ignored
+- **Timeline.** `animation.timeline` is a `DocumentTimeline` whose `currentTime` is
+  milliseconds on the window's clock at the last frame. `startTime` and the
+  `timelineTime` of the events are on it. There is no `document.timeline`, and the
+  absolute number is not Chrome's: compare differences
+- **Events and promises.** `finish` and `cancel` events and the `ready` and
+  `finished` promises come in Chrome's order. `finished` resolves with the
+  animation and is a new promise once the animation leaves `finished` again.
+  Cancelling (`cancel()`, the name leaves `animation`, a transition is replaced, the
+  element goes) rejects the promise that was held with an `AbortError` and leaves the
+  animation `idle`
 - **A finished transition** keeps `playState: 'finished'` and its end as
   `currentTime`, and drops out of `getAnimations()`, as in Chrome. It can be
   played, paused, sought and given a rate again until the style moves off its end
   value, which cancels it (`idle`). One run back to its start at a negative rate
   stays `finished` and listed, showing the value it started from, until the style
-  changes. Commands on a cancelled animation throw an `InvalidStateError`
-- **Not built.** `cancel()`, `finish()`, `reverse()`, `updatePlaybackRate()`,
-  `ready`, `effect`, `timeline`, `startTime`, `onfinish` and `oncancel`;
-  `getAnimations({ subtree: true })` and `document.getAnimations()` ([deviations](./docs/fork/deviations.md#motion)). Animations of
-  `motion`, `animate` and motion values are not listed. `Animation`, `CSSAnimation`
-  and `CSSTransition` are exported from `@gpuix/react` and `@gpuix/solid`; they
-  cannot be constructed by an app
+  changes
+- **A cancelled animation plays again.** One the style cancelled (the name left
+  `animation`, the property is no longer transitioned or has a new target) or that
+  `cancel()` took back is idle and out of `getAnimations()`, and `play()`, a seek or
+  `finish()` runs it again as in Chrome, whatever the style says, for as long as your
+  code holds the object; letting go of it frees what gpuix kept
+- **`effect`.** A `KeyframeEffect` with `target`, `getKeyframes()` (the keyframes
+  with computed values, the implicit 0% and 100% ones Chrome adds, and each
+  keyframe's easing; a transition's start and end), `getTiming()`,
+  `getComputedTiming()` and `updateTiming()`, which also works on a transition
+  (`endDelay`, `iterationStart`, `iterations`, `direction` and `fill` play) and
+  stays set against a later style. Values are written as Chrome writes them:
+  transforms with the functions they were written with, colours in the space they
+  were written in, shadows, SVG lengths, dash lists and paths. The effect cannot
+  be made or replaced, and there is no `setKeyframes()`, `composite` or
+  `pseudoElement`
+- **`getAnimations({ subtree: true })` and `document.getAnimations()`.** The
+  animations of the element and everything below it, or of every window, in
+  Chrome's order: every transition then every animation, each in document order of
+  the elements. `document` comes from `@gpuix/react` or `@gpuix/solid`
+  ([`window` and `document`](#window-and-document))
+- **Classes.** `Animation`, `CSSAnimation`, `CSSTransition`, `KeyframeEffect` and
+  `DocumentTimeline` are exported from `@gpuix/react` and `@gpuix/solid`; they
+  cannot be constructed by an app. `replaceState`, `persist()`, `commitStyles()`
+  and `onremove` do not exist, and `animation-composition` is not supported
+  ([deviations](./docs/fork/deviations.md#motion))
+
+##### Animations of `motion`
+
+Motion 14.1.0 hands some of what it animates to the browser's Web Animations, and
+`getAnimations()` lists the same where gpuix runs them: the `opacity` and
+`backgroundColor` of a `motion` component, and a `color`, `outlineColor`, SVG `fill`
+or `stroke` whose keyframe is in a syntax only the browser reads (`oklch()`,
+`color-mix()`), unless the transition has `repeatDelay`, `repeatType: 'mirror'` or
+a `damping` of 0. They are plain `Animation`s with Motion's effect (delay, iterations,
+`fill: 'both'`, the easing, a spring as a `linear()` easing), listed from the first
+drawn frame and delisted when they finish, are replaced or their element goes. The
+other keys and standalone motion values are JavaScript in Motion and are not listed.
+
+Every member above works on them as it does on the one Motion makes: the value on
+screen follows the animation, `finish()` completes the motion, `cancel()` shows the
+value it started from and the motion never completes (`onMotionComplete` does not
+fire), `pause()` stops asking for frames, `currentTime`, `playbackRate`,
+`updateTiming()` and `startTime` move it, and a cancelled or finished one plays again
+with `play()`. A `motion` with no `transition` runs gpuix's default (0.3 s `easeOut`
+for every key), not Motion's per-key one ([deviations](./docs/fork/deviations.md#motion)).
 
 > **Note: GPUI defaults text color to black, not white.** Unlike CSS, GPUI does not inherit `color` from parent elements. Every `<text>` element that doesn't set an explicit `color` style will render as black — invisible on dark backgrounds. Always set `color` on your text elements or on a parent `<div>` (which applies `text_color` to all children in that subtree via GPUI's `Styled` trait).
 
