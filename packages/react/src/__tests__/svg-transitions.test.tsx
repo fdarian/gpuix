@@ -13,7 +13,7 @@ import { fileURLToPath } from "url"
 import { createElement, type ReactNode } from "react"
 import { describe, expect, it } from "vitest"
 import type { HostTransitionEvent } from "@gpuix/native/host"
-import { CSSTransition, type PublicInstance } from "../index"
+import { CSSTransition, motion, type PublicInstance } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -361,4 +361,75 @@ describeNative("SVG transition events against Chrome", () => {
       }
     })
   }
+})
+
+describeNative("a motion animation and a CSS transition of the same property", () => {
+  const CSS_ONE_SECOND = "1s linear"
+  const MOTION_TWO_HUNDRED_MS = { duration: 0.2, ease: "linear" } as const
+
+  it("leaves a property the motion animation drives to it, for a box and for a shape alike", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    try {
+      renderer.clockPause()
+      const refs = new Map<string, PublicInstance>()
+      const app = (width: number, r: number, fill: string) => (
+        <div style={{ ...FRAME, display: "flex", flexDirection: "column" }}>
+          <motion.div
+            ref={(node: PublicInstance | null) => {
+              if (node) refs.set("box", node)
+            }}
+            testId="box"
+            style={{ width, height: 10, transition: `width ${CSS_ONE_SECOND}` }}
+            animate={{ width }}
+            transition={MOTION_TWO_HUNDRED_MS}
+          />
+          <svg testId="svg" width={100} height={100} viewBox="0 0 100 100" style={{ width: 100, height: 100 }}>
+            <motion.circle
+              ref={(node: PublicInstance | null) => {
+                if (node) refs.set("shape", node)
+              }}
+              id="shape"
+              cx={50}
+              cy={50}
+              r={r}
+              fill={fill}
+              style={{ transition: `all ${CSS_ONE_SECOND}` }}
+              animate={{ r }}
+              transition={MOTION_TWO_HUNDRED_MS}
+            />
+          </svg>
+        </div>
+      )
+      const frame = (ms: number) => {
+        renderer.clockFastForward(ms)
+        renderer.dispatchNativeEvents()
+      }
+      const radius = () => Number(attributeOf(renderer.getSvgMarkup(renderer.findByTestId("svg")!.id)!, "shape", "r"))
+      const widthNow = () => renderer.getElementBounds(renderer.findByTestId("box")!.id).width
+      const transitions = (id: string) =>
+        refs
+          .get(id)!
+          .getAnimations()
+          .filter((animation): animation is CSSTransition => animation instanceof CSSTransition)
+          .map((animation) => animation.transitionProperty)
+
+      render(app(10, 10, "#ff0000"))
+      frame(0)
+      render(app(110, 30, "#0000ff"))
+      frame(100)
+
+      // The motion animation runs the 200 ms it was given, over the second the CSS transition asks.
+      expect(widthNow(), "box").toBeCloseTo(60, 0)
+      expect(radius(), "shape").toBeCloseTo(20, 1)
+      expect(transitions("box"), "box transitions").toEqual([])
+      // What the motion animation does not drive still transitions.
+      expect(transitions("shape"), "shape transitions").toEqual(["fill"])
+
+      frame(200)
+      expect(widthNow()).toBeCloseTo(110, 0)
+      expect(radius()).toBeCloseTo(30, 1)
+    } finally {
+      unmount()
+    }
+  })
 })
