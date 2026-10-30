@@ -1,0 +1,59 @@
+<!doctype html>
+<!--
+  Oracle for tooltip-chip.test.tsx: the boxes (`[x, y, width, height]` relative to the case box) of every element with an `id`
+  that headless Chrome lays out for the tooltip chip of Fluid Functionalism's rich tooltip, at device scale 1 and 2: a row of
+  a label and a trigger in a card, the trigger's wrapper (`position: relative; display: flex; flex-shrink: 0`), and the
+  chip under it, in the box that gpuix's `<anchored>` is in Chrome: `position: fixed` at the place the trigger puts it, a
+  flex column, sized to its content like any positioned box (`min(max-content, max(min-content, available))`, the
+  available width being what is left of the viewport to the right of the box). The chip has padding 8 and holds a column
+  of two texts with a gap of 4; "Keyboard shortcut" is one line, as wide as its text, and not shrunk to its longest word.
+  The font is `inter-text-subset.ttf` (Inter Variable) at 12px / 16px, semibold `'wght' 550, 'opsz' 18` for the first text.
+  Regenerate (`tooltip-chip-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh tooltip-chip
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: 'Inter Variable'; src: url('inter-text-subset.ttf') format('truetype'); font-weight: 100 900; }
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+body{font:16px/1 sans-serif}
+#case{position:absolute;left:0;top:0;width:700px;font:12px/16px 'Inter Variable';font-optical-sizing:none}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const SEMIBOLD = "font-variation-settings:'wght' 550, 'opsz' 18";
+const TRIM = 'text-box:trim-both cap alphabetic';
+// The card of the demo: a row of a label and a group that holds the trigger's wrapper and, in the place `<anchored>` puts it, the chip.
+const scene = (chip, trigger = 'Save') => `
+<div id="card" style="display:flex;flex-direction:column;padding:20px">
+  <div id="row" style="display:flex;flex-direction:row;align-items:center;gap:16px;min-height:36px">
+    <div style="width:96px;flex-shrink:0"><span>Rich content</span></div>
+    <div id="group" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+      <div id="wrapper" style="position:relative;display:flex;flex-shrink:0">
+        <div id="trigger" style="height:36px;padding:0 16px;display:flex;align-items:center"><span>${trigger}</span></div>
+        <div id="anchor" style="position:fixed;left:132px;top:64px;display:flex;flex-direction:column">${chip}</div>
+      </div>
+    </div>
+  </div>
+</div>`;
+const rich = `<div id="chip" style="position:relative;padding:8px;${TRIM}">
+  <div id="body" style="display:flex;flex-direction:column;gap:4px">
+    <span id="t1" style="${SEMIBOLD}">Keyboard shortcut</span><span id="t2">Ctrl + S</span>
+  </div></div>`;
+const plain = `<div id="chip" style="position:relative;padding:8px;${TRIM}"><span style="white-space:nowrap">Save your changes</span></div>`;
+const cases = {
+  'rich chip': scene(rich),
+  'plain chip nowrap': scene(plain),
+};
+
+document.fonts.load("12px 'Inter Variable'", 'A').then(() => {
+  const out = {};
+  const holder = document.getElementById('scene');
+  for (const [name, html] of Object.entries(cases)) {
+    const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; holder.appendChild(c);
+    const boxes = {}; const cr = c.getBoundingClientRect();
+    for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+    out[name] = { html, boxes, scale: window.devicePixelRatio }; holder.removeChild(c);
+  }
+  const rects = document.createElement('div'); rects.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(rects);
+});
+</script></body></html>

@@ -1,0 +1,116 @@
+{
+ "rich chip": {
+  "html": "\n<div id=\"card\" style=\"display:flex;flex-direction:column;padding:20px\">\n  <div id=\"row\" style=\"display:flex;flex-direction:row;align-items:center;gap:16px;min-height:36px\">\n    <div style=\"width:96px;flex-shrink:0\"><span>Rich content</span></div>\n    <div id=\"group\" style=\"display:flex;flex-direction:row;align-items:center;gap:10px\">\n      <div id=\"wrapper\" style=\"position:relative;display:flex;flex-shrink:0\">\n        <div id=\"trigger\" style=\"height:36px;padding:0 16px;display:flex;align-items:center\"><span>Save</span></div>\n        <div id=\"anchor\" style=\"position:fixed;left:132px;top:64px;display:flex;flex-direction:column\"><div id=\"chip\" style=\"position:relative;padding:8px;text-box:trim-both cap alphabetic\">\n  <div id=\"body\" style=\"display:flex;flex-direction:column;gap:4px\">\n    <span id=\"t1\" style=\"font-variation-settings:'wght' 550, 'opsz' 18\">Keyboard shortcut</span><span id=\"t2\">Ctrl + S</span>\n  </div></div></div>\n      </div>\n    </div>\n  </div>\n</div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    76
+   ],
+   "row": [
+    20,
+    20,
+    660,
+    36
+   ],
+   "group": [
+    132,
+    20,
+    59.7734375,
+    36
+   ],
+   "wrapper": [
+    132,
+    20,
+    59.7734375,
+    36
+   ],
+   "trigger": [
+    132,
+    20,
+    59.7734375,
+    36
+   ],
+   "anchor": [
+    132,
+    64,
+    121.296875,
+    52
+   ],
+   "chip": [
+    132,
+    64,
+    121.296875,
+    52
+   ],
+   "body": [
+    140,
+    72,
+    105.296875,
+    36
+   ],
+   "t1": [
+    140,
+    72,
+    105.296875,
+    16
+   ],
+   "t2": [
+    140,
+    92,
+    105.296875,
+    16
+   ]
+  },
+  "scale": 2
+ },
+ "plain chip nowrap": {
+  "html": "\n<div id=\"card\" style=\"display:flex;flex-direction:column;padding:20px\">\n  <div id=\"row\" style=\"display:flex;flex-direction:row;align-items:center;gap:16px;min-height:36px\">\n    <div style=\"width:96px;flex-shrink:0\"><span>Rich content</span></div>\n    <div id=\"group\" style=\"display:flex;flex-direction:row;align-items:center;gap:10px\">\n      <div id=\"wrapper\" style=\"position:relative;display:flex;flex-shrink:0\">\n        <div id=\"trigger\" style=\"height:36px;padding:0 16px;display:flex;align-items:center\"><span>Save</span></div>\n        <div id=\"anchor\" style=\"position:fixed;left:132px;top:64px;display:flex;flex-direction:column\"><div id=\"chip\" style=\"position:relative;padding:8px;text-box:trim-both cap alphabetic\"><span style=\"white-space:nowrap\">Save your changes</span></div></div>\n      </div>\n    </div>\n  </div>\n</div>",
+  "boxes": {
+   "card": [
+    0,
+    0,
+    700,
+    76
+   ],
+   "row": [
+    20,
+    20,
+    660,
+    36
+   ],
+   "group": [
+    132,
+    20,
+    59.7734375,
+    36
+   ],
+   "wrapper": [
+    132,
+    20,
+    59.7734375,
+    36
+   ],
+   "trigger": [
+    132,
+    20,
+    59.7734375,
+    36
+   ],
+   "anchor": [
+    132,
+    64,
+    124.3046875,
+    24.734375
+   ],
+   "chip": [
+    132,
+    64,
+    124.3046875,
+    24.734375
+   ]
+  },
+  "scale": 2
+ }
+}

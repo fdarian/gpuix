@@ -7320,6 +7320,10 @@ size, since a moving transform lays nothing out.
   transforms around its trigger, and is placed against the trigger's transformed bounding box in the window, as floating-ui
   does with `getBoundingClientRect`. An explicit `position={{ x, y }}` is in window coordinates. `deferred={false}` stays in
   the tree: it is drawn inside the transform and flips against the window in its space.
+- **A popup is as wide as it would be in `body`.** A deferred `<anchored>` is sized like a box whose containing block is
+  the window: `fit-content` of the window's width, so a tooltip chip in a 60px trigger is as wide as its text (up to the
+  window) and not shrunk to its longest word. `deferred={false}` is an absolute box in the tree and is sized in the box
+  of its trigger when that is positioned, as in Chrome.
 - **State styles** (`hover`, `focus`, ...) take every property of this section, `transformStyle` and `backfaceVisibility` included.
 - **Animating.** `transform`, `translate`, `rotate`, `scale`, `transformOrigin`, `perspective` and `perspectiveOrigin` take
   `transition` and `defineKeyframes` like any other (`transformStyle` and `backfaceVisibility` are not animatable). Two
