@@ -115,7 +115,8 @@ export interface WebviewCommand {
   /** `loadURL`, `reload`, `stop`, `goBack`, `goForward`, `executeJavaScript` or
    *  `setFirstResponder`. */
   name: string
-  /** The URL, the code, or `"true"` / `"false"` for the first responder. */
+  /** The URL, the code, or for `setFirstResponder` `"true"`, `"false"`, `"forward"` (Tab) or
+   *  `"backward"` (Shift+Tab). */
   argument?: string | null
 }
 

@@ -7,7 +7,7 @@
 
 **React and Solid** for [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), Zed's GPU UI framework.
 
-Write a React or Solid tree in TypeScript. GPUIX paints it with Metal, DirectX, or Vulkan. No Electron. No web view.
+Write a React or Solid tree in TypeScript. GPUIX paints it with Metal, DirectX, or Vulkan. No Electron. No web view for your UI: a `<webview>` shows a page where you ask for one.
 
 `useState` and JSX still apply. Layout, text, and input go through GPUI, not the DOM.
 
@@ -5970,6 +5970,7 @@ Bash, TOML, YAML, Markdown, HTML, CSS, C.
 | `img`           | Local, data URL, or http(s) raster or SVG images  |
 | `svg`           | Tintable monochrome SVG icons from source or disk |
 | `anchored`      | Positioned overlay                               |
+| `webview`       | A web page in a native view of the window (macOS) |
 | `canvas`        | Custom drawing (planned)                         |
 
 ## Images and icons
@@ -6276,6 +6277,185 @@ but they currently require `--experimental-import-text`. Prefer
 [`readFileSync`](https://nodejs.org/api/fs.html#fsreadfilesyncpath-options) until
 text imports no longer need a runtime flag.
 
+## `<webview>`
+
+`<webview>` shows a web page inside the window, shaped after Electron's tag. The
+page is a system `WKWebView` in a native view that the window composes with the
+GPUI content, so it sits in the layout like any box, scrolls with its container,
+and has your popovers over it. **macOS only**: elsewhere the element is an empty
+box that logs a warning once, and its methods throw.
+
+React:
+
+```tsx
+import { useRef, useState } from 'react'
+import type { WebviewInstance } from '@gpuix/react'
+
+function Browser() {
+  const view = useRef<WebviewInstance>(null)
+  const [title, setTitle] = useState('')
+  return (
+    <div style={{ width: 640, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div onClick={() => view.current!.goBack()}><text>Back</text></div>
+        <text>{title}</text>
+      </div>
+      <webview
+        ref={view}
+        src="https://example.com"
+        style={{ width: 640, height: 400, borderRadius: 8 }}
+        onPageTitleUpdated={(event) => setTitle(event.title!)}
+        onDidFailLoad={(event) => console.error(event.errorCode, event.errorDescription)}
+      />
+    </div>
+  )
+}
+```
+
+Solid:
+
+```tsx
+import { createSignal } from 'solid-js'
+import type { HostElement } from '@gpuix/solid'
+
+function Browser() {
+  let view!: HostElement
+  const [title, setTitle] = createSignal('')
+  return (
+    <div style={{ width: 640, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div onClick={() => view.goBack()}><text>Back</text></div>
+        <text>{title()}</text>
+      </div>
+      <webview
+        ref={view}
+        src="https://example.com"
+        style={{ width: 640, height: 400, borderRadius: 8 }}
+        onPageTitleUpdated={(event) => setTitle(event.title!)}
+        onDidFailLoad={(event) => console.error(event.errorCode, event.errorDescription)}
+      />
+    </div>
+  )
+}
+```
+
+### Loading and scripting
+
+`src` is a full URL. Setting it to another value navigates; removing it leaves
+the page where it is. The element is **300 by 150** unless `style` sizes it, as
+Electron's tag is.
+
+The ref carries Electron's methods:
+
+| Method | Does |
+|--------|------|
+| `loadURL(url)` | Loads a full URL; throws for one without a scheme. Setting `src` does the same, but reports a bad one as `did-fail-load` |
+| `reload()`, `stop()` | |
+| `goBack()`, `goForward()` | |
+| `canGoBack()`, `canGoForward()` | Read the history now |
+| `getURL()`, `getTitle()` | `""` before the first load commits, and for a page with no title |
+| `executeJavaScript(code)` | Runs `code` in the page and returns a `Promise` of the value of its last expression |
+
+```ts
+const links = await view.current!.executeJavaScript(
+  'document.querySelectorAll("a").length',
+)
+```
+
+`executeJavaScript` resolves with what JSON can carry (numbers, strings,
+booleans, `null`, arrays, objects), and with `undefined` for `undefined`. It
+rejects with the message of the error the script throws (`ReferenceError: Can't
+find variable: nope`) and for a result that is not JSON, such as a function. A
+promise it returns is not awaited. Scripts settle in the order they ran.
+
+The page is made when the element is **first painted**, since a native view needs
+the window. `loadURL` and `src` before that wait for it; the other methods throw
+until it exists. A `<webview>` that is never visible never makes a page.
+Unmounting the element destroys the page.
+
+A `file:` URL may read the directory it is in, so a local page's relative
+scripts, styles and images load. Any other URL is requested as given.
+
+### Events
+
+| Event | Props | Payload fields |
+|-------|-------|----------------|
+| `did-start-loading` | `onDidStartLoading` | |
+| `did-stop-loading` | `onDidStopLoading` | Also after a failed load |
+| `did-navigate` | `onDidNavigate` | `url` — a navigation committed |
+| `page-title-updated` | `onPageTitleUpdated` | `title`, `explicitSet` — `true` when the page set it |
+| `did-fail-load` | `onDidFailLoad` | `errorCode`, `errorDescription`, `validatedUrl` |
+
+They fire at the `<webview>` only: they do not bubble, cannot be cancelled, and
+an ancestor's handler never sees them. **`errorCode` is an `NSURLError` code**,
+not a Chromium net error: `-1009` is no connection (Electron: `-106`), `-999` a
+load that was cancelled (`-3`), `-1100` a file that does not exist, `-1002` a
+`src` that is not a URL.
+
+### Layering, clipping and looks
+
+The page and GPUI content layer by **paint order**. What is painted before the
+`<webview>` and overlaps it is drawn under the page; what is painted after it,
+and overlaps it, is drawn over the page. So a popover, a tooltip, a dropdown
+(`<anchored>`) or a later sibling with `position: absolute` shows over the page,
+and a background behind it stays behind. Content that does not overlap the page
+does not matter. Any number of pages work, in the same order.
+
+- **Clipping.** An `overflow` ancestor cuts the page to the rectangle of its
+  box: a page in a scroll container is cut at the container's edge and moves
+  with it in the same frame as the GPUI content beside it. Rounded clips of
+  ancestors do not apply.
+- **Hidden.** `display: none`, `visibility: hidden`, content that
+  `contentVisibility` skips, and a page scrolled wholly out of its container hide
+  the view. The page is kept, with its history and state, and shows again when
+  the element does.
+- **Opacity.** `opacity` on the element and on its ancestors applies to the page.
+- **Corners.** A `borderRadius` that is the same circle on all four corners cuts
+  the page; any other corners leave it square.
+
+Transforms, filters, masks, `clipPath`, blend modes and non-uniform radii do not
+apply to the native view: see [the deviations](./docs/fork/deviations.md#webview-and-window-composition).
+
+### Pointer and wheel
+
+Where the page shows, pointer events go to the page, **and GPUI sees them first**:
+hover, `:active`, a click outside a popup, the focus change of a press and the
+pointer handlers of the `<webview>` and its ancestors all run, then the page gets
+the event (an `<iframe>` would keep them from the parent). Over a popover painted
+above the page, the pointer belongs to the popover only.
+
+The wheel over the page is the page's alone: it scrolls the page and does not
+scroll the container around it. A wheel over GPUI content above the page is GPUI's,
+and goes on to the page below when that content does not use it. The cursor over
+the page is WebKit's.
+
+### Focus and the keyboard
+
+A press on the page focuses the `<webview>` element, as a press on an `<iframe>`
+does: the focused GPUI element blurs, the `<webview>` gets `focus` and
+`focusin`, and the page has the keyboard. `view.focus()` and `view.blur()` do
+the same, and focusing any other element, by click, Tab or `.focus()`, takes the
+keyboard back.
+
+The `<webview>` is a Tab stop like a text control (`tabIndex={-1}` leaves it out of
+the order, and `focus()` still focuses it). Tab from GPUI lands on the first
+tabbable element in the page and Shift+Tab on its last. Tab past the last one,
+or Shift+Tab before the first, leaves the page for the next element in the
+window.
+
+Keys typed into the page are the page's: no `keydown` reaches the `<webview>` or
+`window`. It never dims under [`keyboardFocusDim`](#focus-styles), since a page is
+content and not a control; `style={{ keyboardFocusDim: true }}` makes it dim.
+
+### Testing a page
+
+The test renderer opens no web engine. A page is scripted: `getWebviewCommands(id)`
+lists what the element asked of it, `simulateWebviewNavigate`, `…Title`,
+`…StartLoading`, `…StopLoading`, `…Fail` make it report, `settleWebviewScript`
+answers a script, and `setWebviewHistory` sets the history. `getWebviewSurface(id)`
+reads where the last frame put the page (position, clip, opacity, corner radius,
+layer) and `getCompositionLayers()` lists the layers of the frame.
+
 ## Supported Events
 
 | Event | Props | Payload fields |
@@ -6305,6 +6485,7 @@ text imports no longer need a runtime flag.
 | Layout | `onLayout` | `width`, `height`, `x`, `y` — any element a `ResizeObserver` works on (`<div>`, `<text>`, `<input>`, `<img>`, `<svg>` and the other built-in elements). See also `ResizeObserver` and `IntersectionObserver` under [Measure an element](#measure-an-element) |
 | Change | `onChange` | `value`, `inputType`, `data`, `isComposing` — `<input>` and `<textarea>` only, once per edit like the DOM `input`. See [The change event](#the-change-event) |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
+| Webview | `onDidStartLoading`, `onDidStopLoading`, `onDidNavigate`, `onPageTitleUpdated`, `onDidFailLoad` | `url`, `title`, `explicitSet`, `errorCode`, `errorDescription`, `validatedUrl` — `<webview>` only, at the element, not bubbling. See [`<webview>`](#webview) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
 | Show more | `onShowMore` | `value` (hidden line count) — `<diff>` only |
 | Line click | `onLineClick` | `value`, `oldLine`, `newLine` — `<diff>` only |
@@ -8339,6 +8520,8 @@ Tab  ► [ Save ]  (dim New)  (dim Search)  (dim input)
   `focusVisible` still dims while another control has focus
 - `style.keyboardFocusDim: false` keeps one element at full opacity.
   `Select.Content` and `Dialog.Popup` set it
+- A [`<webview>`](#webview) never dims, since a page is content and not a
+  control. `style.keyboardFocusDim: true` makes it dim
 
 ```tsx
 <div tabIndex={0} style={{

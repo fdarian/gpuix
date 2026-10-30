@@ -2041,7 +2041,7 @@ export interface WebviewProps extends HostProps {
   /** The title changed: `event.title`, and `event.explicitSet` when the page set it. */
   onPageTitleUpdated?: (event: DomEvent) => void
   /** A load failed: `event.errorCode` (an `NSURLError` code, not a Chromium net error),
-   *  `event.errorDescription` and `event.validatedURL`. */
+   *  `event.errorDescription` and `event.validatedUrl`. */
   onDidFailLoad?: (event: DomEvent) => void
 }
 
