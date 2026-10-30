@@ -1538,7 +1538,7 @@ other table properties, and `pointerEvents`: an unset one starts from the parent
 
 ### Targets and timing
 
-Any `StyleDesc` longhand whose value is a number, a length, a colour or a shadow
+Any `StyleDesc` longhand whose value is a number, a length, a colour, a filter list or a shadow
 list can be animated, in `animate`, `initial` and `exit`:
 
 | Target | Range or unit |
@@ -1562,6 +1562,7 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `textDecorationThickness` | `auto`, `from-font`, or any length or percentage; a negative one paints a device pixel, as zero does |
 | `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour GPUIX parses |
 | `boxShadow` | one shadow or a list |
+| `filter` | `none` or a list of `blur()`, `brightness()`, `contrast()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`, `sepia()` and `drop-shadow()`; see below |
 
 `padding`, `margin`, `inset`, `borderWidth`, `borderColor`, `borderRadius`, `gap` and `flex` are shorthands that
 expand to their longhands, so `animate={{ borderRadius: 8 }}` also overrides a
@@ -1711,6 +1712,25 @@ The **transition** uses seconds, like Motion for React:
 | `duration` | `0.3` | Non-negative seconds |
 | `delay` | `0` | Non-negative seconds |
 | `ease` | `"easeOut"` | `"linear"`, `"ease"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `[x1, y1, x2, y2]`, or a CSS timing function string (`"ease-in"`, `"steps(4, jump-start)"`, `"linear(0, 0.25 75%, 1)"`) |
+
+**`filter` blends as the Filter Effects spec says.** Two lists with the same functions at the same
+positions blend function by function (a blur radius as a length, `hue-rotate()` as an angle,
+`drop-shadow()` by offset, radius and colour). A shorter list is padded with the identity of each missing
+function (`blur(0)`, `brightness(1)`, `grayscale(0)`, ...), and `none` is the empty list, so `none` to
+`blur(4px) brightness(1.5)` blends both functions from their identity. Lists that name different functions
+at some position flip at the halfway point of the eased progress. Blur, brightness, contrast and
+saturate stay at zero or above under a spring's overshoot, and the amounts of the 0 to 1 functions are held
+to that range. The same rules hold for CSS transitions, CSS keyframes, Web Animations and Motion keys, and a
+filter animation is paint only, so it patches. A `url()` filter does not animate.
+
+**A target's own `transition`** is Motion's: `animate`, `exit`, a variant and each `while*` target take a
+`transition` beside their keys (`exit={{ scale: 0.6, transition: { duration: 0.1 } }}`). It replaces the
+component's `transition` as a whole for the keys of that target (there is no `inherit`), and the rules
+below then run on it, so a target whose transition holds only a `delay` keeps the default of each key.
+A target without one plays with the component's. `exit` plays with its own, never `animate`'s; the way back
+out of a `while*` plays with `animate`'s own, not the gesture's. `initial` accepts a `transition` and ignores
+it, as Motion does. A list of variant names plays all of them with the last transition among them (Motion
+gives each name's keys that name's transition).
 
 **Per-property transitions** use Motion's shape. A property uses
 `transition[property]`, then `transition.default`, then the curve fields at the
@@ -2357,8 +2377,9 @@ has none. An `exit` function is only called inside an `AnimatePresence`.
 </AnimatePresence>
 ```
 
-Variants do not exist in GPUIX, so `exit` is either a target or a function of
-`custom` that returns one.
+`exit` is a target, a variant name, or a function of `custom` that returns one. A target
+carries its own `transition` (`exit={{ opacity: 0, transition: { duration: 0.1 } }}`), which
+replaces the component's for the exit.
 
 `motion.div` accepts **`onMotionComplete`**. It runs when the current native
 target settles. If React changes the target before an older completion reaches
