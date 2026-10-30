@@ -1714,8 +1714,28 @@ The **transition** uses seconds, like Motion for React:
 
 **Per-property transitions** use Motion's shape. A property uses
 `transition[property]`, then `transition.default`, then the curve fields at the
-top level, then the 0.3 s `easeOut` tween. Each level replaces the next as a
-whole, it is never merged, and every property keeps its own `delay`.
+top level. Each level replaces the next as a whole, it is never merged, and every
+property keeps its own `delay`.
+
+**The default transition** is Motion's, per key. A property whose transition
+describes no curve (there is none, or it holds only `delay`, `repeat`, `repeatType`
+and `repeatDelay`) runs:
+
+| Keys | Default |
+|---|---|
+| More than two keyframes, any key | `easeOut` over 0.8 s |
+| `x`, `y`, `z`, `translateX`, `translateY`, `translateZ`, `rotate`, `rotateX`, `rotateY`, `rotateZ`, `skew`, `skewX`, `skewY`, `transformPerspective` | a spring: stiffness 500, damping 25, rest speed 10 |
+| `scale`, `scaleX`, `scaleY` | a spring: stiffness 550, damping 30 (critically damped, `2 * sqrt(550)`, towards 0) |
+| everything else (`opacity`, `width`, colours, `scaleZ`, ...) | `cubic-bezier(0.25, 0.1, 0.35, 1)` over 0.3 s |
+
+Any other field, `type` or `ease` or `duration` among them, makes the transition
+describe the curve, and the curve fields you leave out take their usual defaults
+(a tween of 0.3 s with `easeOut`, a spring of stiffness 100). As in Motion, a
+transition that has an entry for another key, `{ x: { duration: 0.5 } }`, counts as
+describing the curve of the keys it has no entry for, so they run the 0.3 s `easeOut`
+tween; a `delay` beside `default` or an entry is not inherited by it. The `transition`
+of a variant or a gesture target replaces the component's as a whole. `animate(value,
+target)` on a motion value is a key with no name: never a spring.
 
 ```tsx
 <motion.div
@@ -8682,8 +8702,8 @@ screen follows the animation, `finish()` completes the motion, `cancel()` shows 
 value it started from and the motion never completes (`onMotionComplete` does not
 fire), `pause()` stops asking for frames, `currentTime`, `playbackRate`,
 `updateTiming()` and `startTime` move it, and a cancelled or finished one plays again
-with `play()`. A `motion` with no `transition` runs gpuix's default (0.3 s `easeOut`
-for every key), not Motion's per-key one ([deviations](./docs/fork/deviations.md#motion)).
+with `play()`. A `motion` with no `transition` runs Motion's default for each key
+(see [Targets and timing](#targets-and-timing)).
 
 > **Note: GPUI defaults text color to black, not white.** Unlike CSS, GPUI does not inherit `color` from parent elements. Every `<text>` element that doesn't set an explicit `color` style will render as black — invisible on dark backgrounds. Always set `color` on your text elements or on a parent `<div>` (which applies `text_color` to all children in that subtree via GPUI's `Styled` trait).
 
