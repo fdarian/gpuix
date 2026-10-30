@@ -2578,9 +2578,10 @@ yourself.
 
 ### Layout animations
 
-`layout` on a `motion.div` makes the box glide to its new position when layout
-moves it, instead of jumping: a sibling pushed down by a growing accordion, a
-list that reorders. `layoutId` shares a glide between elements.
+`layout` on a `motion.div` makes the box glide to its new position and size when
+layout changes them, instead of jumping: a sibling pushed down by a growing
+accordion, a list that reorders, a card that grows. `layoutId` shares a glide
+between elements.
 
 ```tsx
 import { LayoutGroup, motion } from '@gpuix/react'
@@ -2614,15 +2615,25 @@ function Tabs({ tabs, active, onSelect }) {
 
 `@gpuix/solid` takes the same props.
 
-- **`layout`** is `true`, `"position"`, `"size"` or `false`. Where the box
-  would land, it starts from where it was last drawn, with the speed it had,
-  and eases to the layout position. Hit testing follows what is drawn. A box
-  inside another `layout` box is not moved twice, and scrolling is not read as
-  a move.
+- **`layout`** is `true`, `"position"`, `"size"` or `false`. `true` animates
+  the position and the size, `"position"` only the corner (the size snaps) and
+  `"size"` only the size (the corner snaps; a move alone glides nothing). Where
+  the box would land, it starts from the box it was last drawn as, with the
+  speed it had, and eases to the layout box. Hit testing and `getBoundingClientRect`
+  follow what is drawn. A move glides when it is measured at a commit, that is,
+  when the tree changed (a React render or a Solid update), as in Motion: a box
+  that layout moves because an animation above it ticked, such as a region
+  whose height springs, or because scroll anchoring adjusted, goes along with
+  it and starts no glide. Scrolling is not read as a move either.
+- **A size glide is a scale** of the box about its centre, as Motion's
+  projection does it, so layout is not run again on a tick. The box's own
+  `borderRadius` and `boxShadow` are corrected by the scale and keep the size
+  asked for. A `layout` box inside it is shown at its own layout box and is not
+  stretched; everything else inside it is stretched along with it, text included.
 - **`layoutId`** hands the glide to the next element with the same id: an
-  element that appears with an id some other element held starts from where
-  that one was last shown. It implies `layout`; `layout={false}` turns both
-  off. An element that unmounts is remembered for one frame, so the newcomer
+  element that appears with an id some other element held starts from the box
+  that one was last shown as, position and size. It implies `layout`;
+  `layout={false}` turns both off. An element that unmounts is remembered for one frame, so the newcomer
   has to mount in the same commit or the next one.
 - **`transition`** is `transition.layout` if set, else the `transition` of the
   component or of the nearest [`MotionConfig`](#motionconfig-and-reduced-motion),
@@ -2642,11 +2653,12 @@ function Tabs({ tabs, active, onSelect }) {
 
 Differences from Motion for React:
 
-- Only position glides. A size change snaps: the glide is an offset, and GPUIX
-  does not scale a box with a transform and correct its children, as Motion's
-  FLIP does, while re-laying out every frame would flash. `layout="size"`
-  therefore does nothing on its own; with a `layoutId` it still moves the box.
-  `"preserve-aspect"` is not supported ([deviations](./docs/fork/deviations.md#motion)).
+- `"preserve-aspect"` is not supported, and a box that holds a `layoutId` does
+  not crossfade with the one it replaces or mix their border radii: the newcomer
+  is shown as the old box from the first frame, and the old one stays as it is
+  ([deviations](./docs/fork/deviations.md#motion)).
+- A `boxShadow` of several shadows is corrected shadow by shadow, where Motion
+  leaves a list uncorrected.
 - The element that held a `layoutId` is not hidden when another takes the id.
   If both stay mounted the newcomer glides from the old one, and the old one
   stays where it is. Unmount it or set its `opacity` yourself, as in the tabs
