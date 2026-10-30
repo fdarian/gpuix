@@ -64,8 +64,14 @@ impl Row {
 ///
 /// `own_text` is the bytes of `range` that the box holds itself: its baseline is that of
 /// the text there, which a `vertical-align` of the box has moved from the row's.
-pub fn rows(layout: &TextLayout, range: &Range<usize>, font_size: Pixels, own_text: &[Range<usize>]) -> Vec<Row> {
-    let rows = range_rows(layout, range);
+pub fn rows(
+    layout: &TextLayout,
+    range: &Range<usize>,
+    font_size: Pixels,
+    own_text: &[Range<usize>],
+    is_placeholder: bool,
+) -> Vec<Row> {
+    let rows = range_rows(layout, range, is_placeholder);
     if rows.is_empty() {
         return Vec::new();
     }
@@ -109,7 +115,7 @@ fn own_baseline(
 /// before it. A fragment in the middle, or one that continues onto another line,
 /// is as wide as its line's part of the range.
 pub fn border_box_rows(layout: &TextLayout, range: &Range<usize>, edges: &BoxEdges) -> Vec<Bounds<Pixels>> {
-    border_box(rows(layout, range, edges.font_size(), edges.own_text()), edges.at(layout))
+    border_box(rows(layout, range, edges.font_size(), edges.own_text(), edges.is_placeholder()), edges.at(layout))
 }
 
 /// [`border_box_rows`] of `rows`.
@@ -130,10 +136,14 @@ pub fn border_box(rows: Vec<Row>, edges: Edges) -> Vec<Bounds<Pixels>> {
 pub fn inside(mut rows: Vec<Bounds<Pixels>>, edges: Edges) -> Vec<Bounds<Pixels>> {
     if let Some(first) = rows.first_mut() {
         first.origin.x += edges.start;
-        first.size.width = (first.size.width - edges.start).max(Pixels::ZERO);
+        first.size.width -= edges.start;
     }
     if let Some(last) = rows.last_mut() {
-        last.size.width = (last.size.width - edges.end).max(Pixels::ZERO);
+        last.size.width -= edges.end;
+    }
+    // Clamped once both are off: a negative margin makes the margin box narrower than the start edge.
+    for row in &mut rows {
+        row.size.width = row.size.width.max(Pixels::ZERO);
     }
     rows
 }

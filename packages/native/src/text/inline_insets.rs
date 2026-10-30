@@ -201,6 +201,8 @@ pub struct InsetSpec {
     spaces: Vec<BoxSpace>,
     /// The font size of every box, which sets the content area of its fragments.
     font_sizes: HashMap<u64, Pixels>,
+    /// The boxes that hold nothing but their placeholder ([`super::empty_box`]).
+    placeholders: HashSet<u64>,
     /// The bytes of text that belong to each box itself, not to a box inside it and not to an
     /// atomic inline: where its baseline is, which a `vertical-align` moves.
     own_text: HashMap<u64, Vec<Range<usize>>>,
@@ -282,10 +284,17 @@ impl InsetSpec {
                 }
             }
         }
+        let placeholders = paragraph
+            .pieces
+            .iter()
+            .filter(|piece| piece.placeholder)
+            .filter_map(|piece| piece.boxes.last().copied())
+            .collect();
         Rc::new(Self {
             boxes: paragraph.boxes.clone(),
             spaces,
             font_sizes,
+            placeholders,
             own_text,
             memo: RefCell::new(None),
         })
@@ -377,6 +386,12 @@ impl BoxEdges {
         self.spec.font_sizes[&self.id]
     }
 
+    /// Whether the box holds nothing but its placeholder: its fragment has no width when its space
+    /// has none.
+    pub fn is_placeholder(&self) -> bool {
+        self.spec.placeholders.contains(&self.id)
+    }
+
     /// The bytes of the text the box holds itself, see [`InsetSpec`].
     pub fn own_text(&self) -> &[Range<usize>] {
         self.spec.own_text.get(&self.id).map_or(&[], Vec::as_slice)
@@ -454,6 +469,13 @@ fn space_of(
         padding_bottom: padding(style.padding_bottom, padding_below.bottom),
         border: border_widths(style, colors, lengths),
     }
+}
+
+/// Whether `style` gives a box padding, border or margin along the line, which an inline box
+/// with no content needs a placeholder for. Zero is zero in every unit, so the lengths are
+/// resolved against the initial ones.
+pub(super) fn declares_inline_space(style: &StyleDesc, colors: &ColorContext, lengths: &LengthContext) -> bool {
+    space_of(style, 0, &(0..0), colors, lengths).takes_space_along_the_line()
 }
 
 /// The width of each border side of a box in px.

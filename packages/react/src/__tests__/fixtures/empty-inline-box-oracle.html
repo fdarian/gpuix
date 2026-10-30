@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+  Oracle for empty-inline-box.test.tsx: the boxes (`[x, y, width, height]` relative to the 300px case box) of every element
+  with an `id` that headless Chrome lays out for an empty `<span>` with margin, border or padding along the line (it takes
+  space and makes a line of the strut's height, line_breaker.cc) and for one that takes none, at device scale 1 and 2:
+  alone in a block, before, between and after text, between spaces, at a wrap point, nested and side by side,
+  with a font and a line height of its own, in a table cell and in an inline-block, and under `text-align`. The
+  text is GpuixTestSquare (20px, whole em ascent, no descent, see text-baseline-oracle.html), and every character,
+  the space too, is a square 20px wide. Regenerate (`empty-inline-box-oracle.json` and `-x2.json`) with
+
+    sh dsf-oracle.sh empty-inline-box
+-->
+<html><head><meta charset="utf-8"><style>
+@font-face { font-family: GpuixTestSquare; src: url(gpuix-test-square.ttf); }
+*{box-sizing:border-box;margin:0;padding:0;border:0 solid transparent}
+#case{position:absolute;left:0;top:0;width:300px;font:20px/20px GpuixTestSquare;color:#000}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const P = '<span id="p">AA</span>';
+const Q = '<span id="q">AA</span>';
+const cases = {};
+const add = (name, html) => { if (cases[name]) throw new Error('duplicate ' + name); cases[name] = html; };
+
+// The boxes that take space along the line, and the ones that do not.
+const BOXES = {
+  'padding': '<span id="x" style="padding:0 5px"></span>',
+  'a border': '<span id="x" style="border-left-width:2px;border-left-style:solid"></span>',
+  'a border on both sides': '<span id="x" style="border-width:0 3px;border-style:solid"></span>',
+  'a margin': '<span id="x" style="margin:0 5px"></span>',
+  'a margin on one side': '<span id="x" style="margin-right:7px"></span>',
+  'a negative margin': '<span id="x" style="margin:0 -4px 0 10px"></span>',
+  'padding, border and margin': '<span id="x" style="padding:3px 5px;border:2px solid;margin:0 4px"></span>',
+  'a percentage padding': '<span id="x" style="padding:0 10%"></span>',
+  'padding and a background': '<span id="x" style="padding:0 5px;background:#0f0"></span>',
+  'a larger font and padding': '<span id="x" style="padding:0 5px;font-size:40px;line-height:40px"></span>',
+  'a smaller line height and padding': '<span id="x" style="padding:0 5px;line-height:10px"></span>',
+  'vertical-align top and padding': '<span id="x" style="padding:0 5px;vertical-align:top;line-height:30px"></span>',
+  'vertical padding only': '<span style="padding:5px 0;border-top:2px solid"></span>',
+  'nothing': '<span></span>',
+};
+const WIDE = ['padding', 'a border', 'a margin', 'padding, border and margin', 'a larger font and padding'];
+
+for (const [name, box] of Object.entries(BOXES)) {
+  add(`${name} alone`, `<div id="d">${box}</div>`);
+  add(`${name} alone in a div with padding`, `<div id="d" style="padding:4px 3px 7px">${box}</div>`);
+  add(`${name} before text`, `<div id="d">${box}${Q}</div>`);
+  add(`${name} after text`, `<div id="d">${P}${box}</div>`);
+  add(`${name} between text`, `<div id="d">${P}${box}${Q}</div>`);
+  add(`${name} between text and a space`, `<div id="d">${P}${box} ${Q}</div>`);
+  add(`${name} between a space and text`, `<div id="d">${P} ${box}${Q}</div>`);
+  add(`${name} between spaces`, `<div id="d">${P} ${box} ${Q}</div>`);
+  add(`${name} between whitespace alone`, `<div id="d"> ${box} </div>`);
+  add(`${name} between letters of one word`, `<div id="d"><span id="p">A</span>${box}<span id="q">A</span></div>`);
+  add(`${name} after a block`, `<div id="d"><div id="a">A</div>${box}</div>`);
+  add(`${name} between blocks`, `<div id="d"><div id="a">A</div>${box}<div id="b">A</div></div>`);
+  add(`${name} centered`, `<div id="d" style="text-align:center">${P}${box}${Q}</div>`);
+  add(`${name} centered alone`, `<div id="d" style="text-align:center">${box}</div>`);
+  add(`${name} right aligned alone`, `<div id="d" style="text-align:right">${box}</div>`);
+  add(`${name} with a line height`, `<div id="d" style="line-height:30px">${P}${box}${Q}</div>`);
+  add(`${name} in a div that does not wrap`, `<div id="d" style="white-space:nowrap;width:60px">${P} ${box} ${Q}</div>`);
+  add(`${name} in pre`, `<div id="d" style="white-space:pre">${P}  ${box}  ${Q}</div>`);
+  add(`${name} in an inline-block`, `<div id="line">${P}<span id="i" style="display:inline-block">${box}</span>${Q}</div>`);
+  add(`${name} in a flex item`, `<div id="line" style="display:flex"><div id="i">${box}</div>${Q}</div>`);
+  add(`${name} as a flex item`, `<div id="line" style="display:flex;align-items:baseline"><div id="p">A</div>${box}</div>`);
+}
+
+// Where the line breaks. The box is 30px wide (padding 15px), the text 20px a character.
+const WIDE_BOX = '<span id="x" style="padding:0 15px"></span>';
+const BIG_BOX = '<span id="x" style="padding:0 15px;font-size:30px;line-height:30px"></span>';
+for (const width of [80, 90, 100, 110, 120, 130, 150, 170]) {
+  const w = `style="width:${width}px"`;
+  for (const [boxName, box] of [['a box', WIDE_BOX], ['a box of a larger font', BIG_BOX]]) {
+    add(`${boxName} at a wrap point after a space, ${width}px`, `<div id="d" ${w}><span id="p">AAAA</span> ${box}<span id="q">AAAA</span></div>`);
+    add(`${boxName} at a wrap point before a space, ${width}px`, `<div id="d" ${w}><span id="p">AAAA</span>${box} <span id="q">AAAA</span></div>`);
+    add(`${boxName} at a wrap point between spaces, ${width}px`, `<div id="d" ${w}><span id="p">AAAA</span> ${box} <span id="q">AAAA</span></div>`);
+    add(`${boxName} inside a word, ${width}px`, `<div id="d" ${w}><span id="p">AAAA</span>${box}<span id="q">AAAA</span></div>`);
+    add(`${boxName} after a hyphen, ${width}px`, `<div id="d" ${w}><span id="p">AAA-</span>${box}<span id="q">AAAA</span></div>`);
+    add(`${boxName} before the last word, ${width}px`, `<div id="d" ${w}><span id="p">AA</span> ${box}<span id="q">AAAA</span> <span id="r">AA</span></div>`);
+    add(`two boxes at a wrap point, ${width}px (${boxName})`, `<div id="d" ${w}><span id="p">AAAA</span> ${box}<span id="y" style="padding:0 5px"></span><span id="q">AAAA</span></div>`);
+  }
+}
+
+// Nested boxes and boxes side by side.
+add('nested, the inner one with padding', `<div id="d">${P}<span id="o"><span id="x" style="padding:0 5px"></span></span>${Q}</div>`);
+add('nested, the outer one with padding', `<div id="d">${P}<span id="x" style="padding:0 5px"><span></span></span>${Q}</div>`);
+add('nested, both with padding', `<div id="d">${P}<span id="x" style="padding:0 5px"><span id="y" style="padding:0 3px"></span></span>${Q}</div>`);
+add('nested, both with padding and a border', `<div id="d">${P}<span id="x" style="padding:0 5px;border:2px solid"><span id="y" style="padding:0 3px;margin:0 1px"></span></span>${Q}</div>`);
+add('nested, three deep', `<div id="d">${P}<span id="x" style="padding:0 5px"><span id="y" style="padding:0 3px"><span id="z" style="padding:0 2px"></span></span></span>${Q}</div>`);
+add('nested alone, the inner one with padding', `<div id="d"><span id="o"><span id="x" style="padding:0 5px"></span></span></div>`);
+add('nested alone, both with padding', `<div id="d"><span id="x" style="padding:0 5px"><span id="y" style="padding:0 3px"></span></span></div>`);
+add('nested, the outer one with a larger font', `<div id="d">${P}<span id="o" style="font-size:40px;line-height:40px"><span id="x" style="padding:0 5px"></span></span>${Q}</div>`);
+add('two boxes side by side', `<div id="d">${P}<span id="x" style="padding:0 5px"></span><span id="y" style="padding:0 3px"></span>${Q}</div>`);
+add('two boxes side by side alone', `<div id="d"><span id="x" style="padding:0 5px"></span><span id="y" style="margin:0 3px"></span></div>`);
+add('a box with and a box without space side by side', `<div id="d">${P}<span id="x" style="padding:0 5px"></span><span></span>${Q}</div>`);
+add('a box beside text in its parent', `<div id="d"><span id="o" style="padding:0 2px">AA<span id="x" style="padding:0 5px"></span>AA</span></div>`);
+add('a box at the start of a padded parent', `<div id="d"><span id="o" style="padding:0 2px"><span id="x" style="padding:0 5px"></span>AA</span></div>`);
+add('a box at the end of a padded parent', `<div id="d"><span id="o" style="padding:0 2px">AA<span id="x" style="padding:0 5px"></span></span></div>`);
+
+// Table cells.
+const cell = (inner, style = '') => `<table id="t" style="border-spacing:0;border-collapse:separate"><tr id="r"><td id="v" style="vertical-align:baseline;${style}">${inner}</td></tr></table>`;
+for (const [name, box] of Object.entries(BOXES).filter(([name]) => WIDE.includes(name) || name === 'nothing' || name === 'vertical padding only')) {
+  add(`${name} in a table cell`, cell(box));
+  add(`${name} in a table cell with padding`, cell(box, 'padding:4px 3px 7px'));
+  add(`${name} in a table cell beside a cell with text`, `<table id="t" style="border-spacing:0;border-collapse:separate"><tr id="r"><td id="a" style="vertical-align:baseline;padding-bottom:6px">${P}</td><td id="v" style="vertical-align:baseline">${box}</td></tr></table>`);
+  add(`${name} in a table cell after text`, cell(P + box));
+  add(`${name} in an inline-table`, `<div id="line">${P}<table id="t" style="display:inline-table;border-spacing:0;border-collapse:separate"><tr id="r"><td id="v" style="vertical-align:baseline">${box}</td></tr></table>${Q}</div>`);
+}
+
+document.fonts.load('20px GpuixTestSquare').then(() => {
+const out = {};
+const scene = document.getElementById('scene');
+for (const [name, html] of Object.entries(cases)) {
+  const c = document.createElement('div'); c.id = 'case'; c.innerHTML = html; scene.appendChild(c);
+  const boxes = {}; const cr = c.getBoundingClientRect();
+  for (const el of c.querySelectorAll('[id]')) { const r = el.getBoundingClientRect(); boxes[el.id] = [r.left - cr.left, r.top - cr.top, r.width, r.height]; }
+  out[name] = { html, boxes }; scene.removeChild(c);
+}
+const holder = document.createElement('div'); holder.setAttribute('data-rects', JSON.stringify(out)); document.body.appendChild(holder);
+});
+</script></body></html>

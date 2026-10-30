@@ -66,6 +66,10 @@ pub struct RunStyle {
     /// nor the text of a box to an atomic inline, so it is a run of its own with
     /// the lines of none of the boxes around it.
     pub atomic: bool,
+    /// The placeholder of an empty inline box that takes space along the line
+    /// ([`super::empty_box`]). It is shaped as no text, so it keeps the box's font and line height and
+    /// none of its decorations: CSS draws a line under text, and there is none.
+    pub placeholder: bool,
     /// The [`OpacityGroup`] the run is painted in: the id of the innermost box around it whose
     /// `opacity` is below one, or `0`.
     pub group: u64,
@@ -164,6 +168,9 @@ pub struct BoxStyle {
     pub decorates: bool,
     /// Whether the box declares a strike-through, which is drawn by the ascent of its font.
     pub strikes: bool,
+    /// The box holds nothing but its placeholder ([`RunStyle::placeholder`]). It is always listed
+    /// to the line layout: its strut and its content area are the box's.
+    pub empty: bool,
 }
 
 /// The runs of `paragraph`, covering its text exactly, one per text node. Empty when no box
@@ -332,6 +339,16 @@ pub fn styles(
             }
         }
         style.group = group;
+        if piece.placeholder {
+            style.placeholder = true;
+            style.underline = None;
+            style.strikethrough = None;
+            style.overline = None;
+            style.extra_decorations.clear();
+            if let Some(known) = piece.boxes.last().and_then(|last| boxes.iter_mut().find(|known| known.id == *last)) {
+                known.empty = true;
+            }
+        }
         if piece.atomic.is_some() {
             style = RunStyle {
                 len: piece.range.len(),
@@ -380,6 +397,7 @@ fn note_box(
             declares_wrap,
             decorates,
             strikes,
+            empty: false,
         });
     }
 }
@@ -417,6 +435,7 @@ pub fn listed_boxes(
     let fonts_differ = boxes.iter().any(|style| style.style.changes_strut());
     let needs_listing = |style: &BoxStyle| {
         mixed_wrap
+            || style.empty
             || style.align != ResolvedVerticalAlign::Baseline
             || style.declares_wrap
             || (aligned && style.decorates)
@@ -699,9 +718,16 @@ impl InlineText {
                     line_height: run.line_height,
                     wraps: style.wraps,
                     key: Some(style.id),
-                    content: InlineContent::Text {
-                        font: run.font,
-                        font_size: run.font_size.unwrap_or(base_font_size),
+                    content: if style.empty {
+                        InlineContent::Empty {
+                            font: run.font,
+                            font_size: run.font_size.unwrap_or(base_font_size),
+                        }
+                    } else {
+                        InlineContent::Text {
+                            font: run.font,
+                            font_size: run.font_size.unwrap_or(base_font_size),
+                        }
                     },
                 }
             })

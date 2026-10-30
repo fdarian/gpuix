@@ -100,7 +100,8 @@ fn lays_out_items_as(style: Option<&StyleDesc>, display_value: Option<&str>) -> 
 }
 
 /// Whether swapping `old` for `new` leaves every paragraph where it was and what search finds:
-/// none of the properties [`plan_children`] reads changed, and nor did `content-visibility`,
+/// none of the properties [`plan_children`] reads changed (the padding, border and margin along
+/// the line count as one: whether an empty box has any plans a placeholder), and nor did `content-visibility`,
 /// which decides whether find-in-page reads what is below the element.
 pub fn same_paragraphs(old: Option<&StyleDesc>, new: Option<&StyleDesc>) -> bool {
     fn read(style: Option<&StyleDesc>) -> [Option<&str>; 6] {
@@ -115,6 +116,7 @@ pub fn same_paragraphs(old: Option<&StyleDesc>, new: Option<&StyleDesc>) -> bool
         ]
     }
     read(old) == read(new)
+        && old.is_some_and(super::empty_box::style_takes_space) == new.is_some_and(super::empty_box::style_takes_space)
         && old.and_then(|style| style.content_visibility) == new.and_then(|style| style.content_visibility)
 }
 
@@ -219,6 +221,9 @@ pub struct Piece {
     /// The atomic inline this piece stands for: `range` is its U+FFFC, and it is
     /// not text.
     pub atomic: Option<u64>,
+    /// `range` is the U+FFFC of the empty inline box that is the last of `boxes`, see
+    /// [`super::empty_box`]. It is not text and has no element.
+    pub placeholder: bool,
 }
 
 /// A run of inline content, painted as one string.
@@ -248,6 +253,12 @@ impl Paragraph {
         self.pieces
             .iter()
             .filter_map(|piece| piece.atomic.map(|id| (id, piece)))
+    }
+
+    /// Whether the paragraph has the placeholder of an empty inline box, which cuts the text for
+    /// selection like an atomic inline does.
+    pub fn has_placeholder(&self) -> bool {
+        self.pieces.iter().any(|piece| piece.placeholder)
     }
 
     /// Innermost inline box at `byte`, if any, with or without a box of its own
@@ -332,6 +343,10 @@ impl Builder {
     /// Removes the last character, a space or a line feed, from the text and
     /// from every range that reached it.
     fn pop(&mut self) {
+        // The space before an empty box with inline space is not at the end of its line.
+        if self.pieces.last().is_some_and(|piece| piece.placeholder) {
+            return;
+        }
         self.text.pop();
         let len = self.text.len();
         for piece in &mut self.pieces {
@@ -376,6 +391,7 @@ impl Builder {
                 range: start..self.text.len(),
                 boxes: boxes.to_vec(),
                 atomic: None,
+                placeholder: false,
             });
         }
     }
@@ -392,6 +408,23 @@ impl Builder {
             range: start..self.text.len(),
             boxes: boxes.to_vec(),
             atomic: Some(element.id),
+            placeholder: false,
+        });
+    }
+
+    /// The placeholder of an empty inline box that takes space along the line. It is content, for
+    /// the line it makes, but not for collapsing white space: the spaces around it collapse as if it
+    /// was not there, as Blink's collapsing reads the text alone.
+    fn push_placeholder(&mut self, chain: &[u64]) {
+        self.has_text = true;
+        self.only_whitespace = false;
+        let start = self.text.len();
+        self.text.push(gpui::OBJECT_REPLACEMENT_CHARACTER);
+        self.pieces.push(Piece {
+            range: start..self.text.len(),
+            boxes: chain.to_vec(),
+            atomic: None,
+            placeholder: true,
         });
     }
 
@@ -420,6 +453,7 @@ impl Builder {
         self.boxed |= slot.is_some();
         chain.push(element.id);
         self.modes.push(white_space::of_box(element, self.mode()));
+        let text_before = self.text.len();
         if let Some(content) = element.content.as_deref() {
             self.push_text(content, chain);
         }
@@ -430,6 +464,9 @@ impl Builder {
             .filter(|child| !is_display_none(child))
         {
             self.push_element(tree, child, chain);
+        }
+        if slot.is_some() && self.text.len() == text_before && super::empty_box::takes_space(element) {
+            self.push_placeholder(chain);
         }
         self.modes.pop();
         chain.pop();
@@ -1727,5 +1764,144 @@ mod tests {
         f.add(2, 8, "div").text(8, 9, "block");
         let text = accessible_text(&f.plan(2));
         assert_eq!(text.as_deref(), Some("Hello big world"));
+    }
+
+    const PLACEHOLDER: char = gpui::OBJECT_REPLACEMENT_CHARACTER;
+
+    fn placeholder_ranges(paragraph: &Paragraph) -> Vec<(Range<usize>, Vec<u64>)> {
+        paragraph
+            .pieces
+            .iter()
+            .filter(|piece| piece.placeholder)
+            .map(|piece| (piece.range.clone(), piece.boxes.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn an_empty_span_with_space_along_the_line_is_a_placeholder_in_a_paragraph() {
+        for (name, style) in [
+            ("padding", serde_json::json!({"paddingLeft": 5})),
+            ("padding on one side", serde_json::json!({"paddingRight": 5})),
+            ("a percentage", serde_json::json!({"paddingLeft": "10%"})),
+            ("the shorthand", serde_json::json!({"padding": "0 5px"})),
+            ("an inline pair", serde_json::json!({"paddingInline": "5px"})),
+            ("a margin", serde_json::json!({"marginLeft": 5})),
+            ("a border", serde_json::json!({"borderLeftWidth": 2, "borderLeftStyle": "solid"})),
+            ("a border shorthand", serde_json::json!({"borderRight": "2px solid red"})),
+        ] {
+            let mut f = Fixture::new();
+            f.add(1, 2, "span").styled(2, style);
+            let plan = f.plan(1);
+            let paragraphs = paragraphs(&plan);
+            assert_eq!(paragraphs.len(), 1, "{name}: {plan:?}");
+            assert_eq!(paragraphs[0].text, PLACEHOLDER.to_string(), "{name}");
+            assert_eq!(placeholder_ranges(paragraphs[0]), vec![(0..3, vec![2])], "{name}");
+            assert_eq!(paragraphs[0].boxes, vec![(2, 0..3)], "{name}");
+        }
+    }
+
+    #[test]
+    fn an_empty_span_with_no_space_along_the_line_is_still_an_empty_line() {
+        for (name, style) in [
+            ("nothing", serde_json::json!({"color": "red"})),
+            ("zero padding", serde_json::json!({"paddingLeft": 0})),
+            ("vertical padding", serde_json::json!({"paddingTop": 5, "paddingBottom": 5})),
+            ("a vertical border", serde_json::json!({"borderTopWidth": 2, "borderTopStyle": "solid"})),
+            ("a border with no style", serde_json::json!({"borderLeftWidth": 2})),
+            ("a vertical margin", serde_json::json!({"marginTop": 5})),
+            ("no box", serde_json::json!({"display": "contents", "paddingLeft": 5})),
+        ] {
+            let mut f = Fixture::new();
+            f.add(1, 2, "span").styled(2, style);
+            let expected = if name == "no box" { vec![] } else { vec![Child::EmptyLine] };
+            assert_eq!(f.plan(1), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_placeholder_sits_between_the_text_around_it_and_collapses_nothing() {
+        let padded = serde_json::json!({"paddingLeft": 5});
+        let mut f = Fixture::new();
+        f.text(1, 2, "A").add(1, 3, "span").styled(3, padded.clone());
+        f.text(1, 4, "B");
+        let plan = f.plan(1);
+        assert_eq!(paragraphs(&plan)[0].text, format!("A{PLACEHOLDER}B"));
+        assert_eq!(placeholder_ranges(paragraphs(&plan)[0]), vec![(1..4, vec![3])]);
+        // The spaces around it collapse as if it was not there, and the one before it stays.
+        let mut f = Fixture::new();
+        f.text(1, 2, "A ").add(1, 3, "span").styled(3, padded.clone());
+        f.text(1, 4, " B");
+        assert_eq!(paragraphs(&f.plan(1))[0].text, format!("A {PLACEHOLDER}B"));
+        let mut f = Fixture::new();
+        f.text(1, 2, " ").add(1, 3, "span").styled(3, padded.clone());
+        f.text(1, 4, " ");
+        assert_eq!(paragraphs(&f.plan(1))[0].text, PLACEHOLDER.to_string());
+        let mut f = Fixture::new();
+        f.text(1, 2, "A ").add(1, 3, "span").styled(3, padded.clone());
+        assert_eq!(paragraphs(&f.plan(1))[0].text, format!("A {PLACEHOLDER}"));
+    }
+
+    #[test]
+    fn a_nested_empty_box_has_one_placeholder_in_the_innermost_box_that_takes_space() {
+        let padded = serde_json::json!({"paddingLeft": 5});
+        // The outer box has the space.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, padded.clone()).add(2, 3, "span");
+        let plan = f.plan(1);
+        assert_eq!(placeholder_ranges(paragraphs(&plan)[0]), vec![(0..3, vec![2])]);
+        // The inner one has it.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").add(2, 3, "span").styled(3, padded.clone());
+        let plan = f.plan(1);
+        assert_eq!(placeholder_ranges(paragraphs(&plan)[0]), vec![(0..3, vec![2, 3])]);
+        assert_eq!(paragraphs(&plan)[0].boxes, vec![(2, 0..3), (3, 0..3)]);
+        // Both have: the inner box holds the placeholder, which is content of the outer.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, padded.clone()).add(2, 3, "span").styled(3, padded.clone());
+        let plan = f.plan(1);
+        assert_eq!(paragraphs(&plan)[0].text.len(), 3);
+        assert_eq!(placeholder_ranges(paragraphs(&plan)[0]), vec![(0..3, vec![2, 3])]);
+        // Siblings have a placeholder each.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, padded.clone());
+        f.add(1, 3, "span").styled(3, padded);
+        let plan = f.plan(1);
+        assert_eq!(
+            placeholder_ranges(paragraphs(&plan)[0]),
+            vec![(0..3, vec![2]), (3..6, vec![3])]
+        );
+    }
+
+    #[test]
+    fn a_box_with_text_or_an_element_in_it_has_no_placeholder() {
+        let padded = serde_json::json!({"paddingLeft": 5});
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, padded.clone()).text(2, 3, "a");
+        assert!(placeholder_ranges(paragraphs(&f.plan(1))[0]).is_empty());
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, padded.clone());
+        inline_block(&mut f, 2, 3, "inline-block");
+        assert!(placeholder_ranges(paragraphs(&f.plan(1))[0]).is_empty());
+        // A placeholder is not an atomic inline.
+        let mut f = Fixture::new();
+        f.add(1, 2, "span").styled(2, padded);
+        assert_eq!(paragraphs(&f.plan(1))[0].atomics().count(), 0);
+    }
+
+    #[test]
+    fn a_placeholder_is_not_read_out_and_changes_the_paragraphs_with_the_space() {
+        let mut f = Fixture::new();
+        f.add(1, 2, "text").text(2, 3, "a");
+        f.add(2, 4, "span").styled(4, serde_json::json!({"paddingLeft": 5}));
+        assert_eq!(accessible_text(&f.plan(2)).as_deref(), Some("a"));
+        let none = style(serde_json::json!({"color": "red"}));
+        let padded = style(serde_json::json!({"paddingLeft": 5}));
+        let vertical = style(serde_json::json!({"paddingTop": 5}));
+        let bordered = style(serde_json::json!({"borderLeftWidth": 2, "borderLeftStyle": "solid"}));
+        assert!(!same_paragraphs(Some(&none), Some(&padded)));
+        assert!(!same_paragraphs(Some(&padded), Some(&none)));
+        assert!(!same_paragraphs(Some(&none), Some(&bordered)));
+        assert!(same_paragraphs(Some(&none), Some(&vertical)));
+        assert!(same_paragraphs(Some(&padded), Some(&bordered)));
     }
 }

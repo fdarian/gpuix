@@ -27,25 +27,10 @@ const ORACLES = [
   { scale: 2, cases: oracleOf("table-baseline-cell-oracle-x2.json") },
 ]
 
-/**
- * Rows gpuix lays out differently, each `it.fails` so that fixing one fails the test and takes it off the list: an empty
- * `<span>` with inline margin, border or padding makes a line of the strut's height in Chrome, with the span's box on
- * it. gpuix lays out an empty line for it (no height, like an empty span without any), because an inset has no glyph in
- * an empty box to attach to. A span that is itself a flex item is a block, not an inline box, and is not one of them.
- */
-const STRUT_SPAN =
-  /^(nested empty spans with inline padding|nested empty spans, the outer with inline padding|two empty spans with inline padding|empty span with (inline padding|a border|a margin|a percentage padding|a larger font and inline padding))/
-const isKnownGap = (name: string) => STRUT_SPAN.test(name) && !/^empty span with .* as a flex item$/.test(name)
-
 describeNative("baseline cells without text against Chrome", () => {
-  it("lists only rows of the oracle as known gaps", () => {
-    expect(Object.keys(ORACLES[0]!.cases).filter(isKnownGap).length).toBeGreaterThan(200)
-  })
-
   for (const oracle of ORACLES) {
     for (const [name, source] of Object.entries(oracle.cases)) {
-      const test = isKnownGap(name) ? it.fails : it
-      test(`${name} at scale ${oracle.scale}`, () => {
+      it(`${name} at scale ${oracle.scale}`, () => {
         const { render, renderer, unmount } = createTestRoot()
         try {
           renderer.setWindowScaleFactor(oracle.scale)

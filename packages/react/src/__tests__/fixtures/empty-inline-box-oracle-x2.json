@@ -1,0 +1,12243 @@
+{
+ "padding alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    10,
+    20
+   ]
+  }
+ },
+ "padding before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:0 5px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    30,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "padding after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    20
+   ]
+  }
+ },
+ "padding between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "padding centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    105,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    155,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    290,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "padding in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:0 5px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    70,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:0 5px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:0 5px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:0 5px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    10,
+    0
+   ]
+  }
+ },
+ "a border alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    2,
+    20
+   ]
+  }
+ },
+ "a border before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    2,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    42,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    47,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    47,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    47,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    22,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a border after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    2,
+    20
+   ]
+  }
+ },
+ "a border between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    2,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a border centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    109,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    149,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    151,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    149,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    298,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    2,
+    20
+   ],
+   "q": [
+    42,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a border in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    47,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    62,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    42,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    2,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    2,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    2,
+    0
+   ]
+  }
+ },
+ "a border on both sides alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    6,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    46,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    26,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a border on both sides after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    6,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a border on both sides centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    107,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    147,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    153,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    147,
+    0,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    294,
+    0,
+    6,
+    20
+   ]
+  }
+ },
+ "a border on both sides with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    6,
+    20
+   ],
+   "q": [
+    46,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    66,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    6,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    46,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    6,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    6,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border on both sides as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"border-width:0 3px;border-style:solid\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    6,
+    0
+   ]
+  }
+ },
+ "a margin alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    5,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    8,
+    4,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"margin:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    5,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 5px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin:0 5px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"margin:0 5px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    5,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"margin:0 5px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    25,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    30,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a margin after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    5,
+    20,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"margin:0 5px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    5,
+    20,
+    0,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a margin centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    105,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    150,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    155,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    150,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    295,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 5px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    5,
+    0,
+    20
+   ],
+   "q": [
+    50,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin:0 5px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"margin:0 5px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    55,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    70,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"margin:0 5px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"margin:0 5px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    5,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"margin:0 5px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    25,
+    20,
+    0,
+    0
+   ]
+  }
+ },
+ "a margin on one side alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"margin-right:7px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    7,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin-right:7px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    47,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin-right:7px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    52,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin-right:7px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    52,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin-right:7px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    52,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"margin-right:7px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"margin-right:7px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    27,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a margin on one side after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"margin-right:7px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    0,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a margin on one side centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin-right:7px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    106.5,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    146.5,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    153.5,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    146.5,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    293,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin on one side with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin-right:7px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    0,
+    20
+   ],
+   "q": [
+    47,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin-right:7px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    52,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"margin-right:7px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    67,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"margin-right:7px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    7,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    47,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"margin-right:7px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    7,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    7,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin on one side as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"margin-right:7px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    0,
+    0
+   ]
+  }
+ },
+ "a negative margin alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    10,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    13,
+    4,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    10,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    6,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    46,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    55,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin:0 -4px 0 10px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    55,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"margin:0 -4px 0 10px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    10,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    30,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    26,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a negative margin after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    10,
+    20,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    10,
+    20,
+    0,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a negative margin centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    107,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    157,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    153,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    157,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    304,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a negative margin with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    5,
+    0,
+    20
+   ],
+   "q": [
+    46,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"margin:0 -4px 0 10px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    55,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    51,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"margin:0 -4px 0 10px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    60,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    66,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    6,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    46,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    6,
+    20
+   ],
+   "x": [
+    10,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    6,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a negative margin as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"margin:0 -4px 0 10px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    30,
+    20,
+    0,
+    0
+   ]
+  }
+ },
+ "padding, border and margin alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    4,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    7,
+    -1,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    4,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    22,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    62,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    67,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    49,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    67,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    49,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    67,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    4,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    24,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    42,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "padding, border and margin after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    4,
+    15,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    4,
+    15,
+    14,
+    30
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "padding, border and margin centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    99,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    143,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    161,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    143,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    282,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    44,
+    0,
+    14,
+    30
+   ],
+   "q": [
+    62,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    49,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    67,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    54,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    82,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    22,
+    20
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    62,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    22,
+    20
+   ],
+   "x": [
+    4,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    22,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    24,
+    10,
+    14,
+    10
+   ]
+  }
+ },
+ "a percentage padding alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    60,
+    20
+   ]
+  }
+ },
+ "a percentage padding alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    58.796875,
+    20
+   ]
+  }
+ },
+ "a percentage padding before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 10%\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    60,
+    20
+   ]
+  }
+ },
+ "a percentage padding between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 10%\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    100,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 10%\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    105,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 10%\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    105,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 10%\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    105,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:0 10%\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    60,
+    20
+   ]
+  }
+ },
+ "a percentage padding between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:0 10%\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    80,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a percentage padding after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    60,
+    20
+   ]
+  }
+ },
+ "a percentage padding between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 10%\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    60,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a percentage padding centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 10%\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    80,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    120,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    180,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    120,
+    0,
+    60,
+    20
+   ]
+  }
+ },
+ "a percentage padding right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    240,
+    0,
+    60,
+    20
+   ]
+  }
+ },
+ "a percentage padding with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 10%\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    60,
+    20
+   ],
+   "q": [
+    100,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 10%\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    12,
+    20
+   ],
+   "q": [
+    57,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:0 10%\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    60,
+    20
+   ],
+   "q": [
+    120,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:0 10%\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    0,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:0 10%\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a percentage padding as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:0 10%\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    60,
+    0
+   ]
+  }
+ },
+ "padding and a background alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    30,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "padding and a background after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "padding and a background centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    105,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    155,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    290,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding and a background with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    70,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding and a background as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:0 5px;background:#0f0\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    10,
+    0
+   ]
+  }
+ },
+ "a larger font and padding alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    51
+   ],
+   "x": [
+    3,
+    4,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    10,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    50,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    55,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    55,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    55,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    30,
+    20,
+    20,
+    20
+   ]
+  }
+ },
+ "a larger font and padding after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    80
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    40
+   ],
+   "b": [
+    0,
+    60,
+    300,
+    20
+   ]
+  }
+ },
+ "a larger font and padding centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    105,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    155,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "x": [
+    290,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    45
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    50,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    55,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    70,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    50,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "i": [
+    0,
+    0,
+    10,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    40
+   ]
+  }
+ },
+ "a larger font and padding as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    10,
+    0
+   ]
+  }
+ },
+ "a smaller line height and padding alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    30,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    60
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    20,
+    10,
+    20
+   ],
+   "b": [
+    0,
+    40,
+    300,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    105,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    155,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    145,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    290,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    70,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a smaller line height and padding as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:0 5px;line-height:10px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    10,
+    0
+   ]
+  }
+ },
+ "vertical-align top and padding alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "x": [
+    0,
+    5,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    41
+   ],
+   "x": [
+    3,
+    9,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding before text": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "x": [
+    0,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between whitespace alone": {
+  "html": "<div id=\"d\"> <span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "x": [
+    0,
+    5,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    30,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    50
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    25,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    70
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    25,
+    10,
+    20
+   ],
+   "b": [
+    0,
+    50,
+    300,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    105,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    145,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    155,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "x": [
+    145,
+    5,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "x": [
+    290,
+    5,
+    10,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    55,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    50,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    70,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    0,
+    10,
+    30
+   ],
+   "x": [
+    40,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical-align top and padding in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "i": [
+    0,
+    0,
+    10,
+    30
+   ],
+   "x": [
+    0,
+    5,
+    10,
+    20
+   ],
+   "q": [
+    10,
+    0,
+    40,
+    30
+   ]
+  }
+ },
+ "vertical-align top and padding as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span id=\"x\" style=\"padding:0 5px;vertical-align:top;line-height:30px\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "x": [
+    20,
+    20,
+    10,
+    0
+   ]
+  }
+ },
+ "vertical padding only alone": {
+  "html": "<div id=\"d\"><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "vertical padding only alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    11
+   ]
+  }
+ },
+ "vertical padding only before text": {
+  "html": "<div id=\"d\"><span style=\"padding:5px 0;border-top:2px solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "q": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span style=\"padding:5px 0;border-top:2px solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span style=\"padding:5px 0;border-top:2px solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span style=\"padding:5px 0;border-top:2px solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span style=\"padding:5px 0;border-top:2px solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only between whitespace alone": {
+  "html": "<div id=\"d\"> <span style=\"padding:5px 0;border-top:2px solid\"></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "vertical padding only between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span style=\"padding:5px 0;border-top:2px solid\"></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "q": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "vertical padding only after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ]
+  }
+ },
+ "vertical padding only between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span style=\"padding:5px 0;border-top:2px solid\"></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "b": [
+    0,
+    20,
+    300,
+    20
+   ]
+  }
+ },
+ "vertical padding only centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span style=\"padding:5px 0;border-top:2px solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    110,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    150,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "vertical padding only right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "vertical padding only with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span style=\"padding:5px 0;border-top:2px solid\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "q": [
+    40,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span style=\"padding:5px 0;border-top:2px solid\"></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span style=\"padding:5px 0;border-top:2px solid\"></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span style=\"padding:5px 0;border-top:2px solid\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span style=\"padding:5px 0;border-top:2px solid\"></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span style=\"padding:5px 0;border-top:2px solid\"></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "nothing alone": {
+  "html": "<div id=\"d\"><span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "nothing alone in a div with padding": {
+  "html": "<div id=\"d\" style=\"padding:4px 3px 7px\"><span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    11
+   ]
+  }
+ },
+ "nothing before text": {
+  "html": "<div id=\"d\"><span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "q": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing after text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing between text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing between text and a space": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing between a space and text": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing between spaces": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span> <span></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing between whitespace alone": {
+  "html": "<div id=\"d\"> <span></span> </div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "nothing between letters of one word": {
+  "html": "<div id=\"d\"><span id=\"p\">A</span><span></span><span id=\"q\">A</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ],
+   "q": [
+    20,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "nothing after a block": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ]
+  }
+ },
+ "nothing between blocks": {
+  "html": "<div id=\"d\"><div id=\"a\">A</div><span></span><div id=\"b\">A</div></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "a": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "b": [
+    0,
+    20,
+    300,
+    20
+   ]
+  }
+ },
+ "nothing centered": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span id=\"p\">AA</span><span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    110,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    150,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing centered alone": {
+  "html": "<div id=\"d\" style=\"text-align:center\"><span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "nothing right aligned alone": {
+  "html": "<div id=\"d\" style=\"text-align:right\"><span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    0
+   ]
+  }
+ },
+ "nothing with a line height": {
+  "html": "<div id=\"d\" style=\"line-height:30px\"><span id=\"p\">AA</span><span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    30
+   ],
+   "p": [
+    0,
+    5,
+    40,
+    20
+   ],
+   "q": [
+    40,
+    5,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing in a div that does not wrap": {
+  "html": "<div id=\"d\" style=\"white-space:nowrap;width:60px\"><span id=\"p\">AA</span> <span></span> <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    60,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    45,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing in pre": {
+  "html": "<div id=\"d\" style=\"white-space:pre\"><span id=\"p\">AA</span>  <span></span>  <span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing in an inline-block": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><span id=\"i\" style=\"display:inline-block\"><span></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "i": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing in a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex\"><div id=\"i\"><span></span></div><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "i": [
+    0,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing as a flex item": {
+  "html": "<div id=\"line\" style=\"display:flex;align-items:baseline\"><div id=\"p\">A</div><span></span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    20,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    60
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    40,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 80px (a box)": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 80px": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    70
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    50,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 80px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:80px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    80,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    60
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    40,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 90px (a box)": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 90px": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    70
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    50,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 90px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:90px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    90,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    60
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    40,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 100px (a box)": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 100px": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    70
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    50,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 100px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:100px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    100,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    60
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    40,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 110px (a box)": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 110px": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    70
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    50,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 110px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:110px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    110,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    60
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    40,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 120px (a box)": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 120px": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    70
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    50,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 120px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:120px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    120,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    85,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 130px (a box)": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 130px": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    85,
+    30,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 130px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:130px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    130,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ],
+   "r": [
+    85,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 150px (a box)": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 150px": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ],
+   "r": [
+    85,
+    30,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 150px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:150px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    150,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point after a space, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point before a space, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box at a wrap point between spaces, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box inside a word, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    110,
+    0,
+    80,
+    20
+   ]
+  }
+ },
+ "a box after a hyphen, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box before the last word, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    30,
+    20
+   ],
+   "q": [
+    75,
+    0,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 170px (a box)": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    40
+   ],
+   "p": [
+    0,
+    0,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    20
+   ],
+   "y": [
+    110,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    20,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point after a space, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point before a space, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font at a wrap point between spaces, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span> <span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font inside a word, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    30
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    110,
+    10,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font after a hyphen, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAA-</span><span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    66.6640625,
+    20
+   ],
+   "x": [
+    66.6640625,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "a box of a larger font before the last word, 170px": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"q\">AAAA</span> <span id=\"r\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    30,
+    30
+   ],
+   "q": [
+    75,
+    10,
+    80,
+    20
+   ],
+   "r": [
+    0,
+    30,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes at a wrap point, 170px (a box of a larger font)": {
+  "html": "<div id=\"d\" style=\"width:170px\"><span id=\"p\">AAAA</span> <span id=\"x\" style=\"padding:0 15px;font-size:30px;line-height:30px\"></span><span id=\"y\" style=\"padding:0 5px\"></span><span id=\"q\">AAAA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    170,
+    50
+   ],
+   "p": [
+    0,
+    10,
+    80,
+    20
+   ],
+   "x": [
+    80,
+    0,
+    30,
+    30
+   ],
+   "y": [
+    110,
+    10,
+    10,
+    20
+   ],
+   "q": [
+    0,
+    30,
+    80,
+    20
+   ]
+  }
+ },
+ "nested, the inner one with padding": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"o\"><span id=\"x\" style=\"padding:0 5px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "o": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nested, the outer one with padding": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"><span></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nested, both with padding": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"><span id=\"y\" style=\"padding:0 3px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    16,
+    20
+   ],
+   "y": [
+    45,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    56,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nested, both with padding and a border": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;border:2px solid\"><span id=\"y\" style=\"padding:0 3px;margin:0 1px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    -2,
+    22,
+    24
+   ],
+   "y": [
+    48,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    62,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nested, three deep": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"><span id=\"y\" style=\"padding:0 3px\"><span id=\"z\" style=\"padding:0 2px\"></span></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    20,
+    20
+   ],
+   "y": [
+    45,
+    0,
+    10,
+    20
+   ],
+   "z": [
+    48,
+    0,
+    4,
+    20
+   ],
+   "q": [
+    60,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nested alone, the inner one with padding": {
+  "html": "<div id=\"d\"><span id=\"o\"><span id=\"x\" style=\"padding:0 5px\"></span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "o": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "nested alone, both with padding": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px\"><span id=\"y\" style=\"padding:0 3px\"></span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    16,
+    20
+   ],
+   "y": [
+    5,
+    0,
+    6,
+    20
+   ]
+  }
+ },
+ "nested, the outer one with a larger font": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"o\" style=\"font-size:40px;line-height:40px\"><span id=\"x\" style=\"padding:0 5px\"></span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "o": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    50,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes side by side": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"y\" style=\"padding:0 3px\"></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "y": [
+    50,
+    0,
+    6,
+    20
+   ],
+   "q": [
+    56,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "two boxes side by side alone": {
+  "html": "<div id=\"d\"><span id=\"x\" style=\"padding:0 5px\"></span><span id=\"y\" style=\"margin:0 3px\"></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "y": [
+    13,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a box with and a box without space side by side": {
+  "html": "<div id=\"d\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span><span></span><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a box beside text in its parent": {
+  "html": "<div id=\"d\"><span id=\"o\" style=\"padding:0 2px\">AA<span id=\"x\" style=\"padding:0 5px\"></span>AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "o": [
+    0,
+    0,
+    94,
+    20
+   ],
+   "x": [
+    42,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a box at the start of a padded parent": {
+  "html": "<div id=\"d\"><span id=\"o\" style=\"padding:0 2px\"><span id=\"x\" style=\"padding:0 5px\"></span>AA</span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "o": [
+    0,
+    0,
+    54,
+    20
+   ],
+   "x": [
+    2,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "a box at the end of a padded parent": {
+  "html": "<div id=\"d\"><span id=\"o\" style=\"padding:0 2px\">AA<span id=\"x\" style=\"padding:0 5px\"></span></span></div>",
+  "boxes": {
+   "d": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "o": [
+    0,
+    0,
+    54,
+    20
+   ],
+   "x": [
+    42,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"x\" style=\"padding:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    16,
+    31
+   ],
+   "r": [
+    0,
+    0,
+    16,
+    31
+   ],
+   "v": [
+    0,
+    0,
+    16,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    10,
+    20
+   ]
+  }
+ },
+ "padding in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"padding:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    26
+   ],
+   "r": [
+    0,
+    0,
+    50,
+    26
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    10,
+    26
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ]
+  }
+ },
+ "padding in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"padding:0 5px\"></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "r": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a border in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    2,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    2,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    2,
+    20
+   ],
+   "x": [
+    0,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    8,
+    31
+   ],
+   "r": [
+    0,
+    0,
+    8,
+    31
+   ],
+   "v": [
+    0,
+    0,
+    8,
+    31
+   ],
+   "x": [
+    3,
+    4,
+    2,
+    20
+   ]
+  }
+ },
+ "a border in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    42,
+    26
+   ],
+   "r": [
+    0,
+    0,
+    42,
+    26
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    2,
+    26
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    42,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    42,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    42,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ "a border in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"border-left-width:2px;border-left-style:solid\"></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "r": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    2,
+    20
+   ],
+   "q": [
+    42,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a margin in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"x\" style=\"margin:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    5,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span id=\"x\" style=\"margin:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    16,
+    31
+   ],
+   "r": [
+    0,
+    0,
+    16,
+    31
+   ],
+   "v": [
+    0,
+    0,
+    16,
+    31
+   ],
+   "x": [
+    8,
+    4,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"margin:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    26
+   ],
+   "r": [
+    0,
+    0,
+    50,
+    26
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    10,
+    26
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span id=\"x\" style=\"margin:0 5px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    50,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ]
+  }
+ },
+ "a margin in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"margin:0 5px\"></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "r": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    10,
+    20
+   ],
+   "x": [
+    45,
+    0,
+    0,
+    20
+   ],
+   "q": [
+    50,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "padding, border and margin in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    22,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    22,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    22,
+    20
+   ],
+   "x": [
+    4,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    28,
+    31
+   ],
+   "r": [
+    0,
+    0,
+    28,
+    31
+   ],
+   "v": [
+    0,
+    0,
+    28,
+    31
+   ],
+   "x": [
+    7,
+    -1,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    62,
+    26
+   ],
+   "r": [
+    0,
+    0,
+    62,
+    26
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    22,
+    26
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    62,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    62,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    62,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ]
+  }
+ },
+ "padding, border and margin in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"padding:3px 5px;border:2px solid;margin:0 4px\"></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    22,
+    20
+   ],
+   "r": [
+    40,
+    0,
+    22,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    22,
+    20
+   ],
+   "x": [
+    44,
+    -5,
+    14,
+    30
+   ],
+   "q": [
+    62,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "a larger font and padding in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    10,
+    40
+   ],
+   "r": [
+    0,
+    0,
+    10,
+    40
+   ],
+   "v": [
+    0,
+    0,
+    10,
+    40
+   ],
+   "x": [
+    0,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    16,
+    51
+   ],
+   "r": [
+    0,
+    0,
+    16,
+    51
+   ],
+   "v": [
+    0,
+    0,
+    16,
+    51
+   ],
+   "x": [
+    3,
+    4,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    46
+   ],
+   "r": [
+    0,
+    0,
+    50,
+    46
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    46
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    10,
+    46
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    50,
+    40
+   ],
+   "r": [
+    0,
+    0,
+    50,
+    40
+   ],
+   "v": [
+    0,
+    0,
+    50,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ]
+  }
+ },
+ "a larger font and padding in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span id=\"x\" style=\"padding:0 5px;font-size:40px;line-height:40px\"></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    40
+   ],
+   "p": [
+    0,
+    20,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "r": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "v": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "x": [
+    40,
+    0,
+    10,
+    40
+   ],
+   "q": [
+    50,
+    20,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span style=\"padding:5px 0;border-top:2px solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "r": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "v": [
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "vertical padding only in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span style=\"padding:5px 0;border-top:2px solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    6,
+    11
+   ],
+   "r": [
+    0,
+    0,
+    6,
+    11
+   ],
+   "v": [
+    0,
+    0,
+    6,
+    11
+   ]
+  }
+ },
+ "vertical padding only in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span style=\"padding:5px 0;border-top:2px solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    0,
+    26
+   ]
+  }
+ },
+ "vertical padding only in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span style=\"padding:5px 0;border-top:2px solid\"></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "vertical padding only in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span style=\"padding:5px 0;border-top:2px solid\"></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "r": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "v": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing in a table cell": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "r": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "v": [
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "nothing in a table cell with padding": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;padding:4px 3px 7px\"><span></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    6,
+    11
+   ],
+   "r": [
+    0,
+    0,
+    6,
+    11
+   ],
+   "v": [
+    0,
+    0,
+    6,
+    11
+   ]
+  }
+ },
+ "nothing in a table cell beside a cell with text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"a\" style=\"vertical-align:baseline;padding-bottom:6px\"><span id=\"p\">AA</span></td><td id=\"v\" style=\"vertical-align:baseline\"><span></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "a": [
+    0,
+    0,
+    40,
+    26
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    40,
+    0,
+    0,
+    26
+   ]
+  }
+ },
+ "nothing in a table cell after text": {
+  "html": "<table id=\"t\" style=\"border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline;\"><span id=\"p\">AA</span><span></span></td></tr></table>",
+  "boxes": {
+   "t": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "r": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "v": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ]
+  }
+ },
+ "nothing in an inline-table": {
+  "html": "<div id=\"line\"><span id=\"p\">AA</span><table id=\"t\" style=\"display:inline-table;border-spacing:0;border-collapse:separate\"><tr id=\"r\"><td id=\"v\" style=\"vertical-align:baseline\"><span></span></td></tr></table><span id=\"q\">AA</span></div>",
+  "boxes": {
+   "line": [
+    0,
+    0,
+    300,
+    20
+   ],
+   "p": [
+    0,
+    0,
+    40,
+    20
+   ],
+   "t": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "r": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "v": [
+    40,
+    20,
+    0,
+    0
+   ],
+   "q": [
+    40,
+    0,
+    40,
+    20
+   ]
+  }
+ }
+}

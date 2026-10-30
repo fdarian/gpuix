@@ -1154,6 +1154,7 @@ pub fn range_rects(
     range_rows_with_positions(
         layout.bounds(),
         range,
+        false,
         pad_x,
         inset_y,
         |index| position_on_row(layout, index),
@@ -1191,11 +1192,13 @@ pub struct RangeRow {
 
 /// [`range_rects`] without padding, and with the row each box is on. A row that ends in a
 /// soft hyphen of the range is as wide as the hyphen Chrome draws there too: the box of an
-/// element holds it, where the wash over a selection does not.
-pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
+/// element holds it, where the wash over a selection does not. `keep_empty` keeps a range of a glyph
+/// of no width as a rect of no width.
+pub fn range_rows(layout: &TextLayout, range: &Range<usize>, keep_empty: bool) -> Vec<RangeRow> {
     range_rows_with_positions(
         layout.bounds(),
         range,
+        keep_empty,
         0.0,
         0.0,
         |index| position_on_row(layout, index),
@@ -1211,6 +1214,7 @@ pub fn range_rows(layout: &TextLayout, range: &Range<usize>) -> Vec<RangeRow> {
 fn range_rows_with_positions(
     bounds: Bounds<gpui::Pixels>,
     range: &Range<usize>,
+    keep_empty: bool,
     pad_x: f32,
     inset_y: f32,
     position_for_index: impl Fn(usize) -> Option<gpui::Point<gpui::Pixels>>,
@@ -1252,7 +1256,10 @@ fn range_rows_with_positions(
             }
         };
         if let Some(p2) = position_for_index(seg_end) {
-            if p2.x > p1.x {
+            // A range that holds a glyph and no width, such as the placeholder of an empty box whose
+            // padding is a percentage of nothing, has a fragment of no width if the caller asks. A
+            // selection has none.
+            if p2.x > p1.x || (keep_empty && p2.x == p1.x) {
                 let row = row_for_index(row_index)
                     .expect("an index with a position is on a row");
                 rects.push(RangeRow {
@@ -1311,6 +1318,7 @@ mod tests {
         range_rows_with_positions(
             Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(44.0))),
             &range,
+            false,
             0.0,
             0.0,
             wrapped_position,
@@ -1375,6 +1383,7 @@ mod tests {
         let rows = range_rows_with_positions(
             Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(44.0))),
             &(2..9),
+            false,
             0.0,
             0.0,
             wrapped_position,
@@ -1392,6 +1401,7 @@ mod tests {
         let rows = range_rows_with_positions(
             Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(80.0))),
             &(2..9),
+            false,
             0.0,
             0.0,
             uneven_positions,
@@ -1413,6 +1423,7 @@ mod tests {
         let rows = range_rows_with_positions(
             Bounds::new(point(px(0.0), px(0.0)), size(px(50.0), px(80.0))),
             &(2..9),
+            false,
             0.0,
             1.5,
             uneven_positions,

@@ -9,6 +9,7 @@
 //! `div().child(string)`.
 
 pub mod atomic;
+pub mod empty_box;
 pub mod inline;
 pub mod inline_bounds;
 pub mod inline_cursor;
