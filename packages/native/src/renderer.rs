@@ -6044,7 +6044,17 @@ pub(crate) fn gestures_of(
 /// being built is a frame that is drawn, which is what starts them.
 pub(crate) struct ScriptFrame<'a> {
     pub(crate) drawing: bool,
+    /// The instant a track that starts in this pass starts at. A layout pass a read forced samples
+    /// the instant of the last draw, which is long past after an idle window: an animation that
+    /// started from it would have run its course by the frame that shows it. Chrome starts an
+    /// animation at the frame after its creation, not at the last one.
+    pub(crate) started: web_time::Instant,
     pub(crate) events: &'a mut Vec<crate::motion::web_animation::ApiEvent>,
+}
+
+/// [`ScriptFrame::started`] of a pass that samples at `now`.
+fn motion_start(drawing: bool, now: web_time::Instant, clock: &crate::automation::AutomationClock) -> web_time::Instant {
+    if drawing { now } else { now.max(clock.now()) }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6129,31 +6139,31 @@ fn sync_motions(
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let created = match svg_attributes {
                     Some(attributes) => {
-                        crate::motion::MotionState::new_svg(source, attributes, colors.clone(), now)
+                        crate::motion::MotionState::new_svg(source, attributes, colors.clone(), scripts.started)
                     }
-                    None if inline => crate::motion::MotionState::new_inline(source, base, colors.clone(), now),
+                    None if inline => crate::motion::MotionState::new_inline(source, base, colors.clone(), scripts.started),
                     None => crate::motion::MotionState::new(
                         source,
                         base,
                         colors.clone(),
                         measurement.as_ref(),
                         painted,
-                        now,
+                        scripts.started,
                     ),
                 };
                 match created {
                     Ok(state) => entry.insert(state),
                     Err(error) => {
                         log::warn!("Invalid motion description for element {id}: {error}");
-                        entry.insert(crate::motion::MotionState::invalid(source, colors.clone(), now))
+                        entry.insert(crate::motion::MotionState::invalid(source, colors.clone(), scripts.started))
                     }
                 }
             }
         };
         let synced = match svg_attributes {
-            Some(attributes) => state.sync_svg(source, attributes, colors.clone(), now),
-            None if inline => state.sync_inline(source, base, colors.clone(), now),
-            None => state.sync(source, base, colors, measurement.as_ref(), painted, now),
+            Some(attributes) => state.sync_svg(source, attributes, colors.clone(), scripts.started),
+            None if inline => state.sync_inline(source, base, colors.clone(), scripts.started),
+            None => state.sync(source, base, colors, measurement.as_ref(), painted, scripts.started),
         };
         if let Err(error) = synced {
             log::warn!("Invalid motion update for element {id}: {error}");
@@ -6162,7 +6172,7 @@ fn sync_motions(
             Some(attributes) => crate::motion::GestureBase::Svg(attributes),
             None => crate::motion::GestureBase::Style(base),
         };
-        let gesturing = state.set_gestures(gestures(id), gesture_base, measurement.as_ref(), painted, now);
+        let gesturing = state.set_gestures(gestures(id), gesture_base, measurement.as_ref(), painted, scripts.started);
         if let Err(error) = gesturing {
             log::warn!("Invalid motion gesture for element {id}: {error}");
         }
@@ -8880,7 +8890,7 @@ impl GpuixView {
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
-            ScriptFrame { drawing: self.drawing, events: &mut self.script_events },
+            ScriptFrame { drawing: self.drawing, started: motion_start(self.drawing, now, &self.clock), events: &mut self.script_events },
         );
         self.motion_synced = inputs.map(|inputs| MotionSynced { inputs, moving: synced.0.clone(), split: None });
         synced
@@ -8955,7 +8965,7 @@ impl GpuixView {
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
-            ScriptFrame { drawing: self.drawing, events: &mut self.script_events },
+            ScriptFrame { drawing: self.drawing, started: motion_start(self.drawing, now, &self.clock), events: &mut self.script_events },
         );
         synced.moving = stepped.iter().chain(&resting).copied().collect();
         self.motion_synced = Some(synced);
@@ -9013,7 +9023,7 @@ impl GpuixView {
             window.viewport_size(),
             &|id| gestures_of(tree, pointer, focus, id),
             now,
-            ScriptFrame { drawing: self.drawing, events: &mut self.script_events },
+            ScriptFrame { drawing: self.drawing, started: motion_start(self.drawing, now, &self.clock), events: &mut self.script_events },
         );
         let step = match split {
             Some(split) if !asleep_due => {
@@ -9087,6 +9097,7 @@ impl GpuixView {
             motion_states: &self.motion_states,
             keyframes: &self.keyframes,
             statics: &self.paint_statics,
+            now,
         };
         let moving = self
             .motion_inputs(&tree, window, &focus_styles, &pointer)
@@ -9230,6 +9241,7 @@ struct Dormancy<'a> {
     motion_states: &'a HashMap<u64, crate::motion::MotionState>,
     keyframes: &'a crate::motion::KeyframesRegistry,
     statics: &'a PaintStatics,
+    now: web_time::Instant,
 }
 
 impl Dormancy<'_> {
@@ -9244,6 +9256,7 @@ impl Dormancy<'_> {
                         self.transitions,
                         self.motion_states,
                         self.keyframes,
+                        self.now,
                     )
                 })
             })
@@ -9337,8 +9350,9 @@ fn runs_paint_only(
     transitions: &crate::motion::CssTransitions,
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     keyframes: &crate::motion::KeyframesRegistry,
+    now: web_time::Instant,
 ) -> bool {
-    paints_only_running(&Fixed::of(tree, element), element.id, animations, transitions, motion_states, keyframes)
+    paints_only_running(&Fixed::of(tree, element), element.id, animations, transitions, motion_states, keyframes, now)
 }
 
 fn paints_only_running(
@@ -9348,15 +9362,16 @@ fn paints_only_running(
     transitions: &crate::motion::CssTransitions,
     motion_states: &HashMap<u64, crate::motion::MotionState>,
     keyframes: &crate::motion::KeyframesRegistry,
+    now: web_time::Instant,
 ) -> bool {
     // What runs on the shapes of an `<svg>` changes its picture, never its box.
     !fixed.excluded
         && animations.paints_only(id, keyframes)
         && transitions.paints_only(id)
-        && motion_states.get(&id).is_none_or(crate::motion::MotionState::paints_only)
+        && motion_states.get(&id).is_none_or(|state| state.paints_only(now))
         && fixed.shapes.iter().all(|shape| {
             animations.paints_only(*shape, keyframes)
-                && motion_states.get(shape).is_none_or(crate::motion::MotionState::paints_only)
+                && motion_states.get(shape).is_none_or(|state| state.paints_only(now))
         })
 }
 
@@ -9654,6 +9669,7 @@ impl gpui::Render for GpuixView {
             motion_states: &self.motion_states,
             keyframes: &self.keyframes,
             statics: &self.paint_statics,
+            now,
         };
         let value_key = self.motion_value_key(&tree, window);
         let value_index = self.motion_value_index.as_ref().filter(|(known, _)| *known == value_key).map(|(_, index)| index.clone());
@@ -10772,6 +10788,7 @@ fn build_element_unpumped(
             ctx.css_transitions,
             ctx.motion_states,
             ctx.keyframes,
+            ctx.now,
         );
         ctx.retain.paints_only(paints_only);
         tree.relevance.note_layout_run(id, !paints_only);
@@ -11038,6 +11055,7 @@ fn build_element_unpumped(
                         ctx.css_transitions,
                         ctx.motion_states,
                         ctx.keyframes,
+                        ctx.now,
                     ));
                 }
                 running != 0

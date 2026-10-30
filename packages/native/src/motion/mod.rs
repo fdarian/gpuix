@@ -1054,11 +1054,14 @@ impl MotionState {
     }
 
     /// Whether everything this description animates, or waits to animate, only changes what the
-    /// element paints. One that waits for a measurement is a layout animation.
-    pub(crate) fn paints_only(&self) -> bool {
+    /// element paints. One that waits for a measurement is a layout animation. A track of a
+    /// layout property that rests at `now` counts for nothing: it changes only through a
+    /// retarget, which comes with a change of the tree and builds the element again. One that
+    /// follows layout (`auto`, a percentage) moves under the element by itself.
+    pub(crate) fn paints_only(&self, now: Instant) -> bool {
         self.pending.is_empty()
-            && self.tracks.keys().all(|key| match key {
-                PropKey::Style(prop) => prop.paints_only(),
+            && self.tracks.iter().all(|(key, track)| match key {
+                PropKey::Style(prop) => prop.paints_only() || !(track.is_measured() || track.sample(now).active),
                 PropKey::Svg(_) => true,
             })
     }
@@ -2082,6 +2085,28 @@ mod tests {
                 .width,
             Some(25.0)
         );
+    }
+
+    #[test]
+    fn a_resting_layout_track_leaves_the_description_paint_only() {
+        let started = Instant::now();
+        let at = |ms: u64| started + Duration::from_millis(ms);
+        let rests = serde_json::json!({
+            "initial": { "width": 216.0, "x": 0.0 },
+            "animate": { "width": 216.0, "x": 100.0 },
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        let mut state = MotionState::new(&rests, None, Colors::root(), None, 0, started).unwrap();
+        assert!(state.paints_only(at(500)), "width does not move while x does");
+
+        let grows = serde_json::json!({
+            "initial": false,
+            "animate": { "width": 300.0, "x": 100.0 },
+            "transition": { "duration": 1.0, "ease": "linear" }
+        });
+        state.sync(&grows, None, Colors::root(), None, 0, at(500)).unwrap();
+        assert!(!state.paints_only(at(600)), "width is moving");
+        assert!(state.paints_only(at(1600)), "width has come to rest at 300");
     }
 
     mod wake {
@@ -4077,6 +4102,15 @@ mod tests {
                 MotionState::new(&description, Some(&base), Colors::root(), Some(&measured), 0, started).unwrap();
             assert_eq!(pixels(height(&state, started)), 20.0);
             assert_eq!(pixels(height(&state, at(started, 0.5))), 40.0);
+        }
+
+        #[test]
+        fn a_height_that_follows_layout_is_not_paint_only_at_rest_either() {
+            let started = Instant::now();
+            let state =
+                MotionState::new(&open(), None, Colors::root(), Some(&measurement(100.0, 0.0, 80.0)), 0, started).unwrap();
+            assert!(!state.paints_only(at(started, 0.5)));
+            assert!(!state.paints_only(at(started, 5.0)), "the style is auto again, which layout answers");
         }
 
         #[test]
