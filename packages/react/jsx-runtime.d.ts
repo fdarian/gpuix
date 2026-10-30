@@ -30,6 +30,7 @@ import type {
   SvgStopProps,
   SvgSymbolProps,
   SvgUseProps,
+  WebviewProps,
   SvgTextProps,
   SvgPatternProps,
   SvgMarkerProps,
@@ -79,6 +80,7 @@ export namespace JSX {
     text: SvgTextProps
     span: Props
     img: ImgProps
+    webview: WebviewProps
     svg: SvgProps
     path: SvgPathProps
     circle: SvgCircleProps

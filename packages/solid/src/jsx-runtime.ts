@@ -28,6 +28,7 @@ import type {
   SvgSymbolProps,
   SvgUseProps,
   SvgTextProps,
+  WebviewProps,
   SvgPatternProps,
   SvgMarkerProps,
   SvgImageProps,
@@ -103,6 +104,7 @@ export namespace JSX {
     text: SolidHostProps<HostProps & Omit<SvgTextProps, keyof HostProps>>
     span: SolidHostProps
     img: SolidHostProps<ImgProps>
+    webview: SolidHostProps<WebviewProps>
     svg: SolidHostProps<SvgProps>
     path: SolidHostProps<SvgPathProps>
     circle: SolidHostProps<SvgCircleProps>

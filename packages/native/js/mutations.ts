@@ -187,6 +187,11 @@ export const EVENT_PROPS: readonly (readonly [string, string])[] = [
   ["onLayout", "layout"],
   ["onLoad", "load"],
   ["onError", "error"],
+  ["onDidStartLoading", "did-start-loading"],
+  ["onDidStopLoading", "did-stop-loading"],
+  ["onDidNavigate", "did-navigate"],
+  ["onPageTitleUpdated", "page-title-updated"],
+  ["onDidFailLoad", "did-fail-load"],
 ]
 
 export const EVENT_PROP_NAMES: ReadonlySet<string> = new Set(

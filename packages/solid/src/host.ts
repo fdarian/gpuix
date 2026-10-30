@@ -3,6 +3,7 @@
 import {
   assertSvgPlacement,
   createElementMethods,
+  createWebviewMethods,
   defineScrollMembers,
   EVENT_PROP_NAMES,
   EVENT_TYPE_BY_PROP,
@@ -47,6 +48,7 @@ import type {
   ScrollableElement,
   StyleDesc,
   TextControlHost,
+  WebviewMethods,
 } from "@gpuix/native/host"
 import type { DomEvent } from "@gpuix/native/host"
 
@@ -196,6 +198,69 @@ export class HostElement {
     return readTextControlSelection(this.textControl("selectionDirection")).direction
   }
 
+  /** `<webview>` only. See `WebviewMethods`. */
+  loadURL(url: string): void {
+    this.webview("loadURL()").loadURL(url)
+  }
+
+  /** `<webview>` only. */
+  reload(): void {
+    this.webview("reload()").reload()
+  }
+
+  /** `<webview>` only. */
+  stop(): void {
+    this.webview("stop()").stop()
+  }
+
+  /** `<webview>` only. */
+  goBack(): void {
+    this.webview("goBack()").goBack()
+  }
+
+  /** `<webview>` only. */
+  goForward(): void {
+    this.webview("goForward()").goForward()
+  }
+
+  /** `<webview>` only. */
+  canGoBack(): boolean {
+    return this.webview("canGoBack()").canGoBack()
+  }
+
+  /** `<webview>` only. */
+  canGoForward(): boolean {
+    return this.webview("canGoForward()").canGoForward()
+  }
+
+  /** `<webview>` only. */
+  getURL(): string {
+    return this.webview("getURL()").getURL()
+  }
+
+  /** `<webview>` only. */
+  getTitle(): string {
+    return this.webview("getTitle()").getTitle()
+  }
+
+  /** `<webview>` only. */
+  executeJavaScript(code: string): Promise<unknown> {
+    return this.webview("executeJavaScript()").executeJavaScript(code)
+  }
+
+  private webview(member: string): WebviewMethods {
+    const root = this.root
+    if (!root || !this.mounted) throw new Error(`${member} needs a mounted element`)
+    if (this.type !== "webview") {
+      throw new Error(`${member} is only valid on <webview>, got <${this.type}>`)
+    }
+    return createWebviewMethods({
+      id: this.id,
+      nativeRenderer: root.nativeRenderer,
+      flushMutations: () => root.mutations.flushMutations(),
+    })
+  }
+
   /** `<form>` only: validate the controls, then submit. */
   requestSubmit(): void {
     const root = this.root
@@ -313,6 +378,7 @@ function isElementType(type: string): type is ElementType {
     case "code":
     case "diff":
     case "markdown":
+    case "webview":
     case "virtual-list":
     case "path":
     case "circle":

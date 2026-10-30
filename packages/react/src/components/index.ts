@@ -87,6 +87,7 @@ export const gpuixComponents = {
   label: "label",
   form: "form",
   anchored: "anchored",
+  webview: "webview",
   "virtual-list": "virtual-list",
 } as const
 

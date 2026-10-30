@@ -63,6 +63,7 @@ export * from "./observers.js"
 export * from "./presence.js"
 export * from "./renderer-state.js"
 export * from "./text-selection.js"
+export * from "./webview.js"
 export * from "./scroll.js"
 export * from "./reorder.js"
 export * from "./svg.js"
@@ -1554,6 +1555,7 @@ export type ElementType =
   | "code"
   | "diff"
   | "markdown"
+  | "webview"
   | "virtual-list"
   | SvgChildType
 
@@ -2023,6 +2025,24 @@ export interface ImgProps extends HostProps {
   /** CSS `object-fit`. Default `"contain"`. */
   objectFit?: "fill" | "contain" | "cover" | "scaleDown" | "none"
   alt?: string
+}
+
+/** A web page in a native view of the window, after Electron's `<webview>` tag. 300 x 150 px
+ *  unless sized. It is a Tab stop, like a text control. */
+export interface WebviewProps extends HostProps {
+  /** The URL to show. Setting it to another value navigates; removing it leaves the page. */
+  src?: string
+  /** Navigation began. */
+  onDidStartLoading?: (event: DomEvent) => void
+  /** The page and its frames finished loading, or the load failed. */
+  onDidStopLoading?: (event: DomEvent) => void
+  /** A navigation committed. `event.url` is the page's URL. */
+  onDidNavigate?: (event: DomEvent) => void
+  /** The title changed: `event.title`, and `event.explicitSet` when the page set it. */
+  onPageTitleUpdated?: (event: DomEvent) => void
+  /** A load failed: `event.errorCode` (an `NSURLError` code, not a Chromium net error),
+   *  `event.errorDescription` and `event.validatedURL`. */
+  onDidFailLoad?: (event: DomEvent) => void
 }
 
 /** Byte order of a `setImagePixels` buffer. Alpha is straight in both. */
@@ -2746,6 +2766,9 @@ export type NativeRenderer = MutationHost &
       | "selectText"
       | "setSelectionRange"
       | "getTextSelection"
+      | "webviewCommand"
+      | "webviewState"
+      | "webviewExecuteJavascript"
       | "requestSubmit"
       | "getScrollOffset"
       | "getListScrollTop"

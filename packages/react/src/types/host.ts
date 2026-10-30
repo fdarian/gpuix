@@ -18,6 +18,8 @@ import type {
   LabelProps as NativeLabelProps,
   TextareaProps as NativeTextareaProps,
   ImgProps as NativeImgProps,
+  WebviewMethods,
+  WebviewProps as NativeWebviewProps,
   SvgProps as NativeSvgProps,
   SvgCircleProps as NativeSvgCircleProps,
   SvgClipPathProps as NativeSvgClipPathProps,
@@ -117,6 +119,12 @@ export interface ImgProps extends ReactHostProps<NativeImgProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<ImgInstance>
+}
+
+export interface WebviewProps extends ReactHostProps<NativeWebviewProps> {
+  key?: Key | null
+  children?: ReactNode
+  ref?: Ref<WebviewInstance>
 }
 
 export interface SvgProps extends ReactHostProps<NativeSvgProps> {
@@ -275,6 +283,11 @@ export interface ImgInstance extends PublicInstance {
     pixels: Buffer | Uint8Array,
     options?: ImagePixelsOptions,
   ): void
+}
+
+/** The ref of a `<webview>`: Electron's `<webview>` methods. */
+export interface WebviewInstance extends PublicInstance, WebviewMethods {
+  type: "webview"
 }
 
 /** The ref of an `<input>` or `<textarea>`: the DOM selection API. */

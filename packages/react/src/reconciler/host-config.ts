@@ -12,6 +12,7 @@ import {
   createElementMethods,
   defineScrollMembers,
   blurHostElement,
+  createWebviewMethods,
   eventTypesWithOverrides,
   focusHostElement,
   HOST_BINDING,
@@ -52,6 +53,7 @@ import type {
   PublicInstance,
   TextControlInstance,
   TextInstance,
+  WebviewInstance,
 } from "../types/host.js"
 import { syncMotionBindings } from "./motion-bindings.js"
 import {
@@ -114,6 +116,15 @@ function attachHostMethods(instance: Instance): PublicInstance {
         nativeRenderer: container.nativeRenderer,
         flushMutations: () => container.renderer.flushMutations(),
       })
+  } else if (instance.type === "webview") {
+    Object.assign(
+      instance as WebviewInstance,
+      createWebviewMethods({
+        id: instance.id,
+        nativeRenderer: container.nativeRenderer,
+        flushMutations: () => container.renderer.flushMutations(),
+      }),
+    )
   } else if (instance.type === "img") {
     const img = instance as ImgInstance
     img.setImage = (bytes) => {
