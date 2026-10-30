@@ -5,13 +5,13 @@
 import type { MotionTransition } from "./host.js"
 import type { MotionValue } from "./motion-value.js"
 
-/** `true` and `"position"` glide the box to its new position. `"size"` snaps, as the glide moves the box and scales nothing; it still moves a box that holds a `layoutId`. */
+/** `true` glides the box from the position and size it was shown with to the ones layout gives it, through a scale about its centre; `"position"` glides only the corner and snaps the size; `"size"` glides only the size and snaps the corner. */
 export type LayoutMode = boolean | "position" | "size"
 
 export interface MotionLayoutProps {
-  /** Glide to the new layout position instead of jumping. `false` turns off a `layoutId` too. */
+  /** Glide to the new layout position and size instead of jumping. `false` turns off a `layoutId` too. */
   layout?: LayoutMode
-  /** Elements with the same id hand their glide to each other: a newcomer starts from where the last holder was shown. Implies `layout`. */
+  /** Elements with the same id hand their glide to each other: a newcomer starts from the box the last holder was shown as. Implies `layout`. */
   layoutId?: string
 }
 
