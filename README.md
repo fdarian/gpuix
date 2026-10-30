@@ -3520,6 +3520,12 @@ it covers the one written later wins. `hover`, `active` and the other state styl
   goes with it. The lines in between have none.
 - Boxes nested in each other add up: an inner box that starts where its parent
   does has the parent's leading space first, then its own.
+- A span with nothing in it still takes its space. `A<span style={{ paddingLeft: 5, paddingRight: 5 }} />B`
+  has the 10px between the letters, the box has the height of its font's content area, paints its
+  `backgroundColor` and border, is hit and reports bounds, and the line it is on is as tall as the
+  strut (the container's font and line height, and the box's own) even when it is alone in its container.
+  A line breaks around it where it would without it. An empty span with a vertical padding only, or with
+  none, makes no line and has no box.
 - A box is its border box: `getBoundingClientRect()`, the `onLayout` and observer
   reports, the `outline` ring, `offsetX` and `offsetY`, and what the pointer is on
   (events, hover, `cursor`, a press that focuses) start after its margin and end
@@ -3535,7 +3541,7 @@ it covers the one written later wins. `hover`, `active` and the other state styl
   (`width: "min-content"`, a flex item without a width) a percentage counts as 0, as
   CSS treats it in intrinsic sizes.
 - Deviations: an `auto` margin and a negative padding or border width count as 0, and a span with no
-  painted glyph, or cut by `text-overflow` or `lineClamp` at its end, loses its inline space
+  painted glyph that is not empty, or cut by `text-overflow` or `lineClamp` at its end, loses its inline space
   ([deviations](./docs/fork/deviations.md#text)).
 
 ### Painting an inline box
