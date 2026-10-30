@@ -3,7 +3,7 @@
 use gpui::RecordedLayer;
 use napi_derive::napi;
 
-use super::backend::WebviewEvent;
+use super::backend::{PageFocus, WebviewEvent};
 use super::test_backend::{TestWebviews, WebviewCommand};
 use crate::renderer::GpuixView;
 
@@ -12,7 +12,8 @@ pub struct WebviewCommandReading {
     /// `loadURL`, `reload`, `stop`, `goBack`, `goForward`, `executeJavaScript` or
     /// `setFirstResponder`.
     pub name: String,
-    /// The URL, the code, or `"true"` / `"false"` for the first responder.
+    /// The URL, the code, or for the first responder `"false"` (the window's view), `"true"` (the
+    /// page), `"forward"` or `"backward"` (the page, entered by Tab or Shift+Tab).
     pub argument: Option<String>,
 }
 
@@ -25,7 +26,15 @@ impl From<WebviewCommand> for WebviewCommandReading {
             WebviewCommand::GoBack => ("goBack", None),
             WebviewCommand::GoForward => ("goForward", None),
             WebviewCommand::ExecuteJavaScript(code) => ("executeJavaScript", Some(code)),
-            WebviewCommand::SetFirstResponder(focused) => ("setFirstResponder", Some(focused.to_string())),
+            WebviewCommand::SetFirstResponder(focus) => {
+                let argument = match focus {
+                    PageFocus::Blurred => "false",
+                    PageFocus::Focused => "true",
+                    PageFocus::FocusedByTab { backwards: false } => "forward",
+                    PageFocus::FocusedByTab { backwards: true } => "backward",
+                };
+                ("setFirstResponder", Some(argument.to_string()))
+            }
         };
         Self { name: name.to_string(), argument }
     }
@@ -126,6 +135,16 @@ impl GpuixView {
         outcome: super::backend::ScriptOutcome,
     ) -> Result<(), String> {
         test_pages(cx)?.settle_script(id, outcome)
+    }
+
+    /// The page of `id` hands the keyboard on, as it does when Tab leaves its last tabbable
+    /// element (`backwards`: Shift+Tab leaves its first). Focus moves on in a turn of the run loop.
+    pub(crate) fn webview_tab_out(&mut self, id: u64, backwards: bool, cx: &gpui::App) -> Result<(), String> {
+        let exit = test_pages(cx)?
+            .with_page(id, |page| page.focus_exit.clone())?
+            .ok_or_else(|| format!("Element {id} has no page to leave"))?;
+        exit(backwards);
+        Ok(())
     }
 
     pub(crate) fn webview_surface(

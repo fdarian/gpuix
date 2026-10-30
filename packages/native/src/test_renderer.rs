@@ -2257,6 +2257,14 @@ impl TestGpuixRenderer {
         )
     }
 
+    /// The page of a `<webview>` hands the keyboard on, as it does when Tab leaves its last
+    /// tabbable element, or Shift+Tab (`backwards`) its first.
+    #[napi]
+    pub fn simulate_webview_tab_out(&self, element_id: f64, backwards: bool) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, _window, cx| view.webview_tab_out(id, backwards, cx))?.map_err(Error::from_reason)
+    }
+
     /// What `canGoBack()` and `canGoForward()` answer.
     #[napi]
     pub fn set_webview_history(&self, element_id: f64, can_go_back: bool, can_go_forward: bool) -> Result<()> {

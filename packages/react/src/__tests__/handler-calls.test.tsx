@@ -37,11 +37,13 @@ const NOT_CALLABLE_FROM_A_HANDLER = new Set([
   "setWindowSize",
   "simulateComposition",
   "simulateKeystrokes",
-  // Each delivers the event the scripted page reports to its handler, as dispatchNativeEvents does.
+  // Each delivers the event the scripted page reports to its handler, as dispatchNativeEvents does (the tab out
+  // moves focus, which reports its focus events the same way).
   "simulateWebviewFail",
   "simulateWebviewNavigate",
   "simulateWebviewStartLoading",
   "simulateWebviewStopLoading",
+  "simulateWebviewTabOut",
   "simulateWebviewTitle",
   "nativeSimulateClick",
   "nativeSimulateFileDragEnd",

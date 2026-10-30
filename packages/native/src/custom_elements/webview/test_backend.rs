@@ -2,7 +2,7 @@
 //! a test sets, and reports only the events a test makes.
 use std::{cell::RefCell, collections::HashMap, collections::VecDeque, rc::Rc};
 
-use super::backend::{EventEmitter, ScriptDone, ScriptOutcome, WebviewBackend, WebviewEvent, WebviewState};
+use super::backend::{EventEmitter, FocusExit, PageFocus, ScriptDone, ScriptOutcome, WebviewBackend, WebviewEvent, WebviewState};
 
 /// What the element asked of the engine, in order.
 #[derive(Clone, Debug, PartialEq)]
@@ -13,7 +13,7 @@ pub(crate) enum WebviewCommand {
     GoBack,
     GoForward,
     ExecuteJavaScript(String),
-    SetFirstResponder(bool),
+    SetFirstResponder(PageFocus),
 }
 
 #[derive(Default)]
@@ -23,6 +23,8 @@ pub(crate) struct TestPage {
     /// The scripts that wait for a test to settle them, oldest first.
     scripts: VecDeque<ScriptDone>,
     emitter: Option<Rc<EventEmitter>>,
+    /// What the page calls when Tab leaves it.
+    pub(crate) focus_exit: Option<FocusExit>,
 }
 
 /// The pages of the webviews that exist, by element id. A global of the app, so the engine of a
@@ -74,8 +76,11 @@ pub(crate) struct TestBackend {
 }
 
 impl TestBackend {
-    pub(crate) fn new(id: u64, pages: &TestWebviews, emitter: Rc<EventEmitter>) -> Self {
-        pages.0.borrow_mut().insert(id, TestPage { emitter: Some(emitter), ..TestPage::default() });
+    pub(crate) fn new(id: u64, pages: &TestWebviews, emitter: Rc<EventEmitter>, focus_exit: FocusExit) -> Self {
+        pages.0.borrow_mut().insert(
+            id,
+            TestPage { emitter: Some(emitter), focus_exit: Some(focus_exit), ..TestPage::default() },
+        );
         Self { id, pages: pages.clone() }
     }
 
@@ -127,8 +132,9 @@ impl WebviewBackend for TestBackend {
             .expect("the page of a live backend");
     }
 
-    fn set_first_responder(&mut self, focused: bool) {
-        self.command(WebviewCommand::SetFirstResponder(focused));
+    fn set_first_responder(&mut self, focus: PageFocus) -> Result<(), String> {
+        self.command(WebviewCommand::SetFirstResponder(focus));
+        Ok(())
     }
 }
 
@@ -145,7 +151,7 @@ mod tests {
         let emitter = EventEmitter::new(7);
         emitter.set_callback(Some(Arc::new(move |payload| sink.lock().unwrap().push(payload))));
         let pages = TestWebviews::default();
-        let backend = TestBackend::new(7, &pages, emitter);
+        let backend = TestBackend::new(7, &pages, emitter, Rc::new(|_| {}));
         (pages, backend, heard)
     }
 
@@ -154,13 +160,13 @@ mod tests {
         let (pages, mut backend, _) = page();
         backend.load("https://example.test/").unwrap();
         backend.reload();
-        backend.set_first_responder(true);
+        backend.set_first_responder(PageFocus::Focused).unwrap();
         assert_eq!(
             pages.with_page(7, |page| page.commands.clone()).unwrap(),
             [
                 WebviewCommand::Load("https://example.test/".into()),
                 WebviewCommand::Reload,
-                WebviewCommand::SetFirstResponder(true),
+                WebviewCommand::SetFirstResponder(PageFocus::Focused),
             ]
         );
     }

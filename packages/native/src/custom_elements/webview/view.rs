@@ -1,7 +1,7 @@
 //! What JS asks of a `<webview>`, run on the view that owns the element.
 use std::{cell::RefCell, rc::Rc};
 
-use super::backend::{ScriptDone, WebviewState};
+use super::backend::{PageFocus, ScriptDone, WebviewState};
 use super::Shared;
 use crate::renderer::GpuixView;
 
@@ -92,12 +92,10 @@ impl GpuixView {
 
     /// Moves keyboard input to the page or back. The focus observer calls it when the element
     /// gains or loses focus.
-    #[allow(dead_code)] // The focus handoff is the next slice; the backend side is in place.
-    pub(crate) fn webview_set_focused(&mut self, id: u64, focused: bool) -> Result<(), String> {
-        let shared = self.webview_shared(id)?;
+    pub(crate) fn webview_set_focused(&mut self, page_move: crate::focus::PageMove) -> Result<(), String> {
+        let shared = self.webview_shared(page_move.id)?;
         let mut shared = shared.borrow_mut();
-        shared.page()?.set_first_responder(focused);
-        Ok(())
+        shared.page()?.set_first_responder(PageFocus::from_step(page_move.focused, page_move.tab))
     }
 }
 

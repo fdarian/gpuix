@@ -19,9 +19,11 @@ use objc2::{
     sel, Encode, Encoding,
 };
 
+use super::webview_pulse as pulse;
 use super::webview_url::{classify, LoadTarget};
 use crate::custom_elements::webview::backend::{
-    EventEmitter, ScriptDone, ScriptOutcome, WebviewBackend, WebviewEvent, WebviewState,
+    EventEmitter, FocusExit, PageFocus, ScriptDone, ScriptOutcome, WebviewBackend, WebviewEvent,
+    WebviewState,
 };
 
 #[link(name = "WebKit", kind = "framework")]
@@ -112,7 +114,13 @@ thread_local! {
     static EMITTERS: RefCell<HashMap<usize, Rc<EventEmitter>>> = RefCell::new(HashMap::new());
 }
 
+// What a page calls when Tab leaves it, by the address of its view.
+thread_local! {
+    static FOCUS_EXITS: RefCell<HashMap<usize, FocusExit>> = RefCell::new(HashMap::new());
+}
+
 fn emit(delegate: &AnyObject, event: impl FnOnce() -> WebviewEvent) {
+    pulse::page_busy();
     let key = delegate as *const AnyObject as usize;
     if let Some(emitter) = EMITTERS.with(|emitters| emitters.borrow().get(&key).cloned()) {
         emitter.emit(event());
@@ -165,6 +173,59 @@ fn delegate_class() -> &'static AnyClass {
     builder.register()
 }
 
+/// The `WKWebView` of a page. WebKit hands the keyboard on at the end of its tab order with
+/// `-[NSWindow selectKeyViewFollowingView:]` (`selectKeyViewPrecedingView:` for Shift+Tab), which
+/// asks the view for the next valid key view. Answering nil keeps the keyboard in the page, and
+/// the window moves its own focus on in a later turn.
+fn web_view_class() -> &'static AnyClass {
+    const NAME: &CStr = c"GpuixWebView";
+    if let Some(class) = AnyClass::get(NAME) {
+        return class;
+    }
+    fn leave(view: &AnyObject, backwards: bool) -> *mut AnyObject {
+        let key = view as *const AnyObject as usize;
+        if let Some(exit) = FOCUS_EXITS.with(|exits| exits.borrow().get(&key).cloned()) {
+            exit(backwards);
+        }
+        ptr::null_mut()
+    }
+    // What the user does to the page is what it answers a moment later.
+    macro_rules! then_look_at_the_page {
+        ($name:ident, $selector:ident) => {
+            extern "C" fn $name(view: &AnyObject, _: Sel, event: *mut AnyObject) {
+                pulse::page_busy();
+                unsafe {
+                    let _: () = msg_send![super(view, class!(WKWebView)), $selector: event];
+                }
+            }
+        };
+    }
+    then_look_at_the_page!(key_down, keyDown);
+    then_look_at_the_page!(key_up, keyUp);
+    then_look_at_the_page!(mouse_down, mouseDown);
+    then_look_at_the_page!(mouse_up, mouseUp);
+    then_look_at_the_page!(right_mouse_down, rightMouseDown);
+    then_look_at_the_page!(scroll_wheel, scrollWheel);
+    extern "C" fn next_valid_key_view(view: &AnyObject, _: Sel) -> *mut AnyObject {
+        leave(view, false)
+    }
+    extern "C" fn previous_valid_key_view(view: &AnyObject, _: Sel) -> *mut AnyObject {
+        leave(view, true)
+    }
+    let mut builder = ClassBuilder::new(NAME, class!(WKWebView)).expect("the web view class name is free");
+    unsafe {
+        builder.add_method(sel!(nextValidKeyView), next_valid_key_view as extern "C" fn(_, _) -> _);
+        builder.add_method(sel!(previousValidKeyView), previous_valid_key_view as extern "C" fn(_, _) -> _);
+        builder.add_method(sel!(keyDown:), key_down as extern "C" fn(_, _, _));
+        builder.add_method(sel!(keyUp:), key_up as extern "C" fn(_, _, _));
+        builder.add_method(sel!(mouseDown:), mouse_down as extern "C" fn(_, _, _));
+        builder.add_method(sel!(mouseUp:), mouse_up as extern "C" fn(_, _, _));
+        builder.add_method(sel!(rightMouseDown:), right_mouse_down as extern "C" fn(_, _, _));
+        builder.add_method(sel!(scrollWheel:), scroll_wheel as extern "C" fn(_, _, _));
+    }
+    builder.register()
+}
+
 unsafe fn title_of(web_view: *mut AnyObject) -> String {
     // A page with no title has a nil one: the DOM's `document.title` is "" then.
     unsafe { string_of(msg_send![web_view, title]) }.unwrap_or_default()
@@ -201,19 +262,25 @@ pub(crate) struct WkBackend {
 
 impl WkBackend {
     /// A page that fills `content_view`, the content `NSView` of a native surface.
-    pub(crate) fn new(content_view: usize, emitter: Rc<EventEmitter>) -> Result<Self, String> {
+    pub(crate) fn new(content_view: usize, emitter: Rc<EventEmitter>, focus_exit: FocusExit) -> Result<Self, String> {
         let content = content_view as *mut AnyObject;
         if content.is_null() {
             return Err("the surface has no content view".to_string());
         }
         unsafe {
             let configuration: Retained<AnyObject> = msg_send![class!(WKWebViewConfiguration), new];
+            // Tab reaches links as well as form controls, as in Chromium.
+            let preferences: *mut AnyObject = msg_send![&*configuration, preferences];
+            let _: () = msg_send![preferences, setTabFocusesLinks: true];
             let frame: CgRect = msg_send![content, bounds];
-            let allocated: Allocated<AnyObject> = msg_send![class!(WKWebView), alloc];
+            let allocated: Allocated<AnyObject> = msg_send![web_view_class(), alloc];
             let web_view: Retained<AnyObject> =
                 msg_send![allocated, initWithFrame: frame, configuration: &*configuration];
             let _: () = msg_send![&*web_view, setAutoresizingMask: FILL_PARENT];
             let _: () = msg_send![content, addSubview: &*web_view];
+            FOCUS_EXITS.with(|exits| {
+                exits.borrow_mut().insert(&*web_view as *const AnyObject as usize, focus_exit)
+            });
 
             let delegate: Retained<AnyObject> = msg_send![delegate_class(), new];
             EMITTERS.with(|emitters| {
@@ -228,6 +295,7 @@ impl WkBackend {
                 options: OBSERVE_NEW,
                 context: ptr::null_mut::<c_void>()
             ];
+            pulse::page_added();
             Ok(Self { web_view, delegate, _emitter: emitter })
         }
     }
@@ -247,12 +315,17 @@ impl Drop for WkBackend {
             let _: () = msg_send![&*self.web_view, stopLoading];
             let _: () = msg_send![&*self.web_view, removeFromSuperview];
         }
-        EMITTERS.with(|emitters| emitters.borrow_mut().remove(&(&*self.delegate as *const AnyObject as usize)));
+        // At process exit this runs while the thread's locals are being destroyed, the maps
+        // among them: there is nothing left to remove then.
+        let _ = EMITTERS.try_with(|emitters| emitters.borrow_mut().remove(&(&*self.delegate as *const AnyObject as usize)));
+        let _ = FOCUS_EXITS.try_with(|exits| exits.borrow_mut().remove(&(&*self.web_view as *const AnyObject as usize)));
+        pulse::page_removed();
     }
 }
 
 impl WebviewBackend for WkBackend {
     fn load(&mut self, url: &str) -> Result<(), String> {
+        pulse::page_busy();
         unsafe {
             match classify(url)? {
                 LoadTarget::File { url, read_access } => {
@@ -275,18 +348,22 @@ impl WebviewBackend for WkBackend {
     }
 
     fn reload(&mut self) {
+        pulse::page_busy();
         let _: *mut AnyObject = unsafe { msg_send![&*self.web_view, reload] };
     }
 
     fn stop(&mut self) {
+        pulse::page_busy();
         let _: () = unsafe { msg_send![&*self.web_view, stopLoading] };
     }
 
     fn go_back(&mut self) {
+        pulse::page_busy();
         let _: *mut AnyObject = unsafe { msg_send![&*self.web_view, goBack] };
     }
 
     fn go_forward(&mut self) {
+        pulse::page_busy();
         let _: *mut AnyObject = unsafe { msg_send![&*self.web_view, goForward] };
     }
 
@@ -303,6 +380,7 @@ impl WebviewBackend for WkBackend {
     }
 
     fn execute_javascript(&mut self, code: &str, done: ScriptDone) {
+        pulse::page_busy();
         let done = RefCell::new(Some(done));
         let handler = RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
             if let Some(done) = done.borrow_mut().take() {
@@ -315,9 +393,89 @@ impl WebviewBackend for WkBackend {
         };
     }
 
-    /// The hook for the focus handoff: the element has focus in the window, and the page should
-    /// have the keyboard. Not done yet.
-    fn set_first_responder(&mut self, _focused: bool) {}
+    fn set_first_responder(&mut self, focus: PageFocus) -> Result<(), String> {
+        pulse::page_busy();
+        unsafe {
+            let window: *mut AnyObject = msg_send![self.web_view(), window];
+            if window.is_null() {
+                return Err("The page is not in a window".to_string());
+            }
+            let window_view = self.window_view()?;
+            match focus {
+                PageFocus::Blurred => {
+                    if self.has_keyboard(window) {
+                        make_first_responder(window, window_view)?;
+                    }
+                    Ok(())
+                }
+                PageFocus::Focused => make_first_responder(window, self.web_view()),
+                PageFocus::FocusedByTab { backwards } => {
+                    self.select_by_tab(window, window_view, backwards);
+                    if self.has_keyboard(window) {
+                        Ok(())
+                    } else {
+                        make_first_responder(window, self.web_view())
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl WkBackend {
+    /// The view of the window that holds the surfaces: the page is in a content view, which is in
+    /// the container of its surface.
+    unsafe fn window_view(&self) -> Result<*mut AnyObject, String> {
+        unsafe {
+            let mut view = self.web_view();
+            for _ in 0..3 {
+                view = msg_send![view, superview];
+                if view.is_null() {
+                    return Err("The page is not in the view of a window".to_string());
+                }
+            }
+            Ok(view)
+        }
+    }
+
+    /// Whether the page, or a view inside it, has the keyboard.
+    unsafe fn has_keyboard(&self, window: *mut AnyObject) -> bool {
+        unsafe {
+            let responder: *mut AnyObject = msg_send![window, firstResponder];
+            if responder.is_null() || !is_kind(responder, class!(NSView)) {
+                return false;
+            }
+            msg_send![responder, isDescendantOf: self.web_view()]
+        }
+    }
+
+    /// Has the window pass the keyboard on to the page as it does along its key view loop, so
+    /// that the page focuses its first (last, backwards) tabbable element: WebKit takes the
+    /// direction from the window. The loop is linked for the move only.
+    unsafe fn select_by_tab(&self, window: *mut AnyObject, window_view: *mut AnyObject, backwards: bool) {
+        unsafe {
+            if backwards {
+                let before: *mut AnyObject = msg_send![self.web_view(), nextKeyView];
+                let _: () = msg_send![self.web_view(), setNextKeyView: window_view];
+                let _: () = msg_send![window, selectKeyViewPrecedingView: window_view];
+                let _: () = msg_send![self.web_view(), setNextKeyView: before];
+            } else {
+                let before: *mut AnyObject = msg_send![window_view, nextKeyView];
+                let _: () = msg_send![window_view, setNextKeyView: self.web_view()];
+                let _: () = msg_send![window, selectKeyViewFollowingView: window_view];
+                let _: () = msg_send![window_view, setNextKeyView: before];
+            }
+        }
+    }
+}
+
+unsafe fn make_first_responder(window: *mut AnyObject, view: *mut AnyObject) -> Result<(), String> {
+    let accepted: bool = unsafe { msg_send![window, makeFirstResponder: view] };
+    if accepted {
+        Ok(())
+    } else {
+        Err("The window would not move the keyboard".to_string())
+    }
 }
 
 fn ns_url(url: &str) -> Result<Retained<AnyObject>, String> {
@@ -476,7 +634,8 @@ pub(crate) fn smoke() {
         let sink = heard.clone();
         let emitter = EventEmitter::new(1);
         emitter.set_callback(Some(Arc::new(move |payload| sink.lock().unwrap().push(payload))));
-        let mut backend = WkBackend::new(&*content as *const AnyObject as usize, emitter).unwrap();
+        let mut backend =
+            WkBackend::new(&*content as *const AnyObject as usize, emitter, Rc::new(|_| {})).unwrap();
         let names = || heard.lock().unwrap().iter().map(|event| event.event_type.clone()).collect::<Vec<_>>();
 
         backend.load("data:text/html,%3Ctitle%3EHi%3C%2Ftitle%3E%3Cp%3Ex%3C%2Fp%3E").unwrap();

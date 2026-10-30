@@ -47,6 +47,27 @@ impl CustomElementFactory for WebviewFactory {
     }
 }
 
+/// Tab out of the page moves focus on in the window, a turn of the run loop after the page asked:
+/// the page asks from WebKit's own callbacks, outside any update of the window.
+fn focus_exit(window: &gpui::Window, cx: &gpui::App) -> backend::FocusExit {
+    let handle = window.window_handle();
+    let app = cx.to_async();
+    Rc::new(move |backwards| {
+        let executor = app.foreground_executor().clone();
+        executor
+            .spawn({
+                let mut app = app.clone();
+                async move {
+                    let moved = app.update_window(handle, |_, window, cx| crate::focus::step_focus(window, cx, backwards));
+                    if let Err(message) = moved.map_err(|error| error.to_string()).and_then(|result| result) {
+                        log::error!("<webview> could not move focus out of its page: {message}");
+                    }
+                }
+            })
+            .detach();
+    })
+}
+
 /// What the element, its paint and the calls from JS share. Painting runs in closures that a
 /// frame keeps, so this is shared and not owned by the element.
 pub(crate) struct Shared {
@@ -100,7 +121,7 @@ impl Shared {
             .map_err(|error| error.to_string())?
             .downcast::<usize>()
             .map_err(|_| "the surface of this window has no content view".to_string())?;
-        let backend = backend::create_backend(self.id, *content, self.emitter.clone(), cx)?;
+        let backend = backend::create_backend(self.id, *content, self.emitter.clone(), focus_exit(window, cx), cx)?;
         self.surface = Some(surface);
         self.backend = Some(backend);
         Ok(())

@@ -109,10 +109,37 @@ pub(crate) trait WebviewBackend {
     fn state(&self) -> WebviewState;
     /// Runs `code` in the page and calls `done` with the result of its last expression.
     fn execute_javascript(&mut self, code: &str, done: ScriptDone);
-    /// Whether keyboard input goes to the page. The element is focused or blurred in the window
+    /// Moves keyboard input to the page or back. The element is focused or blurred in the window
     /// first; this is the follow-up that moves the first responder to or from the page.
-    fn set_first_responder(&mut self, focused: bool);
+    fn set_first_responder(&mut self, focus: PageFocus) -> Result<(), String>;
 }
+
+/// Where the keyboard goes when the focus of a `<webview>` element changes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum PageFocus {
+    /// To the window's own view.
+    Blurred,
+    /// To the page, as a script or a click moves it there: the page keeps what it had focused.
+    Focused,
+    /// To the page by Tab or Shift+Tab, which focus its first or last tabbable element, as the
+    /// focus of an iframe does.
+    FocusedByTab { backwards: bool },
+}
+
+impl PageFocus {
+    pub(crate) fn from_step(focused: bool, tab: Option<bool>) -> Self {
+        match (focused, tab) {
+            (false, _) => Self::Blurred,
+            (true, None) => Self::Focused,
+            (true, Some(backwards)) => Self::FocusedByTab { backwards },
+        }
+    }
+}
+
+/// Asks the window to move focus past the page: `true` for Shift+Tab. The page calls it when
+/// Tab leaves its last tabbable element or Shift+Tab its first, and may call it from any turn
+/// of the run loop.
+pub(crate) type FocusExit = Rc<dyn Fn(bool)>;
 
 /// The engine for a webview whose surface has the content view `content_view`
 /// (`NativeSurface::platform_handle`).
@@ -120,6 +147,7 @@ pub(crate) fn create_backend(
     id: u64,
     content_view: usize,
     emitter: Rc<EventEmitter>,
+    focus_exit: FocusExit,
     cx: &gpui::App,
 ) -> Result<Box<dyn WebviewBackend>, String> {
     if cx.has_global::<super::test_backend::TestWebviews>() {
@@ -128,16 +156,17 @@ pub(crate) fn create_backend(
             id,
             cx.global::<super::test_backend::TestWebviews>(),
             emitter,
+            focus_exit,
         )));
     }
     #[cfg(target_os = "macos")]
     {
         let _ = id;
-        return Ok(Box::new(crate::platform::webview_macos::WkBackend::new(content_view, emitter)?));
+        return Ok(Box::new(crate::platform::webview_macos::WkBackend::new(content_view, emitter, focus_exit)?));
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (id, content_view, emitter);
+        let _ = (id, content_view, emitter, focus_exit);
         Err("webview is not supported on this platform".to_string())
     }
 }

@@ -546,6 +546,153 @@ describeNative("custom element: webview", () => {
     })
   })
 
+  describe("keyboard handoff", () => {
+    const responder = (testId: string) =>
+      renderer()
+        .getWebviewCommands(idOf(testId))
+        .filter((command) => command.name === "setFirstResponder")
+        .map((command) => command.argument)
+
+    function page(extra: React.ReactNode = null) {
+      let view: WebviewInstance | null = null
+      const focused: string[] = []
+      testRoot.render(
+        <div>
+          <input testId="before" style={{ width: 100, height: 20 }} />
+          <webview
+            testId="w"
+            ref={(instance) => (view = instance)}
+            onFocus={() => focused.push("focus")}
+            onBlur={() => focused.push("blur")}
+          />
+          <input testId="after" style={{ width: 100, height: 20 }} />
+          {extra}
+        </div>
+      )
+      return { view: () => view!, focused }
+    }
+
+    it("gives the page the keyboard when the element is focused, and the window's view when it is not", () => {
+      const { view } = page()
+      expect(responder("w")).toEqual([])
+      view().focus()
+      expect(responder("w")).toEqual(["true"])
+      view().blur()
+      expect(responder("w")).toEqual(["true", "false"])
+    })
+
+    it("takes the keyboard back when another element is focused, however it is", () => {
+      const { view } = page()
+      view().focus()
+      renderer().focusElement(idOf("after"))
+      expect(responder("w")).toEqual(["true", "false"])
+      view().focus()
+      renderer().focusElement(idOf("before"))
+      expect(responder("w")).toEqual(["true", "false", "true", "false"])
+    })
+
+    it("does not touch the page while focus moves between other elements", () => {
+      page()
+      renderer().focusElement(idOf("before"))
+      renderer().focusElement(idOf("after"))
+      expect(responder("w")).toEqual([])
+    })
+
+    it("hands the page the keyboard at its first element for Tab and its last for Shift+Tab", () => {
+      page()
+      renderer().focusElement(idOf("before"))
+      renderer().simulateKeystrokes("Tab")
+      expect(responder("w")).toEqual(["forward"])
+      renderer().simulateKeystrokes("Tab")
+      expect(responder("w")).toEqual(["forward", "false"])
+      expect(renderer().getFocusedElementId()).toBe(idOf("after"))
+      renderer().simulateKeystrokes("Shift+Tab")
+      expect(responder("w")).toEqual(["forward", "false", "backward"])
+      expect(renderer().getFocusedElementId()).toBe(idOf("w"))
+      renderer().simulateKeystrokes("Shift+Tab")
+      expect(responder("w")).toEqual(["forward", "false", "backward", "false"])
+      expect(renderer().getFocusedElementId()).toBe(idOf("before"))
+    })
+
+    it("does not say a script's focus is Tab", () => {
+      const { view } = page()
+      renderer().focusElement(idOf("before"))
+      renderer().simulateKeystrokes("Tab")
+      renderer().simulateKeystrokes("Tab")
+      view().focus()
+      expect(responder("w")).toEqual(["forward", "false", "true"])
+    })
+
+    it("takes the focus of a press on the element: the page gets the keyboard", () => {
+      page()
+      const bounds = renderer().getElementBounds(idOf("w"))!
+      renderer().focusElement(idOf("before"))
+      renderer().nativeSimulateClick(bounds.x + 20, bounds.y + 20)
+      expect(renderer().getFocusedElementId()).toBe(idOf("w"))
+      expect(responder("w")).toEqual(["true"])
+      const after = renderer().getElementBounds(idOf("after"))!
+      renderer().nativeSimulateClick(after.x + 5, after.y + 5)
+      expect(responder("w")).toEqual(["true", "false"])
+    })
+
+    it("moves between two pages: the first gives the keyboard up, the second takes it", () => {
+      testRoot.render(
+        <div>
+          <webview testId="one" />
+          <webview testId="two" />
+        </div>
+      )
+      renderer().focusElement(idOf("one"))
+      renderer().simulateKeystrokes("Tab")
+      expect(responder("one")).toEqual(["true", "false"])
+      expect(responder("two")).toEqual(["forward"])
+    })
+
+    it("moves focus on when the page hands the keyboard on", () => {
+      const { focused } = page()
+      renderer().focusElement(idOf("w"))
+      renderer().simulateWebviewTabOut(idOf("w"), false)
+      expect(renderer().getFocusedElementId()).toBe(idOf("after"))
+      expect(focused).toEqual(["focus", "blur"])
+      expect(responder("w")).toEqual(["true", "false"])
+      renderer().focusElement(idOf("w"))
+      renderer().simulateWebviewTabOut(idOf("w"), true)
+      expect(renderer().getFocusedElementId()).toBe(idOf("before"))
+      expect(responder("w")).toEqual(["true", "false", "true", "false"])
+    })
+
+    it("keeps the element focused for a page that is the only tab stop and hands the keyboard on", () => {
+      testRoot.render(<webview testId="only" />)
+      renderer().focusElement(idOf("only"))
+      renderer().simulateWebviewTabOut(idOf("only"), false)
+      expect(renderer().getFocusedElementId()).toBe(idOf("only"))
+    })
+
+    it("reports focus and blur to JS in order", () => {
+      const events: string[] = []
+      testRoot.render(
+        <div>
+          <input testId="before" style={{ width: 100, height: 20 }} onBlur={() => events.push("blur:before")} onFocus={() => events.push("focus:before")} />
+          <webview
+            testId="w"
+            onFocus={() => events.push("focus:w")}
+            onBlur={() => events.push("blur:w")}
+          />
+        </div>
+      )
+      renderer().focusElement(idOf("before"))
+      renderer().simulateKeystrokes("Tab")
+      renderer().simulateKeystrokes("Shift+Tab")
+      expect(events).toEqual([
+        "focus:before",
+        "blur:before",
+        "focus:w",
+        "blur:w",
+        "focus:before",
+      ])
+    })
+  })
+
   describe("retention", () => {
     it("replays a page with a webview in it in a frame that changes nothing, and keeps its surface", () => {
       testRoot.render(

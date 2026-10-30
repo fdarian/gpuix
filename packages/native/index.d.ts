@@ -1083,6 +1083,11 @@ export declare class TestGpuixRenderer {
   simulateWebviewTitle(elementId: number, title: string, explicitSet: boolean): void
   /** A load fails: `did-fail-load`. */
   simulateWebviewFail(elementId: number, errorCode: number, errorDescription: string, validatedUrl?: string | undefined | null): void
+  /**
+   * The page of a `<webview>` hands the keyboard on, as it does when Tab leaves its last
+   * tabbable element, or Shift+Tab (`backwards`) its first.
+   */
+  simulateWebviewTabOut(elementId: number, backwards: boolean): void
   /** What `canGoBack()` and `canGoForward()` answer. */
   setWebviewHistory(elementId: number, canGoBack: boolean, canGoForward: boolean): void
   /**
@@ -2418,7 +2423,10 @@ export interface WebviewCommandReading {
    * `setFirstResponder`.
    */
   name: string
-  /** The URL, the code, or `"true"` / `"false"` for the first responder. */
+  /**
+   * The URL, the code, or for the first responder `"false"` (the window's view), `"true"` (the
+   * page), `"forward"` or `"backward"` (the page, entered by Tab or Shift+Tab).
+   */
   argument?: string
 }
 

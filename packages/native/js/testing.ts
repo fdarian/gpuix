@@ -370,6 +370,7 @@ interface NativeTestRendererApi
   simulateWebviewStartLoading(elementId: number): void
   simulateWebviewStopLoading(elementId: number): void
   simulateWebviewNavigate(elementId: number, url: string): void
+  simulateWebviewTabOut(elementId: number, backwards: boolean): void
   simulateWebviewTitle(elementId: number, title: string, explicitSet: boolean): void
   simulateWebviewFail(
     elementId: number,
@@ -1807,6 +1808,14 @@ export class TestRenderer implements NativeRenderer {
   simulateWebviewNavigate(elementId: number, url: string): void {
     this.native.flush()
     this.native.simulateWebviewNavigate(elementId, url)
+    this.dispatchNativeEvents()
+  }
+
+  /** The page hands the keyboard on, as it does when Tab leaves its last tabbable element
+   *  (`backwards`: Shift+Tab leaves its first): focus moves to the next (previous) tab stop. */
+  simulateWebviewTabOut(elementId: number, backwards = false): void {
+    this.native.flush()
+    this.native.simulateWebviewTabOut(elementId, backwards)
     this.dispatchNativeEvents()
   }
 

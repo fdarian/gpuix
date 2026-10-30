@@ -147,6 +147,22 @@ pub(crate) struct FocusState {
     suspended: Option<(u64, bool)>,
     /// Focus events noticed but not yet sent. See `settle_focus`.
     outbox: VecDeque<EventPayload>,
+    /// Keyboard handoffs to and from the page of a `<webview>` that a noticed move calls for,
+    /// done by `settle_focus` before the events go out.
+    #[cfg(not(target_family = "wasm"))]
+    page_moves: VecDeque<PageMove>,
+    /// Set while `step_focus` settles Tab: whether it was backwards.
+    #[cfg(not(target_family = "wasm"))]
+    tab_step: Option<bool>,
+}
+
+/// The keyboard of a `<webview>` goes to its page (`focused`) or back to the window's view.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) struct PageMove {
+    pub id: u64,
+    pub focused: bool,
+    /// For a focus that Tab moved: whether it was Shift+Tab.
+    pub tab: Option<bool>,
 }
 
 impl FocusState {
@@ -164,6 +180,22 @@ impl FocusState {
 
     fn pop_event(&mut self) -> Option<EventPayload> {
         self.outbox.pop_front()
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn push_page_moves(&mut self, tree: &RetainedTree, change: &FocusChange) {
+        let is_webview = |id: &u64| tree.elements.get(id).is_some_and(|element| element.element_type == "webview");
+        if let Some(id) = change.from.filter(is_webview) {
+            self.page_moves.push_back(PageMove { id, focused: false, tab: None });
+        }
+        if let Some(id) = change.to.filter(is_webview) {
+            self.page_moves.push_back(PageMove { id, focused: true, tab: self.tab_step });
+        }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn pop_page_move(&mut self) -> Option<PageMove> {
+        self.page_moves.pop_front()
     }
 
     pub fn has_unsent_events(&self) -> bool {
@@ -376,7 +408,7 @@ pub(crate) fn step_focus(
     } else {
         window.focus_next(cx);
     }
-    settle_focus(window, cx)?;
+    settle_focus_after_tab(window, cx, backwards)?;
     scroll_focus_into_view(window, cx)
 }
 
@@ -407,16 +439,38 @@ fn scroll_focus_into_view(window: &mut Window, cx: &mut App) -> Result<(), Strin
 /// own, is noticed by the next frame, which schedules this
 /// (`GpuixView::sync_focus_handles`).
 pub(crate) fn settle_focus(window: &mut Window, cx: &mut App) -> Result<(), String> {
+    settle(window, cx, None)
+}
+
+/// `settle_focus` for the move that Tab (`backwards`: Shift+Tab) just made, which a `<webview>`
+/// it lands on needs to know to focus its first or last tabbable element.
+fn settle_focus_after_tab(window: &mut Window, cx: &mut App, backwards: bool) -> Result<(), String> {
+    settle(window, cx, Some(backwards))
+}
+
+fn settle(window: &mut Window, cx: &mut App, tab: Option<bool>) -> Result<(), String> {
     let view = sync_dispatch::root_view(window)?;
     if view.is_updating(cx) {
-        window.defer(cx, |window, cx| {
-            if let Err(error) = settle_focus(window, cx) {
+        window.defer(cx, move |window, cx| {
+            if let Err(error) = settle(window, cx, tab) {
                 sync_dispatch::report_deferred_error(error);
             }
         });
         return Ok(());
     }
-    view.update(cx, |view, _| view.observe_focus(window));
+    view.update(cx, |view, _| {
+        #[cfg(not(target_family = "wasm"))]
+        {
+            view.focus.tab_step = tab;
+        }
+        view.observe_focus(window);
+        #[cfg(not(target_family = "wasm"))]
+        {
+            view.focus.tab_step = None;
+        }
+    });
+    #[cfg(not(target_family = "wasm"))]
+    let handoff = hand_off_to_pages(&view, cx);
     // A handler may move focus again, and its own settle sends what it finds
     // from this queue, so this loop re-reads it every time.
     while let Some((payload, callback)) = view.update(cx, |view, _| {
@@ -426,7 +480,23 @@ pub(crate) fn settle_focus(window: &mut Window, cx: &mut App) -> Result<(), Stri
     }) {
         sync_dispatch::emit(window, cx, &callback, payload);
     }
+    #[cfg(not(target_family = "wasm"))]
+    handoff?;
     Ok(())
+}
+
+/// Moves the keyboard to or from the pages of the `<webview>`s whose focus changed, before JS
+/// hears of it. Every move is tried; the first failure is the result.
+#[cfg(not(target_family = "wasm"))]
+fn hand_off_to_pages(view: &gpui::Entity<GpuixView>, cx: &mut App) -> Result<(), String> {
+    let mut first_error = Ok(());
+    while let Some(page_move) = view.update(cx, |view, _| view.focus.pop_page_move()) {
+        let moved = view.update(cx, |view, _| view.webview_set_focused(page_move));
+        if first_error.is_ok() {
+            first_error = moved;
+        }
+    }
+    first_error
 }
 
 /// The DOM default of a mouse press: focus the nearest focusable element at or
@@ -611,6 +681,8 @@ impl GpuixView {
             window.is_window_active(),
         ) {
             self.focus.push_change(tree, &change);
+            #[cfg(not(target_family = "wasm"))]
+            self.focus.push_page_moves(tree, &change);
         }
     }
 
@@ -639,6 +711,48 @@ mod tests {
             tree.create_element(*id, element_type.to_string());
         }
         tree
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn page_moves(state: &mut FocusState) -> Vec<(u64, bool, Option<bool>)> {
+        std::iter::from_fn(|| state.pop_page_move())
+            .map(|page_move| (page_move.id, page_move.focused, page_move.tab))
+            .collect()
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn a_move_onto_a_webview_hands_the_keyboard_to_its_page_and_a_move_off_it_takes_it_back() {
+        let tree = tree_with(&[(1, "input"), (2, "webview"), (3, "webview")]);
+        let mut state = FocusState::default();
+        let change = |from, to| FocusChange { from, to, from_visible: false, to_visible: false };
+
+        state.push_page_moves(&tree, &change(Some(1), Some(2)));
+        assert_eq!(page_moves(&mut state), [(2, true, None)]);
+
+        state.push_page_moves(&tree, &change(Some(2), Some(1)));
+        assert_eq!(page_moves(&mut state), [(2, false, None)]);
+
+        // Between two pages the first lets go before the second takes hold.
+        state.push_page_moves(&tree, &change(Some(2), Some(3)));
+        assert_eq!(page_moves(&mut state), [(2, false, None), (3, true, None)]);
+
+        state.push_page_moves(&tree, &change(Some(1), None));
+        state.push_page_moves(&tree, &change(None, Some(1)));
+        assert_eq!(page_moves(&mut state), []);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn tab_into_a_webview_says_which_way_and_leaving_it_does_not() {
+        let tree = tree_with(&[(1, "input"), (2, "webview")]);
+        let mut state = FocusState::default();
+        let change = |from, to| FocusChange { from, to, from_visible: false, to_visible: false };
+
+        state.tab_step = Some(true);
+        state.push_page_moves(&tree, &change(Some(1), Some(2)));
+        state.push_page_moves(&tree, &change(Some(2), Some(1)));
+        assert_eq!(page_moves(&mut state), [(2, true, Some(true)), (2, false, None)]);
     }
 
     #[test]
