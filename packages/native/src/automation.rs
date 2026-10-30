@@ -25,6 +25,7 @@ use rustc_hash::FxHashMap;
 use web_time::Instant;
 
 use crate::events::key_names::Press;
+use crate::shrink::shrink_if_sparse;
 
 /// An element's border box as layout computed it: fractional, in 1/64 of a pixel as Chrome's
 /// `LayoutUnit` is. The box that is painted and hit is [`snapped`](Self::snapped_origin) to device
@@ -407,6 +408,7 @@ impl WindowBounds {
                     })
             });
             self.purge_at = (self.boxes.len() * 2).max(4096);
+            shrink_if_sparse(&mut self.boxes);
         }
         self.frame += 1;
         self.live.clear();
@@ -415,6 +417,7 @@ impl WindowBounds {
     /// Forgets the boxes of the elements `keep` says are gone.
     fn retain(&mut self, mut keep: impl FnMut(u64) -> bool) {
         self.boxes.retain(|id, _| keep(*id));
+        shrink_if_sparse(&mut self.boxes);
     }
 
     fn insert(&mut self, id: u64, bounds: ElementBounds, owner: u64) {
@@ -553,6 +556,7 @@ pub(crate) fn retain_bounds(window: WindowId, keep: impl FnMut(u64) -> bool) {
     HOST_NODES.with(|nodes| {
         if let Some(nodes) = nodes.borrow_mut().get_mut(&window) {
             nodes.retain(|id, _| keep(*id));
+            shrink_if_sparse(nodes);
         }
     });
     BOUNDS.with(|cell| {
@@ -1390,5 +1394,56 @@ mod tests {
             clock.now().saturating_duration_since(later),
             Duration::from_millis(150)
         );
+    }
+
+    fn bounds_of(window: u64, id: u64) -> Option<ElementBounds> {
+        get_bounds(WindowId::from(window), id)
+    }
+
+    #[test]
+    fn the_boxes_of_a_page_that_left_give_their_slots_back() {
+        const BOXES: u64 = 10_000;
+        println!("Stored: {} bytes", std::mem::size_of::<Stored>());
+        let (window, id) = (0x5_0000_0001, WindowId::from(0x5_0000_0001));
+        for element in 0..BOXES {
+            set_bounds(id, element, ElementBounds::plain(element as f64, 0.0, 10.0, 10.0));
+        }
+        let grown = BOUNDS.with(|cell| cell.borrow()[&id].boxes.capacity());
+        assert!(grown as u64 * std::mem::size_of::<Stored>() as u64 > 256 * 1024);
+
+        retain_bounds(id, |element| element % 100 == 0);
+        let capacity = BOUNDS.with(|cell| cell.borrow()[&id].boxes.capacity());
+        assert!(capacity < grown / 10, "{capacity} of {grown}");
+        assert_eq!(bounds_of(window, 300).unwrap().x, 300.0);
+        assert!(bounds_of(window, 301).is_none());
+
+        for _ in 0..3 {
+            retain_bounds(id, |_| true);
+        }
+        assert_eq!(BOUNDS.with(|cell| cell.borrow()[&id].boxes.capacity()), capacity);
+        forget_window(id);
+    }
+
+    #[test]
+    fn the_purge_of_boxes_no_frame_wrote_gives_their_slots_back() {
+        let mut bounds = WindowBounds::default();
+        for id in 0..10_000 {
+            bounds.insert(id, ElementBounds::plain(0.0, 0.0, 1.0, 1.0), 0);
+        }
+        bounds.reset();
+        let grown = bounds.boxes.capacity();
+        for id in 0..50 {
+            bounds.insert(id, ElementBounds::plain(0.0, 0.0, 1.0, 1.0), 0);
+        }
+        bounds.purge_at = 0;
+        bounds.reset();
+        assert_eq!(bounds.boxes.len(), 50);
+        assert!(bounds.boxes.capacity() < grown / 10);
+
+        let capacity = bounds.boxes.capacity();
+        for _ in 0..3 {
+            bounds.reset();
+        }
+        assert_eq!(bounds.boxes.capacity(), capacity);
     }
 }
