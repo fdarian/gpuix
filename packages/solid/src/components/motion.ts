@@ -256,6 +256,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
             const animate = current.animate ?? (gestures !== undefined ? {} : undefined)
             if (animate === undefined) return applied = undefined
             const transition = withoutLayoutTransition(resolvedTransition(current.animateTransition))
+            const exitTransition = withoutLayoutTransition(resolvedTransition(current.exitTransition))
             const nextKey = JSON.stringify([current.initial, animate, transition, reduced(), gestures])
             if (nextKey !== targetKey) {
               targetKey = nextKey
@@ -267,6 +268,7 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
               initial: current.initial,
               animate,
               exit: exit(),
+              exitTransition,
               transition,
               ...(reduced() ? { reducedMotion: true } : {}),
               ...gestures,

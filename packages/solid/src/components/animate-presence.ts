@@ -283,6 +283,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
         generation: (motion.generation ?? 0) + 1,
         isExit: true,
         animate: motion.exit,
+        transition: motion.exitTransition,
       }, motion)
       setHostProperty(
         item,

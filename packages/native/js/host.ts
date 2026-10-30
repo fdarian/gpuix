@@ -409,6 +409,11 @@ export interface MotionProps {
   animate?: MotionStyle
   /** Target applied while this node is leaving `AnimatePresence`. */
   exit?: MotionStyle
+  /**
+   * The transition of that exit: `exit`'s own, else the component's. Native does not read it; the
+   * Solid `AnimatePresence` plays the exit with it.
+   */
+  exitTransition?: MotionTransition
   transition?: MotionTransition
   /**
    * What the element animates to while the pointer is over it, a press that began on it goes on,
@@ -503,6 +508,8 @@ export interface SvgMotionProps {
   animate: SvgMotionStyle
   /** Target applied while this node is leaving `AnimatePresence`. */
   exit?: SvgMotionStyle
+  /** The transition of that exit; see `MotionProps.exitTransition`. */
+  exitTransition?: SvgMotionTransition
   transition?: SvgMotionTransition
   whileHover?: SvgMotionStyle & { transition?: SvgMotionTransition }
   whileTap?: SvgMotionStyle & { transition?: SvgMotionTransition }

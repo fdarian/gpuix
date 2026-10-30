@@ -5,17 +5,25 @@
 /// more than two keyframes run for 0.8 s, and everything else is a cubic bezier over 0.3 s. Which keys a `default`, an entry for
 /// another key, a `type` without a duration or the transition of a variant counts as describing is the oracle's too.
 ///
+/// A row with a `target` is the transition the target of an animation carries against the component's. It is replayed through
+/// every way a target can reach a key: a variant name, an `animate` object, an `exit` object of a child leaving
+/// `AnimatePresence`, and a `whileHover` object entering (the pointer follows the box, so that it stays hovered). A row can list
+/// the `routes` it runs on: a box with no size, or one scaled to 0, cannot be hovered.
+///
 /// `opacity` is not read here (the test window has no cheap read of it): `motion-waapi.test.tsx` replays its default curve.
 
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { describe, expect, it } from "vitest"
-import { motion } from "../index"
+import { AnimatePresence, motion } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import type { TestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
+
+type Route = "variant" | "animate" | "exit" | "hover"
+const ROUTES: Route[] = ["variant", "animate", "exit", "hover"]
 
 interface OracleCase {
   key: string
@@ -23,6 +31,7 @@ interface OracleCase {
   to: number | Array<number | null>
   transition?: Record<string, unknown>
   target?: Record<string, unknown>
+  routes?: Route[]
   times: number[]
   values: number[]
   end: number | null
@@ -60,39 +69,102 @@ function frame(renderer: TestRenderer, ms: number): void {
   renderer.dispatchNativeEvents()
 }
 
-function sample(case_: OracleCase): number[] {
+/** Where a case starts: `from` for the key, as a style the box rests at. */
+function boxFor(case_: OracleCase, route: Route | "plain", present: boolean) {
+  const style = { ...BOX, backgroundColor: "#336699" }
+  const written = (value: unknown) => ({ [case_.key]: value })
+  switch (route) {
+    case "plain":
+      return (
+        <motion.div testId="box" style={style} initial={written(case_.from)} animate={written(case_.to)} transition={case_.transition} />
+      )
+    case "variant":
+      return (
+        <motion.div
+          testId="box"
+          style={style}
+          initial="off"
+          animate="on"
+          variants={{ off: written(case_.from), on: { ...written(case_.to), transition: case_.target } }}
+          transition={case_.transition}
+        />
+      )
+    case "animate":
+      return (
+        <motion.div
+          testId="box"
+          style={style}
+          initial={written(case_.from)}
+          animate={{ ...written(case_.to), transition: case_.target }}
+          transition={case_.transition}
+        />
+      )
+    case "exit":
+      return (
+        <AnimatePresence initial={false}>
+          {present ? (
+            <motion.div
+              key="box"
+              testId="box"
+              style={style}
+              animate={written(case_.from)}
+              exit={{ ...written(case_.to), transition: case_.target }}
+              transition={case_.transition}
+            />
+          ) : null}
+        </AnimatePresence>
+      )
+    case "hover":
+      return (
+        <motion.div
+          testId="box"
+          style={style}
+          initial={written(case_.from)}
+          animate={written(case_.from)}
+          whileHover={{ ...written(case_.to), transition: case_.target }}
+          transition={case_.transition}
+        />
+      )
+  }
+}
+
+function sample(case_: OracleCase, route: Route | "plain"): number[] {
   const app = createTestRoot({ width: 800, height: 600 })
   const renderer = app.renderer
   renderer.clockPause()
-  const style = { ...BOX, backgroundColor: "#336699" }
-  const written = (value: unknown) => ({ [case_.key]: value })
-  const box =
-    case_.target === undefined ? (
-      <motion.div
-        testId="box"
-        style={style}
-        initial={written(case_.from)}
-        animate={written(case_.to)}
-        transition={case_.transition}
-      />
-    ) : (
-      <motion.div
-        testId="box"
-        style={style}
-        initial="off"
-        animate="on"
-        variants={{ off: written(case_.from), on: { ...written(case_.to), transition: case_.target } }}
-        transition={case_.transition}
-      />
-    )
-  app.render(<div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: ORIGIN }}>{box}</div>)
+  const page = (present: boolean) => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: ORIGIN }}>
+      {boxFor(case_, route, present)}
+    </div>
+  )
+  app.render(page(true))
   const read = READ[case_.key]!
+  const boundsOfBox = () => {
+    const element = renderer.findByTestId("box")
+    return !element ? null : renderer.getElementBounds(element.id)
+  }
+  if (route === "hover") {
+    frame(renderer, 0)
+    const rest = boundsOfBox()!
+    renderer.nativeSimulateMouseMove(rest.x + rest.width / 2, rest.y + rest.height / 2)
+    frame(renderer, 0)
+  }
+  if (route === "exit") {
+    frame(renderer, 0)
+    app.render(page(false))
+    frame(renderer, 0)
+  }
   let at = 0
   return case_.times.map((time) => {
     frame(renderer, Math.round((time - at) * 1000))
     at = time
-    const bounds = renderer.getElementBounds(renderer.findByTestId("box").id)
+    const bounds = boundsOfBox()
+    if (route === "exit" && bounds === null) {
+      // The exit is over, and the box is gone: the oracle must be at rest by now.
+      return case_.values.at(-1)!
+    }
     expect(bounds).not.toBeNull()
+    if (route === "hover") renderer.nativeSimulateMouseMove(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
     return read(bounds!)
   })
 }
@@ -104,14 +176,27 @@ describeNative("the default transition of a motion key", () => {
     expect(cases.length).toBeGreaterThan(70)
   })
 
-  for (const [name, case_] of cases) {
-    it(name, () => {
-      const got = sample(case_)
-      const unit = case_.key.startsWith("scale") ? TOLERANCE.factor : TOLERANCE.pixels
-      case_.values.forEach((want, index) => {
-        expect(Math.abs(got[index]! - want), `${name} at ${case_.times[index]} s: ${got[index]} is not ${want}`).toBeLessThanOrEqual(
-          unit
-        )
+  const replays = cases.flatMap(([name, case_]) =>
+    case_.target === undefined
+      ? [{ name, case_, route: "plain" as const }]
+      : (case_.routes ?? ROUTES).map((route) => ({ name: `${name} (${route})`, case_, route }))
+  )
+
+  it("replays every row with a target through every route it runs on", () => {
+    const routes = new Set(replays.map((replay) => replay.route))
+    expect(routes).toEqual(new Set(["plain", ...ROUTES]))
+    expect(replays.length).toBeGreaterThan(130)
+  })
+
+  for (const replay of replays) {
+    it(replay.name, () => {
+      const got = sample(replay.case_, replay.route)
+      const unit = replay.case_.key.startsWith("scale") ? TOLERANCE.factor : TOLERANCE.pixels
+      replay.case_.values.forEach((want, index) => {
+        expect(
+          Math.abs(got[index]! - want),
+          `${replay.name} at ${replay.case_.times[index]} s: ${got[index]} is not ${want}`
+        ).toBeLessThanOrEqual(unit)
       })
     })
   }

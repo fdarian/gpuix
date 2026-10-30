@@ -11,13 +11,17 @@ import type { MotionTransition } from "./host.js"
 /** The name of a variant, or several: later ones win a property they share. */
 export type MotionVariantLabels = string | string[]
 
-/** A style with the `transition` its animation plays with, in place of the component's. */
-export type MotionGestureTarget<Style, Transition = MotionTransition> = Style & { transition?: Transition }
+/**
+ * A style with the `transition` its animation plays with. As in Motion it replaces the component's
+ * `transition` as a whole (the two are not merged), and a target without one plays with the
+ * component's.
+ */
+export type MotionAnimationTarget<Style, Transition = MotionTransition> = Style & { transition?: Transition }
 
 export type MotionVariants<Style, Transition = MotionTransition> = Record<
   string,
   // A method type so that `(direction: number) => ...` is assignable: `custom` is whatever the app passes.
-  MotionGestureTarget<Style, Transition> | { variant(custom: unknown): MotionGestureTarget<Style, Transition> }["variant"]
+  MotionAnimationTarget<Style, Transition> | { variant(custom: unknown): MotionAnimationTarget<Style, Transition> }["variant"]
 >
 
 /** Framer's `viewport` option of `whileInView`. */
@@ -34,19 +38,32 @@ export interface MotionViewport {
 
 /** The animation props every `motion.*` takes, for the style it can animate. */
 export interface MotionAnimation<Style, Transition = MotionTransition> {
-  /** Where the animation starts; `false` starts it at `animate`. */
-  initial?: Style | MotionVariantLabels | false
-  animate?: Style | MotionVariantLabels
-  /** Played while the element leaves `AnimatePresence`. */
-  exit?: Style | MotionVariantLabels | { exit(custom: unknown): Style | MotionVariantLabels }["exit"]
-  /** While the pointer is over the element (`:hover`). */
-  whileHover?: MotionGestureTarget<Style, Transition> | MotionVariantLabels
+  /**
+   * Where the animation starts; `false` starts it at `animate`. Nothing animates to `initial`, so a
+   * `transition` in it is accepted and ignored, as in Motion.
+   */
+  initial?: MotionAnimationTarget<Style, Transition> | MotionVariantLabels | false
+  /** A `transition` in it replaces the component's for the animation to this state. */
+  animate?: MotionAnimationTarget<Style, Transition> | MotionVariantLabels
+  /**
+   * Played while the element leaves `AnimatePresence`. A `transition` in it replaces the component's
+   * for the exit; the one in `animate` plays no part in it.
+   */
+  exit?:
+    | MotionAnimationTarget<Style, Transition>
+    | MotionVariantLabels
+    | { exit(custom: unknown): MotionAnimationTarget<Style, Transition> | MotionVariantLabels }["exit"]
+  /**
+   * While the pointer is over the element (`:hover`). The way back plays with the `transition` of
+   * `animate`, else the component's, not this one.
+   */
+  whileHover?: MotionAnimationTarget<Style, Transition> | MotionVariantLabels
   /** While a press that began on the element goes on (`:active`). */
-  whileTap?: MotionGestureTarget<Style, Transition> | MotionVariantLabels
+  whileTap?: MotionAnimationTarget<Style, Transition> | MotionVariantLabels
   /** While the element has focus that `:focus-visible` matches; it needs a `tabIndex` to take focus. */
-  whileFocus?: MotionGestureTarget<Style, Transition> | MotionVariantLabels
+  whileFocus?: MotionAnimationTarget<Style, Transition> | MotionVariantLabels
   /** While any of the element (see `viewport`) is in the viewport. */
-  whileInView?: MotionGestureTarget<Style, Transition> | MotionVariantLabels
+  whileInView?: MotionAnimationTarget<Style, Transition> | MotionVariantLabels
   viewport?: MotionViewport
   variants?: MotionVariants<Style, Transition>
   /** `false` ignores the variant names of the components above, and hands them nothing on. */
@@ -127,9 +144,9 @@ function variantEntry(variants: MotionVariants<object, object> | undefined, labe
 }
 
 /**
- * A style object, or the variants its names stand for, merged in order. A name the component
- * itself wrote must be one of its `variants` when it has any; a name handed down is skipped by a
- * component that does not define it, as in Framer.
+ * A style object with the `transition` it carries, or the variants its names stand for, merged in
+ * order. A name the component itself wrote must be one of its `variants` when it has any; a name
+ * handed down is skipped by a component that does not define it, as in Framer.
  */
 function resolveTarget(
   scope: MotionTargetScope,
@@ -140,8 +157,11 @@ function resolveTarget(
   handedDown: boolean
 ): Target | undefined {
   if (!isVariantLabel(target)) {
-    scope.check(where, target)
-    return { style: scope.shown(target), transition: undefined }
+    const own: Record<string, unknown> = { ...target }
+    const transition = own.transition as MotionTransition | undefined
+    delete own.transition
+    scope.check(where, own)
+    return { style: scope.shown(own), transition }
   }
   // A component with no `variants` of its own only hands the names down.
   if (variants === undefined) return undefined
@@ -166,32 +186,13 @@ function resolveTarget(
   return found ? { style: scope.shown(style), transition } : undefined
 }
 
-/** A gesture target: a style object with a `transition` of its own, or variant names. */
-function resolveGesture(
-  scope: MotionTargetScope,
-  where: string,
-  target: object | MotionVariantLabels,
-  variants: MotionVariants<object, object> | undefined,
-  custom: unknown,
-  handedDown: boolean
-): Target | undefined {
-  if (!isVariantLabel(target)) {
-    const own: Record<string, unknown> = { ...target }
-    const transition = own.transition as MotionTransition | undefined
-    delete own.transition
-    scope.check(where, own)
-    return { style: scope.shown(own), transition }
-  }
-  return resolveTarget(scope, where, target, variants, custom, handedDown)
-}
-
 export interface ResolvedMotion {
   initial: object | false | undefined
   animate: object | undefined
   exit: object | undefined
-  /** The `transition` of the variants `animate` names, for the animation to the resting state. */
+  /** The `transition` `animate` carries or its variants name, for the animation to the resting state. */
   animateTransition: MotionTransition | undefined
-  /** The same for `exit`. */
+  /** The same for `exit`; the one in `animate` plays no part in an exit. */
   exitTransition: MotionTransition | undefined
   /** The target of each `while*` prop the element has, with the transition its animation plays with. */
   gestures: Partial<Record<MotionGestureName, Target>>
@@ -260,13 +261,13 @@ export function resolveMotion(scope: MotionTargetScope, input: MotionInput): Res
   for (const name of MOTION_GESTURES) {
     const own = input.gestures?.[name]
     if (own !== undefined) {
-      const target = resolveGesture(scope, name, own, input.variants, input.custom, false)
+      const target = resolveTarget(scope, name, own, input.variants, input.custom, false)
       if (target) gestures[name] = target
       continue
     }
     const handedDown = parent?.[name]
     if (handedDown === undefined) continue
-    const target = resolveGesture(scope, name, handedDown, input.variants, input.custom, true)
+    const target = resolveTarget(scope, name, handedDown, input.variants, input.custom, true)
     if (target) {
       gestures[name] = target
       inherited.push(name)

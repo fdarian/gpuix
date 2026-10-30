@@ -2,13 +2,17 @@
 // gesture) on a stub visual element, on a clock the script steps, and samples the value of the one key each case animates.
 // The cases are the ones that decide which transition Motion plays: none at all, only `delay` or a repeat field, `default`,
 // per-key entries beside other keys, `type` without a duration, more than two keyframes, a `scale` that ends at 0, and the
-// transition of a target (a variant or a gesture) against the component's.
+// transition a target (a variant, `animate`, `exit` or a gesture) carries against the component's: it replaces the component's
+// whole, and then the key's level is `transition[key]`, else `transition.default`, else the target's transition as a whole. All of
+// them go through `animateTarget`, so a row decides what a variant name, an `animate` object, an `exit` object and a `whileHover`
+// object each give.
 // Usage: MOTION_DOM=<dir of motion-dom/dist/es> bun motion-default-oracle.mjs > motion-default-oracle.json
 //
 // A case is `key`, `from` and `to` (a number, or keyframes), the `transition` of the component, and `target` for the
 // transition the animated target carries (Motion uses it in place of the component's). `values` are the key's value at
 // `times` (seconds after the start); `duration` is the second the animation ended at (the first sample with the value at rest
-// and no animation on it).
+// and no animation on it). `routes` lists the ways a target can reach the key when some cannot be replayed: a box with no size
+// cannot be hovered, so the rows that start a `width` at 0 or scale to 0 leave out "hover".
 import { pathToFileURL } from "node:url"
 import path from "node:path"
 
@@ -47,6 +51,9 @@ const reviveTransition = (transition) => {
 const grid = (to, step) => Array.from({ length: Math.round(to / step) + 1 }, (_, index) => Number((index * step).toFixed(6)))
 const SHORT = grid(1.2, 0.05)
 const LONG = grid(2.4, 0.1)
+
+const FINE = grid(0.6, 0.02)
+const WITHOUT_HOVER = ["variant", "animate", "exit"]
 
 const row = (key, from, to, transition, extra = {}) => ({ key, from, to, transition, times: SHORT, ...extra })
 
@@ -123,13 +130,45 @@ const CASES = {
   "x: its own entry with a repeat": row("x", 0, 100, { x: { repeat: 1, repeatType: "reverse" } }, { times: LONG }),
   "x: top level type with a delay": row("x", 0, 100, { type: "spring", stiffness: 200, damping: 20, delay: 0.1 }, { times: LONG }),
   "x: a variant transition with only a delay": row("x", 0, 100, undefined, { target: { delay: 0.3 } }),
-  "width: a variant transition with only a delay": row("width", 0, 100, undefined, { target: { delay: 0.3 } }),
+  "width: a variant transition with only a delay": row("width", 0, 100, undefined, { target: { delay: 0.3 }, routes: WITHOUT_HOVER }),
   "x: a variant transition replaces the component's": row("x", 0, 100, { duration: 1, ease: "linear" }, { target: { delay: 0.3 } }),
-  "width: a variant transition replaces the component's": row("width", 0, 100, { type: "spring" }, { target: { delay: 0.3 }, times: LONG }),
+  "width: a variant transition replaces the component's": row("width", 0, 100, { type: "spring" }, { target: { delay: 0.3 }, times: LONG, routes: WITHOUT_HOVER }),
   "x: a variant transition with a duration": row("x", 0, 100, { delay: 0.2 }, { target: { duration: 0.4 } }),
   "x: a variant transition with an entry of another key": row("x", 0, 100, { type: "spring" }, { target: { width: { duration: 1 } } }),
   "opacity: a variant transition with a default": row("opacity", 0, 1, { duration: 1 }, { target: { default: { delay: 0.3 } } }),
   "x: a variant transition that is empty": row("x", 0, 100, { duration: 1 }, { target: {} }),
+  "scale: a target duration replaces a spring, and no default applies": row(
+    "scale", 1, 0, { type: "spring", stiffness: 300, damping: 20 }, { target: { duration: 0.1 }, times: FINE, routes: WITHOUT_HOVER }
+  ),
+  "scale: a target duration against a spring, up": row(
+    "scale", 0.5, 1, { type: "spring", stiffness: 300, damping: 20 }, { target: { duration: 0.4 }, times: FINE }
+  ),
+  "scale: a target with only a delay against a component duration": row(
+    "scale", 1, 0, { duration: 1, ease: "linear" }, { target: { delay: 0.2 }, routes: WITHOUT_HOVER }
+  ),
+  "scale: a target with only a delay against a spring": row(
+    "scale", 1, 0, { type: "spring", stiffness: 300, damping: 20 }, { target: { delay: 0.2 }, routes: WITHOUT_HOVER }
+  ),
+  "width: a target with only a delay against a component duration": row(
+    "width", 20, 120, { duration: 1, ease: "linear" }, { target: { delay: 0.2 } }
+  ),
+  "x: a target entry for x against a spring": row("x", 0, 100, { type: "spring" }, { target: { x: { duration: 0.5, ease: "linear" } } }),
+  "x: a target entry for x with only a delay": row("x", 0, 100, { duration: 1 }, { target: { x: { delay: 0.2 } } }),
+  "width: a target entry for x only leaves width a tween": row("width", 20, 120, undefined, { target: { x: { duration: 0.5 } } }),
+  "x: a target entry for width only leaves x a tween": row("x", 0, 100, { type: "spring" }, { target: { width: { duration: 0.5 } } }),
+  "x: a target default replaces the component's entry": row("x", 0, 100, { x: { duration: 2 } }, { target: { default: { duration: 0.5 } } }),
+  "x: a target entry beats its default": row(
+    "x", 0, 100, { duration: 2 }, { target: { default: { duration: 1 }, x: { duration: 0.4, ease: "linear" } } }
+  ),
+  "x: a target entry beside a delay at the top": row("x", 0, 100, undefined, { target: { delay: 0.3, x: { duration: 0.5 } } }),
+  "y: a target entry for another key against the component's entries": row(
+    "y", 0, -80, { y: { duration: 1 }, default: { ease: "linear" } }, { target: { x: { duration: 0.5 } } }
+  ),
+  "width: a target duration against the component's entries": row(
+    "width", 20, 120, { width: { duration: 2 }, default: { duration: 2 } }, { target: { duration: 0.4 } }
+  ),
+  "scale: an empty target against a spring": row("scale", 1, 0, { type: "spring", stiffness: 300, damping: 20 }, { target: {}, routes: WITHOUT_HOVER }),
+  "x: an empty target against a component default": row("x", 0, 100, { default: { duration: 1 } }, { target: {} }),
 }
 
 const sampleCase = async (case_) => {

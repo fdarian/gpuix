@@ -218,8 +218,10 @@ export function createMotionComponent<Source extends MotionSource<object, Motion
     const resolvedInitial = resolved.initial
     const resolvedAnimate = !isPresent && exit ? exit : resolved.animate
     const variantTransition = !isPresent && exit ? resolved.exitTransition : resolved.animateTransition
-    const resolvedTransition = wireMotionTransition(variantTransition ?? transition ?? config?.transition)
-    const motionTransition = withoutLayoutTransition(resolvedTransition)
+    const componentTransition = wireMotionTransition(transition ?? config?.transition)
+    const motionTransition = withoutLayoutTransition(
+      variantTransition === undefined ? componentTransition : wireMotionTransition(variantTransition)
+    )
 
     useEffect(() => {
       if (!isPresent && !exit) safeToRemove?.()
@@ -281,7 +283,7 @@ export function createMotionComponent<Source extends MotionSource<object, Motion
       : layoutDescription({
           layout,
           layoutId: scopeLayoutId(layoutGroupId, layoutId),
-          transition: resolvedTransition as MotionTransition | undefined,
+          transition: componentTransition as MotionTransition | undefined,
           reduced,
           drag: layoutDrag,
         })

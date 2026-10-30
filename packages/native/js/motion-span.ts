@@ -3,7 +3,7 @@
 /// paragraph paints. Its variants and gestures are `motion-variants.ts`'s.
 
 import type { LayoutDrag, MotionLayoutProps, MotionStyle, MotionTransition } from "./host.js"
-import type { MotionTargetScope, MotionAnimation, MotionGestureTarget, MotionVariants, MotionViewport } from "./motion-variants.js"
+import type { MotionTargetScope, MotionAnimation, MotionAnimationTarget, MotionVariants, MotionViewport } from "./motion-variants.js"
 import type { MotionValue } from "./motion-value.js"
 
 /**
@@ -93,12 +93,12 @@ export type MotionSpanTransformStyle = { [Key in (typeof IGNORED_STYLE_KEYS)[num
  */
 export type MotionSpanStyle = Pick<MotionStyle, MotionSpanKey> & MotionSpanTransformStyle
 
-export type MotionSpanVariant = MotionGestureTarget<MotionSpanStyle>
+export type MotionSpanVariant = MotionAnimationTarget<MotionSpanStyle>
 
 export type MotionSpanVariants = MotionVariants<MotionSpanStyle>
 
 /** What a span animates to while a gesture is on it, with the transition that animation plays with. */
-export type MotionSpanGestureTarget = MotionGestureTarget<MotionSpanStyle>
+export type MotionSpanGestureTarget = MotionAnimationTarget<MotionSpanStyle>
 
 export type MotionSpanViewport = MotionViewport
 
