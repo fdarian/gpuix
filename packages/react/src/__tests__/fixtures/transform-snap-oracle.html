@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>where a translated box is painted</title>
+<style>
+html,body{margin:0;width:1280px;height:5900px;overflow:hidden;background:#808080}
+.parent{position:absolute;width:30px;height:16px}
+.box{position:absolute;top:2px;width:24px;height:12px;box-sizing:border-box}
+.box.fill{background:#000}
+.box.border{border:2px solid #000}
+.box.both{border:2px solid #000;background:#fff}
+</style>
+<body>
+<script>
+// One row per case, 22 CSS px high, two columns of 600 px. A case is a parent at `parentLeft` (a fractional
+// position in the page), a child of it at `left` from the parent and a translation of `translate` CSS px that the
+// child gets in one of several ways. The child is a 24 x 12 box on a grey page: `fill` has a black background and no
+// border, `border` a 2px black border and no background, `both` the border and a white background. (Chrome paints the
+// background under the border, so the outer edge of `both` is a blend of the two coverages, and is not read.)
+// `transform-snap-oracle.py` reads the edges out of the screenshot.
+//   left        no transform: the child is at left + translate. What layout rounds.
+//   transform   `transform: translateX(t)`
+//   willchange  the same with `will-change: transform`, a layer of its own
+//   z0          `translateX(t) translateZ(0)`, what Motion's `x` writes in the versions that add the hint
+const PARENTS=[0,0.4,0.6,1.3,1.7];
+const BOTH_PARENTS=[1.3,1.7];
+const BOTH_KINDS=['transform','willchange'];
+const LEFTS=[0,0.3];
+const TRANSLATES=[-0.6,0.4,0.5,0.6,10.6,559.6];
+const KINDS=['left','transform','willchange','z0'];
+const ROW=22, COLUMN=600, PER_COLUMN=264;
+const cases=[];
+function add(type,kind,parentLeft,left,translate){
+  const index=cases.length;
+  const column=Math.floor(index/PER_COLUMN);
+  cases.push({id:'c'+index,type,kind,parentLeft,left,translate,x:column*COLUMN,y:(index%PER_COLUMN)*ROW});
+}
+for(const type of ['fill','border'])for(const kind of KINDS)for(const parentLeft of PARENTS)for(const left of LEFTS)for(const translate of TRANSLATES)add(type,kind,parentLeft,left,translate);
+for(const kind of BOTH_KINDS)for(const parentLeft of BOTH_PARENTS)for(const left of LEFTS)for(const translate of TRANSLATES)add('both',kind,parentLeft,left,translate);
+for(const c of cases){
+  const parent=document.createElement('div');
+  parent.className='parent';
+  parent.style.left=(c.x+10+c.parentLeft)+'px';
+  parent.style.top=c.y+'px';
+  const box=document.createElement('div');
+  box.className='box '+c.type;
+  box.dataset.case=c.id;
+  const t=c.translate+'px';
+  if(c.kind==='left'){box.style.left=(c.left+c.translate)+'px'}
+  else{
+    box.style.left=c.left+'px';
+    box.style.transform=c.kind==='z0'?'translateX('+t+') translateZ(0)':'translateX('+t+')';
+    if(c.kind==='willchange')box.style.willChange='transform';
+  }
+  parent.appendChild(box);
+  document.body.appendChild(parent);
+  // The nominal place of the box in the page, before the translation: where its left edge would be.
+  c.origin=c.x+10+c.parentLeft+c.left;
+}
+document.body.dataset.cases=JSON.stringify(cases);
+</script>

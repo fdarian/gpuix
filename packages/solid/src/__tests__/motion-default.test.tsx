@@ -140,8 +140,22 @@ function sample(case_: OracleCase, route: Route | "plain"): number[] {
     frame(renderer, 0)
   }
   let at = 0
+  const follow = () => {
+    const bounds = boundsOfBox()
+    if (bounds) renderer.nativeSimulateMouseMove(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  }
   return case_.times.map((time) => {
-    frame(renderer, Math.round((time - at) * 1000))
+    const elapsed = Math.round((time - at) * 1000)
+    if (route === "hover") {
+      // The pointer follows the box in steps that it cannot outrun: a box that moves 50 px in 50 ms (as `x` does) and is
+      // 100 px wide leaves a pointer that waits for the next sample, where it was by luck of the rounding of the offset.
+      for (let done = 0; done < elapsed; done += 10) {
+        frame(renderer, Math.min(10, elapsed - done))
+        follow()
+      }
+    } else {
+      frame(renderer, elapsed)
+    }
     at = time
     const bounds = boundsOfBox()
     if (route === "exit" && bounds === null) {
@@ -149,7 +163,6 @@ function sample(case_: OracleCase, route: Route | "plain"): number[] {
       return case_.values.at(-1)!
     }
     expect(bounds).not.toBeNull()
-    if (route === "hover") renderer.nativeSimulateMouseMove(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
     return read(bounds!)
   })
 }

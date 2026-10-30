@@ -7515,8 +7515,10 @@ size, since a moving transform lays nothing out.
   GPUIX; the same span with `display: inline-block` (an atomic inline) does. A `motion.span` drops the Motion keys whatever its
   `display` (see [Animate an inline span](#animate-an-inline-span)).
 - **Text** is rasterized through the transform, so scaled, rotated and skewed text is as sharp as Chrome's, and
-  `scale(2)` text is the text at twice the size. A translation is pixel-snapped and exactly as sharp as the same text placed
-  there. While a transform animates, its text is rasterized at a nearby scale and drawn through the matrix (a few rasters per
+  `scale(2)` text is the text at twice the size. A translation moves a box from where layout snaps it by exactly the
+  translation, as Chrome does: by a whole number of device pixels the box and its text are as sharp as the same content placed
+  there, and by a fraction the box's edges are antialiased and its text is on a subpixel position (`x: 559.6` is 0.6 of a pixel
+  past the snapped place of the box, not 0 or 1; `will-change: transform` and `translateZ(0)` change nothing). While a transform animates, its text is rasterized at a nearby scale and drawn through the matrix (a few rasters per
   animation, not one per tick), and rasterized through the transform again once the animation ends.
 - **Filters follow the transform.** `backdropFilter` is cut to the transformed, rounded outline of the box, and `blur()` in
   `filter` and `backdropFilter` blurs by the transform, as Chrome filters in the element's own space and transforms the
