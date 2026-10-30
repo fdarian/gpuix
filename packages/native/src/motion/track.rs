@@ -118,11 +118,9 @@ pub(super) struct Track {
 /// Seconds after its delay that a spring is at rest.
 #[derive(Clone, Copy, Debug)]
 struct Rest {
-    /// The first step of the 60 Hz scan that finds it at rest, which is where its span ends.
+    /// Where Motion's `calcGeneratorDuration` ends the spring: its `duration` when that defines it, else the first
+    /// step of a scan every 50 ms that finds it at rest. From there the track shows its target and is no longer active.
     scanned: f64,
-    /// The first instant it is at rest, which is where a frame sees it stop. A nanosecond past it,
-    /// so that the `Duration` it is turned into is not short of it.
-    exact: f64,
 }
 
 pub(super) struct Sample {
@@ -160,7 +158,8 @@ enum Direction {
     Mirrored,
 }
 
-const SPRING_SETTLE_STEP: f64 = 1.0 / 60.0;
+/// The step of motion-dom's `calcGeneratorDuration`.
+const SPRING_SETTLE_STEP: f64 = 0.05;
 const NANOSECOND: f64 = 1e-9;
 const SPRING_SETTLE_LIMIT: f64 = 20.0;
 
@@ -718,16 +717,19 @@ impl Track {
                 active: !at_rest,
             };
         }
-        let evolved = evolve_all(&self.layout, spring, start, to, &self.from_velocity, t);
-        if evolved.at_rest {
+        // Motion ends a spring when its duration is over, whatever the spring reads then: a value at
+        // that instant is the target, and so it is for good.
+        if !self.has_motion() || self.rest().is_some_and(|rest| t + NANOSECOND >= rest.scanned) {
             return Sample {
                 position: to.clone(),
                 velocity: vec![0.0; to.len()],
                 active: false,
             };
         }
+        let evolved = evolve_all(&self.layout, spring, start, to, &self.from_velocity, t);
+        // Until then the generator reads the target at an instant it is at rest in, and the spring is running.
         Sample {
-            position: evolved.position,
+            position: if evolved.at_rest { to.clone() } else { evolved.position },
             velocity: evolved.velocity,
             active: true,
         }
@@ -770,14 +772,14 @@ impl Track {
         };
         let evolved = evolve_all(&self.layout, spring, start, to, speed, time);
         Sample {
-            position: evolved.position,
+            position: if evolved.at_rest { to.clone() } else { evolved.position },
             velocity: evolved.velocity.iter().map(|rate| rate * sign).collect(),
             active,
         }
     }
 
     /// Seconds one iteration of a repeating spring lasts: until every channel
-    /// is at rest, sampled at 60 Hz as motion-dom measures a generator's
+    /// is at rest, sampled every 50 ms as motion-dom measures a generator's
     /// duration, and no longer than 20 s.
     fn spring_settle(&self) -> f64 {
         if !self.transition.repeat.repeats() || self.is_static() {
@@ -797,28 +799,18 @@ impl Track {
             let Curve::Spring(spring) = &self.transition.curve else {
                 return None;
             };
+            let carried = self.from_velocity.iter().any(|velocity| *velocity != 0.0);
+            if let (Some(duration), false) = (spring.time_defined, carried) {
+                return Some(Rest { scanned: duration });
+            }
             let at_rest = |t: f64| {
                 evolve_all(&self.layout, spring, &self.frames[0], &self.frames[1], &self.from_velocity, t).at_rest
             };
-            let steps = (SPRING_SETTLE_LIMIT / SPRING_SETTLE_STEP) as u32;
-            let scanned = (1..=steps)
+            let steps = (SPRING_SETTLE_LIMIT / SPRING_SETTLE_STEP).round() as u32;
+            (1..=steps)
                 .map(|step| f64::from(step) * SPRING_SETTLE_STEP)
-                .find(|t| at_rest(*t))?;
-            // The scan steps over the instant the spring stops, and a frame between the two steps
-            // already sees it at rest.
-            let (mut moving, mut resting) = (scanned - SPRING_SETTLE_STEP, scanned);
-            if at_rest(moving) {
-                return Some(Rest { scanned, exact: moving + NANOSECOND });
-            }
-            for _ in 0..40 {
-                let middle = (moving + resting) / 2.0;
-                if at_rest(middle) {
-                    resting = middle;
-                } else {
-                    moving = middle;
-                }
-            }
-            Some(Rest { scanned, exact: resting + NANOSECOND })
+                .find(|t| at_rest(*t))
+                .map(|scanned| Rest { scanned })
         })
     }
 
@@ -844,7 +836,7 @@ impl Track {
         };
         let rests = match &self.transition.curve {
             Curve::Spring(_) if self.has_motion() && !repeat.repeats() => {
-                self.rest().map_or(f64::INFINITY, |rest| delay + rest.exact)
+                self.rest().map_or(f64::INFINITY, |rest| delay + rest.scanned)
             }
             _ => end,
         };
@@ -908,7 +900,7 @@ pub(super) struct Span {
     /// Where the track ends, the delay and the repeats included.
     pub(super) end: f64,
     /// The first instant at which it no longer has anything to report: `end`, or for a spring that
-    /// plays once, the instant it is at rest, which comes up to a scan step before `end`.
+    /// plays once, the instant Motion ends it, which is `end`.
     pub(super) rests: f64,
 }
 
@@ -930,12 +922,20 @@ fn evolve_all(
 ) -> Evolved {
     let mut position = Vec::with_capacity(to.len());
     let mut velocity = Vec::with_capacity(to.len());
-    let mut at_rest = true;
+    // Motion ends a spring given as `duration` and `bounce` when the duration is over, whatever its thresholds.
+    // One that carries a speed (Motion drops it for such a spring) must be at rest as well: it may not have settled.
+    let (timed, carried) = (
+        spring.time_defined.map(|duration| t + NANOSECOND >= duration),
+        rate.iter().any(|velocity| *velocity != 0.0),
+    );
+    let mut at_rest = timed != Some(false);
     for (channel, ((start, to), start_velocity)) in start.iter().zip(to).zip(rate).enumerate() {
         let (offset, speed) = spring.evolve(start - to, *start_velocity, t);
         let (rest_speed, rest_delta) =
             spring.rest_thresholds(start - to, layout.is_percent_channel(channel));
-        at_rest &= offset.abs() <= rest_delta && speed.abs() <= rest_speed;
+        if timed.is_none() || carried {
+            at_rest &= offset.abs() <= rest_delta && speed.abs() <= rest_speed;
+        }
         position.push(to + offset);
         velocity.push(speed);
     }
@@ -1017,5 +1017,68 @@ mod tests {
         assert!(once.span().iteration > 0.0 && once.span().iteration.is_finite());
         assert_eq!(once.span().iteration, repeated.span().iteration);
         assert_eq!(repeated.span().end, repeated.span().iteration * 2.0);
+    }
+
+    fn spring_track(from: f64, to: f64, transition: serde_json::Value) -> Track {
+        Track::new("test", &number(from), number(to), Transition::parse(transition).unwrap(), Instant::now()).unwrap()
+    }
+
+    fn reads(track: &Track, seconds: f64) -> (f64, bool) {
+        let sample = track.sample_at(Duration::from_secs_f64(seconds));
+        match track.value(&sample.position) {
+            AnimValue::Number(value) => (value, sample.active),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_spring_given_by_duration_and_bounce_is_the_target_from_its_duration_on() {
+        // The scale of a banner: from 0.4 to 1 in 0.24 s. Its thresholds are 0.005 and 0.01, and the spring is within them
+        // at 0.278 s and at 0.388 s but not between, so a reader that came at 0.32 s found it at 1.0017 and kept it there.
+        let spring = spring_track(0.4, 1.0, json!({ "type": "spring", "duration": 0.24, "bounce": 0.12, "delay": 0.08 }));
+        assert_eq!(spring.span().end, 0.08 + 0.24);
+        let (before, active) = reads(&spring, 0.08 + 0.2399);
+        assert!(active && before != 1.0, "{before}");
+        for millis in 320..2000 {
+            let (value, active) = reads(&spring, f64::from(millis) / 1000.0);
+            assert_eq!((value, active), (1.0, false), "at {millis} ms");
+        }
+    }
+
+    #[test]
+    fn a_spring_given_by_duration_does_not_snap_to_the_target_before_its_duration() {
+        // 0.0011 short of the target at 0.2 s: within the thresholds of 0.005, and still a spring in motion.
+        let spring = spring_track(0.4, 1.0, json!({ "type": "spring", "duration": 0.24, "bounce": 0.12 }));
+        let (value, active) = reads(&spring, 0.2);
+        assert!(active && (value - 1.0).abs() > 1e-6 && (value - 1.0).abs() < 0.005, "{value}");
+        let given = spring_track(
+            0.4,
+            1.0,
+            json!({ "type": "spring", "duration": 0.24, "bounce": 0.12, "restDelta": 0.0005, "restSpeed": 0.0005 }),
+        );
+        assert_eq!(given.span().end, spring.span().end, "the thresholds of a duration spring are not read");
+    }
+
+    #[test]
+    fn a_spring_of_physics_ends_at_the_first_multiple_of_50_ms_it_is_at_rest_at() {
+        let spring = spring_track(0.0, 100.0, json!({ "type": "spring", "stiffness": 100, "damping": 10 }));
+        let end = spring.span().end;
+        assert!((end / 0.05 - (end / 0.05).round()).abs() < 1e-9, "{end}");
+        // Motion's oracle: 1.05 s.
+        assert!((end - 1.05).abs() < 1e-9, "{end}");
+        assert!(reads(&spring, end - 0.001).1);
+        for step in 0..100 {
+            assert_eq!(reads(&spring, end + f64::from(step) * 0.01), (100.0, false));
+        }
+    }
+
+    #[test]
+    fn a_duration_spring_that_carries_a_speed_is_done_once_it_is_also_within_its_thresholds() {
+        let mut spring = spring_track(0.0, 100.0, json!({ "type": "spring", "duration": 0.3, "bounce": 0.3 }));
+        let layout = spring.layout().clone();
+        spring.carry_rate(&layout, vec![3000.0]);
+        let end = spring.span().end;
+        assert!(end >= 0.3 && (end / 0.05 - (end / 0.05).round()).abs() < 1e-9, "{end}");
+        assert_eq!(reads(&spring, end), (100.0, false));
     }
 }

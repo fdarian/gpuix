@@ -359,6 +359,92 @@ const ROWS = {
     transition: { type: "spring", stiffness: 200, damping: 12 },
     steps: at(0, 100),
   },
+  // A spring of a motion value, on a 20 ms grid past its end: the value it reads at rest, when it finishes and what the
+  // controls say. Fluid functionalism's banner scale is the first row (a spring from 0.4 to 1 that rested at 1.0017).
+  "spring value by duration and bounce, a granular move with a delay": {
+    from: 0.4,
+    to: 1,
+    transition: { type: "spring", duration: 0.24, bounce: 0.12, delay: 0.08 },
+    steps: grid(800, 20),
+  },
+  "spring value read for the first time after its end": {
+    from: 0.4,
+    to: 1,
+    transition: { type: "spring", duration: 0.24, bounce: 0.12, delay: 0.08 },
+    steps: at(0, 100, 400, 500, 2000),
+  },
+  "spring value by physics read for the first time after its end": {
+    from: 0.4,
+    to: 1,
+    transition: { type: "spring", stiffness: 200, damping: 12 },
+    steps: at(0, 100, 1100, 1500, 3000),
+  },
+  "spring value by duration and bounce, critically damped": {
+    from: 0,
+    to: 100,
+    transition: { type: "spring", duration: 0.4, bounce: 0 },
+    steps: grid(800, 20),
+  },
+  "spring value by duration and bounce, bouncy": {
+    from: 0,
+    to: 100,
+    transition: { type: "spring", duration: 0.6, bounce: 0.5 },
+    steps: grid(1000, 20),
+  },
+  "spring value by duration and bounce, downwards": {
+    from: 1,
+    to: 0.4,
+    transition: { type: "spring", duration: 0.24, bounce: 0.12 },
+    steps: grid(600, 20),
+  },
+  "spring value by duration, thresholds given": {
+    from: 0.4,
+    to: 1,
+    transition: { type: "spring", duration: 0.24, bounce: 0.12, restDelta: 0.0005, restSpeed: 0.0005 },
+    steps: grid(600, 20),
+  },
+  "spring value by physics, a granular move": {
+    from: 0.4,
+    to: 1,
+    transition: { type: "spring", stiffness: 200, damping: 12 },
+    steps: grid(2000, 25),
+  },
+  "spring value by physics, a long move": {
+    from: 0,
+    to: 100,
+    transition: { type: "spring", stiffness: 100, damping: 10 },
+    steps: grid(2400, 25),
+  },
+  "spring value by physics, thresholds given": {
+    from: 0.4,
+    to: 1,
+    transition: { type: "spring", stiffness: 200, damping: 12, restDelta: 0.0005, restSpeed: 0.0005 },
+    steps: grid(2400, 25),
+  },
+  "spring value by physics, coarse thresholds": {
+    from: 0,
+    to: 100,
+    transition: { type: "spring", stiffness: 200, damping: 8, restDelta: 5, restSpeed: 50 },
+    steps: grid(1600, 25),
+  },
+  "spring value by physics, overdamped": {
+    from: 0,
+    to: 100,
+    transition: { type: "spring", stiffness: 100, damping: 40 },
+    steps: grid(3000, 50),
+  },
+  "spring value by physics, heavy and slow": {
+    from: 0,
+    to: 3,
+    transition: { type: "spring", stiffness: 60, damping: 6, mass: 2 },
+    steps: grid(4000, 50),
+  },
+  "spring value by physics, a delay": {
+    from: 0,
+    to: 100,
+    transition: { type: "spring", stiffness: 300, damping: 30, mass: 2, delay: 0.25 },
+    steps: grid(2000, 25),
+  },
   "seek past the delay of a delayed animation": {
     from: 0,
     to: 100,

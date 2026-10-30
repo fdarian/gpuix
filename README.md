@@ -1870,8 +1870,8 @@ These apply to every spring:
 | Option | Default | Values |
 |---|---:|---|
 | `delay` | `0` | Non-negative seconds. The element holds its start until the delay passes |
-| `restDelta` | `0.5`, or `0.005` when the move is under 5 | Distance from the target, in the property's unit, under which the spring may settle. The percentage part of a length is in percentage points, and its defaults are the tight ones |
-| `restSpeed` | `2`, or `0.01` when the move is under 5 | Speed, in units per second, under which the spring may settle (percentage points per second for the percentage part) |
+| `restDelta` | `0.5`, or `0.005` when the move is under 5 | Distance from the target, in the property's unit, under which the spring may settle. The percentage part of a length is in percentage points, and its defaults are the tight ones. Not read by a spring given by `duration` and `bounce` |
+| `restSpeed` | `2`, or `0.01` when the move is under 5 | Speed, in units per second, under which the spring may settle (percentage points per second for the percentage part). Not read by a spring given by `duration` and `bounce` |
 
 `ease` is not accepted with `type: "spring"`, and the spring options are not
 accepted without it.
@@ -1886,8 +1886,11 @@ Springs overshoot, so the applied value is clamped to the property's range
 (`opacity` to `0..1`, lengths that cannot be negative to zero or greater, colours
 to sRGB), while the spring itself keeps the unclamped value. Margins, insets and
 shadow offsets are not clamped. Targets are still validated as before. A colour
-or shadow spring carries its speed per channel when the target changes. The motion settles, and `onMotionComplete` fires, once
-every animated value is within `restDelta` and `restSpeed` of its target.
+or shadow spring carries its speed per channel when the target changes. A spring ends as Motion's does: one given by
+`duration` and `bounce` when `duration` has passed, one of physics at the first multiple of 50 ms at which every animated
+value is within `restDelta` and `restSpeed` of its target. `onMotionComplete` fires then, and from then on the value is the
+target itself (a value that is within its thresholds at some instants and not at others no longer stops short of it), for a
+`motion` element and a motion value (`animate(value, 1, spring)`) alike.
 
 `AnimatePresence` exit works with springs: the child leaves after the spring
 settles. A spring drives the [transform keys](#move-scale-and-turn) like any other.

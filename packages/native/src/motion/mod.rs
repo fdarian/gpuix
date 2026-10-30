@@ -2187,7 +2187,7 @@ mod tests {
         }
 
         #[test]
-        fn a_spring_that_rests_in_a_scan_step_is_known_to_before_the_step_ends() {
+        fn a_spring_is_known_to_end_at_the_step_of_the_scan_that_finds_it_at_rest() {
             let now = Instant::now();
             let spring = state(
                 serde_json::json!({ "type": "spring", "stiffness": 300.0, "damping": 20.0 }),
@@ -2199,7 +2199,7 @@ mod tests {
             };
             let scanned = spring.tracks.values().next().unwrap().span().end;
             let rested = (rest - now).as_secs_f64();
-            assert!(rested <= scanned + 1e-6 && rested > scanned - 1.0 / 60.0, "{rested} against {scanned}");
+            assert!((rested - scanned).abs() < 1e-6, "{rested} against {scanned}");
         }
 
         #[test]

@@ -172,8 +172,9 @@ describe.skipIf(!hasNativeTestRenderer)("playback controls against Motion", () =
     it(name, async () => {
       const native = await runNative(row)
       // Motion solves a cubic bezier with 12 bisections, which is good to about 2e-4 of the range.
-      const tolerance = row.transition.ease === "linear" ? 1e-3 : 0.1
-      const spring = name.includes("spring") ? 0.06 : 1e-9
+      const exactSpring = name.startsWith("spring value")
+      const tolerance = exactSpring ? 1e-6 : row.transition.ease === "linear" ? 1e-3 : 0.1
+      const spring = name.includes("spring") && !exactSpring ? 0.06 : 1e-9
 
       if (row.early) {
         expect(native.early?.duration, `${name} duration before a frame`).toBeCloseTo(number(row.early.duration), spring === 1e-9 ? 9 : 1)

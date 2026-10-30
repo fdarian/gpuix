@@ -917,7 +917,6 @@ impl Run {
             Phase::Paused
         } else if self.reached_end(now) {
             Phase::Finished
-        // A spring is at rest a little before the 60 Hz scan that gave its end says.
         } else if !self.held() && self.speed > 0.0 && !sample.active {
             Phase::Finished
         } else {
