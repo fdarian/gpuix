@@ -110,6 +110,66 @@ export interface LayoutCounters {
   unsnappedOverflowWalks: number
 }
 
+/** What the page of a `<webview>` was asked to do. */
+export interface WebviewCommand {
+  /** `loadURL`, `reload`, `stop`, `goBack`, `goForward`, `executeJavaScript` or
+   *  `setFirstResponder`. */
+  name: string
+  /** The URL, the code, or `"true"` / `"false"` for the first responder. */
+  argument?: string | null
+}
+
+/** Where the last composed frame put the surface of a `<webview>`, in window pixels. */
+export interface WebviewSurface {
+  /** Painted, and not clipped away entirely. */
+  visible: boolean
+  /** The whole surface, uncut. */
+  x: number
+  y: number
+  width: number
+  height: number
+  /** What shows of it: the surface cut by the clip of the content around it. */
+  clipX: number
+  clipY: number
+  clipWidth: number
+  clipHeight: number
+  opacity: number
+  cornerRadius: number
+  /** The position among the layers of the frame, bottom to top. */
+  layer: number
+}
+
+/** A layer of the last composed frame, bottom to top: the window's GPUI layer, native surfaces and
+ *  the GPUI layers between and above them. */
+export interface CompositionLayer {
+  kind: "gpui" | "native"
+  /** The window's own GPUI layer. */
+  isBase: boolean
+  /** GPUI layers: how many primitives of the scene it draws. */
+  primitives: number
+  /** Native layers: the element of its `<webview>`. */
+  webview?: number | null
+  visible: boolean
+}
+
+/** The container view AppKit holds for a `<webview>` surface, in window points from the top
+ *  left: the placement that was applied, not only recorded. */
+export interface WebviewNativeView {
+  hidden: boolean
+  x: number
+  y: number
+  width: number
+  height: number
+  /** The content view the page lives in, relative to the container: whole size, cut by it. */
+  contentX: number
+  contentY: number
+  contentWidth: number
+  contentHeight: number
+  opacity: number
+  /** A corner radius is cut into it. */
+  masked: boolean
+}
+
 export interface RetainedCounters {
   hits: number
   replays: number
@@ -298,6 +358,30 @@ interface NativeTestRendererApi
   setSelectionRange(elementId: number, start: number, end: number, direction?: string): void
   getTextSelection(elementId: number): { start: number; end: number; direction: string }
   requestSubmit(elementId: number): void
+  webviewCommand(elementId: number, command: string, argument?: string): void
+  webviewState(elementId: number): {
+    url: string
+    title: string
+    canGoBack: boolean
+    canGoForward: boolean
+  }
+  webviewExecuteJavascript(elementId: number, code: string): Promise<string | null>
+  getWebviewCommands(elementId: number): WebviewCommand[]
+  simulateWebviewStartLoading(elementId: number): void
+  simulateWebviewStopLoading(elementId: number): void
+  simulateWebviewNavigate(elementId: number, url: string): void
+  simulateWebviewTitle(elementId: number, title: string, explicitSet: boolean): void
+  simulateWebviewFail(
+    elementId: number,
+    errorCode: number,
+    errorDescription: string,
+    validatedUrl?: string
+  ): void
+  setWebviewHistory(elementId: number, canGoBack: boolean, canGoForward: boolean): void
+  settleWebviewScript(elementId: number, result?: string, error?: string): void
+  getWebviewSurface(elementId: number): WebviewSurface | null
+  getCompositionLayers(): CompositionLayer[]
+  getWebviewNativeView(elementId: number): WebviewNativeView
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
   setImagePixels(
@@ -1673,6 +1757,114 @@ export class TestRenderer implements NativeRenderer {
   registerFont(bytes: Buffer | Uint8Array): void {
     this.native.registerFont(bytes as Buffer)
     this.native.flush()
+  }
+
+  // ── <webview> ───────────────────────────────────────────────────
+  // The page of a webview is made when the element is first painted, so these draw first.
+  // The engine is a scripted page: it answers from what these set, and reports what they make it.
+
+  webviewCommand(elementId: number, command: string, argument?: string): void {
+    this.native.flush()
+    this.native.webviewCommand(elementId, command, argument)
+  }
+
+  webviewState(elementId: number): {
+    url: string
+    title: string
+    canGoBack: boolean
+    canGoForward: boolean
+  } {
+    this.native.flush()
+    return this.native.webviewState(elementId)
+  }
+
+  webviewExecuteJavascript(elementId: number, code: string): Promise<string | null> {
+    this.native.flush()
+    return this.native.webviewExecuteJavascript(elementId, code)
+  }
+
+  /** What the page of the `<webview>` was asked to do, in order. */
+  getWebviewCommands(elementId: number): WebviewCommand[] {
+    this.native.flush()
+    return this.native.getWebviewCommands(elementId)
+  }
+
+  /** The page starts loading: `did-start-loading`. */
+  simulateWebviewStartLoading(elementId: number): void {
+    this.native.flush()
+    this.native.simulateWebviewStartLoading(elementId)
+    this.dispatchNativeEvents()
+  }
+
+  /** The page stops loading: `did-stop-loading`. */
+  simulateWebviewStopLoading(elementId: number): void {
+    this.native.flush()
+    this.native.simulateWebviewStopLoading(elementId)
+    this.dispatchNativeEvents()
+  }
+
+  /** The page commits `url`: `did-navigate`, and `getURL()` answers it. */
+  simulateWebviewNavigate(elementId: number, url: string): void {
+    this.native.flush()
+    this.native.simulateWebviewNavigate(elementId, url)
+    this.dispatchNativeEvents()
+  }
+
+  /** The page gets a title: `page-title-updated`, and `getTitle()` answers it. */
+  simulateWebviewTitle(elementId: number, title: string, explicitSet = true): void {
+    this.native.flush()
+    this.native.simulateWebviewTitle(elementId, title, explicitSet)
+    this.dispatchNativeEvents()
+  }
+
+  /** A load fails: `did-fail-load`, with an `NSURLError` code. */
+  simulateWebviewFail(
+    elementId: number,
+    errorCode: number,
+    errorDescription: string,
+    validatedUrl?: string
+  ): void {
+    this.native.flush()
+    this.native.simulateWebviewFail(elementId, errorCode, errorDescription, validatedUrl)
+    this.dispatchNativeEvents()
+  }
+
+  /** What `canGoBack()` and `canGoForward()` answer. */
+  setWebviewHistory(elementId: number, canGoBack: boolean, canGoForward: boolean): void {
+    this.native.flush()
+    this.native.setWebviewHistory(elementId, canGoBack, canGoForward)
+  }
+
+  /** Settles the oldest `executeJavaScript` of the `<webview>` that waits: resolves it with
+   *  `result` (anything JSON holds; `undefined` for `undefined`), or rejects it with `error`. */
+  settleWebviewScript(
+    elementId: number,
+    outcome: { result?: unknown; error?: string }
+  ): void {
+    this.native.flush()
+    this.native.settleWebviewScript(
+      elementId,
+      outcome.result === undefined ? undefined : JSON.stringify(outcome.result),
+      outcome.error
+    )
+  }
+
+  /** Where the last frame put the surface of the `<webview>`; null while it has none. */
+  getWebviewSurface(elementId: number): WebviewSurface | null {
+    this.native.flush()
+    return this.native.getWebviewSurface(elementId)
+  }
+
+  /** The layers of the last composed frame, bottom to top. */
+  getCompositionLayers(): CompositionLayer[] {
+    this.native.flush()
+    return this.native.getCompositionLayers()
+  }
+
+  /** The views AppKit holds for the `<webview>`, with the placement the last frame applied. */
+  getWebviewNativeView(elementId: number): WebviewNativeView {
+    this.native.flush()
+    return this.native.getWebviewNativeView(elementId)
   }
 
   setImagePixels(

@@ -37,6 +37,12 @@ const NOT_CALLABLE_FROM_A_HANDLER = new Set([
   "setWindowSize",
   "simulateComposition",
   "simulateKeystrokes",
+  // Each delivers the event the scripted page reports to its handler, as dispatchNativeEvents does.
+  "simulateWebviewFail",
+  "simulateWebviewNavigate",
+  "simulateWebviewStartLoading",
+  "simulateWebviewStopLoading",
+  "simulateWebviewTitle",
   "nativeSimulateClick",
   "nativeSimulateFileDragEnd",
   "nativeSimulateFileDragEnter",
@@ -135,6 +141,10 @@ function calls(r, ids) {
     getSvgMarkup: () => r.getSvgMarkup(ids.box),
     getSyntaxCacheStats: () => r.getSyntaxCacheStats(),
     getTextSelection: () => r.getTextSelection(ids.field),
+    getCompositionLayers: () => r.getCompositionLayers(),
+    getWebviewCommands: () => r.getWebviewCommands(ids.webview),
+    getWebviewNativeView: () => r.getWebviewNativeView(ids.webview),
+    getWebviewSurface: () => r.getWebviewSurface(ids.webview),
     getWindowSize: () => r.getWindowSize(),
     getWindowTitle: () => r.getWindowTitle(),
     hasPointerCapture: () => r.hasPointerCapture(ids.box, 1),
@@ -190,6 +200,7 @@ function calls(r, ids) {
     setScrollbarStyle: () => r.setScrollbarStyle("overlay"),
     setSelectionRange: () => r.setSelectionRange(ids.field, 0, 1),
     setStyleImage: () => r.setStyleImage("blob:handler-calls", PNG_1X1),
+    setWebviewHistory: () => r.setWebviewHistory(ids.webview, true, false),
     setWindowActive: () => r.setWindowActive(true),
     setWindowAppearanceChange: () => r.setWindowAppearanceChange(false, 1),
     setWindowEventListeners: () => r.setWindowEventListeners(["keydown"]),
@@ -200,6 +211,11 @@ function calls(r, ids) {
     simulatePointerLockGranting: () => r.simulatePointerLockGranting(true),
     simulatePointerLockLost: () => r.simulatePointerLockLost(),
     stopMotionValue: () => r.stopMotionValue(910),
+    // The script waits for the settle that follows it.
+    webviewCommand: () => r.webviewCommand(ids.webview, "reload"),
+    webviewExecuteJavascript: () => void r.webviewExecuteJavascript(ids.webview, "1"),
+    settleWebviewScript: () => r.settleWebviewScript(ids.webview, { result: 1 }),
+    webviewState: () => r.webviewState(ids.webview),
     takeSimulatedWindowActions: () => r.takeSimulatedWindowActions(),
     toJSON: () => r.toJSON(),
     writeClipboardText: () => r.writeClipboardText("x"),
@@ -232,6 +248,7 @@ describeNative("renderer calls from a sync handler", () => {
             scroller: renderer.findByTestId("scroller").id,
             form: renderer.findByTestId("form").id,
             img: renderer.findByTestId("img").id,
+            webview: renderer.findByTestId("webview").id,
           }
           renderer.createMotionValue(910, 1)
           for (const [name, call] of Object.entries(calls(renderer, ids))) {
@@ -252,6 +269,7 @@ describeNative("renderer calls from a sync handler", () => {
               <input testId="field" defaultValue="hi" style={{ width: 100, height: 20 }} onKeyDown={on === "keydown" ? run : undefined} />
             </form>
             <img testId="img" style={{ width: 10, height: 10 }} />
+            <webview testId="webview" style={{ width: 10, height: 10 }} />
             <div testId="box" style={{ width: 50, height: 20, animation: "handler-calls-grow 1s linear forwards" }} />
             <div testId="scroller" style={{ width: 100, height: 50, overflow: "scroll" }}>
               <div style={{ height: 400 }} />
