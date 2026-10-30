@@ -257,6 +257,39 @@ describeNative('AnimatePresence mode="popLayout"', () => {
     expect(boundsOf(renderer, "b").y).toBe(20)
   })
 
+  // The `style` of each child is a new object on every render, and a value in it changes while the
+  // child leaves. A child that is a component must pass `style` on to its element for the pin to reach it.
+  it("keeps the pin when the child's style is a new object on each render", () => {
+    const app = (items: string[], width: number) => (
+      <div style={{ display: "flex", flexDirection: "row", gap: 8, position: "relative" }}>
+        <AnimatePresence initial={false} mode="popLayout">
+          {items.map((id) => (
+            <motion.div
+              key={id}
+              testId={id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.5 } }}
+              transition={{ duration: 0.1 }}
+              style={{ width, height: 50, flexShrink: 0, position: "relative" }}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+    )
+    const { render, renderer } = createTestRoot()
+    render(app(["a", "b", "c"], 50))
+    renderer.clockPause()
+    render(app(["b", "c"], 50))
+    expect(boundsOf(renderer, "b").x).toBe(0)
+    expect(boundsOf(renderer, "a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 })
+
+    render(app(["b", "c"], 40))
+    frame(renderer, 100)
+    expect(boundsOf(renderer, "a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 })
+    expect(boundsOf(renderer, "b")).toMatchObject({ x: 0, width: 40 })
+  })
+
   it("puts the child back in flow when it returns before it leaves", () => {
     const { render, renderer } = createTestRoot()
     render(<List items={["a", "b"]} />)

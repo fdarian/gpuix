@@ -119,6 +119,8 @@ export class HostElement {
   id = 0
   mounted = false
   style: StyleDesc = {}
+  /** Laid over `style` while it is set, however `style` changes: the box a leaving `popLayout` child keeps. */
+  pin: StyleDesc | undefined
   /**
    * Held on the instance, not in a module map: the JSX runtime can load a second
    * copy of this module, and the copy that mounts the node must see them.
@@ -128,6 +130,16 @@ export class HostElement {
   motionValues: Record<string, MotionValue> | undefined
 
   constructor(readonly type: ElementType) {}
+
+  /** What the renderer is given: `style` under `pin`. */
+  appliedStyle(): StyleDesc {
+    return this.pin === undefined ? this.style : { ...this.style, ...this.pin }
+  }
+
+  setPin(pin: StyleDesc | undefined): void {
+    this.pin = pin
+    if (this.root && this.mounted) this.root.mutations.setStyle(this.id, this.appliedStyle())
+  }
 
   setPointerCapture(pointerId: number): void {
     this.methods().setPointerCapture(pointerId)
@@ -466,7 +478,7 @@ export function setHostProperty(
     node.style = split.style ?? {}
     node.motionValues = split.motionValues
     if (node.root && node.mounted) {
-      node.root.mutations.setStyle(node.id, node.style)
+      node.root.mutations.setStyle(node.id, node.appliedStyle())
       syncMotionBindings(node.root, node.root.mutations, node.id, node.motionValues, node.kind === "element" ? node.type : undefined)
     }
     return
@@ -512,7 +524,8 @@ function mount(root: HostRoot, node: HostNode): void {
   if (node.kind === "text") {
     root.mutations.setText(node.id, node.text)
   } else {
-    if (Object.keys(node.style).length > 0) root.mutations.setStyle(node.id, node.style)
+    const style = node.appliedStyle()
+    if (Object.keys(style).length > 0) root.mutations.setStyle(node.id, style)
     syncMotionBindings(root, root.mutations, node.id, node.motionValues, node.kind === "element" ? node.type : undefined)
     for (const [name, value] of node.props) {
       const eventType = eventTypeFor(name)

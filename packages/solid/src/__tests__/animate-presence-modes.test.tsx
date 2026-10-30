@@ -215,6 +215,46 @@ describe.skipIf(!hasNativeTestRenderer)('Solid AnimatePresence mode="popLayout"'
     app.flushSync(() => setItems(["a", "c", "d"]))
     expect(boundsOf(app.renderer, "b")).toEqual(before)
   })
+  // A `style` literal that reads a signal is a new object on every read, and the prop spread writes it
+  // again when the child's presence changes and whenever the signal does.
+  it("keeps the pin when the leaving child's style is a new object on each read", () => {
+    const [items, setItems] = createSignal(["a", "b", "c"])
+    const [width, setWidth] = createSignal(50)
+    const app = createTestRoot()
+    app.render(() => (
+      <div style={{ display: "flex", flexDirection: "row", gap: 8, position: "relative" }}>
+        <AnimatePresence initial={false} mode="popLayout">
+          <For each={items()}>
+            {(item) => (
+              <motion.div
+                testId={item}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.5 } }}
+                transition={{ duration: 0.1 }}
+                style={{ width: width(), height: 50, flexShrink: 0, position: "relative" }}
+              />
+            )}
+          </For>
+        </AnimatePresence>
+      </div>
+    ))
+    app.renderer.clockPause()
+    app.flushSync(() => setItems(["b", "c"]))
+    expect(boundsOf(app.renderer, "b").x).toBe(0)
+    expect(boundsOf(app.renderer, "a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 })
+
+    app.flushSync(() => setWidth(40))
+    frame(app.renderer, 100)
+    expect(boundsOf(app.renderer, "a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 })
+    expect(boundsOf(app.renderer, "b").x).toBe(0)
+    expect(boundsOf(app.renderer, "b").width).toBe(40)
+
+    frame(app.renderer, 600)
+    frame(app.renderer, 600)
+    expect(app.renderer.findByTestId("a")).toBeUndefined()
+  })
+
   it("puts the child back in flow when it returns before it leaves", () => {
     const [items, setItems] = createSignal(["a", "b"])
     const app = createTestRoot()

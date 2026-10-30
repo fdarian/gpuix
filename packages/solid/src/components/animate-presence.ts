@@ -13,7 +13,7 @@ import {
 } from "solid-js"
 import type { DomEvent } from "@gpuix/native/host"
 import { measurePopLayout } from "@gpuix/native/host"
-import type { MotionProps, PresenceMode, StyleDesc } from "@gpuix/native/host"
+import type { MotionProps, PresenceMode } from "@gpuix/native/host"
 import { HostElement, setHostProperty, type HostNode } from "../host.js"
 import {
   anchorHost,
@@ -166,8 +166,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   )
   setRendered(normalize(resolved()))
   const presence = new Map<JSX.Element, Signal<boolean>>()
-  const unpopped = new Map<HostElement, StyleDesc>()
-  let initial = true
+    let initial = true
 
   const disposeRetained = (item: JSX.Element) => {
     const scopes = retained.get(item)
@@ -194,7 +193,7 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
   }
 
   const pop = (item: HostElement) => {
-    if (!item.root || !item.mounted || unpopped.has(item)) return
+    if (!item.root || !item.mounted || item.pin !== undefined) return
     const parent = item.parent
     const box = measurePopLayout(
       item.root.nativeRenderer,
@@ -202,24 +201,17 @@ export function AnimatePresence(props: AnimatePresenceProps): JSX.Element {
       parent?.kind === "element" ? parent.id : undefined
     )
     if (box === undefined) return
-    unpopped.set(item, item.style)
-    item.style = { ...item.style, ...box }
-    item.root.mutations.setStyle(item.id, item.style)
+    item.setPin(box)
   }
 
   const unpop = (item: HostElement) => {
-    const style = unpopped.get(item)
-    if (style === undefined) return
-    unpopped.delete(item)
-    item.style = style
-    if (item.root && item.mounted) item.root.mutations.setStyle(item.id, style)
+    if (item.pin !== undefined) item.setPin(undefined)
   }
 
   const remove = (item: JSX.Element, entry: Signal<boolean>) => {
     if (entry[0]() || !presence.has(item)) return
     presence.delete(item)
     animating.delete(item)
-    if (item instanceof HostElement) unpopped.delete(item)
     setRendered(rendered().filter((candidate) => candidate !== item))
     disposeRetained(item)
     if (![...presence.values()].some(([present]) => !present())) {
