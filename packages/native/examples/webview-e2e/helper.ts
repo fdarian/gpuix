@@ -4,7 +4,7 @@ import { dlopen, FFIType, ptr } from "bun:ffi"
 
 const { i32, i64, f64, u16, u64, cstring, ptr: pointer } = FFIType
 
-export const HELPER_PATH = `${process.env.HOME}/.cache/gpuix-round29/e2e/libe2e.dylib`
+export const HELPER_PATH = `${process.env.HOME}/.cache/gpuix-webview-e2e/libe2e.dylib`
 
 const lib = dlopen(HELPER_PATH, {
   e2e_find_window: { args: [], returns: i64 },
@@ -24,6 +24,9 @@ const lib = dlopen(HELPER_PATH, {
   e2e_system_cursor: { args: [], returns: i32 },
   e2e_first_responder: { args: [pointer, u64], returns: i32 },
   e2e_active: { args: [], returns: i32 },
+  e2e_make_key: { args: [], returns: i32 },
+  e2e_session: { args: [], returns: i32 },
+  e2e_place_top_left: { args: [], returns: i32 },
   e2e_page_is_first_responder: { args: [f64, f64], returns: i32 },
 })
 const native = lib.symbols
@@ -68,8 +71,14 @@ export const helper = {
     return number
   },
   scale: () => native.e2e_scale(),
-  /** 1: the app is active, 2: the window is key. */
+  /** 1: the app is active, 2: the window is key, 4: AppKit says the window is visible (not covered, not off the screen). */
   active: () => native.e2e_active(),
+  /** Activates this process's own app and makes its own window key, in front. Returns what `active` returns. */
+  makeKey: () => native.e2e_make_key(),
+  /** Moves this process's own window to the top left of the main screen. */
+  placeTopLeft: () => native.e2e_place_top_left(),
+  /** 1: the screen is locked, 2: the session is not the one on the console, -1: the system gives none. */
+  session: () => native.e2e_session(),
   contentWidth: () => native.e2e_content_width(),
   contentHeight: () => native.e2e_content_height(),
   setContentSize: (width: number, height: number) => native.e2e_set_content_size(width, height),

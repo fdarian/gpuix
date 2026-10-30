@@ -20,9 +20,6 @@ int64_t e2e_find_window(void) {
   for (NSWindow *window in [NSApp windows]) {
     if ([window isVisible]) {
       g_window = window;
-      // The app is this process's own: a page only follows the pointer in an active app.
-      [NSApp activateIgnoringOtherApps:YES];
-      [window makeKeyAndOrderFront:nil];
       return [window windowNumber];
     }
   }
@@ -219,5 +216,44 @@ int e2e_page_is_first_responder(double x, double y) {
   return [(NSView *)responder isDescendantOf:page] ? 1 : 0;
 }
 
-// Whether the app is active and the window is key, for the log.
-int e2e_active(void) { return ([NSApp isActive] ? 1 : 0) | ([g_window isKeyWindow] ? 2 : 0); }
+// Whether the app is active (1), the window is key (2) and the window is not fully covered or off the
+// screen, as AppKit's occlusion state says (4).
+int e2e_active(void) {
+  return ([NSApp isActive] ? 1 : 0) | ([g_window isKeyWindow] ? 2 : 0) |
+         (([g_window occlusionState] & NSWindowOcclusionStateVisible) ? 4 : 0);
+}
+
+// Makes this process's own app active and its own window key and in front. Returns e2e_active().
+int e2e_make_key(void) {
+  // The app is this process's own: a page only follows the pointer in an active app.
+  [NSApp activateIgnoringOtherApps:YES];
+  [g_window makeKeyAndOrderFront:nil];
+  return e2e_active();
+}
+
+// Moves this process's own window to the top left of the main screen, clear of a system dialog
+// somewhere in the middle of it. Returns 0.
+int e2e_place_top_left(void) {
+  NSRect visible = [[NSScreen mainScreen] visibleFrame];
+  NSRect frame = [g_window frame];
+  [g_window setFrameOrigin:NSMakePoint(NSMinX(visible), NSMaxY(visible) - NSHeight(frame))];
+  return 0;
+}
+
+typedef CFDictionaryRef (*SessionFn)(void);
+
+// The login session: 1 when the screen is locked, 2 when the session is not the one on the console
+// (fast user switching, or the login window). 0 when it is the user's own and unlocked. -1 when the
+// system gives no session.
+int e2e_session(void) {
+  static SessionFn session;
+  if (!session) session = (SessionFn)dlsym(RTLD_DEFAULT, "CGSessionCopyCurrentDictionary");
+  if (!session) return -1;
+  CFDictionaryRef dictionary = session();
+  if (!dictionary) return -1;
+  NSDictionary *info = (__bridge_transfer NSDictionary *)dictionary;
+  int state = 0;
+  if ([info[@"CGSSessionScreenIsLocked"] boolValue]) state |= 1;
+  if (![info[@"kCGSSessionOnConsoleKey"] boolValue]) state |= 2;
+  return state;
+}

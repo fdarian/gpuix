@@ -2,11 +2,12 @@
  *  the window really shows (its captured pixels) and what AppKit really does with the events handed
  *  to it. */
 import { existsSync, mkdirSync, readFileSync } from "node:fs"
-import { cpus } from "node:os"
+import { cpus, loadavg } from "node:os"
+import { checkSkipActivation, describeWindow, makeCheckable, NotCheckable, problem } from "./environment"
 import { helper, Shot } from "./helper"
 import { controls, LAYOUT, FIXTURE, FIXTURE_BARE, fileUrl } from "./app"
 
-const OUT = `${process.env.HOME}/.cache/gpuix-round29/e2e`
+const OUT = `${process.env.HOME}/.cache/gpuix-webview-e2e`
 const PRESENT_LOG = `${OUT}/present.log`
 const TRANSIENT_STEPS = Number(process.env.E2E_STEPS ?? 120)
 
@@ -27,6 +28,8 @@ interface Row {
   name: string
   pass: boolean
   skipped?: boolean
+  /** Why the machine, not the product, left this check without an answer. */
+  environment?: string
   detail: string
 }
 const rows: Row[] = []
@@ -35,9 +38,34 @@ function skip(group: string, name: string, reason: string) {
   rows.push({ group, name, pass: true, skipped: true, detail: reason })
 }
 
+/** Set by a check that failed while the machine would not let the window be looked at. */
+let lostWindow: string | null = null
+
 function check(group: string, name: string, pass: boolean, detail: string) {
+  if (pass) {
+    rows.push({ group, name, pass, detail })
+    return
+  }
+  // Asked when the check has failed, because that is when the window's state matters.
+  const state = describeWindow()
+  const cause = problem()
+  if (cause) {
+    lostWindow = cause
+    rows.push({ group, name, pass: true, environment: cause, detail })
+    console.log(`NOT CHECKABLE  ${group} / ${name}: ${cause} (${state}); it failed as: ${detail}`)
+    return
+  }
   rows.push({ group, name, pass, detail })
-  if (!pass) console.log(`FAIL  ${group} / ${name}: ${detail}`)
+  console.log(`FAIL  ${group} / ${name}: ${detail} (${state})`)
+}
+
+/** After a check that found the window lost: gets it back for the checks that follow, or ends the run. */
+async function recoverWindow() {
+  if (lostWindow === null) return
+  const cause = lostWindow
+  lostWindow = null
+  const remaining = await makeCheckable(false)
+  if (remaining) throw new NotCheckable(`${remaining} (it could not be made key and visible again after: ${cause})`)
 }
 
 /** Records the outcome of a check that reads something that may throw. */
@@ -48,6 +76,7 @@ async function attempt(group: string, name: string, body: () => Promise<[boolean
   } catch (error) {
     check(group, name, false, `threw: ${error instanceof Error ? error.message : String(error)}`)
   }
+  await recoverWindow()
 }
 
 type Color = readonly [number, number, number]
@@ -138,7 +167,14 @@ function resetFocusLog() {
   controls.focusLog.length = 0
 }
 
+/** The exit status of the e2e. */
+const EXIT_PASSED = 0
+const EXIT_FAILED = 1
+export const EXIT_COULD_NOT_RUN = 2
+const EXIT_NOT_CHECKABLE = 3
+
 export async function run(): Promise<number> {
+  checkSkipActivation()
   mkdirSync(OUT, { recursive: true })
   await waitFor("the window", () => {
     try {
@@ -148,14 +184,28 @@ export async function run(): Promise<number> {
       return false
     }
   })
-  await waitFor("the pages to load", () =>
-    ["a", "b", "c"].every((name) =>
-      controls.events.some((event) => event.view === name && event.type === "did-stop-loading")
-    )
-  )
   await sleep(500)
-  const scale = helper.scale()
-  console.log(`window ${helper.contentWidth()}x${helper.contentHeight()} points at scale ${scale}`)
+  console.log(`window ${helper.contentWidth()}x${helper.contentHeight()} points at scale ${helper.scale()}; before making it key: ${describeWindow()}`)
+  // Before the pages: a window that is covered gets no frames, and its pages never load.
+  const blocked = await makeCheckable(true)
+  if (blocked) {
+    console.log(`not checkable: ${blocked} (${describeWindow()})`)
+    return EXIT_NOT_CHECKABLE
+  }
+  console.log(`window state: ${describeWindow()}`)
+  try {
+    await waitFor("the pages to load", () =>
+      ["a", "b", "c"].every((name) =>
+        controls.events.some((event) => event.view === name && event.type === "did-stop-loading")
+      )
+    )
+  } catch (error) {
+    const cause = problem()
+    if (!cause) throw error
+    console.log(`not checkable: ${cause} (${describeWindow()}); the pages did not load`)
+    return EXIT_NOT_CHECKABLE
+  }
+  await sleep(500)
 
   // E2E_ONLY=loading,focus runs only those groups, for working on one.
   const only = process.env.E2E_ONLY?.split(",")
@@ -169,21 +219,35 @@ export async function run(): Promise<number> {
     ["visibility", visibility],
     ["lockstep", lockstep],
   ]
+  let stoppedBy: string | null = null
   for (const [name, body] of groups) {
-    if (!only || only.includes(name)) await body()
+    if (only && !only.includes(name)) continue
+    try {
+      await body()
+    } catch (error) {
+      const cause = error instanceof NotCheckable ? error.message : problem()
+      if (!cause) throw error
+      stoppedBy = `${cause} (in the ${name} group: ${error instanceof Error ? error.message : String(error)})`
+      break
+    }
   }
 
   const failed = rows.filter((row) => !row.pass)
+  const unanswered = rows.filter((row) => row.environment !== undefined).length
   const skipped = rows.filter((row) => row.skipped).length
+  const passed = rows.length - failed.length - skipped - unanswered
   console.log("\n" + table())
-  console.log(`\n${rows.length - failed.length - skipped} passed, ${failed.length} failed, ${skipped} not checkable in-process (of ${rows.length})`)
-  return failed.length
+  for (const line of lockstepSummary) console.log(line)
+  console.log(`\n${passed} passed, ${failed.length} failed, ${skipped} not checkable in-process, ${unanswered} not checkable now (of ${rows.length})`)
+  if (stoppedBy) console.log(`not checkable: the run stopped early: ${stoppedBy}`)
+  if (failed.length > 0) return EXIT_FAILED
+  return stoppedBy || unanswered > 0 ? EXIT_NOT_CHECKABLE : EXIT_PASSED
 }
 
 function table(): string {
   const width = Math.max(...rows.map((row) => `${row.group} / ${row.name}`.length))
   return rows
-    .map((row) => `${row.skipped ? "SKIP" : row.pass ? "PASS" : "FAIL"}  ${`${row.group} / ${row.name}`.padEnd(width)}  ${row.detail}`)
+    .map((row) => `${row.environment !== undefined ? "N/C " : row.skipped ? "SKIP" : row.pass ? "PASS" : "FAIL"}  ${`${row.group} / ${row.name}`.padEnd(width)}  ${row.environment !== undefined ? `${row.environment}; it failed as: ${row.detail}` : row.detail}`)
     .join("\n")
 }
 
@@ -816,9 +880,49 @@ interface Sample {
 }
 
 const offsetOfRow = (row: number | null, originY: number, scale: number) =>
-  row === null ? "none" : String(Math.round(100 + originY - row / scale))
+  row === null ? null : Math.round(100 + originY - row / scale)
 
-async function lockstepRun(label: string, steps: number): Promise<{ samples: number; mismatches: Sample[]; steps: number; description: string[] }> {
+/** The lines of every lockstep run, printed again after the table. */
+const lockstepSummary: string[] = []
+
+interface LockstepRun {
+  samples: number
+  mismatches: Sample[]
+  steps: number
+  description: string[]
+  /** The same limit as the check's: a run within it passes. */
+  withinLimit: boolean
+  summary: string[]
+}
+
+function lockstepSummaryOf(label: string, steps: number, samples: Sample[], mismatches: Sample[], originY: number, scale: number): string[] {
+  const rate = (100 * mismatches.length) / samples.length
+  const limit = Math.floor(samples.length * TRANSIENT_LIMIT)
+  let pageLate = 0
+  let gpuiLate = 0
+  let other = 0
+  let largestGap = 0
+  for (const mismatch of mismatches) {
+    const page = offsetOfRow(mismatch.page, originY, scale)
+    const gpui = offsetOfRow(mismatch.gpui, originY, scale)
+    if (page === null || gpui === null) {
+      other++
+      continue
+    }
+    largestGap = Math.max(largestGap, Math.abs(page - gpui))
+    if (page === mismatch.previous && gpui === mismatch.target) pageLate++
+    else if (gpui === mismatch.previous && page === mismatch.target) gpuiLate++
+    else other++
+  }
+  const right = mismatches.filter((mismatch) => mismatch.capture === 0).length
+  return [
+    `lockstep ${label}: ${steps} frames, ${samples.length} captures; page and GPUI apart in ${mismatches.length} (${rate.toFixed(1)}%, the limit is ${(100 * TRANSIENT_LIMIT).toFixed(1)}% = ${limit}): ${mismatches.length <= samples.length * TRANSIENT_LIMIT ? "within" : "OVER"}`,
+    `    late: the page ${pageLate}, GPUI ${gpuiLate}, neither or not found ${other}; right after the frame ${right}, a turn later ${mismatches.length - right}; largest gap ${largestGap} points`,
+    `    ${describeWindow()}; load average ${loadavg()[0]!.toFixed(2)}`,
+  ]
+}
+
+async function lockstepRun(label: string, steps: number): Promise<LockstepRun> {
   const samples: Sample[] = []
   const offsets = [0, 7, 21, 34, 12, 40, 3, 29, 17, 38, 25, 9]
   await scrollTo(0)
@@ -846,11 +950,20 @@ async function lockstepRun(label: string, steps: number): Promise<{ samples: num
   const mismatches = samples.filter((sample) => sample.page !== sample.gpui)
   const description = mismatches.map(
     (m) =>
-      `step ${m.step}.${m.capture}: page at ${offsetOfRow(m.page, originY, scale)}, GPUI at ${offsetOfRow(m.gpui, originY, scale)} (asked ${m.target}, before ${m.previous})`
+      `step ${m.step}.${m.capture}: page at ${offsetOfRow(m.page, originY, scale) ?? "none"}, GPUI at ${offsetOfRow(m.gpui, originY, scale) ?? "none"} (asked ${m.target}, before ${m.previous})`
   )
-  console.log(`${label}: ${samples.length} captures after ${steps} frames, ${mismatches.length} mismatches`)
-  for (const line of description.slice(0, 8)) console.log(`  ${line}`)
-  return { samples: samples.length, mismatches, steps, description }
+  const summary = lockstepSummaryOf(label, steps, samples, mismatches, originY, scale)
+  for (const line of summary) console.log(line)
+  for (const line of description.slice(0, 8)) console.log(`    ${line}`)
+  lockstepSummary.push(...summary)
+  return {
+    samples: samples.length,
+    mismatches,
+    steps,
+    description,
+    withinLimit: mismatches.length <= samples.length * TRANSIENT_LIMIT,
+    summary,
+  }
 }
 
 /** One capture in this many may find the page and the GPUI content apart: see the note in zed's
@@ -859,23 +972,20 @@ const TRANSIENT_LIMIT = 0.03
 
 async function lockstep() {
   const group = "lockstep"
-  const report = (run: Awaited<ReturnType<typeof lockstepRun>>) =>
-    `${run.mismatches.length} of ${run.samples} captures had the page and the GPUI marker apart (limit ${Math.floor(run.samples * TRANSIENT_LIMIT)})` +
+  const report = (run: LockstepRun) =>
+    `${run.summary[0]!.replace(/^lockstep [a-z]+: /, "")}; ${run.summary[1]!.trim()}` +
     (run.description.length ? `; ${run.description.slice(0, 4).join("; ")}` : "")
   const idle = await lockstepRun("idle", TRANSIENT_STEPS)
-  check(group, `idle machine: ${idle.steps} scroll frames`, idle.mismatches.length <= idle.samples * TRANSIENT_LIMIT, report(idle))
+  check(group, `idle machine: ${idle.steps} scroll frames`, idle.withinLimit, report(idle))
+  await recoverWindow()
   const burners = Array.from({ length: Math.max(2, cpus().length - 2) }, () =>
     Bun.spawn(["bun", "-e", "while (true) {}"], { stdout: "ignore", stderr: "ignore" })
   )
   try {
     await sleep(500)
     const loaded = await lockstepRun("loaded", TRANSIENT_STEPS)
-    check(
-      group,
-      `CPU load (${burners.length} busy processes): ${loaded.steps} scroll frames`,
-      loaded.mismatches.length <= loaded.samples * TRANSIENT_LIMIT,
-      report(loaded)
-    )
+    check(group, `CPU load (${burners.length} busy processes): ${loaded.steps} scroll frames`, loaded.withinLimit, report(loaded))
+    await recoverWindow()
   } finally {
     for (const burner of burners) burner.kill()
   }
