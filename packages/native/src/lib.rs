@@ -41,6 +41,7 @@ mod resolved_style;
 mod screen;
 mod scroll;
 mod scrollbar;
+mod shrink;
 mod slot;
 mod tape;
 // The data model is public so `examples/bench_serde.rs` measures the real

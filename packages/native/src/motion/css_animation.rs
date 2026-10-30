@@ -38,6 +38,7 @@ use crate::color::ColorContext;
 use crate::css::custom_properties::CustomProperties;
 use crate::dormant_wake::Wake;
 use crate::retained_tree::RetainedTree;
+use crate::shrink::shrink_if_sparse;
 use crate::style::StyleDesc;
 use serde_json::Value;
 
@@ -1717,7 +1718,7 @@ pub(crate) fn animates_width(style: &StyleDesc, registry: &KeyframesRegistry) ->
 /// The animation state of every element that declares one.
 #[derive(Default)]
 pub(crate) struct CssAnimations {
-    states: HashMap<u64, ElementState>,
+    states: HashMap<u64, Box<ElementState>>,
     events: Vec<Scheduled>,
     /// What the Web Animations objects of JS are told: finishes, cancels and the plays that ran.
     api_events: Vec<ApiEvent>,
@@ -1806,7 +1807,7 @@ impl CssAnimations {
     pub(crate) fn rewind_point(&self, id: u64) -> Rewind {
         Rewind {
             id,
-            state: self.states.get(&id).cloned(),
+            state: self.states.get(&id).map(|state| (**state).clone()),
             events: self.events.len(),
             api_events: self.api_events.len(),
             active: self.active,
@@ -1834,7 +1835,7 @@ impl CssAnimations {
             }
         }
         if let Some(state) = state {
-            self.states.insert(point.id, state);
+            self.states.insert(point.id, Box::new(state));
         }
         self.events.truncate(point.events);
         self.api_events.truncate(point.api_events);
@@ -1873,7 +1874,7 @@ impl CssAnimations {
         scope: Scope,
         now: Instant,
     ) -> Vec<PropKey> {
-        let state = self.states.entry(id).or_insert_with(ElementState::new);
+        let state = self.states.entry(id).or_insert_with(|| Box::new(ElementState::new()));
         state.sync_config(id, declared);
         state.reconcile(id, registry, now, &mut self.events, &mut self.api_events);
         // A build moves the clocks and the parameters of the runs, which the instants a dormant
@@ -2245,6 +2246,7 @@ impl CssAnimations {
         self.states.retain(|id, _| keep(*id));
         self.hidden.retain(|id| keep(*id));
         self.held.retain(|id| keep(*id));
+        shrink_if_sparse(&mut self.states);
     }
 
     /// Events queued since the last call, in the order they happened.
@@ -2341,7 +2343,7 @@ impl CssAnimations {
     }
 
     fn run(&self, id: u64) -> Option<&Run> {
-        self.states.values().flat_map(ElementState::every_run).find(|run| run.clock.id() == id)
+        self.states.values().flat_map(|state| state.every_run()).find(|run| run.clock.id() == id)
     }
 
     /// JS holds no `Animation` for the run `id` any more: a run the style let go of is dropped.
@@ -5382,5 +5384,42 @@ mod tests {
         assert!(!frames.animations.paints_only(1, &frames.registry), "keyframes that are not defined may start later");
         frames.define("tint", FADE);
         assert!(!frames.animations.paints_only(1, &frames.registry), "a redefined name is read again by a frame");
+    }
+
+    #[test]
+    fn the_states_of_a_page_that_left_give_their_slots_back_on_the_prune() {
+        const STATE_SIZE_FLOOR: usize = 64;
+        println!("animation ElementState: {} bytes", std::mem::size_of::<ElementState>());
+        assert!(std::mem::size_of::<ElementState>() > STATE_SIZE_FLOOR, "a state this small needs no box");
+        assert_eq!(std::mem::size_of::<Box<ElementState>>(), std::mem::size_of::<usize>());
+
+        let declared = style(r#"{ "animation": "fade 1s linear infinite" }"#);
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let now = frames.at(0);
+        for id in 0..5_000 {
+            frames.animations.advance(id, &declared, &frames.registry, Scope::Element, now);
+        }
+        let grown = frames.animations.states.capacity();
+        frames.animations.retain(|id| id % 100 == 0);
+        assert_eq!(frames.animations.states.len(), 50);
+        assert!(frames.animations.states.capacity() < grown / 10, "{} of {grown}", frames.animations.states.capacity());
+        assert!((0..5_000).step_by(100).all(|id| frames.animations.states[&id].runs.len() == 1));
+    }
+
+    #[test]
+    fn a_prune_that_removes_nothing_leaves_the_table_where_it_is() {
+        let declared = style(r#"{ "animation": "fade 1s linear infinite" }"#);
+        let mut frames = Frames::new();
+        frames.define("fade", FADE);
+        let now = frames.at(0);
+        for id in 0..5_000 {
+            frames.animations.advance(id, &declared, &frames.registry, Scope::Element, now);
+        }
+        let capacity = frames.animations.states.capacity();
+        for _ in 0..3 {
+            frames.animations.retain(|_| true);
+        }
+        assert_eq!(frames.animations.states.capacity(), capacity);
     }
 }

@@ -29,6 +29,7 @@ use super::{MotionState, PropKey};
 use crate::color::ColorContext;
 use crate::dormant_wake::Wake;
 use crate::retained_tree::RetainedTree;
+use crate::shrink::shrink_if_sparse;
 use crate::style::StyleDesc;
 
 // ── Parsing ──────────────────────────────────────────────────────────
@@ -1682,7 +1683,7 @@ impl TransitionStyle {
 /// The transition state of every element that declares one.
 #[derive(Default)]
 pub(crate) struct CssTransitions {
-    states: HashMap<u64, ElementState>,
+    states: HashMap<u64, Box<ElementState>>,
     events: Events,
     /// The elements a Web Animations command reached since the last frame.
     commanded: Vec<u64>,
@@ -1713,7 +1714,7 @@ impl CssTransitions {
     pub(crate) fn rewind_point(&self, id: u64) -> Rewind {
         Rewind {
             id,
-            state: self.states.get(&id).cloned(),
+            state: self.states.get(&id).map(|state| (**state).clone()),
             dom_events: self.events.dom.len(),
             api_events: self.events.api.len(),
             active: self.active,
@@ -1735,7 +1736,7 @@ impl CssTransitions {
         }
         match point.state {
             Some(state) => {
-                self.states.insert(point.id, state);
+                self.states.insert(point.id, Box::new(state));
             }
             None => {
                 self.states.remove(&point.id);
@@ -1807,7 +1808,7 @@ impl CssTransitions {
     ) {
         if let std::collections::hash_map::Entry::Vacant(slot) = self.states.entry(id) {
             let colors = Colors::inheriting(parent_colors, parent_font, Some(before));
-            slot.insert(ElementState::new(id, before, colors, svg));
+            slot.insert(Box::new(ElementState::new(id, before, colors, svg)));
         }
     }
 
@@ -1833,7 +1834,7 @@ impl CssTransitions {
     ) -> Option<TransitionStyle> {
         let Some(state) = self.states.get_mut(&id) else {
             let colors = Colors::inheriting(parent_colors, parent_font, Some(after));
-            self.states.insert(id, ElementState::new(id, after, colors, svg));
+            self.states.insert(id, Box::new(ElementState::new(id, after, colors, svg)));
             return None;
         };
         let interpolate_size = InterpolateSize::declared(after).unwrap_or(inherited);
@@ -1982,7 +1983,7 @@ impl CssTransitions {
         if self.dormant.is_empty() {
             return;
         }
-        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(ElementState::drives) {
+        if self.dormant.contains(&id) && self.states.get(&id).is_some_and(|state| state.drives()) {
             self.running_dormant.insert(id);
         } else {
             self.running_dormant.remove(&id);
@@ -2049,6 +2050,7 @@ impl CssTransitions {
         self.states.retain(|id, _| keep(*id));
         self.hidden.retain(|id| keep(*id));
         self.held.retain(|id| keep(*id));
+        shrink_if_sparse(&mut self.states);
     }
 
     /// Events queued since the last call, in the order they happened.
@@ -5488,5 +5490,43 @@ mod tests {
         assert!(target.takes(PropKey::Svg(SvgAttr::Fill)));
         let shape = PropTarget::SvgShape;
         assert!(shape.takes(PropKey::Svg(SvgAttr::Opacity)) && !shape.takes(PropKey::Style(AnimProp::Opacity)));
+    }
+
+    #[test]
+    fn the_states_of_a_page_that_left_give_their_slots_back_on_the_prune() {
+        const STATE_SIZE_FLOOR: usize = 256;
+        println!("transition ElementState: {} bytes", std::mem::size_of::<ElementState>());
+        assert!(std::mem::size_of::<ElementState>() > STATE_SIZE_FLOOR, "a state this small needs no box");
+        assert_eq!(std::mem::size_of::<Box<ElementState>>(), std::mem::size_of::<usize>());
+
+        let declared = sized(10.0, "width 1s linear");
+        let mut clock = Clock::new();
+        for id in 0..5_000 {
+            clock.frame_of(id, 0, &declared, None, None);
+        }
+        let grown = clock.transitions.states.capacity();
+        clock.transitions.retain(|id| id % 100 == 0);
+        assert_eq!(clock.transitions.states.len(), 50);
+        assert!(clock.transitions.states.capacity() < grown / 10, "{} of {grown}", clock.transitions.states.capacity());
+        assert!((0..5_000).step_by(100).all(|id| clock.transitions.tracks(id)));
+
+        let later = sized(40.0, "width 1s linear");
+        clock.frame_of(100, 500, &later, None, None);
+        let resolved = clock.frame_of(100, 1000, &later, None, None);
+        assert!(width_of(&resolved) > 10.0 && width_of(&resolved) < 40.0, "a survivor still transitions");
+    }
+
+    #[test]
+    fn a_prune_that_removes_nothing_leaves_the_table_where_it_is() {
+        let declared = sized(10.0, "width 1s linear");
+        let mut clock = Clock::new();
+        for id in 0..5_000 {
+            clock.frame_of(id, 0, &declared, None, None);
+        }
+        let capacity = clock.transitions.states.capacity();
+        for _ in 0..3 {
+            clock.transitions.retain(|_| true);
+        }
+        assert_eq!(clock.transitions.states.capacity(), capacity);
     }
 }
