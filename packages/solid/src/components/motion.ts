@@ -253,7 +253,8 @@ export function createMotionComponent<Props extends MotionSource & SolidHostProp
               (own) => wireMotionTransition(own),
               current.inherited.includes("whileInView") ? inheritedVariants()!.inView : inView()
             )
-            const animate = current.animate ?? (gestures !== undefined ? {} : undefined)
+            // An element that only declares an `exit` still hands it over, for `AnimatePresence` to play.
+            const animate = current.animate ?? (gestures !== undefined || current.exit !== undefined ? {} : undefined)
             if (animate === undefined) return applied = undefined
             const transition = withoutLayoutTransition(resolvedTransition(current.animateTransition))
             const exitTransition = withoutLayoutTransition(resolvedTransition(current.exitTransition))

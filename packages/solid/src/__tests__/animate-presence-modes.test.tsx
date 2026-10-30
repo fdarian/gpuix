@@ -361,3 +361,31 @@ describe.skipIf(!hasNativeTestRenderer)("Solid AnimatePresence swaps", () => {
     expect(app.renderer.getAllText()).toEqual(["b"])
   })
 })
+
+describe.skipIf(!hasNativeTestRenderer)("Solid AnimatePresence of an element with only an exit", () => {
+  it("plays the exit, as React does, though the element has no animate and no gesture", () => {
+    const [shown, setShown] = createSignal(true)
+    const app = createTestRoot()
+    app.render(() => (
+      <div>
+        <AnimatePresence>
+          <Show when={shown()}>
+            <motion.div exit={{ opacity: 0 }} transition={linear} style={{ height: 20 }}>
+              <text>leaving</text>
+            </motion.div>
+          </Show>
+        </AnimatePresence>
+      </div>
+    ))
+    app.renderer.clockPause()
+    app.renderer.flush()
+    expect(app.renderer.getAllText()).toEqual(["leaving"])
+
+    app.flushSync(() => setShown(false))
+    frame(app.renderer, 100)
+    expect(app.renderer.getAllText()).toEqual(["leaving"])
+
+    frame(app.renderer, 150)
+    expect(app.renderer.getAllText()).toEqual([])
+  })
+})
