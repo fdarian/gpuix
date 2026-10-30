@@ -2434,8 +2434,12 @@ impl gpui::Element for EditorTextElement {
                 ));
             }
         }
-        let seen = window.content_mask().bounds.intersect(&bounds);
-        let visible = caret.as_ref().is_some_and(|caret| caret.bounds.intersects(&seen));
+        // The caret is cut by the box of the editor (its paint's own mask) and by every clip around
+        // it, which the window has where the transform around the editor put them.
+        let visible = caret.as_ref().is_some_and(|caret| {
+            caret.bounds.intersects(&bounds)
+                && window.reaches_content_mask(caret.bounds.intersect(&bounds))
+        });
         self.input.update(cx, |input, cx| {
             input.keep_blinking(visible && input.shows_caret(window), window, cx)
         });

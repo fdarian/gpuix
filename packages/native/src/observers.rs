@@ -604,7 +604,7 @@ pub(crate) fn frame_sweep(
 /// Reads the boxes of the elements with `content-visibility: auto` to see which are near the
 /// viewport, asks for a frame when one is to show or skip its content, and tells the elements
 /// whose state a frame has applied (`contentvisibilityautostatechange`).
-fn sweep_relevance(
+pub(crate) fn sweep_relevance(
     window: gpui::AnyWindowHandle,
     viewport: gpui::Size<Pixels>,
     tree: &Mutex<RetainedTree>,

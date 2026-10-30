@@ -119,7 +119,19 @@ impl GpuixView {
                 tape.each(crate::tape::Kind::Text, &mut crate::text::publish_captured_text);
                 tape.each(crate::tape::Kind::StartRegion, &mut crate::text::publish_captured_start_region);
             }
-            view.read(app).tree.lock().unwrap().relevance.note_transforms_captured();
+            let (tree, callback) = {
+                let view = view.read(app);
+                (view.tree.clone(), view.event_callback.clone())
+            };
+            let relevance = tree.lock().unwrap().relevance.clone();
+            relevance.note_transforms_captured();
+            // The canvas that sweeps after a draw is not among the units: a transform written without a build
+            // moved the boxes just published, and the elements that skip depending on where they are are asked again.
+            if !relevance.is_empty() {
+                let handle = window.window_handle();
+                let viewport = window.viewport_size();
+                app.defer(move |cx| crate::observers::sweep_relevance(handle, viewport, &tree, &callback, cx));
+            }
             view.update(app, |view, cx| view.continue_after_patch(window, &built.stepped, cx));
             true
         };

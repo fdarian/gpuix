@@ -14,8 +14,9 @@
 //!
 //! `auto` skips while the element is not relevant to the user: near the viewport (its border box,
 //! outset by 150% of the viewport on each side, clipped by what clips it and by the viewport,
-//! still shows something) or holding the focus. [`Relevance`] keeps what is known of each such
-//! element. The first answer comes in the frame that builds the element, from its prepaint, which
+//! still shows something) or holding the focus. The margin is added in the element's own space and carried
+//! to the window with the box by every transform around it and its own, so a scale scales the margin and a
+//! turn turns it, as Chrome's does. [`Relevance`] keeps what is known of each such element. The first answer comes in the frame that builds the element, from its prepaint, which
 //! asks for the frame to be built again when the element is relevant; later answers come from the
 //! boxes a frame painted ([`Relevance::sweep`]) and take effect in the next frame.
 //!
@@ -230,8 +231,19 @@ pub(crate) fn watch<E: gpui::InteractiveElement>(
             }
         }
         if relevance.wants_answer(id) {
-            let near = !window.is_culling()
-                && is_near(bounds, [window.content_mask().bounds], window.viewport_size());
+            let near = !window.is_culling() && {
+                let viewport = window.viewport_size();
+                let border_box = window.layout_unsnapped_bounds(layout_id);
+                // A perspective can leave nothing of the box in front of the eye, which is not near.
+                window
+                    .layout_to_window(layout_id, border_box)
+                    .try_bounding_box(outset(border_box, viewport))
+                    .is_some_and(|reach| {
+                        // What clips it: the window's mask, and the clip a general transform keeps in its own space.
+                        let clips = std::iter::once(window.content_mask().bounds).chain(window.local_clip_in_window());
+                        is_near(reach, clips, viewport)
+                    })
+            };
             if relevance.answer(id, near) {
                 window.request_redraw_before_present();
             }
@@ -241,25 +253,34 @@ pub(crate) fn watch<E: gpui::InteractiveElement>(
     })
 }
 
-/// Whether the border box `border_box`, outset by [`NEAR`] of the viewport on each side and cut
-/// by `clips` (the boxes of what clips it) and by the viewport, has an area left. An element at
-/// the very edge of the margin is not near, as it is not in Chrome.
+/// `border_box` outset by [`NEAR`] of the viewport on each side: the part of the element's own space
+/// that is near. Chrome adds the margin to the target in its own space, so the margin that is 1.5
+/// times the viewport's width is along the element's x axis, whichever way a turn puts it.
+pub(crate) fn outset(border_box: Bounds<Pixels>, viewport: gpui::Size<Pixels>) -> Bounds<Pixels> {
+    let (margin_x, margin_y) = (NEAR * f32::from(viewport.width), NEAR * f32::from(viewport.height));
+    Bounds {
+        origin: gpui::point(border_box.origin.x - gpui::px(margin_x), border_box.origin.y - gpui::px(margin_y)),
+        size: gpui::size(
+            border_box.size.width + gpui::px(2.0 * margin_x),
+            border_box.size.height + gpui::px(2.0 * margin_y),
+        ),
+    }
+}
+
+/// Whether `reach`, the window's box of the border box of an element outset as [`outset`] does, cut
+/// by `clips` (the window's boxes of what clips it) and by the viewport, has an area left. An element
+/// at the very edge of the margin is not near, as it is not in Chrome.
 pub(crate) fn is_near(
-    border_box: Bounds<Pixels>,
+    reach: Bounds<Pixels>,
     clips: impl IntoIterator<Item = Bounds<Pixels>>,
     viewport: gpui::Size<Pixels>,
 ) -> bool {
     let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
-    let (margin_x, margin_y) = (NEAR * width, NEAR * height);
     let edges = |bounds: Bounds<Pixels>| {
         let (left, top) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
         (left, top, left + f32::from(bounds.size.width), top + f32::from(bounds.size.height))
     };
-    let (mut left, mut top, mut right, mut bottom) = edges(border_box);
-    left -= margin_x;
-    right += margin_x;
-    top -= margin_y;
-    bottom += margin_y;
+    let (mut left, mut top, mut right, mut bottom) = edges(reach);
     let viewport_edges = (0.0, 0.0, width, height);
     for (clip_left, clip_top, clip_right, clip_bottom) in clips.into_iter().map(edges).chain([viewport_edges]) {
         left = left.max(clip_left);
@@ -268,6 +289,20 @@ pub(crate) fn is_near(
         bottom = bottom.min(clip_bottom);
     }
     left < right && top < bottom
+}
+
+/// [`outset`] of a painted element's border box, as the window has it after every transform around it
+/// and its own. Empty where a perspective leaves nothing of it in front of the eye.
+fn reach_of(painted: &crate::automation::ElementBounds, viewport: gpui::Size<Pixels>) -> Bounds<Pixels> {
+    let (margin_x, margin_y) = (f64::from(NEAR * f32::from(viewport.width)), f64::from(NEAR * f32::from(viewport.height)));
+    let outset = crate::automation::ElementBounds {
+        x: painted.x - margin_x,
+        y: painted.y - margin_y,
+        width: painted.width + 2.0 * margin_x,
+        height: painted.height + 2.0 * margin_y,
+        ..*painted
+    };
+    crate::observers::window_border_box(&outset)
 }
 
 /// What is known of the elements that skip their content depending on where they are, and of the
@@ -835,7 +870,7 @@ impl Relevance {
             // Found when the element is first swept: an element that is built does not change the tree's revision.
             let ancestors = clips.ancestors.entry(*id).or_insert_with(|| crate::observers::clipping_ancestors(tree, *id, None));
             let boxes = crate::observers::clip_rects(window, ancestors).into_iter().map(|(_, bounds)| bounds);
-            element.near = Some(is_near(crate::observers::window_border_box(&painted), boxes, viewport));
+            element.near = Some(is_near(reach_of(&painted, viewport), boxes, viewport));
             let wanted = element.wanted_skipped(&holds, *id);
             if first_frame && element.notified.is_none() {
                 element.notified = Some(true);
@@ -1091,7 +1126,7 @@ mod tests {
 
     #[test]
     fn an_element_is_near_up_to_a_viewport_and_a_half_past_each_edge() {
-        let near = |left, top, clips: &[Bounds<Pixels>]| is_near(square(left, top, 50.0), clips.iter().copied(), VIEWPORT);
+        let near = |left, top, clips: &[Bounds<Pixels>]| is_near(outset(square(left, top, 50.0), VIEWPORT), clips.iter().copied(), VIEWPORT);
         assert!(near(100.0, 100.0, &[]));
         // The margin is 1.5 times the side of the axis: 1200 below, 1500 to the right.
         assert!(near(0.0, 1999.0, &[]));
@@ -1105,13 +1140,28 @@ mod tests {
 
     #[test]
     fn what_clips_an_element_cuts_the_margin_short() {
-        let far = square(0.0, 1900.0, 50.0);
+        let far = outset(square(0.0, 1900.0, 50.0), VIEWPORT);
         assert!(is_near(far, [], VIEWPORT));
         // A scroller whose visible part ends before the margin of the element begins.
         assert!(!is_near(far, [square(0.0, 0.0, 400.0)], VIEWPORT));
         assert!(is_near(far, [square(0.0, 300.0, 600.0)], VIEWPORT));
         // The margin does not reach past the viewport, whatever the clip lets through.
         assert!(!is_near(far, [square(0.0, 1500.0, 400.0)], VIEWPORT));
+    }
+
+    #[test]
+    fn the_margin_is_added_in_the_space_of_the_element_and_goes_with_it_to_the_window() {
+        let near = |matrix: gpui::TransformationMatrix, left, top| {
+            matrix.try_bounding_box(outset(square(left, top, 50.0), VIEWPORT)).is_some_and(|reach| is_near(reach, [], VIEWPORT))
+        };
+        // A scale about the origin scales the margin with the box: at one half, the 1200 below is 600.
+        let half = gpui::TransformationMatrix::unit().scale(gpui::size(0.5, 0.5));
+        assert!(near(half, 0.0, 2799.0) && !near(half, 0.0, 2800.0));
+        // A quarter turn, (x, y) to (-y, x), puts the 1200 of the vertical margin along the x axis, 1000 wide: a box above the
+        // origin is near while it is less than 1200 + 1000 above it, and one below it while it is less than 1200 below.
+        let quarter = gpui::TransformationMatrix::unit().rotate(gpui::Radians(std::f32::consts::FRAC_PI_2));
+        assert!(near(quarter, 0.0, -2249.0) && !near(quarter, 0.0, -2251.0));
+        assert!(near(quarter, 0.0, 1199.0) && !near(quarter, 0.0, 1201.0));
     }
 
     #[test]

@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>content-visibility: auto under and with a transform</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#fff}
+#page{position:relative;width:900px;height:780px;overflow:hidden}
+</style>
+<body>
+<script>
+// `window.__run(nodes)` builds the boxes of a case of content-visibility-transform-cases.ts in a page of 900 x 780, waits for the
+// page to settle, and says which boxes (by name) have their content skipped and what each was last told.
+function build(node, parent, told) {
+  const element = document.createElement('div');
+  Object.assign(element.style, node.style);
+  if (node.name) {
+    const probe = document.createElement('div');
+    Object.assign(probe.style, {position: 'absolute', left: '0px', top: '0px', width: '10px', height: '10px'});
+    element.appendChild(probe);
+    element.__probe = probe;
+    element.__name = node.name;
+    element.addEventListener('contentvisibilityautostatechange', (event) => told.set(node.name, event.skipped));
+  }
+  parent.appendChild(element);
+  for (const child of node.children || []) build(child, element, told);
+  return element;
+}
+function auto(element, found) {
+  if (element.__name) found.push(element);
+  for (const child of element.children) auto(child, found);
+  return found;
+}
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+window.__run = async (nodes) => {
+  const page = document.createElement('div');
+  page.id = 'page';
+  document.body.appendChild(page);
+  const told = new Map();
+  for (const node of nodes) build(node, page, told);
+  await frame();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await frame();
+  const found = auto(page, []);
+  return {
+    skipped: found.filter((element) => !element.__probe.checkVisibility({contentVisibilityAuto: true})).map((element) => element.__name).sort(),
+    told: Object.fromEntries([...told].sort()),
+  };
+};
+</script>
