@@ -13,6 +13,7 @@ use std::sync::{Arc, LazyLock};
 use crate::accessibility::relations::RelationRegistry;
 use crate::layout::containing_block;
 use crate::resolved_style::{PointerEvents, Visibility};
+use crate::shrink::shrink_if_sparse;
 use crate::style::StyleDesc;
 
 /// What one `elements_at` walk carries along.
@@ -969,6 +970,7 @@ impl RetainedTree {
         }
         let mut destroyed = Vec::new();
         self.destroy_element_recursive(id, &mut destroyed);
+        self.shrink_tables();
         if !destroyed.is_empty() {
             self.mark_dirty(Dirty::Layout);
         }
@@ -979,6 +981,16 @@ impl RetainedTree {
             self.mark_changed(parent_id);
         }
         destroyed
+    }
+
+    /// A page of thousands of elements leaves the tables sized for it behind when it is destroyed.
+    fn shrink_tables(&mut self) {
+        shrink_if_sparse(&mut self.elements);
+        shrink_if_sparse(&mut self.motion_ids);
+        shrink_if_sparse(&mut self.image_ids);
+        shrink_if_sparse(&mut self.motion_value_ids);
+        shrink_if_sparse(&mut self.control_ids);
+        shrink_if_sparse(&mut self.geometry_ids);
     }
 
     fn destroy_element_recursive(&mut self, id: u64, destroyed: &mut Vec<u64>) {
@@ -3280,5 +3292,46 @@ mod tests {
         assert_eq!((tree.visibility_count, tree.escaping_count), (1, 0));
         tree.destroy_element(1);
         assert_eq!((tree.visibility_count, tree.escaping_count), (0, 0));
+    }
+
+    fn page_of(rows: u64) -> RetainedTree {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "div".to_string());
+        for id in 2..2 + rows {
+            tree.create_element(id, "div".to_string());
+            tree.append_child(1, id);
+            tree.motion_ids.insert(id);
+        }
+        tree
+    }
+
+    #[test]
+    fn the_tables_of_a_page_that_was_destroyed_give_their_slots_back() {
+        println!("RetainedElement: {} bytes", std::mem::size_of::<RetainedElement>());
+        let mut tree = page_of(10_000);
+        let grown = tree.elements.capacity();
+        let grown_ids = tree.motion_ids.capacity();
+        assert!(grown * std::mem::size_of::<RetainedElement>() > 256 * 1024);
+
+        for id in (2..10_002).filter(|id| id % 100 != 0) {
+            tree.destroy_element(id);
+        }
+        assert_eq!(tree.elements.len(), 101);
+        assert!(tree.elements.capacity() < grown / 10, "{} of {grown}", tree.elements.capacity());
+        assert!(tree.motion_ids.capacity() < grown_ids / 10);
+        assert!((2..10_002).filter(|id| id % 100 == 0).all(|id| tree.elements.contains_key(&id) && tree.motion_ids.contains(&id)));
+        assert_eq!(tree.elements[&1].children.len(), 100);
+    }
+
+    #[test]
+    fn destroying_one_element_of_a_steady_page_reallocates_nothing() {
+        let mut tree = page_of(5_000);
+        let (elements, ids) = (tree.elements.capacity(), tree.motion_ids.capacity());
+        for id in 5_100..5_200 {
+            tree.create_element(id, "div".to_string());
+            tree.append_child(1, id);
+            tree.destroy_element(id);
+        }
+        assert_eq!((tree.elements.capacity(), tree.motion_ids.capacity()), (elements, ids));
     }
 }
