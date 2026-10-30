@@ -190,6 +190,14 @@ fn uniform_circle(corners: [gpui::Size<gpui::Pixels>; 4]) -> gpui::Pixels {
     }
 }
 
+/// A page is content, not a control: it stays at full opacity while another element is
+/// keyboard-focused, unless its own style sets `keyboardFocusDim: true`.
+fn exempt_from_keyboard_focus_dim(focus: &mut crate::focus::FocusStyles, style: Option<&crate::style::StyleDesc>) {
+    if style.and_then(|style| style.keyboard_focus_dim) != Some(true) {
+        focus.dim_path = None;
+    }
+}
+
 pub struct WebviewElement {
     shared: Rc<RefCell<Shared>>,
 }
@@ -203,7 +211,7 @@ impl WebviewElement {
 impl CustomElement for WebviewElement {
     fn render(
         &mut self,
-        ctx: CustomRenderContext,
+        mut ctx: CustomRenderContext,
         _window: &mut gpui::Window,
         _cx: &mut gpui::Context<crate::renderer::GpuixView>,
     ) -> gpui::AnyElement {
@@ -215,6 +223,7 @@ impl CustomElement for WebviewElement {
                 None => gpui::Corners::default(),
             };
         }
+        exempt_from_keyboard_focus_dim(&mut ctx.focus_styles, ctx.style);
         let prepainted = self.shared.clone();
         let painted = self.shared.clone();
         let page = gpui::canvas(
@@ -317,5 +326,25 @@ mod tests {
     #[test]
     fn a_corner_without_a_vertical_radius_is_a_circle() {
         assert_eq!(uniform_circle([size(px(6.), px(0.)); 4]), px(6.));
+    }
+
+    fn dimming() -> crate::focus::FocusStyles {
+        crate::focus::FocusStyles { dim_path: Some(std::sync::Arc::from([7_u64])), ..Default::default() }
+    }
+
+    fn style_with_dim(dim: Option<bool>) -> crate::style::StyleDesc {
+        crate::style::StyleDesc { keyboard_focus_dim: dim, ..Default::default() }
+    }
+
+    #[test]
+    fn a_page_does_not_dim_unless_its_style_asks_for_it() {
+        for style in [None, Some(style_with_dim(None)), Some(style_with_dim(Some(false)))] {
+            let mut focus = dimming();
+            exempt_from_keyboard_focus_dim(&mut focus, style.as_ref());
+            assert!(focus.dim_path.is_none());
+        }
+        let mut focus = dimming();
+        exempt_from_keyboard_focus_dim(&mut focus, Some(&style_with_dim(Some(true))));
+        assert!(focus.dim_path.is_some());
     }
 }

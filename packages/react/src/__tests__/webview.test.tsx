@@ -199,6 +199,21 @@ describeNative("custom element: webview", () => {
       expect(surface("w")!.opacity).toBe(1)
     })
 
+    it("does not dim while another element has keyboard focus, unless its style asks for it", () => {
+      testRoot.render(
+        <div>
+          <div tabIndex={0} testId="control" style={{ width: 40, height: 20 }} />
+          <webview testId="page" style={{ width: 100, height: 50 }} />
+          <webview testId="asked" style={{ width: 100, height: 50, keyboardFocusDim: true }} />
+          <div tabIndex={0} testId="plain" style={{ width: 40, height: 20 }} />
+        </div>
+      )
+      renderer().simulateKeystrokes("Tab")
+      expect(renderer().getFocusedElementId()).toBe(idOf("control"))
+      expect(surface("page")!.opacity).toBe(1)
+      expect(surface("asked")!.opacity).toBeCloseTo(0.4, 2)
+    })
+
     it("is cut to a uniform border radius", () => {
       testRoot.render(<webview testId="w" style={{ borderRadius: 12 }} />)
       expect(surface("w")!.cornerRadius).toBe(12)

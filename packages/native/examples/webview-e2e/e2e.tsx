@@ -3,8 +3,7 @@ import { render } from "@gpuix/react"
 import { App } from "./app"
 import { run } from "./driver"
 
-// Dimming the focusables while one has keyboard focus would change the pixels the checks read.
-render(<App />, { title: "gpuix webview e2e", width: 900, height: 700, keyboardFocusDim: false })
+render(<App />, { title: "gpuix webview e2e", width: 900, height: 700 })
 
 run().then(
   (failures) => process.exit(failures === 0 ? 0 : 1),
