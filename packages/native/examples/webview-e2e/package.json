@@ -1,0 +1,8 @@
+{
+  "name": "@gpuix/webview-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "sh run.sh"
+  }
+}
