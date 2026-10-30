@@ -91,7 +91,7 @@ pub(super) enum Pose {
 /// Whether Motion gives the browser the value `key` animates through `literal`.
 fn accelerated(key: PropKey, literal: &[AnimValue]) -> bool {
     match key {
-        PropKey::Style(AnimProp::Opacity | AnimProp::BackgroundColor) | PropKey::Svg(SvgAttr::Opacity) => true,
+        PropKey::Style(AnimProp::Opacity | AnimProp::BackgroundColor | AnimProp::Filter) | PropKey::Svg(SvgAttr::Opacity) => true,
         PropKey::Style(AnimProp::Color | AnimProp::OutlineColor) | PropKey::Svg(SvgAttr::Fill | SvgAttr::Stroke) => {
             literal.iter().any(AnimValue::is_browser_colour)
         }
@@ -460,7 +460,7 @@ impl Script {
                     written: self.offsets.is_some(),
                     easing: self.frame_easings.get(index).cloned().unwrap_or_else(|| "linear".to_string()),
                     composite: "auto",
-                    values: key.computed_text(value, Text::Keyframe)?,
+                    values: key.computed_text(&super::filter_value::animatable_none(value, literal), Text::Keyframe)?,
                 })
             })
             .collect()

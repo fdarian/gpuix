@@ -606,7 +606,7 @@ enum PropPlan {
     /// unless `interpolate-size` allows keywords.
     Discrete { prop: AnimProp, stops: Vec<Stop> },
     /// An SVG property some neighbouring keyframes of which cannot blend (`none` against a value, paths
-    /// of other commands). CSS decides each interval on its own: the others still blend.
+    /// of other commands), or a `filter`. CSS decides each interval on its own: the others still blend.
     Segments { key: PropKey, stops: Vec<Stop>, pairs: Vec<Pair> },
 }
 
@@ -797,13 +797,14 @@ impl Planner<'_> {
             .iter()
             .map(|stop| stop.value.clone().expect("an unset size is discrete unless keywords are allowed"))
             .collect();
-        if matches!(key, PropKey::Svg(_)) {
+        if matches!(key, PropKey::Svg(_) | PropKey::Style(AnimProp::Filter)) {
             let pairs: Result<Vec<Pair>, String> = literal
                 .windows(2)
                 .map(|window| pair_in(key.name(), &window[0], &window[1], Interpolation::Css))
                 .collect();
             match pairs {
-                Ok(pairs) if pairs.iter().any(Pair::is_discrete) => {
+                // A filter list pairs with its neighbours alone: the lists of a track need not share one layout.
+                Ok(pairs) if key == PropKey::Style(AnimProp::Filter) || pairs.iter().any(Pair::is_discrete) => {
                     return Some(PropPlan::Segments { key, stops, pairs });
                 }
                 Ok(_) => {}
@@ -2821,6 +2822,28 @@ mod tests {
             middle.border_top_left_radius,
             Some(crate::style::CornerRadiusValue { x: crate::css::length::LinearLength::px(5.0), y: Some(crate::css::length::LinearLength::px(10.0)) })
         );
+    }
+
+    #[test]
+    fn the_keyframes_of_a_filter_blend_interval_by_interval() {
+        let mut frames = Frames::new();
+        frames.define(
+            "fx",
+            r#"{ "from": { "filter": "blur(0px)" },
+                 "40%": { "filter": "blur(8px)" },
+                 "70%": { "filter": "brightness(2)" },
+                 "to": { "filter": "brightness(2) blur(4px)" } }"#,
+        );
+        let animated = style(r#"{ "animation": "fx 1s linear" }"#);
+        let filter = |frames: &mut Frames, millis: u64| frames.frame(millis, &animated).filter;
+        assert_eq!(filter(&mut frames, 0).as_deref(), Some("blur(0px)"));
+        assert_eq!(filter(&mut frames, 200).as_deref(), Some("blur(4px)"));
+        // 40% to 70% cannot blend: it steps at 55%.
+        assert_eq!(filter(&mut frames, 500).as_deref(), Some("blur(8px)"));
+        assert_eq!(filter(&mut frames, 560).as_deref(), Some("brightness(2)"));
+        // 70% to 100% pads the shorter list.
+        assert_eq!(filter(&mut frames, 850).as_deref(), Some("brightness(2) blur(2px)"));
+        assert!(frames.animations.paints_only(1, &frames.registry));
     }
 
     fn dimmed(opacity: f64, animation: &str) -> StyleDesc {

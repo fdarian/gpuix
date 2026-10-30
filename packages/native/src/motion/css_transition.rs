@@ -4325,6 +4325,43 @@ mod tests {
         }
 
         #[test]
+        fn a_filter_transitions_between_lists_and_against_none() {
+            let filter = |value: &str, behavior: &str| {
+                style(&format!(r#"{{ "filter": "{value}", "transition": "filter 1s linear {behavior}" }}"#))
+            };
+            let mut clock = Clock::new();
+            clock.frame(0, &filter("blur(4px)", ""));
+            let running = clock.frame(0, &filter("blur(0px) brightness(2)", ""));
+            assert_eq!(running.filter.as_deref(), Some("blur(4px) brightness(1)"));
+            assert_eq!(clock.frame(500, &filter("blur(0px) brightness(2)", "")).filter.as_deref(), Some("blur(2px) brightness(1.5)"));
+            assert!(clock.transitions.paints_only(1));
+            clock.frame(1000, &filter("blur(0px) brightness(2)", ""));
+            assert!(clock.events().iter().any(|(kind, property, _)| *kind == End && property == "filter"));
+
+            let mut clock = Clock::new();
+            clock.frame(0, &style(r#"{ "transition": "filter 1s linear" }"#));
+            let from_nothing = clock.frame(0, &filter("brightness(2) blur(8px)", ""));
+            assert_eq!(from_nothing.filter.as_deref(), Some("brightness(1) blur(0px)"));
+            assert_eq!(clock.frame(250, &filter("brightness(2) blur(8px)", "")).filter.as_deref(), Some("brightness(1.25) blur(2px)"));
+        }
+
+        #[test]
+        fn lists_that_cannot_blend_start_no_filter_transition_unless_discrete_is_allowed() {
+            let filter = |value: &str, behavior: &str| {
+                style(&format!(r#"{{ "filter": "{value}", "transition": "filter 1s linear {behavior}" }}"#))
+            };
+            let mut clock = Clock::new();
+            clock.frame(0, &filter("blur(4px)", ""));
+            assert_eq!(clock.frame(0, &filter("brightness(2)", "")).filter.as_deref(), Some("brightness(2)"));
+            assert!(clock.events().is_empty());
+
+            let mut clock = Clock::new();
+            clock.frame(0, &filter("blur(4px)", "allow-discrete"));
+            assert_eq!(clock.frame(0, &filter("brightness(2)", "allow-discrete")).filter.as_deref(), Some("blur(4px)"));
+            assert_eq!(clock.frame(600, &filter("brightness(2)", "allow-discrete")).filter.as_deref(), Some("brightness(2)"));
+        }
+
+        #[test]
         fn display_is_held_while_it_transitions_to_none() {
             let held = |clock: &Clock| clock.transitions.held_displays().contains(&1);
             let mut clock = Clock::new();

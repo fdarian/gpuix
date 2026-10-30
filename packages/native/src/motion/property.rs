@@ -9,6 +9,7 @@
 
 use serde_json::Value;
 
+use super::filter_value;
 use super::list::ListValue;
 use super::text::{self, six_digits, Text};
 use super::transform_value::TransformList;
@@ -92,6 +93,8 @@ enum Kind {
     PerspectiveOrigin,
     /// The CSS `perspective`: a length in px, or `none`, which is no length and flips at the middle.
     Perspective,
+    /// The CSS `filter`: a list of functions, or `none`.
+    Filter,
 }
 
 /// The range the applied value is held to. Physics keeps the unclamped value.
@@ -151,6 +154,8 @@ enum Initial {
     CenterOrigin,
     /// `none`: a list of no functions, which blends with every list.
     NoTransform,
+    /// `none` for a `filter`: a list of no functions, which every function of the other list is padded against.
+    NoFilter,
 }
 
 #[derive(Clone, Copy)]
@@ -719,6 +724,9 @@ macro_rules! read_field {
     (Perspective, $slot:expr, $cx:expr) => {
         perspective_read(&$slot, $cx)
     };
+    (Filter, $slot:expr, $cx:expr) => {
+        filter_value::read(&$slot, $cx.colors, $cx.lengths)
+    };
     ($kind:ident, $slot:expr, $cx:expr) => {
         Field::read(&$slot, $cx)
     };
@@ -757,6 +765,9 @@ macro_rules! write_field {
     };
     (Perspective, $slot:expr, $value:expr) => {
         perspective_write(&mut $slot, $value)
+    };
+    (Filter, $slot:expr, $value:expr) => {
+        filter_value::write(&mut $slot, $value)
     };
     ($kind:ident, $slot:expr, $value:expr) => {
         Field::write(&mut $slot, $value)
@@ -888,7 +899,7 @@ macro_rules! properties {
 
 use Initial::{
     BorderWidth, Center, CenterOrigin, ComputedColor, CurrentColor, InheritedLineHeight, InheritedPointerEvents, InheritedSpacing,
-    InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoShadows, NoTransform, Number,
+    InheritedTable, InheritedUnderlineOffset, InheritedVisibility, Keyword as InitialKeyword, NoFilter, NoShadows, NoTransform, Number,
     Transparent, Unresolved, Unset,
 };
 
@@ -938,6 +949,7 @@ properties! {
     BorderBottomLeftRadius "borderBottomLeftRadius" Corner NonNegative Number(0.0), border_bottom_left_radius | border_radius.bottom_left();
     BorderBottomRightRadius "borderBottomRightRadius" Corner NonNegative Number(0.0), border_bottom_right_radius | border_radius.bottom_right();
     BoxShadow "boxShadow" Shadow None NoShadows, box_shadow;
+    Filter "filter" Filter None NoFilter, filter;
     AspectRatio "aspectRatio" Number NonNegative Unresolved, aspect_ratio;
 
     OutlineWidth "outlineWidth" Length NonNegative Number(3.0), outline_width | outline.width();
@@ -1032,6 +1044,7 @@ impl AnimProp {
                     | Self::PerspectiveOrigin
                     | Self::Opacity
                     | Self::BoxShadow
+                    | Self::Filter
                     | Self::Color
                     | Self::BackgroundColor
                     | Self::BorderTopColor
@@ -1440,6 +1453,7 @@ impl AnimProp {
                     .collect::<Vec<_>>()
                     .join(", ")
             }),
+            (Kind::Filter, AnimValue::Filters(functions)) => named(filter_value::computed_text(functions, of)),
             (Kind::Transform | Kind::Translate | Kind::Rotate | Kind::Scale, AnimValue::Transform(list)) => named(match list.computed_text() {
                 Some(text) => text.to_string(),
                 None => {
@@ -1581,6 +1595,7 @@ impl AnimProp {
                 z: 0.0,
             })),
             Initial::NoTransform => Some(AnimValue::Transform(Vec::new().into())),
+            Initial::NoFilter => Some(AnimValue::Filters(Vec::new())),
             Initial::Number(value) => Some(AnimValue::Number(value)),
             Initial::BorderWidth(side) => Some(AnimValue::Number(style.map_or(
                 f64::from(crate::css::border::resolve_width(&crate::css::border::MEDIUM, &colors.lengths)),
@@ -1850,6 +1865,7 @@ impl AnimProp {
                 )
             }
             Kind::Shadow => AnimValue::Shadows(parse_shadow_list(name, value, colors)?),
+            Kind::Filter => filter_value::parse(name, value, colors, lengths)?,
             Kind::Keyword if self == Self::Visibility => match value.as_str() {
                 Some(keyword @ ("visible" | "hidden" | "collapse")) => AnimValue::Keyword(Some(keyword.to_string())),
                 _ => return Err(format!("motion {name} must be visible, hidden or collapse")),
@@ -1932,6 +1948,7 @@ impl AnimProp {
                     | (Kind::Perspective, AnimValue::Keyword(Some(_)))
                     | (Kind::Color, AnimValue::Color(_))
                     | (Kind::Shadow, AnimValue::Shadows(_))
+                    | (Kind::Filter, AnimValue::Filters(_))
                     | (Kind::Variations, AnimValue::Variations(_))
             )
     }
@@ -1956,6 +1973,7 @@ impl AnimProp {
             (Clamp::Weight, AnimValue::Number(value)) => {
                 AnimValue::Number(value.clamp(1.0, 1000.0))
             }
+            (_, AnimValue::Filters(functions)) => AnimValue::Filters(filter_value::clamp(functions)),
             (_, AnimValue::Shadows(mut shadows)) => {
                 for shadow in &mut shadows {
                     shadow.blur = shadow.blur.max(0.0);

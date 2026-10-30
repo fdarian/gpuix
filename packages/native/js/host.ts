@@ -194,6 +194,7 @@ export type MotionStyleTargets = Pick<
   | "borderBottomLeftRadius"
   | "borderBottomRightRadius"
   | "boxShadow"
+  | "filter"
   | "aspectRatio"
   | "outlineWidth"
   | "outlineColor"

@@ -1,0 +1,187 @@
+<!doctype html>
+<!--
+  Oracle for the interpolation of `filter` (Filter Effects 1, "Interpolation of filters"): the computed `filter` of an
+  element at fractions of a paused 1s animation, as headless Chrome reports it. `kind: "transition"` is a style change
+  from `base` to `after` under `transition: filter 1s <easing>`; `kind: "waapi"` is `animate()` over `values`, evenly
+  spaced. `animations` counts what the change started (0: Chrome jumped). `times` are the fractions of the second.
+  Left out on purpose: a `drop-shadow()` colour that is legacy at one end and `oklch()`, `lab()` or `color()` at the other.
+  Chrome 156 mixes it as if the modern colour were black (the same pair blends fine in a `box-shadow`), which is a bug of
+  the filter and not a rule to follow. Replayed by the tests in `motion/filter_value.rs` (the numbers) and `filter-motion.test.tsx` (the picture).
+  Regenerate with
+
+    sh filter-interp-oracle.sh
+-->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/24px Helvetica}
+.box{width:40px;height:40px;background:#888}
+</style></head><body>
+<div id="scene"></div>
+<script>
+const LINEAR = [0, 0.25, 0.5, 0.75, 1];
+const OVERSHOOT = [0.05, 0.1, 0.2, 0.5, 0.8, 0.9, 0.95];
+const BOUNCE = 'cubic-bezier(0.3, -1, 0.7, 2)';
+const cases = [];
+const transition = (from, to, extra = {}) => cases.push({ kind: 'transition', from, to, easing: 'linear', times: LINEAR, ...extra });
+const waapi = (values, extra = {}) => cases.push({ kind: 'waapi', values, easing: 'linear', times: LINEAR, ...extra });
+const overshoot = (from, to, extra = {}) => transition(from, to, { easing: BOUNCE, times: OVERSHOOT, label: 'overshoot', ...extra });
+
+// One function.
+transition('blur(0px)', 'blur(8px)');
+transition('blur(4px)', 'blur(0px)');
+transition('blur(2px)', 'blur(10px)', { style: 'font-size:20px' });
+transition('blur(1em)', 'blur(8px)', { style: 'font-size:20px' });
+transition('blur(0.5rem)', 'blur(2px)');
+transition('brightness(1)', 'brightness(2)');
+transition('brightness(50%)', 'brightness(150%)');
+transition('brightness(0)', 'brightness(1.5)');
+transition('contrast(1)', 'contrast(3)');
+transition('contrast(200%)', 'contrast(25%)');
+transition('saturate(1)', 'saturate(4)');
+transition('saturate(0)', 'saturate(2)');
+transition('grayscale(0)', 'grayscale(1)');
+transition('grayscale(20%)', 'grayscale(90%)');
+transition('sepia(0)', 'sepia(1)');
+transition('invert(0)', 'invert(1)');
+transition('invert(100%)', 'invert(30%)');
+transition('opacity(1)', 'opacity(0.2)');
+transition('opacity(50%)', 'opacity(100%)');
+transition('hue-rotate(0deg)', 'hue-rotate(270deg)');
+transition('hue-rotate(90deg)', 'hue-rotate(-90deg)');
+transition('hue-rotate(0.25turn)', 'hue-rotate(2rad)');
+transition('hue-rotate(0)', 'hue-rotate(1turn)');
+// Out-of-range amounts the grammar accepts.
+transition('grayscale(0.5)', 'grayscale(2)', { label: 'amount above 1' });
+transition('invert(0)', 'invert(300%)', { label: 'amount above 1' });
+transition('opacity(1)', 'opacity(3)', { label: 'amount above 1' });
+transition('sepia(0)', 'sepia(1.5)', { label: 'amount above 1' });
+
+// Lists of the same functions.
+transition('blur(4px) brightness(1.5)', 'blur(0px) brightness(1)');
+transition('contrast(1.2) saturate(2) hue-rotate(10deg)', 'contrast(0.8) saturate(0.5) hue-rotate(100deg)');
+transition('blur(2px) grayscale(0.5) sepia(0)', 'blur(6px) grayscale(0) sepia(1)');
+
+// none is the empty list.
+transition('none', 'blur(8px)');
+transition('blur(8px)', 'none');
+transition('none', 'blur(8px) brightness(2)');
+transition('brightness(2) blur(8px)', 'none');
+transition('none', 'grayscale(1) hue-rotate(180deg)');
+transition('none', 'drop-shadow(4px 4px 8px rgb(0, 0, 0))');
+transition('none', 'opacity(0.5) contrast(2) invert(1)');
+transition('none', 'none', { label: 'both none' });
+
+// A shorter list is padded with the identity of the longer one.
+transition('blur(4px)', 'blur(0px) brightness(2)');
+transition('blur(4px) hue-rotate(90deg)', 'blur(0px)');
+transition('brightness(2)', 'brightness(1) contrast(3) saturate(0)');
+transition('blur(8px) grayscale(1) invert(1)', 'blur(0px)');
+transition('hue-rotate(180deg) sepia(1)', 'hue-rotate(0deg)');
+transition('opacity(0.2)', 'opacity(1) sepia(1)');
+transition('brightness(0.5)', 'brightness(1.5) drop-shadow(4px 4px 8px rgb(255, 0, 0))');
+transition('blur(4px) drop-shadow(4px 4px 8px rgb(255, 0, 0))', 'blur(0px)');
+
+// Lists whose functions differ in the common prefix are discrete.
+transition('blur(4px)', 'brightness(2)');
+transition('blur(4px) brightness(2)', 'brightness(2) blur(4px)');
+transition('blur(2px) brightness(2)', 'blur(4px) contrast(2)');
+transition('blur(2px) brightness(2) sepia(1)', 'blur(4px) brightness(1) invert(1)');
+transition('blur(2px) brightness(2)', 'blur(4px) brightness(1) invert(1)', { label: 'longer, same head' });
+transition('grayscale(1)', 'sepia(1)');
+transition('hue-rotate(0deg)', 'hue-rotate(90deg) blur(2px)', { label: 'longer, same head' });
+transition('drop-shadow(2px 2px 2px rgb(0, 0, 0))', 'blur(4px)');
+
+// drop-shadow.
+transition('drop-shadow(0px 0px 0px rgba(0, 0, 0, 0))', 'drop-shadow(4px 4px 8px rgba(0, 0, 0, 0.5))');
+transition('drop-shadow(2px 2px 4px rgb(255, 0, 0))', 'drop-shadow(10px 10px 0px rgb(0, 0, 255))');
+transition('drop-shadow(2px 2px 4px red)', 'drop-shadow(-6px 8px 2px lime)');
+transition('drop-shadow(2px 2px 4px rgb(255, 0, 0))', 'drop-shadow(2px 2px 4px rgba(0, 0, 255, 0.2))');
+transition('drop-shadow(2px 2px 4px rgba(255, 0, 0, 0))', 'drop-shadow(2px 2px 4px rgb(0, 0, 255))', { label: 'from transparent' });
+transition('drop-shadow(2px 2px 4px oklch(0.6 0.1 30))', 'drop-shadow(2px 2px 4px oklch(0.6 0.1 250))');
+transition('drop-shadow(2px 2px 4px #ff0000)', 'drop-shadow(2px 2px 4px #0000ff80)');
+transition('drop-shadow(2px 2px 4px)', 'drop-shadow(8px 8px 4px)', { style: 'color: rgb(255, 0, 0)', label: 'currentColor' });
+transition('drop-shadow(2px 2px 4px)', 'drop-shadow(8px 8px 4px rgb(0, 0, 255))', { style: 'color: rgb(255, 0, 0)', label: 'currentColor to blue' });
+transition('drop-shadow(2px 2px 4px rgb(0, 0, 0))', 'drop-shadow(2px 2px 4px rgb(0, 0, 0)) blur(4px)');
+transition('drop-shadow(2px 2px 4px rgb(255, 0, 0)) blur(0px)', 'drop-shadow(0px 0px 8px rgb(0, 0, 255)) blur(6px)');
+transition('drop-shadow(4px 4px 8px rgb(0, 0, 0)) drop-shadow(0px 0px 2px rgb(255, 0, 0))', 'drop-shadow(0px 0px 0px rgba(0, 0, 0, 0)) drop-shadow(8px 8px 2px rgb(0, 0, 255))');
+transition('drop-shadow(2em 1em 1em rgb(0, 0, 0))', 'drop-shadow(4px 4px 4px rgb(0, 0, 0))', { style: 'font-size:10px' });
+
+// Keyframes of more than two values.
+waapi(['blur(0px)', 'blur(4px)', 'blur(2px)']);
+waapi(['none', 'blur(4px) brightness(2)', 'blur(8px) brightness(1)']);
+waapi(['blur(0px)', 'blur(4px)', 'brightness(2)']);
+waapi(['blur(0px)', 'brightness(2)', 'brightness(3)']);
+waapi(['blur(0px) grayscale(0)', 'blur(4px) grayscale(0.5)', 'blur(8px) grayscale(1)', 'none']);
+waapi(['brightness(1)', 'brightness(2)', 'brightness(0.5)', 'brightness(1)']);
+waapi(['blur(4px)', 'blur(8px)'], { easing: 'ease-in-out', label: 'ease-in-out' });
+waapi(['blur(4px)', 'blur(8px)'], { easing: 'steps(4)', label: 'steps' });
+
+// An easing past its ends clamps the amounts that have a range.
+overshoot('blur(2px)', 'blur(10px)');
+overshoot('blur(10px)', 'blur(2px)');
+overshoot('brightness(1)', 'brightness(2)');
+overshoot('brightness(1)', 'brightness(0.2)');
+overshoot('brightness(0)', 'brightness(2)');
+overshoot('contrast(0)', 'contrast(1)');
+overshoot('saturate(0)', 'saturate(2)');
+overshoot('contrast(1)', 'contrast(0.3)');
+overshoot('saturate(1)', 'saturate(0.2)');
+overshoot('saturate(1)', 'saturate(3)');
+overshoot('grayscale(0.2)', 'grayscale(0.8)');
+overshoot('grayscale(0)', 'grayscale(1)');
+overshoot('sepia(0.2)', 'sepia(0.8)');
+overshoot('invert(0.2)', 'invert(0.8)');
+overshoot('opacity(0.2)', 'opacity(0.8)');
+overshoot('opacity(1)', 'opacity(0.5)');
+overshoot('hue-rotate(0deg)', 'hue-rotate(90deg)');
+overshoot('drop-shadow(0px 0px 2px rgb(0, 0, 0))', 'drop-shadow(8px 8px 10px rgb(0, 0, 0))');
+overshoot('drop-shadow(0px 0px 10px rgb(255, 0, 0))', 'drop-shadow(8px 8px 2px rgb(0, 0, 255))');
+overshoot('none', 'blur(8px)');
+overshoot('none', 'grayscale(1) brightness(2)');
+overshoot('blur(4px) opacity(0.5)', 'blur(0px)');
+
+const out = { cases: {} };
+const scene = document.getElementById('scene');
+const label = (spec) => spec.kind === 'transition'
+  ? `${spec.from} to ${spec.to}${spec.label ? ` (${spec.label})` : ''}`
+  : `keyframes ${spec.values.join(' | ')}${spec.label ? ` (${spec.label})` : ''}`;
+for (const spec of cases) {
+  const name = label(spec);
+  const box = document.createElement('div');
+  box.className = 'box';
+  box.style.cssText = spec.style ?? '';
+  scene.appendChild(box);
+  let animations;
+  try {
+    if (spec.kind === 'waapi') {
+      box.animate(spec.values.map((filter) => ({ filter })), { duration: 1000, easing: spec.easing, fill: 'both' });
+    } else {
+      box.style.filter = spec.from;
+      box.style.transition = `filter 1s ${spec.easing}`;
+      getComputedStyle(box).filter;
+      box.style.filter = spec.to;
+    }
+    animations = box.getAnimations();
+  } catch (error) {
+    out.cases[name] = { error: String(error) };
+    continue;
+  }
+  const samples = {};
+  for (const time of spec.times) {
+    for (const animation of animations) { animation.pause(); animation.currentTime = time * 1000; }
+    samples[time] = getComputedStyle(box).filter;
+  }
+  let keyframes = null;
+  if (animations.length > 0) {
+    keyframes = animations[0].effect.getKeyframes().map((frame) => ({ offset: frame.computedOffset, filter: frame.filter }));
+  }
+  out.cases[name] = {
+    kind: spec.kind, from: spec.from, to: spec.to, values: spec.values, easing: spec.easing, style: spec.style ?? '',
+    animations: animations.length, keyframes, samples,
+    after: spec.kind === 'transition' ? spec.to : null,
+  };
+}
+const holder = document.createElement('div');
+holder.setAttribute('data-oracle', JSON.stringify(out));
+document.body.appendChild(holder);
+</script></body></html>

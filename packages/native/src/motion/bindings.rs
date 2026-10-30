@@ -1007,6 +1007,7 @@ fn to_json(value: &AnimValue) -> Result<Value, String> {
         }
         AnimValue::Angle(degrees) => Ok(Value::String(format!("{degrees}deg"))),
         AnimValue::Transform(functions) => Ok(Value::String(format_list(functions))),
+        AnimValue::Filters(functions) => Ok(Value::String(super::filter_value::format(functions))),
         AnimValue::Ellipse { .. } | AnimValue::Path(_) | AnimValue::Auto | AnimValue::Keyword(_) => {
             Err(format!("a {NAME} cannot hold {value:?}"))
         }

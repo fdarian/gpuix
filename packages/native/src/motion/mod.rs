@@ -11,6 +11,7 @@ mod css_transition;
 mod curve;
 mod default_transition;
 pub(crate) mod effect;
+mod filter_value;
 mod inline;
 mod keyframes;
 mod layout_flip;
@@ -5751,6 +5752,73 @@ mod tests {
             let state = MotionState::new(&list, None, Colors::root(), None, 0, started).unwrap();
             assert_eq!(state.tracks.len(), 1);
             assert!(state.tracks[&PropKey::Style(AnimProp::BoxShadow)].goal().is_single());
+        }
+
+        #[test]
+        fn a_filter_tweens_between_lists_and_pads_the_shorter() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "filter": "blur(4px)" },
+                "animate": { "filter": "blur(0px) brightness(2)" },
+                "transition": { "duration": 2.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            let filter = |seconds: f64| style_at(&state, at(started, seconds)).filter;
+            assert_eq!(filter(0.0).as_deref(), Some("blur(4px) brightness(1)"));
+            assert_eq!(filter(1.0).as_deref(), Some("blur(2px) brightness(1.5)"));
+            assert_eq!(filter(2.0).as_deref(), Some("blur(0px) brightness(2)"));
+            assert!(state.paints_only(at(started, 1.0)), "a filter only paints");
+
+            let keyframes = json!({
+                "initial": { "filter": "none" },
+                "animate": { "filter": ["blur(0px)", "blur(8px) grayscale(1)", "none"] },
+                "transition": { "duration": 2.0, "ease": "linear" }
+            });
+            let state = MotionState::new(&keyframes, None, Colors::root(), None, 0, started).unwrap();
+            assert_eq!(style_at(&state, at(started, 0.5)).filter.as_deref(), Some("blur(4px) grayscale(0.5)"));
+            assert_eq!(style_at(&state, at(started, 1.5)).filter.as_deref(), Some("blur(4px) grayscale(0.5)"));
+        }
+
+        #[test]
+        fn a_filter_spring_with_a_scale_settles_on_its_target_and_stays_in_range() {
+            let started = Instant::now();
+            let description = json!({
+                "initial": { "scale": 0.85, "filter": "blur(4px)" },
+                "animate": { "scale": 1.0, "filter": "blur(0px)" },
+                "transition": { "type": "spring", "stiffness": 300, "damping": 30 }
+            });
+            let state = MotionState::new(&description, None, Colors::root(), None, 0, started).unwrap();
+            assert_eq!(style_at(&state, started).filter.as_deref(), Some("blur(4px)"));
+            let blur = |seconds: f64| -> f64 {
+                let text = style_at(&state, at(started, seconds)).filter.unwrap();
+                text.trim_start_matches("blur(").trim_end_matches("px)").parse().unwrap()
+            };
+            assert!(blur(0.05) > 0.0 && blur(0.05) < 4.0);
+            assert_eq!(style_at(&state, at(started, 5.0)).filter.as_deref(), Some("blur(0px)"));
+
+            let bouncy = json!({
+                "initial": { "filter": "blur(4px) opacity(0.2)" },
+                "animate": { "filter": "blur(0px) opacity(0.9)" },
+                "transition": { "type": "spring", "stiffness": 600, "damping": 6 }
+            });
+            let state = MotionState::new(&bouncy, None, Colors::root(), None, 0, started).unwrap();
+            for step in 0..200 {
+                let filter = style_at(&state, at(started, f64::from(step) * 0.01)).filter.unwrap();
+                let numbers: Vec<f64> = filter
+                    .split(['(', ')', ' '])
+                    .filter_map(|part| part.trim_end_matches("px").parse().ok())
+                    .collect();
+                assert!(numbers[0] >= 0.0 && (0.0..=1.0).contains(&numbers[1]), "{filter}");
+            }
+        }
+
+        #[test]
+        fn an_invalid_filter_is_an_error() {
+            let started = Instant::now();
+            for bad in [json!("url(#blur)"), json!("blur(-2px)"), json!(4)] {
+                let description = json!({ "animate": { "filter": bad } });
+                assert!(MotionState::new(&description, None, Colors::root(), None, 0, started).is_err(), "{bad}");
+            }
         }
     }
 

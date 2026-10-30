@@ -4,6 +4,7 @@
 //! values of the same kind into a [`Layout`] plus a start and end channel
 //! vector, and [`Layout::decode`] turns sampled channels back into a value.
 
+use super::filter_value::{self, Function as FilterFunction, Shape as FilterShape};
 use super::list::ListValue;
 use super::transform_value::TransformList;
 use gpui::{FontVariations, TransformFunction};
@@ -267,7 +268,7 @@ impl Color {
         }
     }
 
-    fn channels(self) -> [f64; 4] {
+    pub(super) fn channels(self) -> [f64; 4] {
         let [l, a, b] = self.lab;
         [
             l * self.alpha,
@@ -277,7 +278,7 @@ impl Color {
         ]
     }
 
-    fn from_channels(channels: &[f64], legacy: bool) -> Self {
+    pub(super) fn from_channels(channels: &[f64], legacy: bool) -> Self {
         let alpha = channels[3];
         if alpha <= 0.0 {
             return Self {
@@ -466,7 +467,7 @@ pub(super) enum Interpolation {
 }
 
 impl Interpolation {
-    fn blend(self, from: &Color, to: &Color) -> Blend {
+    pub(super) fn blend(self, from: &Color, to: &Color) -> Blend {
         if self == Self::Css && from.legacy && to.legacy {
             Blend::Srgb
         } else {
@@ -479,7 +480,7 @@ impl Interpolation {
 /// the pair blends in premultiplied sRGB. The sRGB channels are not clamped, so
 /// an overshooting easing extrapolates past the gamut and `Color::to_css`
 /// clips once, at the end.
-fn blend_in_srgb(out: &mut [f64], from: &[f64], to: &[f64], progress: f64) {
+pub(super) fn blend_in_srgb(out: &mut [f64], from: &[f64], to: &[f64], progress: f64) {
     let from = premultiplied_srgb(from);
     let to = premultiplied_srgb(to);
     let mixed: [f64; 4] = std::array::from_fn(|index| from[index] + (to[index] - from[index]) * progress);
@@ -543,6 +544,8 @@ pub(super) enum AnimValue {
     List(ListValue),
     /// A `transform` list, or the one function of `translate`, `rotate` or `scale`. Empty is `none`.
     Transform(TransformList),
+    /// A `filter` list. Empty is `none`.
+    Filters(Vec<FilterFunction>),
     /// An angle in degrees that a motion value was given as a CSS angle (`"0.25turn"`). It mixes with a
     /// number, which is degrees too, and only an angle key of Motion takes it.
     Angle(f64),
@@ -681,6 +684,7 @@ impl AnimValue {
             Self::Keyword(_) => "a keyword",
             Self::List(_) => "a list of values",
             Self::Transform(_) => "a transform",
+            Self::Filters(_) => "a filter list",
             Self::Angle(_) => "an angle",
         }
     }
@@ -743,6 +747,13 @@ pub(super) enum Layout {
     /// (`transform_value::blend`): the keyframes' lists without repeats, and a keyframe is the
     /// channel `[index]`. A position between two is `[from index, to index, progress]`.
     Transform(Vec<Vec<TransformFunction>>),
+    /// Filter lists that name the same functions at every index, the shorter padded with identity
+    /// ones (`filter_value::align`): the channels are those of the functions, in order. `blends` is
+    /// the blend of each function's colour per segment.
+    Filters { shapes: Vec<FilterShape>, blends: Vec<Vec<Blend>> },
+    /// Filter lists whose functions differ at some index of two neighbours' common prefix: one channel
+    /// runs from option to option and the value flips at the halfway point between them.
+    DiscreteFilters(Vec<Vec<FilterFunction>>),
     /// `[degrees]`: a number and an angle, or angles, which mix in degrees.
     Angle,
 }
@@ -849,6 +860,10 @@ impl Layout {
                 }
                 .into(),
             ),
+            Self::Filters { shapes, blends } => AnimValue::Filters(filter_value::decode(shapes, blends, channels)),
+            Self::DiscreteFilters(options) => {
+                AnimValue::Filters(options[option_index(channels[0], options.len())].clone())
+            }
             Self::Angle => AnimValue::Angle(channels[0]),
         }
     }
@@ -889,6 +904,9 @@ impl Layout {
                 rest = after;
             }
             return Some(carried);
+        }
+        if let (Self::Filters { shapes: a, .. }, Self::Filters { shapes: b, .. }) = (self, other) {
+            return filter_value::velocity_in(a, b, rate);
         }
         let same = match (self, other) {
             (Self::Number, Self::Number)
@@ -961,6 +979,7 @@ impl Layout {
             Self::Color(blends) if blends[segment] == Blend::Srgb => {
                 blend_in_srgb(&mut channels, from, to, progress);
             }
+            Self::Filters { shapes, blends } => filter_value::blend_colours(shapes, &blends[segment], &mut channels, from, to, progress),
             Self::Shadows { blends, .. } => {
                 for (layer, blend) in blends[segment].iter().enumerate() {
                     if *blend == Blend::Srgb {
@@ -996,6 +1015,7 @@ impl Pair {
         matches!(
             self.layout,
             Layout::DiscreteShadows(_)
+                | Layout::DiscreteFilters(_)
                 | Layout::DiscretePath(_)
                 | Layout::DiscreteList(_)
                 | Layout::DiscreteVariations(_)
@@ -1051,6 +1071,15 @@ pub(super) fn align_in(
     }
     if values.iter().all(|value| matches!(value, AnimValue::Transform(_))) {
         return Ok(align_transforms(values));
+    }
+    if values.iter().all(|value| matches!(value, AnimValue::Filters(_))) {
+        return Ok(filter_value::align(
+            &unwrap_each(values, |value| match value {
+                AnimValue::Filters(functions) => functions.as_slice(),
+                _ => unreachable!("kinds were checked"),
+            }),
+            interpolation,
+        ));
     }
     // A keyword that is no length (`auto`, `from-font`, the `vertical-align` keywords) against a length: one
     // channel runs from option to option, and the value flips at the halfway point.
@@ -1120,6 +1149,7 @@ pub(super) fn align_in(
         AnimValue::Ellipse { .. } => unreachable!("an ellipse was aligned above"),
         AnimValue::List(_) => unreachable!("a list was aligned above"),
         AnimValue::Transform(_) => unreachable!("transforms were aligned above"),
+        AnimValue::Filters(_) => unreachable!("filters were aligned above"),
         AnimValue::Angle(_) => unreachable!("an angle was aligned above"),
         AnimValue::Color(_) => {
             let colors = unwrap_each(values, |value| match value {

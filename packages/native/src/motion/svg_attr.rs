@@ -373,7 +373,7 @@ pub(super) fn attribute_text(value: &AnimValue) -> String {
             .join(" "),
         AnimValue::Path(path) => path.to_data(),
         AnimValue::Keyword(Some(keyword)) => keyword.clone(),
-        AnimValue::Percent(_) | AnimValue::Variations(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. } | AnimValue::Ellipse { .. } | AnimValue::Shadows(_) | AnimValue::Auto | AnimValue::Keyword(None) | AnimValue::List(_) | AnimValue::Transform(_) | AnimValue::Angle(_) => {
+        AnimValue::Percent(_) | AnimValue::Variations(_) | AnimValue::Calc { .. } | AnimValue::Relative { .. } | AnimValue::Ellipse { .. } | AnimValue::Shadows(_) | AnimValue::Auto | AnimValue::Keyword(None) | AnimValue::List(_) | AnimValue::Transform(_) | AnimValue::Filters(_) | AnimValue::Angle(_) => {
             unreachable!("an SVG attribute never holds {value:?}")
         }
     }
