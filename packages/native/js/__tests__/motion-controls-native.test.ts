@@ -228,6 +228,44 @@ describe.skipIf(!hasNativeTestRenderer)("playback controls on the addon", () => 
     renderer.dispatchNativeEvents()
   }
 
+  it("takes a running animation over with the value's own stop(), which clears isAnimating() at once", () => {
+    // The sequence of a list that scrolls to the keyboard row: stop the travel if there is one, then travel again.
+    const renderer = mount()
+    const x = motionValue(0)
+    x.bind(renderer)
+    x.animate(100, linear)
+    frame(renderer, 400)
+    expect(x.isAnimating()).toBe(true)
+    x.stop()
+    expect(x.isAnimating()).toBe(false)
+    expect(x.get()).toBeCloseTo(40, 5)
+    const next = x.animate(0, linear)
+    expect(x.isAnimating()).toBe(true)
+    frame(renderer, 500)
+    expect(x.get()).toBeCloseTo(20, 5)
+    next.stop()
+    expect(x.isAnimating()).toBe(true)
+  })
+
+  it("runs Motion's default curve for a value with no key: 0.3 s, 0.8 s for more than two keyframes", () => {
+    const renderer = mount()
+    const x = motionValue(0)
+    x.bind(renderer)
+    const plain = x.animate(100)
+    expect(plain.duration).toBeCloseTo(0.3, 5)
+    frame(renderer, 150)
+    // cubic-bezier(0.25, 0.1, 0.35, 1) is at 0.5 of the time a little under three quarters of the way.
+    expect(x.get()).toBeGreaterThan(70)
+    expect(x.get()).toBeLessThan(80)
+    frame(renderer, 200)
+    expect(x.get()).toBe(100)
+    const keyframes = x.animate([0, 50, 0])
+    expect(keyframes.duration).toBeCloseTo(0.8, 5)
+    const delayed = x.animate(10, { delay: 0.2 })
+    expect(delayed.duration).toBeCloseTo(0.3, 5)
+    expect(x.animate(10, { repeat: 1 }).iterationDuration).toBeCloseTo(0.3, 5)
+  })
+
   it("holds a replaced animation's controls inert", async () => {
     const renderer = mount()
     const x = motionValue(0)

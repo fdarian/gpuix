@@ -565,6 +565,32 @@ const ROWS = {
     transition: {},
     steps: at(0, 400),
   },
+  "the default curve of a motion value": {
+    from: 0,
+    to: 100,
+    transition: {},
+    steps: at(0, 50, 100, 150, 200, 250, 300, 400),
+  },
+  "the default curve of a motion value with more than two keyframes": {
+    from: 0,
+    to: [0, 100, 20],
+    transition: {},
+    steps: at(0, 100, 200, 400, 600, 800, 1000),
+  },
+  "the default curve of a motion value with only a delay": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: { delay: 0.2 },
+    steps: at(0, 100, 250, 350, 500, 600),
+  },
+  "the default curve of a motion value with only a repeat": {
+    early: true,
+    from: 0,
+    to: 100,
+    transition: { repeat: 1 },
+    steps: at(0, 150, 300, 450, 600, 700),
+  },
   "the duration of a spring read before a frame": {
     early: true,
     from: 0,

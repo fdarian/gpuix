@@ -401,7 +401,7 @@ impl MotionValueStore {
         Ok(())
     }
 
-    /// With no `transition`, the tween every animation defaults to. An array
+    /// With no `transition`, or one that only has a delay or repeat, Motion's default curve for a value with no key. An array
     /// target is keyframes unless it is one value of the kind the source holds
     /// (a list of numbers, a list of shadows); `null` in it stands for the
     /// value before it, or the source's own value when it comes first.
@@ -414,13 +414,16 @@ impl MotionValueStore {
     ) -> Result<(), String> {
         let transition = match transition {
             Some(transition) => Transition::parse(transition.clone())?,
-            None => Transition::default(),
+            None => Transition::undescribed(),
         };
         let id = self.wrote(id)?;
         let holds = self.graph.get(id, now)?;
         match parse_keyframes(target, &holds, &self.context())? {
-            Keyframes::Single(target) => self.graph.animate(id, target, transition, now)?,
-            Keyframes::Many(frames) => self.graph.animate_keyframes(id, frames, transition, now)?,
+            Keyframes::Single(target) => self.graph.animate(id, target, transition.for_value(2), now)?,
+            Keyframes::Many(frames) => {
+                let transition = transition.for_value(frames.len());
+                self.graph.animate_keyframes(id, frames, transition, now)?
+            }
         }
         self.observe(now);
         Ok(())

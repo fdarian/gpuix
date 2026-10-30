@@ -87,8 +87,6 @@ const FUNCTION_EASE = "Motion's JS easings (circOut, backOut, anticipate, circIn
 const NO_TRANSFORM_KEYS = "a gpuix motion has no transform string, filter or clipPath key"
 const SPRING_FIELDS = "gpuix refuses the spring fields (stiffness, damping) on a tween: they need type spring"
 const DAMPING_ZERO = "gpuix refuses a spring with damping 0"
-const DEFAULT_CURVE =
-  "no transition at all: Motion gives the browser cubic-bezier(0.25, 0.1, 0.35, 1) where gpuix runs its own default, ease-out"
 const STOP =
   "stop() commits a value that Motion samples from a JavaScript replica of the animation at wall-clock time, then cancels the Animation: a motion component has no such replica to sample"
 const BEFORE_FIRST_FRAME =
@@ -98,8 +96,6 @@ const NO_PROP = "gpuix motion components have no such prop, so the condition doe
 
 /** The cases not replayed, and why. */
 const NOT_EXPRESSIBLE = new Map<string, string>([
-  ["opacity-default", DEFAULT_CURVE],
-  ["r-opacity-default-transition", DEFAULT_CURVE],
   ["opacity-tween-circOut", FUNCTION_EASE],
   ["opacity-tween-backOut", FUNCTION_EASE],
   ["opacity-tween-anticipate", FUNCTION_EASE],

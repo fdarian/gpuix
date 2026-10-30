@@ -384,9 +384,17 @@ export type MotionCurve = MotionTweenTransition | MotionSpringTransition
 /**
  * One curve for every property, or a curve per property as in Framer Motion.
  * A property resolves to `transition[property]`, then `transition.default`,
- * then the curve fields at the top level, then a 0.3 s `easeOut` tween. Each
- * level replaces the next as a whole. A shorthand key (`padding`) sets all its
- * longhands, and a longhand beside it wins.
+ * then the curve fields at the top level. Each level replaces the next as a
+ * whole. A shorthand key (`padding`) sets all its longhands, and a longhand
+ * beside it wins.
+ *
+ * A level that holds only `delay` and the repeat fields describes no curve, and
+ * Motion's default for the key runs: a spring for a transform key (`x`, `y`,
+ * `rotate`, `skew`, ... and `scale`, which is critically damped towards 0),
+ * `easeOut` over 0.8 s for more than two keyframes, otherwise
+ * `cubic-bezier(0.25, 0.1, 0.35, 1)` over 0.3 s. An entry for another key makes
+ * the rest of the transition describe the curve, so a key without an entry runs
+ * a 0.3 s `easeOut` tween.
  */
 export type MotionTransition = MotionCurve & {
   default?: MotionCurve

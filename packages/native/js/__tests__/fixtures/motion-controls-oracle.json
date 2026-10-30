@@ -12171,6 +12171,567 @@
    }
   ]
  },
+ "the default curve of a motion value": {
+  "from": 0,
+  "to": 100,
+  "transition": {},
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 50
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 150
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 250
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 400
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 50,
+    "value": 19.18402775991126,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.05,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 50.85768201315659,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 150,
+    "value": 75.45872421484093,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.15,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 90.30624649240052,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 250,
+    "value": 97.82302380350303,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.25,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the default curve of a motion value with more than two keyframes": {
+  "from": 0,
+  "to": [ 0, 100, 20 ],
+  "transition": {},
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 200
+   },
+   {
+    "at": 400
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 800
+   },
+   {
+    "at": 1000
+   }
+  ],
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 37.84135053574573,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.1,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 200,
+    "value": 68.46233151445631,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.2,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 400,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.4,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 45.23013478843495,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 800,
+    "value": 20,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 1000,
+    "value": 20,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.8,
+      "speed": 1,
+      "duration": 0.8,
+      "iterationDuration": 0.8,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the default curve of a motion value with only a delay": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "delay": 0.2
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 100
+   },
+   {
+    "at": 250
+   },
+   {
+    "at": 350
+   },
+   {
+    "at": 500
+   },
+   {
+    "at": 600
+   }
+  ],
+  "early": {
+   "duration": 0.3,
+   "iterationDuration": 0.5
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 100,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 250,
+    "value": 19.18402775991126,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.05,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 350,
+    "value": 75.45872421484093,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.15,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.5,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 500,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.5,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
+ "the default curve of a motion value with only a repeat": {
+  "from": 0,
+  "to": 100,
+  "transition": {
+   "repeat": 1
+  },
+  "steps": [
+   {
+    "at": 0
+   },
+   {
+    "at": 150
+   },
+   {
+    "at": 300
+   },
+   {
+    "at": 450
+   },
+   {
+    "at": 600
+   },
+   {
+    "at": 700
+   }
+  ],
+  "early": {
+   "duration": 0.3,
+   "iterationDuration": 0.3
+  },
+  "observations": [
+   {
+    "at": 0,
+    "value": 0,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 150,
+    "value": 75.45872421484093,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.15,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 300,
+    "value": 100,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.3,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 450,
+    "value": 75.45872421484093,
+    "animating": true,
+    "controls": [
+     {
+      "time": 0.45,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "running",
+      "startTime": 0,
+      "finished": false
+     }
+    ]
+   },
+   {
+    "at": 600,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   },
+   {
+    "at": 700,
+    "value": 100,
+    "animating": false,
+    "controls": [
+     {
+      "time": 0.6,
+      "speed": 1,
+      "duration": 0.3,
+      "iterationDuration": 0.3,
+      "state": "finished",
+      "startTime": null,
+      "finished": true
+     }
+    ]
+   }
+  ]
+ },
  "the duration of a spring read before a frame": {
   "from": 0,
   "to": 100,

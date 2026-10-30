@@ -9,6 +9,7 @@ pub(crate) mod containing;
 mod css_animation;
 mod css_transition;
 mod curve;
+mod default_transition;
 pub(crate) mod effect;
 mod inline;
 mod keyframes;
@@ -245,8 +246,11 @@ impl Transitions {
     /// properties whose keyframes it fits.
     fn for_prop(&self, prop: PropKey, goal: &Goal) -> Cow<'_, Transition> {
         match self.per_prop.get(&prop) {
-            Some(own) => Cow::Borrowed(own),
-            None => self.fallback.for_shared_keyframes(goal.keyframe_count()),
+            Some(own) => own.for_key(prop, goal),
+            None => match self.fallback.for_shared_keyframes(goal.keyframe_count()) {
+                Cow::Borrowed(shared) => shared.for_key(prop, goal),
+                Cow::Owned(shared) => Cow::Owned(shared.for_key(prop, goal).into_owned()),
+            },
         }
     }
 
@@ -267,10 +271,17 @@ impl Transitions {
             }
             by_prop.push((key.clone(), fields.remove(&key).expect("key came from the map")));
         }
-        let top_level = Transition::parse(Value::Object(fields))?;
+        let mut top_level = Transition::parse(Value::Object(fields))?;
         let fallback = match default {
             Some(default) => Transition::parse(default)?,
-            None => top_level,
+            None => {
+                // Motion takes the whole transition for a key it does not name, and a key of another
+                // property in it counts as the curve being described.
+                if !by_prop.is_empty() {
+                    top_level.defaulted = false;
+                }
+                top_level
+            }
         };
 
         let mut per_prop = BTreeMap::new();

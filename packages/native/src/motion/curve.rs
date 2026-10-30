@@ -49,6 +49,9 @@ pub(super) struct Transition {
     /// single `ease`. Tweens only.
     pub(super) segment_eases: Option<Vec<Ease>>,
     pub(super) repeat: Repeat,
+    /// Only `delay` and the repeat fields were written, so the curve is Motion's default for the
+    /// key (`default_transition.rs`) and the `curve` here stands for nothing until it is resolved.
+    pub(super) defaulted: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -110,6 +113,7 @@ impl Default for Transition {
             times: None,
             segment_eases: None,
             repeat: Repeat::default(),
+            defaulted: false,
         }
     }
 }
@@ -192,7 +196,13 @@ impl Transition {
             times: None,
             segment_eases: None,
             repeat: Repeat::default(),
+            defaulted: false,
         }
+    }
+
+    /// A transition that describes nothing: Motion's default curve for the key, no delay, no repeat.
+    pub(super) fn undescribed() -> Self {
+        Self { defaulted: true, ..Self::default() }
     }
 
     pub(super) fn parse(value: serde_json::Value) -> Result<Self, String> {
@@ -209,6 +219,16 @@ impl TryFrom<RawTransition> for Transition {
         let delay = raw.delay.unwrap_or(0.0);
         validate_seconds(delay, "delay")?;
         let repeat = parse_repeat(&raw)?;
+        let defaulted = raw.kind.is_none()
+            && raw.duration.is_none()
+            && raw.ease.is_none()
+            && raw.times.is_none()
+            && raw.stiffness.is_none()
+            && raw.damping.is_none()
+            && raw.mass.is_none()
+            && raw.bounce.is_none()
+            && raw.rest_speed.is_none()
+            && raw.rest_delta.is_none();
         let mut times = None;
         let mut segment_eases = None;
         let curve = match raw.kind.as_deref() {
@@ -267,6 +287,7 @@ impl TryFrom<RawTransition> for Transition {
             times,
             segment_eases,
             repeat,
+            defaulted,
         })
     }
 }
@@ -426,6 +447,17 @@ pub(super) struct Spring {
 }
 
 impl Spring {
+    pub(super) fn physics(stiffness: f64, damping: f64, rest_speed: f64) -> Self {
+        Self {
+            stiffness,
+            damping,
+            mass: DEFAULT_MASS,
+            rest_speed: Some(rest_speed),
+            rest_delta: None,
+            time_defined: None,
+        }
+    }
+
     pub(super) fn from_raw(raw: &RawTransition) -> Result<Self, String> {
         let has_physics = raw.stiffness.is_some() || raw.damping.is_some() || raw.mass.is_some();
         let has_time = raw.duration.is_some() || raw.bounce.is_some();

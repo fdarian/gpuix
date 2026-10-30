@@ -59,6 +59,12 @@ impl Goal {
         self.frames.len().max(2)
     }
 
+    /// Whether Motion's `keyframes[1]` is the number 0: the target of a single goal, else the second keyframe.
+    pub(super) fn ends_at_zero(&self) -> bool {
+        let second = self.frames.get(1).unwrap_or(&self.frames[0]);
+        matches!(second, Some(AnimValue::Number(number)) if *number == 0.0)
+    }
+
     /// The target of a single goal, or the last keyframe.
     pub(super) fn last(&self) -> &AnimValue {
         self.frames

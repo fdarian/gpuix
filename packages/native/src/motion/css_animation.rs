@@ -843,6 +843,7 @@ impl Planner<'_> {
             times: Some(stops.iter().map(|stop| stop.offset).collect()),
             segment_eases: Some(stops[..stops.len() - 1].iter().map(|stop| stop.timing.clone()).collect()),
             repeat: Repeat::default(),
+            defaulted: false,
         };
         let name = key.name();
         let built = Goal::keyframes(name, literal.iter().cloned().map(Some).collect()).and_then(|goal| {
