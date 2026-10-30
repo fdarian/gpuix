@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Motion 14.1.0: how a motion.div animates a layout change</title>
+<!-- Run by motion-layout-oracle.py, which builds vendor/motion-react.js next to this page. Every scene runs in its own page
+     (?scene=<name>): the page lays out the scene's `before`, the script calls window.__flip(), which renders `after` and
+     records the tracked boxes on every animation frame for 1600 ms. -->
+<style>
+  html, body { margin: 0; background: white; }
+</style>
+<script src="vendor/motion-react.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+const R = window.MotionReact;
+const h = R.React.createElement;
+const motion = R.motion;
+const transition = { duration: 1, ease: "linear" };
+const column = { display: "flex", flexDirection: "column", width: 300 };
+const RED = "rgb(255, 0, 0)";
+
+const layoutBox = (id, layout, style, children) =>
+  h(motion.div, { "data-id": id, layout, transition, style: Object.assign({ flexShrink: 0 }, style) }, children);
+const spacer = (shown) => (shown ? h("div", { style: { height: 30, flexShrink: 0 } }) : null);
+const after = (state) => state === "after";
+
+// A scene lists the ids it tracks and renders its `before` and `after` state.
+const SCENES = {
+  height: {
+    ids: ["box"],
+    render: (s) => h("div", { style: column }, layoutBox("box", true, { width: 100, height: after(s) ? 80 : 40, background: RED })),
+  },
+  widthMove: {
+    ids: ["box"],
+    render: (s) => h("div", { style: column }, spacer(after(s)), layoutBox("box", true, { width: after(s) ? 200 : 100, height: 40, background: RED })),
+  },
+  position: {
+    ids: ["box"],
+    render: (s) => h("div", { style: column }, spacer(after(s)), layoutBox("box", "position", { width: 100, height: after(s) ? 80 : 40, background: RED })),
+  },
+  size: {
+    ids: ["box"],
+    render: (s) => h("div", { style: column }, spacer(after(s)), layoutBox("box", "size", { width: 100, height: after(s) ? 80 : 40, background: RED })),
+  },
+  moveOnlySize: {
+    ids: ["box"],
+    render: (s) => h("div", { style: column }, spacer(after(s)), layoutBox("box", "size", { width: 100, height: 40, background: RED })),
+  },
+  nested: {
+    ids: ["parent", "plain", "projected"],
+    render: (s) =>
+      h("div", { style: column },
+        layoutBox("parent", true, { width: 100, height: after(s) ? 80 : 40 }, [
+          h("div", { key: "plain", "data-id": "plain", style: { width: 100, height: 20, flexShrink: 0, background: RED } }),
+          h(motion.div, { key: "projected", "data-id": "projected", layout: true, transition, style: { width: 100, height: 20, flexShrink: 0, background: "rgb(0, 0, 255)" } }),
+        ])),
+  },
+  radius: {
+    ids: ["card"],
+    extra: "card",
+    render: (s) =>
+      h("div", { style: { width: 300, height: 300, background: "white" } },
+        h(motion.div, {
+          "data-id": "card", layout: true, transition,
+          style: { position: "relative", left: 40, top: 40, width: after(s) ? 100 : 50, height: after(s) ? 100 : 50, borderRadius: 20, background: "rgb(0, 0, 255)", boxShadow: "0px 0px 0px 10px rgb(0, 255, 0)" },
+        })),
+  },
+  layoutId: {
+    ids: ["card"],
+    render: (s) =>
+      h("div", { style: { display: "flex", flexDirection: "row", width: 400 } },
+        h("div", { style: { width: 150, height: 100 } },
+          after(s) ? null : h(motion.div, { "data-id": "card", layoutId: "card", transition, style: { width: 50, height: 50, background: RED } })),
+        h("div", { style: { width: 250, height: 100 } },
+          after(s) ? h(motion.div, { "data-id": "card", layoutId: "card", transition, style: { width: 100, height: 100, background: RED } }) : null)),
+  },
+};
+
+const scene = SCENES[new URLSearchParams(location.search).get("scene")];
+const root = R.createRoot(document.getElementById("root"));
+const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+
+function sample() {
+  const boxes = {};
+  for (const id of scene.ids) {
+    const el = document.querySelector('[data-id="' + id + '"]');
+    if (!el) { boxes[id] = null; continue; }
+    const r = el.getBoundingClientRect();
+    boxes[id] = { x: r.x, y: r.y, width: r.width, height: r.height };
+  }
+  const out = { boxes };
+  if (scene.extra) {
+    const el = document.querySelector('[data-id="' + scene.extra + '"]');
+    const cs = getComputedStyle(el);
+    out.style = { borderTopLeftRadius: cs.borderTopLeftRadius, boxShadow: cs.boxShadow, offsetWidth: el.offsetWidth, offsetHeight: el.offsetHeight };
+  }
+  return out;
+}
+
+let beforeRects;
+R.flushSync(() => root.render(scene.render("before")));
+setTimeout(async () => {
+  await frame();
+  await frame();
+  beforeRects = sample().boxes;
+  window.__ready = true;
+}, 300);
+
+window.__flip = function () {
+  const t0 = performance.now();
+  const frames = [];
+  const tick = () => {
+    const t = performance.now() - t0;
+    frames.push(Object.assign({ t }, sample()));
+    if (t < 1600) { requestAnimationFrame(tick); return; }
+    document.documentElement.setAttribute("data-oracle", JSON.stringify({ before: beforeRects, after: sample().boxes, frames }));
+    window.__oracle = true;
+  };
+  R.flushSync(() => root.render(scene.render("after")));
+  tick();
+};
+})();
+</script>
+</body>
+</html>
