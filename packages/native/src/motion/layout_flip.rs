@@ -229,6 +229,8 @@ struct Flip {
     held: Option<Held>,
     /// The frame it was first built on.
     born: u64,
+    /// The tree revision it was last stepped at.
+    seen: u64,
     /// A glide began since the last step, which reports it.
     started: bool,
     /// While dragged, the offset the box was last shown with.
@@ -252,6 +254,7 @@ impl Flip {
             track: None,
             held: None,
             born,
+            seen: 0,
             started: false,
             dragged: None,
             drag_shift: [0.0; 2],
@@ -305,7 +308,13 @@ impl Flip {
 
     /// `inherited` is how far the nearest enclosing flipping box's layout
     /// moved this frame: it carries this one with it and animates for both.
-    fn step(&mut self, origin: Vec2, inherited: Vec2, drag: Drag, now: Instant) -> Step {
+    ///
+    /// `committed` is whether the tree changed since this box was last stepped.
+    /// Only a move measured at a commit glides, as Motion measures a snapshot
+    /// and the new layout around one render: a box that layout moved because
+    /// an animation above it ticked, or because scroll anchoring adjusted,
+    /// goes with it and starts nothing.
+    fn step(&mut self, origin: Vec2, inherited: Vec2, drag: Drag, committed: bool, now: Instant) -> Step {
         let Some(config) = &self.config else {
             return Step {
                 offset: [0.0; 2],
@@ -324,6 +333,7 @@ impl Flip {
         if drag.active {
             return self.drag_step(moved, own, drag.offset, now);
         }
+        let own = if committed { own } else { [0.0; 2] };
         let released = self.dragged.take();
         if released.is_some() {
             self.lifted = true;
@@ -440,6 +450,8 @@ struct Store {
     enclosing: Vec2,
     /// Counts the renders that pruned `flips`.
     frame: u64,
+    /// The revision of the tree the latest render built, which moves with every commit.
+    revision: u64,
     departed: HashMap<String, Departed>,
     events: Vec<LayoutEvent>,
 }
@@ -480,9 +492,12 @@ impl LayoutFlips {
     /// Forgets the boxes `keep` refuses. Called once per render, which is what
     /// a frame is here: a box that left keeps its last place for the next
     /// frame, for a newcomer with its `layoutId` to start from.
-    pub(crate) fn retain(&self, mut keep: impl FnMut(u64) -> bool) {
+    ///
+    /// `revision` is the tree's: a box whose last step saw another one has a commit to measure.
+    pub(crate) fn retain(&self, revision: u64, mut keep: impl FnMut(u64) -> bool) {
         let mut store = self.0.borrow_mut();
         store.frame += 1;
+        store.revision = revision;
         let frame = store.frame;
         let gone: Vec<u64> = store
             .flips
@@ -538,6 +553,7 @@ impl LayoutFlips {
         if flip.source != *source {
             let mut changed = Flip::new(source, flip.born);
             changed.origin = flip.origin;
+            changed.seen = flip.seen;
             changed.track = flip.track.take();
             changed.held = flip.held.take();
             changed.dragged = flip.dragged;
@@ -564,6 +580,7 @@ impl LayoutFlips {
         let mut store = self.0.borrow_mut();
         let inherited = store.enclosing;
         let frame = store.frame;
+        let revision = store.revision;
         let flip = store.flips.get(&id)?;
         let handoff = match flip.layout_id() {
             Some(layout_id) if flip.origin.is_none() && flip.held.is_none() => {
@@ -576,7 +593,9 @@ impl LayoutFlips {
         if let Some(holder) = holder {
             flip.take_over(origin, &holder, now);
         }
-        let step = flip.step(origin, inherited, drag, now);
+        let committed = flip.seen != revision;
+        flip.seen = revision;
+        let step = flip.step(origin, inherited, drag, committed, now);
         flip.held = Some(Held {
             visual: [origin[0] + step.offset[0], origin[1] + step.offset[1]],
             track: flip.track.clone(),
@@ -734,7 +753,7 @@ mod tests {
     fn the_first_frame_has_nowhere_to_glide_from() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        let step = flip.step([10.0, 20.0], [0.0; 2], Drag::default(), start);
+        let step = flip.step([10.0, 20.0], [0.0; 2], Drag::default(), true, start);
         assert_eq!(step.offset, [0.0, 0.0]);
         assert!(!step.active);
     }
@@ -743,20 +762,20 @@ mod tests {
     fn a_move_starts_where_the_box_was_shown_and_ends_on_layout() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
 
         // Layout puts the box 100 px right and 40 px down.
-        let first = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), at(start, 10));
+        let first = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), true, at(start, 10));
         assert_eq!(first.offset, [-100.0, -40.0]);
         assert!(first.active);
         assert_eq!(first.moved, [100.0, 40.0]);
 
-        let half = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), at(start, 510));
+        let half = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), true, at(start, 510));
         assert!((half.offset[0] + 50.0).abs() < 1e-6, "{:?}", half.offset);
         assert!((half.offset[1] + 20.0).abs() < 1e-6);
         assert_eq!(half.moved, [0.0, 0.0]);
 
-        let done = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), at(start, 1100));
+        let done = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), true, at(start, 1100));
         assert_eq!(done.offset, [0.0, 0.0]);
         assert!(!done.active);
         assert!(flip.track.is_none());
@@ -766,13 +785,47 @@ mod tests {
     fn a_move_in_flight_continues_from_where_the_box_is_shown() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, start);
         // Half way: shown 50 px left of layout. Layout moves another 20 px.
-        let retarget = flip.step([120.0, 0.0], [0.0; 2], Drag::default(), at(start, 500));
+        let retarget = flip.step([120.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 500));
         // Shown spot stays at layout(100) - 50 = 50, new layout 120.
         assert!((retarget.offset[0] + 70.0).abs() < 1e-6, "{:?}", retarget.offset);
         assert!(retarget.active);
+    }
+
+    #[test]
+    fn a_move_nobody_committed_starts_no_glide() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+
+        // An animation above moved layout by 30 px; the tree did not change.
+        let ticked = flip.step([0.0, 30.0], [0.0; 2], Drag::default(), false, at(start, 16));
+        assert_eq!(ticked.offset, [0.0, 0.0]);
+        assert!(!ticked.active && !ticked.started);
+        assert_eq!(ticked.moved, [0.0, 30.0], "the boxes inside still follow it");
+        assert!(flip.track.is_none());
+    }
+
+    #[test]
+    fn a_tick_leaves_a_glide_in_flight_alone_and_a_commit_retargets_it() {
+        let start = Instant::now();
+        let mut flip = flip(linear());
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let half = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), false, at(start, 500));
+        assert!((half.offset[0] + 50.0).abs() < 1e-6);
+
+        // Layout moves 40 px more under a tick: the offset is the same, the box goes with layout.
+        let ticked = flip.step([100.0, 40.0], [0.0; 2], Drag::default(), false, at(start, 500));
+        assert_eq!(ticked.offset, half.offset);
+        assert!(!ticked.started);
+
+        // The same move at a commit starts from where the box is shown.
+        let committed = flip.step([100.0, 80.0], [0.0; 2], Drag::default(), true, at(start, 500));
+        assert!(committed.started);
+        assert!((committed.offset[1] + 40.0).abs() < 1e-6, "{:?}", committed.offset);
     }
 
     #[test]
@@ -783,14 +836,14 @@ mod tests {
             "transition": { "type": "spring", "stiffness": 200.0, "damping": 20.0 }
         });
         let mut flip = flip(spring);
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
-        let moving = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 100));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let moving = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 100));
         assert!(moving.active);
         let speed = flip.track.as_ref().unwrap().sample(at(start, 100)).velocity[0];
         assert!(speed > 0.0, "the offset is closing on zero from below");
 
-        flip.step([100.0, 50.0], [0.0; 2], Drag::default(), at(start, 100));
+        flip.step([100.0, 50.0], [0.0; 2], Drag::default(), true, at(start, 100));
         let carried = flip.track.as_ref().unwrap().sample(at(start, 100)).velocity[0];
         assert!((carried - speed).abs() < 1e-6, "{carried} vs {speed}");
     }
@@ -799,13 +852,13 @@ mod tests {
     fn a_box_carried_by_an_enclosing_one_glides_only_by_the_rest() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
         // The parent's layout moved 100 and so did this box: nothing of its own.
-        let carried = flip.step([100.0, 0.0], [100.0, 0.0], Drag::default(), at(start, 10));
+        let carried = flip.step([100.0, 0.0], [100.0, 0.0], Drag::default(), true, at(start, 10));
         assert_eq!(carried.offset, [0.0, 0.0]);
         assert!(!carried.active);
         // 30 px further than the parent.
-        let extra = flip.step([230.0, 0.0], [100.0, 0.0], Drag::default(), at(start, 20));
+        let extra = flip.step([230.0, 0.0], [100.0, 0.0], Drag::default(), true, at(start, 20));
         assert_eq!(extra.offset, [-30.0, 0.0]);
     }
 
@@ -813,8 +866,8 @@ mod tests {
     fn reduced_motion_jumps() {
         let start = Instant::now();
         let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        let moved = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let moved = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 10));
         assert_eq!(moved.offset, [0.0, 0.0]);
         assert!(!moved.active);
         assert_eq!(moved.moved, [100.0, 0.0], "boxes inside still read the move");
@@ -824,13 +877,13 @@ mod tests {
     fn turning_on_reduced_motion_mid_flight_drops_the_glide() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, start);
         assert!(flip.track.is_some());
         let mut reduced = Flip::new(&json!({ "mode": true, "reducedMotion": true }), 0);
         reduced.origin = flip.origin;
         reduced.track = flip.track.take();
-        let step = reduced.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 100));
+        let step = reduced.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 100));
         assert_eq!(step.offset, [0.0, 0.0]);
         assert!(!step.active);
     }
@@ -839,8 +892,8 @@ mod tests {
     fn rounding_noise_is_not_a_move() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([10.0, 10.0], [0.0; 2], Drag::default(), start);
-        let step = flip.step([10.004, 9.996], [0.0; 2], Drag::default(), at(start, 16));
+        flip.step([10.0, 10.0], [0.0; 2], Drag::default(), true, start);
+        let step = flip.step([10.004, 9.996], [0.0; 2], Drag::default(), true, at(start, 16));
         assert!(!step.active);
     }
 
@@ -851,9 +904,9 @@ mod tests {
             "mode": true,
             "transition": { "duration": 1.0, "ease": "linear", "delay": 0.5 }
         }));
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), start);
-        let held = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 400));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let held = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 400));
         assert_eq!(held.offset, [-100.0, 0.0]);
         assert!(held.active);
     }
@@ -905,8 +958,8 @@ mod tests {
     fn an_invalid_prop_never_animates() {
         let start = Instant::now();
         let mut flip = flip(json!("nonsense"));
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        let step = flip.step([50.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let step = flip.step([50.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 10));
         assert!(!step.active);
     }
 
@@ -923,7 +976,8 @@ mod tests {
 
     /// What a render does before the build: forget what left.
     fn render(flips: &LayoutFlips, alive: &[u64]) {
-        flips.retain(|id| alive.contains(&id));
+        let revision = flips.0.borrow().revision + 1;
+        flips.retain(revision, |id| alive.contains(&id));
     }
 
     #[test]
@@ -1096,14 +1150,14 @@ mod tests {
     fn a_glide_reports_its_start_and_its_end_once() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        assert!(!flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start).started);
-        let first = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
+        assert!(!flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start).started);
+        let first = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 10));
         assert!(first.started && !first.completed);
-        let middle = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 500));
+        let middle = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 500));
         assert!(!middle.started && !middle.completed);
-        let done = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 1100));
+        let done = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 1100));
         assert!(done.completed && !done.started);
-        let after = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 1200));
+        let after = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 1200));
         assert!(!after.completed);
     }
 
@@ -1111,9 +1165,9 @@ mod tests {
     fn a_retarget_starts_again_without_completing_the_one_it_replaced() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
-        let retarget = flip.step([200.0, 0.0], [0.0; 2], Drag::default(), at(start, 500));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 10));
+        let retarget = flip.step([200.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 500));
         assert!(retarget.started && !retarget.completed);
     }
 
@@ -1121,8 +1175,8 @@ mod tests {
     fn reduced_motion_raises_no_events() {
         let start = Instant::now();
         let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        let moved = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let moved = flip.step([100.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 10));
         assert!(!moved.started && !moved.completed);
     }
 
@@ -1148,12 +1202,12 @@ mod tests {
     fn a_held_box_is_shown_where_the_pointer_took_it() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        let step = flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        let step = flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), true, at(start, 10));
         assert_eq!(step.offset, [0.0, 30.0]);
         assert!(!step.active, "the pointer moves it, not a clock");
         assert!(step.lifted);
-        let later = flip.step([0.0, 0.0], [0.0; 2], held([5.0, 42.0]), at(start, 20));
+        let later = flip.step([0.0, 0.0], [0.0; 2], held([5.0, 42.0]), true, at(start, 20));
         assert_eq!(later.offset, [5.0, 42.0]);
     }
 
@@ -1161,15 +1215,15 @@ mod tests {
     fn a_held_box_stays_under_the_pointer_when_layout_moves_its_slot() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), true, at(start, 10));
         // A swap moved its slot 20 px down; the pointer has not moved.
-        let swapped = flip.step([0.0, 20.0], [0.0; 2], held([0.0, 30.0]), at(start, 20));
+        let swapped = flip.step([0.0, 20.0], [0.0; 2], held([0.0, 30.0]), true, at(start, 20));
         assert_eq!(swapped.offset, [0.0, 10.0]);
         assert!(!swapped.active && !swapped.started, "no glide for a held box");
         assert_eq!(swapped.moved, [0.0, 20.0], "boxes inside still read the move");
         // The pointer then moves 5 px further.
-        let after = flip.step([0.0, 20.0], [0.0; 2], held([0.0, 35.0]), at(start, 30));
+        let after = flip.step([0.0, 20.0], [0.0; 2], held([0.0, 35.0]), true, at(start, 30));
         assert_eq!(after.offset, [0.0, 15.0]);
     }
 
@@ -1177,8 +1231,8 @@ mod tests {
     fn a_released_box_glides_from_where_it_was_shown_to_its_slot() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([0.0, 20.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([0.0, 20.0], [0.0; 2], held([0.0, 30.0]), true, at(start, 10));
         // Released: the drag values are read as whatever they are now.
         let release = Drag {
             active: false,
@@ -1200,9 +1254,9 @@ mod tests {
     fn releasing_where_the_box_belongs_has_nothing_to_glide() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 0.0]), at(start, 10));
-        let step = flip.step([0.0, 0.0], [0.0; 2], Drag::default(), at(start, 20));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 0.0]), true, at(start, 10));
+        let step = flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 20));
         assert!(!step.active && !step.started && !step.completed);
     }
 
@@ -1210,10 +1264,10 @@ mod tests {
     fn a_box_picked_up_mid_glide_starts_from_where_it_is_shown() {
         let start = Instant::now();
         let mut flip = flip(linear());
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([0.0, 100.0], [0.0; 2], Drag::default(), at(start, 10));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([0.0, 100.0], [0.0; 2], Drag::default(), true, at(start, 10));
         // Half way: shown 50 px above its slot.
-        let held = flip.step([0.0, 100.0], [0.0; 2], held([0.0, 8.0]), at(start, 510));
+        let held = flip.step([0.0, 100.0], [0.0; 2], held([0.0, 8.0]), true, at(start, 510));
         assert!((held.offset[1] + 42.0).abs() < 1e-6, "{:?}", held.offset);
     }
 
@@ -1221,9 +1275,9 @@ mod tests {
     fn a_release_under_reduced_motion_jumps() {
         let start = Instant::now();
         let mut flip = flip(json!({ "mode": true, "reducedMotion": true }));
-        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), start);
-        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), at(start, 10));
-        let step = flip.step([0.0, 0.0], [0.0; 2], Drag::default(), at(start, 20));
+        flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, start);
+        flip.step([0.0, 0.0], [0.0; 2], held([0.0, 30.0]), true, at(start, 10));
+        let step = flip.step([0.0, 0.0], [0.0; 2], Drag::default(), true, at(start, 20));
         assert_eq!(step.offset, [0.0, 0.0]);
         assert!(!step.active);
     }

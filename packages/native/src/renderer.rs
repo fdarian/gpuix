@@ -9701,7 +9701,7 @@ impl gpui::Render for GpuixView {
         }
         self.contents_styles.clear();
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
-        self.layout_flips.retain(|id| {
+        self.layout_flips.retain(tree.revision(), |id| {
             tree.elements
                 .get(&id)
                 .is_some_and(|element| element.custom_props().contains_key("layout"))
