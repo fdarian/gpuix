@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>text in a clipped box under a transform</title>
+<style>
+html,body{margin:0;width:1260px;height:7020px;overflow:hidden;background:#fff}
+.cell{position:absolute;width:420px;height:260px}
+.card{position:absolute;left:135px;top:108px;width:150px;height:44px;box-sizing:border-box;background:#333;border-radius:8px;display:flex;align-items:center;padding-left:14px}
+.text{font:14px/18px Helvetica,Arial,sans-serif;color:#f00;white-space:nowrap}
+.card.overflow{overflow:hidden}
+.card.overflowX{overflow-x:hidden}
+.card.clipPath{clip-path:inset(0 round 8px)}
+.inner{overflow:hidden;flex:1;min-width:0;height:100%;display:flex;align-items:center}
+</style>
+<body>
+<script>
+// One cell per case, 420 x 260, three columns. A card of 150 x 44 sits in the middle of the cell and is moved by
+// `transform`; its text ("hello world hello world hello") is longer than the card, so a clip cuts the end of it.
+// `trigger` is what clips: `none` (control), `overflow: hidden`, `overflow-x: hidden`, `clip-path: inset(0 round 8px)`,
+// or `child`, a clipping child that holds the text. `axis` says what the transform does: `y` and `x` translate, `scale`,
+// `rotate`, `mixed` a translation with a scale or a rotation. `clip-in-transform-oracle.py` counts the red pixels of
+// each cell: the ink of the text.
+const TRIGGERS=['overflow','overflowX','clipPath','child'];
+const MOVES=[
+  ['y','translate(0px, 0px)'],['y','translate(0px, -52px)'],['y','translate(0px, -80px)'],['y','translate(0px, -104px)'],
+  ['y','translate(0px, 52px)'],['y','translate(0px, 104px)'],
+  ['x','translate(-130px, 0px)'],['x','translate(-30px, 0px)'],['x','translate(30px, 0px)'],['x','translate(130px, 0px)'],
+  ['scale','scale(0.5)'],['scale','scale(2)'],
+  ['rotate','rotate(30deg)'],['rotate','rotate(90deg)'],
+  ['mixed','translate(0px, -104px) scale(0.5)'],['mixed','translate(-80px, -80px) rotate(30deg)'],
+];
+const cases=[];
+function add(trigger,axis,transform){
+  const index=cases.length;
+  cases.push({id:'c'+index,trigger,axis,transform,x:(index%3)*420,y:Math.floor(index/3)*260});
+}
+for(const move of MOVES)add('none',move[0],move[1]);
+for(const trigger of TRIGGERS)for(const move of MOVES)add(trigger,move[0],move[1]);
+for(const c of cases){
+  const cell=document.createElement('div');
+  cell.className='cell';
+  cell.style.left=c.x+'px';
+  cell.style.top=c.y+'px';
+  const card=document.createElement('div');
+  card.className='card '+c.trigger;
+  card.dataset.case=c.id;
+  card.style.transform=c.transform;
+  const text=document.createElement('span');
+  text.className='text';
+  text.textContent='hello world hello world hello';
+  if(c.trigger==='child'){
+    const inner=document.createElement('div');
+    inner.className='inner';
+    inner.appendChild(text);
+    card.appendChild(inner);
+  }else card.appendChild(text);
+  cell.appendChild(card);
+  document.body.appendChild(cell);
+}
+document.body.dataset.cases=JSON.stringify(cases);
+</script>
