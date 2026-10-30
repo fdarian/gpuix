@@ -25,6 +25,16 @@ mod svg_names;
 pub mod svg_paint;
 pub mod svg_path;
 pub mod svg_tree;
+// Needs `url` and the platform engines, which the browser build has neither of: there a
+// `<webview>` is an unknown element and renders nothing.
+#[cfg(not(target_family = "wasm"))]
+pub mod webview;
+
+/// A `<webview>` is a Tab stop without a `tabIndex`, like a text control, since the page in it
+/// takes keys.
+pub(crate) fn is_focusable_by_default(element_type: &str) -> bool {
+    element_type == "webview"
+}
 
 // ── Render context ───────────────────────────────────────────────────
 
@@ -334,6 +344,12 @@ pub trait CustomElement: 'static {
         None
     }
 
+    /// This element as a `<webview>`, for the calls JS makes on it.
+    #[cfg(not(target_family = "wasm"))]
+    fn as_webview(&mut self) -> Option<&mut webview::WebviewElement> {
+        None
+    }
+
     /// The selection of `<input>` and `<textarea>`, in DOM terms.
     fn text_selection(&mut self, _cx: &mut gpui::App) -> Option<text_selection::TextSelection> {
         None
@@ -432,6 +448,8 @@ impl CustomElementRegistry {
         registry.register(Box::new(code::CodeFactory));
         registry.register(Box::new(diff::DiffFactory));
         registry.register(Box::new(markdown::MarkdownFactory));
+        #[cfg(not(target_family = "wasm"))]
+        registry.register(Box::new(webview::WebviewFactory));
         registry
     }
 
@@ -585,6 +603,15 @@ impl CustomElementRegistry {
         let entry = self.get_or_create(id, element_type)?;
         entry.sync(props);
         Some(f(entry.element.as_mut()))
+    }
+
+    /// The shared state of every `<webview>` the registry holds, by element id.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn webviews(&mut self) -> Vec<(u64, std::rc::Rc<std::cell::RefCell<webview::Shared>>)> {
+        self.instances
+            .iter_mut()
+            .filter_map(|(id, entry)| entry.element.as_webview().map(|webview| (*id, webview.shared())))
+            .collect()
     }
 
     /// Called when React destroys an element.

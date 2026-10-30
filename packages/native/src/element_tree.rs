@@ -313,6 +313,25 @@ pub struct EventPayload {
     /// and animation events.
     pub pseudo_element: Option<String>,
 
+    /// The URL a `<webview>` committed. Populated for: did-navigate.
+    pub url: Option<String>,
+
+    /// The title of the page of a `<webview>`. Populated for: page-title-updated.
+    pub title: Option<String>,
+
+    /// Whether the page set its title (`document.title`) and not the browser from the URL.
+    /// Populated for: page-title-updated.
+    pub explicit_set: Option<bool>,
+
+    /// The `NSURLError` code of a failed `<webview>` load (`-1009` for no network), not a
+    /// Chromium net error. Populated for: did-fail-load.
+    pub error_code: Option<i32>,
+
+    /// The localized description of the failure. Populated for: did-fail-load.
+    pub error_description: Option<String>,
+
+    /// The URL that failed to load. Populated for: did-fail-load.
+    pub validated_url: Option<String>,
 
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
@@ -393,6 +412,12 @@ impl Default for EventPayload {
             timeline_time: None,
             elapsed_time: None,
             pseudo_element: None,
+            url: None,
+            title: None,
+            explicit_set: None,
+            error_code: None,
+            error_description: None,
+            validated_url: None,
             modifiers: None,
         }
     }

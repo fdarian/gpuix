@@ -2748,6 +2748,69 @@ impl GpuixRenderer {
         Ok(promise)
     }
 
+    /// `loadURL(url)` (with the URL as `argument`), `reload()`, `stop()`, `goBack()` and
+    /// `goForward()` of a `<webview>`.
+    #[napi]
+    pub fn webview_command(&self, element_id: f64, command: String, argument: Option<String>) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let action = crate::custom_elements::webview::WebviewAction::parse(&command, argument)
+            .map_err(Error::from_reason)?;
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, _window, _cx| view.webview_do(id, action))?
+            .map_err(Error::from_reason);
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (id, action);
+            Err(Error::from_reason(crate::custom_elements::webview::js_api::UNSUPPORTED))
+        }
+    }
+
+    /// The URL, the title and the history of a `<webview>`.
+    #[napi]
+    pub fn webview_state(
+        &self,
+        element_id: f64,
+    ) -> Result<crate::custom_elements::webview::js_api::WebviewStateReading> {
+        let id = to_element_id(element_id)?;
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, _window, _cx| view.webview_state(id))?
+            .map(Into::into)
+            .map_err(Error::from_reason);
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = id;
+            Err(Error::from_reason(crate::custom_elements::webview::js_api::UNSUPPORTED))
+        }
+    }
+
+    /// Runs `code` in the page of a `<webview>`. Resolves with the JSON of the result of its last
+    /// expression, or null when that is `undefined`; rejects with the script's error.
+    #[napi(ts_return_type = "Promise<string | null>")]
+    pub fn webview_execute_javascript<'env>(
+        &self,
+        env: &'env Env,
+        element_id: f64,
+        code: String,
+    ) -> Result<Object<'env>> {
+        let id = to_element_id(element_id)?;
+        let (settle, promise) = crate::custom_elements::webview::js_api::ScriptPromise::new(env)?;
+        #[cfg(target_os = "macos")]
+        {
+            let done = settle.completion();
+            if let Err(error) = update_window(move |view, _window, _cx| view.webview_execute_javascript(id, &code, done)) {
+                settle.reject(error.reason.clone());
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (id, code);
+            settle.reject(crate::custom_elements::webview::js_api::UNSUPPORTED.to_string());
+        }
+        Ok(promise)
+    }
+
     #[napi]
     pub fn focus_element(&self, element_id: f64) -> Result<()> {
         let id = to_element_id(element_id)?;

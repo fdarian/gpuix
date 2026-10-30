@@ -645,6 +645,17 @@ impl TestGpuixRenderer {
             .map_err(Error::from_reason)
     }
 
+    fn report_webview(
+        &self,
+        element_id: f64,
+        change: impl FnOnce(&mut crate::custom_elements::webview::WebviewState) + 'static,
+        event: crate::custom_elements::webview::backend::WebviewEvent,
+    ) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, _window, cx| view.webview_report(id, cx, change, event))?
+            .map_err(Error::from_reason)
+    }
+
     /// Runs one simulated key input on the window, then the executors.
     fn key_input(
         &self,
@@ -707,6 +718,7 @@ impl TestGpuixRenderer {
         cx.update(|cx| {
             crate::custom_elements::input::init(cx);
             install_test_image_http_client(cx);
+            crate::custom_elements::webview::install_test_pages(cx);
         });
 
         // Open an offscreen window at (-10000, -10000) with the same GpuixView
@@ -2139,6 +2151,169 @@ impl TestGpuixRenderer {
     ) -> Result<crate::custom_elements::text_selection::TextSelection> {
         let id = to_element_id(element_id)?;
         update_view(|view, _window, cx| view.text_selection(id, cx))?.map_err(Error::from_reason)
+    }
+
+    /// `loadURL(url)` (with the URL as `argument`), `reload()`, `stop()`, `goBack()` and
+    /// `goForward()` of a `<webview>`.
+    #[napi]
+    pub fn webview_command(&self, element_id: f64, command: String, argument: Option<String>) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let action = crate::custom_elements::webview::WebviewAction::parse(&command, argument)
+            .map_err(Error::from_reason)?;
+        update_view(move |view, _window, _cx| view.webview_do(id, action))?.map_err(Error::from_reason)
+    }
+
+    /// The URL, the title and the history of a `<webview>`.
+    #[napi]
+    pub fn webview_state(
+        &self,
+        element_id: f64,
+    ) -> Result<crate::custom_elements::webview::js_api::WebviewStateReading> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, _window, _cx| view.webview_state(id))?
+            .map(Into::into)
+            .map_err(Error::from_reason)
+    }
+
+    /// Runs `code` in the page of a `<webview>`. Resolves with the JSON of the result, or null for
+    /// `undefined`, once a test settles it (`settleWebviewScript`).
+    #[napi(ts_return_type = "Promise<string | null>")]
+    pub fn webview_execute_javascript<'env>(
+        &self,
+        env: &'env Env,
+        element_id: f64,
+        code: String,
+    ) -> Result<Object<'env>> {
+        let id = to_element_id(element_id)?;
+        let (settle, promise) = crate::custom_elements::webview::js_api::ScriptPromise::new(env)?;
+        let done = settle.completion();
+        if let Err(error) = update_view(move |view, _window, _cx| view.webview_execute_javascript(id, &code, done)) {
+            settle.reject(error.reason.clone());
+        }
+        Ok(promise)
+    }
+
+    /// What the page of a `<webview>` was asked to do, in order.
+    #[napi]
+    pub fn get_webview_commands(
+        &self,
+        element_id: f64,
+    ) -> Result<Vec<crate::custom_elements::webview::test_api::WebviewCommandReading>> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, _window, cx| view.webview_commands(id, cx))?.map_err(Error::from_reason)
+    }
+
+    /// The page starts loading: `did-start-loading`.
+    #[napi]
+    pub fn simulate_webview_start_loading(&self, element_id: f64) -> Result<()> {
+        self.report_webview(element_id, |_| {}, crate::custom_elements::webview::backend::WebviewEvent::DidStartLoading)
+    }
+
+    /// The page stops loading: `did-stop-loading`.
+    #[napi]
+    pub fn simulate_webview_stop_loading(&self, element_id: f64) -> Result<()> {
+        self.report_webview(element_id, |_| {}, crate::custom_elements::webview::backend::WebviewEvent::DidStopLoading)
+    }
+
+    /// The page commits `url`: `did-navigate`, and `getURL()` answers it.
+    #[napi]
+    pub fn simulate_webview_navigate(&self, element_id: f64, url: String) -> Result<()> {
+        let committed = url.clone();
+        self.report_webview(
+            element_id,
+            move |state| state.url = committed,
+            crate::custom_elements::webview::backend::WebviewEvent::DidNavigate { url },
+        )
+    }
+
+    /// The page gets a title: `page-title-updated`, and `getTitle()` answers it.
+    #[napi]
+    pub fn simulate_webview_title(&self, element_id: f64, title: String, explicit_set: bool) -> Result<()> {
+        let set = title.clone();
+        self.report_webview(
+            element_id,
+            move |state| state.title = set,
+            crate::custom_elements::webview::backend::WebviewEvent::PageTitleUpdated { title, explicit_set },
+        )
+    }
+
+    /// A load fails: `did-fail-load`.
+    #[napi]
+    pub fn simulate_webview_fail(
+        &self,
+        element_id: f64,
+        error_code: i32,
+        error_description: String,
+        validated_url: Option<String>,
+    ) -> Result<()> {
+        self.report_webview(
+            element_id,
+            |_| {},
+            crate::custom_elements::webview::backend::WebviewEvent::DidFailLoad {
+                error_code,
+                error_description,
+                validated_url,
+            },
+        )
+    }
+
+    /// What `canGoBack()` and `canGoForward()` answer.
+    #[napi]
+    pub fn set_webview_history(&self, element_id: f64, can_go_back: bool, can_go_forward: bool) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        update_view(move |_view, _window, cx| {
+            cx.global::<crate::custom_elements::webview::test_backend::TestWebviews>()
+                .with_page(id, |page| {
+                    page.state.can_go_back = can_go_back;
+                    page.state.can_go_forward = can_go_forward;
+                })
+        })?
+        .map_err(Error::from_reason)
+    }
+
+    /// Settles the oldest `executeJavaScript` of a `<webview>` that waits: with the JSON of a
+    /// result (none for `undefined`), or with the message of the error the script threw.
+    #[napi]
+    pub fn settle_webview_script(&self, element_id: f64, result: Option<String>, error: Option<String>) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        let outcome = match (error, result) {
+            (Some(message), _) => Err(message),
+            (None, Some(json)) => Ok(Some(serde_json::from_str::<serde_json::Value>(&json).map_err(|error| {
+                Error::from_reason(format!("The scripted result is not JSON: {error}"))
+            })?)),
+            (None, None) => Ok(None),
+        };
+        update_view(move |view, _window, cx| view.webview_settle_script(id, cx, outcome))?
+            .map_err(Error::from_reason)
+    }
+
+    /// Where the last composed frame put the surface of a `<webview>`, null while it has none.
+    #[napi]
+    pub fn get_webview_surface(
+        &self,
+        element_id: f64,
+    ) -> Result<Option<crate::custom_elements::webview::test_api::WebviewSurfaceReading>> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, window, _cx| view.webview_surface(id, window))?.map_err(Error::from_reason)
+    }
+
+    /// The layers of the last composed frame, bottom to top.
+    #[napi]
+    pub fn get_composition_layers(
+        &self,
+    ) -> Result<Vec<crate::custom_elements::webview::test_api::CompositionLayerReading>> {
+        update_view(|view, window, _cx| view.composition_layers(window))?.map_err(Error::from_reason)
+    }
+
+    /// The container view AppKit holds for the surface of a `<webview>`, with the placement the
+    /// last frame applied.
+    #[napi]
+    pub fn get_webview_native_view(
+        &self,
+        element_id: f64,
+    ) -> Result<crate::custom_elements::webview::test_api::WebviewNativeViewReading> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, window, _cx| view.webview_native_view(id, window))?.map_err(Error::from_reason)
     }
 
     /// Make the fonts in a TrueType or OpenType file usable by `fontFamily`.

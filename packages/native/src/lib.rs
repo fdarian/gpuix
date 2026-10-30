@@ -61,6 +61,14 @@ mod updater;
 ))]
 mod test_renderer;
 
+/// Runs a real `WKWebView` through a load, a title, history and scripts, on the main thread
+/// (`cargo run --example webview_smoke`). Panics if the page misbehaves.
+#[cfg(all(target_os = "macos", feature = "test-support"))]
+#[doc(hidden)]
+pub fn webview_smoke() {
+    platform::webview_macos::smoke()
+}
+
 pub use element_tree::*;
 pub use observers::Observation;
 pub use media::MediaFeatures;

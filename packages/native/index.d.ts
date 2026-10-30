@@ -140,6 +140,18 @@ export declare class GpuixRenderer {
    * cancels. There is no way to dismiss it from code.
    */
   openEyeDropper(): Promise<string | null>
+  /**
+   * `loadURL(url)` (with the URL as `argument`), `reload()`, `stop()`, `goBack()` and
+   * `goForward()` of a `<webview>`.
+   */
+  webviewCommand(elementId: number, command: string, argument?: string | undefined | null): void
+  /** The URL, the title and the history of a `<webview>`. */
+  webviewState(elementId: number): WebviewStateReading
+  /**
+   * Runs `code` in the page of a `<webview>`. Resolves with the JSON of the result of its last
+   * expression, or null when that is `undefined`; rejects with the script's error.
+   */
+  webviewExecuteJavascript(elementId: number, code: string): Promise<string | null>
   focusElement(elementId: number): void
   /** `element.blur()`: clear focus when `element_id` is the focused element. */
   blurElement(elementId: number): void
@@ -1047,6 +1059,46 @@ export declare class TestGpuixRenderer {
   requestSubmit(id: number): void
   /** `selectionStart`, `selectionEnd` and `selectionDirection`. */
   getTextSelection(elementId: number): TextSelection
+  /**
+   * `loadURL(url)` (with the URL as `argument`), `reload()`, `stop()`, `goBack()` and
+   * `goForward()` of a `<webview>`.
+   */
+  webviewCommand(elementId: number, command: string, argument?: string | undefined | null): void
+  /** The URL, the title and the history of a `<webview>`. */
+  webviewState(elementId: number): WebviewStateReading
+  /**
+   * Runs `code` in the page of a `<webview>`. Resolves with the JSON of the result, or null for
+   * `undefined`, once a test settles it (`settleWebviewScript`).
+   */
+  webviewExecuteJavascript(elementId: number, code: string): Promise<string | null>
+  /** What the page of a `<webview>` was asked to do, in order. */
+  getWebviewCommands(elementId: number): Array<WebviewCommandReading>
+  /** The page starts loading: `did-start-loading`. */
+  simulateWebviewStartLoading(elementId: number): void
+  /** The page stops loading: `did-stop-loading`. */
+  simulateWebviewStopLoading(elementId: number): void
+  /** The page commits `url`: `did-navigate`, and `getURL()` answers it. */
+  simulateWebviewNavigate(elementId: number, url: string): void
+  /** The page gets a title: `page-title-updated`, and `getTitle()` answers it. */
+  simulateWebviewTitle(elementId: number, title: string, explicitSet: boolean): void
+  /** A load fails: `did-fail-load`. */
+  simulateWebviewFail(elementId: number, errorCode: number, errorDescription: string, validatedUrl?: string | undefined | null): void
+  /** What `canGoBack()` and `canGoForward()` answer. */
+  setWebviewHistory(elementId: number, canGoBack: boolean, canGoForward: boolean): void
+  /**
+   * Settles the oldest `executeJavaScript` of a `<webview>` that waits: with the JSON of a
+   * result (none for `undefined`), or with the message of the error the script threw.
+   */
+  settleWebviewScript(elementId: number, result?: string | undefined | null, error?: string | undefined | null): void
+  /** Where the last composed frame put the surface of a `<webview>`, null while it has none. */
+  getWebviewSurface(elementId: number): WebviewSurfaceReading | null
+  /** The layers of the last composed frame, bottom to top. */
+  getCompositionLayers(): Array<CompositionLayerReading>
+  /**
+   * The container view AppKit holds for the surface of a `<webview>`, with the placement the
+   * last frame applied.
+   */
+  getWebviewNativeView(elementId: number): WebviewNativeViewReading
   /** Make the fonts in a TrueType or OpenType file usable by `fontFamily`. */
   registerFont(data: Buffer): void
   /**
@@ -1380,6 +1432,20 @@ export interface CheckUpdateOptions {
   installerArgs?: Array<string>
   /** Windows install UI: `passive` (default), `quiet`, or `basicUi`. */
   installMode?: string
+}
+
+/** One layer of the last composed frame. */
+export interface CompositionLayerReading {
+  /** `"gpui"` or `"native"`. */
+  kind: string
+  /** The window's own GPUI layer, the one below every surface. */
+  isBase: boolean
+  /** For a GPUI layer: the primitives and groups of the scene it draws. */
+  primitives: number
+  /** For a native layer: the element of its webview. */
+  webview?: number
+  /** For a native layer: whether it shows. */
+  visible: boolean
 }
 
 /** Recorded draw times from the debug frame overlay. */
@@ -1800,6 +1866,24 @@ export interface EventPayload {
    * and animation events.
    */
   pseudoElement?: string
+  /** The URL a `<webview>` committed. Populated for: did-navigate. */
+  url?: string
+  /** The title of the page of a `<webview>`. Populated for: page-title-updated. */
+  title?: string
+  /**
+   * Whether the page set its title (`document.title`) and not the browser from the URL.
+   * Populated for: page-title-updated.
+   */
+  explicitSet?: boolean
+  /**
+   * The `NSURLError` code of a failed `<webview>` load (`-1009` for no network), not a
+   * Chromium net error. Populated for: did-fail-load.
+   */
+  errorCode?: number
+  /** The localized description of the failure. Populated for: did-fail-load. */
+  errorDescription?: string
+  /** The URL that failed to load. Populated for: did-fail-load. */
+  validatedUrl?: string
   modifiers?: EventModifiers
 }
 
@@ -2326,6 +2410,60 @@ export interface WebAnimationTimingUpdate {
   iterations?: number
   direction?: string
   easing?: string
+}
+
+export interface WebviewCommandReading {
+  /**
+   * `loadURL`, `reload`, `stop`, `goBack`, `goForward`, `executeJavaScript` or
+   * `setFirstResponder`.
+   */
+  name: string
+  /** The URL, the code, or `"true"` / `"false"` for the first responder. */
+  argument?: string
+}
+
+/** The container view AppKit applied the placement to, in window points from the top left. */
+export interface WebviewNativeViewReading {
+  hidden: boolean
+  x: number
+  y: number
+  width: number
+  height: number
+  contentX: number
+  contentY: number
+  contentWidth: number
+  contentHeight: number
+  opacity: number
+  /** A corner radius is cut into it. */
+  masked: boolean
+}
+
+/** What `getURL()`, `getTitle()`, `canGoBack()` and `canGoForward()` read. */
+export interface WebviewStateReading {
+  url: string
+  title: string
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+/** Where the last composed frame put the surface of a webview, in window pixels. */
+export interface WebviewSurfaceReading {
+  /** The surface is shown: it was painted and something of it is not clipped away. */
+  visible: boolean
+  /** The whole surface, not cut by its clip. */
+  x: number
+  y: number
+  width: number
+  height: number
+  /** What shows of it. Zero while it is not visible. */
+  clipX: number
+  clipY: number
+  clipWidth: number
+  clipHeight: number
+  opacity: number
+  cornerRadius: number
+  /** The position of the layer among the frame's layers, bottom to top. */
+  layer: number
 }
 
 export interface WindowInsets {
