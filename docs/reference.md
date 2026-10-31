@@ -1,46 +1,25 @@
-> **This is fdarian's proof-of-concept fork of [remorses/gpuix](https://github.com/remorses/gpuix).**
-> It lowers scroll and input latency (a guard so `test-support` builds do not draw inline, a display-link frame pump), adds spring transitions, and makes events, focus, layout, scrolling, paint and motion follow DOM/CSS semantics.
-> It is rebased on upstream regularly and is not published. See [FORK.md](./FORK.md).
-> Differences from Chrome and the DOM are listed in [docs/fork/deviations.md](./docs/fork/deviations.md).
-
-# GPUIX
+# Alpina reference
 
 **React and Solid** for [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), Zed's GPU UI framework.
 
-Write a React or Solid tree in TypeScript. GPUIX paints it with Metal, DirectX, or Vulkan. No Electron. No web view for your UI: a `<webview>` shows a page where you ask for one.
+Write a React or Solid tree in TypeScript. GPUIX paints it with Metal. No Electron. No web view for your UI: a `<webview>` shows a page where you ask for one.
 
 `useState` and JSX still apply. Layout, text, and input go through GPUI, not the DOM.
 
-![A glass dashboard over a painted sky](./docs/images/mail-app.jpg)
+This file is the API contract: every prop, event, style and behavior is documented here in the same change that adds it. Differences from Chrome and the DOM are listed in [fork/deviations.md](./fork/deviations.md). What changed from gpuix, and why, starts at [fork/index.md](./fork/index.md).
+
+![A glass dashboard over a painted sky](./images/mail-app.jpg)
 
 Everything above is GPUIX: the glass window, the cards, the schedule,
 and native text.
 
 ## Quickstart
 
-Create an app from the official example. The command downloads only
-`example-app/` and installs its dependencies. There is no repository clone,
-native build, or Rust toolchain.
+Install the packages:
 
 ```bash
-bunx @gpuix/cli new my-app
-cd my-app
-bun run dev
-```
-
-`@gpuix/react` pulls the native renderer for your platform. Edit `app.tsx` and
-the running window remounts on save. Click and keyboard handlers switch to the
-new tree without recreating the window.
-
-Using Solid 1 instead? Start with the [Solid quick start](#solid-quick-start).
-
-### Build from scratch
-
-Install the packages directly when you do not want the example app:
-
-```bash
-bun add --exact @gpuix/react @gpuix/native react
-bun add -d @types/react typescript
+pnpm add --save-exact @gpuix/react @gpuix/native react
+pnpm add -D @types/react typescript
 ```
 
 **Pin your adapter and `@gpuix/native` to the same exact version.** GPUIX is
@@ -48,6 +27,9 @@ still pre-1.0, so a new release can break either package. The adapter pulls
 `@gpuix/native` with a version range, and that range can install a newer native
 binary under an older adapter. Add both as direct dependencies. Upgrade them
 together.
+
+`@gpuix/react` pulls the native renderer for your platform. Using Solid 1
+instead? Start with the [Solid quick start](#solid-quick-start).
 
 ### 1. Point TypeScript at the GPUIX JSX types
 
@@ -117,7 +99,7 @@ For hot reload during development, use `bun --hot` rather than plain `bun`.
 A save then remounts React on the same window instead of opening a second one.
 
 Bun is not required to run the renderer. GPUIX uses Node-API native bindings,
-and React apps also run on Node.js, as [`disktree`](./disktree/) does. For
+and React apps also run on Node.js. For
 Node.js, compile TSX to JavaScript first or use a Node-compatible TSX loader.
 The `--hot` option and same-window hot-remount workflow described below are
 Bun-specific; running an app on Node.js does not provide Bun's hot reload.
@@ -132,7 +114,7 @@ bun build --compile app.tsx --outfile dist/app
 The binary carries the renderer, so it runs with no Bun and no Node install.
 
 For a smaller ship set, run the same React app on
-[hermes-node](./website/src/guides/hermes.mdx) instead of Bun. That path is
+[hermes-node](../hermes/README.md) instead of Bun. That path is
 **12 MB** plus a **22 MB** native sidecar. The steps are in that guide.
 
 ### 5. Wrap it in an app with an icon
@@ -306,62 +288,20 @@ does not exist in the browser wasm build. The repo must be **public**, or
 GitHub will 404 the API. Optional: put a Cloudflare cache in front of
 `api.github.com`. Same GitHub JSON. Not a custom schema.
 
-### Start from the example app
-
-[`example-app/`](https://github.com/remorses/gpuix/tree/main/example-app) is a complete todo app in one file, with `dev`,
-`build`, `web:dev` and `typecheck` scripts already wired. Create a copy with
-`bunx @gpuix/cli new my-app`.
-
-![The GPUIX todo example app](./docs/images/todo-app.png)
-
-### Shell completions
-
-Install completions for the `gpuix` command:
-
-```bash
-bun add -g @gpuix/cli
-gpuix completions install
-```
-
 ## Examples
 
 | Example | Run | What it shows |
 |---|---|---|
-| **todo** | `bun run dev` in [`example-app/`](https://github.com/remorses/gpuix/tree/main/example-app) | The starting point: one file, a `<virtual-list>`, a native `<input>`, and an animated sidebar |
 | **blurred window** | `bun run blurred-window` | A macOS frosted-glass surface using GPUI's native vibrancy backdrop and transparent titlebar |
 | **chat** | `bun --hot chat.tsx` | A GPUIX app: transparent titlebar, animated sidebar, per-thread transcripts, demo replies, composer, `<markdown>` |
 | **timeline** | `bun --hot timeline.tsx` | A video-editor timeline: clip dragging, edge trimming with snapping, playhead scrubbing, marquee selection, zoom under the pointer, and a two-axis pan with a frozen ruler and track column |
 | **mail** | `bun --hot mail.tsx` | A Superhuman-style mail client: three panes, thread list, and a Framer newsletter |
-| **disktree** | `npx disktree [dir]`, source in [`disktree/`](https://github.com/remorses/gpuix/tree/main/disktree) | A port of [tobi/disktree](https://github.com/tobi/disktree) published to npm: scans a folder or the whole disk on worker threads, draws a translucent treemap on a frosted window, and ranks what could go |
 | **native-text** | `bun --hot native-text.tsx` | The three native text components with a tab switcher |
 | **counter** | `bun --hot counter.tsx` | The smallest possible app: state, events, hover |
 | **diff** | `bun --hot diff.tsx` | A diff viewer composed from `<div>` and `<text>` in JS, for comparison |
 | **web** | `bun run web` from the repository root | The ChatGPT example rendered in a browser canvas with WebGPU |
 
-The todo app lives in [`example-app/`](https://github.com/remorses/gpuix/tree/main/example-app) and is meant to be copied with `bunx @gpuix/cli new`.
-The rest live in [`examples/`](https://github.com/remorses/gpuix/tree/main/examples). Those `bun --hot` commands need a clone of this repo and a local native build. They will not run against the published packages alone.
-
-Or download a standalone **chat** build from the [GitHub release](https://github.com/remorses/gpuix/releases). No Bun or Rust install is required.
-
-```bash
-tar -xzf example-chat-aarch64-apple-darwin.tar.gz
-./example-chat-aarch64-apple-darwin
-```
-
-The archive keeps the executable bit, so there is no `chmod` step. macOS may still block the unsigned binary the first time. Right-click the file, choose **Open**, and confirm.
-
-On Windows, download `example-chat-x86_64-pc-windows-msvc.exe` for x64 or
-`example-chat-aarch64-pc-windows-msvc.exe` for ARM64 and double-click it. On Linux,
-the file is `example-chat-x86_64-unknown-linux-gnu.tar.gz`.
-
-The chat and disktree desktop examples keep the native Windows title bar for
-dragging, minimizing, maximizing, and closing the window. Other platforms keep
-their existing custom chrome.
-
-disktree reveals the selection in Finder on macOS or Explorer on Windows.
-On Linux it opens the selected folder, or a file's parent folder, with
-`xdg-open`. A file-manager launch failure appears in the selection panel
-without stopping the app.
+They live in [`examples/`](../examples/). The `bun --hot` commands need a clone of this repo and a local native build.
 
 The web example bundles the same React app and reconciler as the desktop chat
 example. wasm-bindgen exposes mutations and event callbacks to the existing
@@ -425,11 +365,11 @@ dependency stays evaluated and cached. Two rules follow:
 The chat example puts a virtualized `<diff>` and a GFM table inside an assistant
 turn, inside a scrolling transcript:
 
-![A diff and a markdown table inside a chat turn](./docs/images/chat-diff.png)
+![A diff and a markdown table inside a chat turn](./images/chat-diff.png)
 
 Markdown, code and a virtualized diff in one frame:
 
-![Markdown, code and diff rendered together](./docs/images/showcase.png)
+![Markdown, code and diff rendered together](./images/showcase.png)
 
 ## Architecture
 
@@ -546,7 +486,6 @@ Event handlers are stored in a JS-side registry keyed by `(elementId, eventType)
 - **`@gpuix/native/automation`**: the shared automation protocol, client, locators, and process launcher.
 - **`@gpuix/react`**: the React reconciler and React components. It preserves its existing exports and re-exports shared testing, automation, search, and observer APIs.
 - **`@gpuix/solid`**: the Solid 1 universal renderer, Solid primitives, motion, Select, Combobox, Tooltip, Bun preload, and build plugin.
-- **`@gpuix/cli`** — `gpuix new` downloads `example-app/`, sets its published React dependency, and installs it as a standalone project.
 
 Pin the selected adapter and `@gpuix/native` to the **same exact version**.
 GPUIX is still pre-1.0. Breaking changes can land before v1. Upgrade them
@@ -557,7 +496,7 @@ together.
 Install Solid and the official Solid adapter:
 
 ```bash
-bun add --exact @gpuix/solid @gpuix/native solid-js
+pnpm add --save-exact @gpuix/solid @gpuix/native solid-js
 ```
 
 Use Solid's preserved JSX. The preload compiles application `.tsx` and `.jsx`
@@ -622,7 +561,7 @@ await Bun.build({
 
 `@gpuix/solid` targets stable Solid 1.9. Its peer range is `>=1.9 <2`.
 
-The full Solid adapter API is in the [Solid guide](./website/src/guides/solid.mdx).
+The full Solid adapter API is in the [Solid guide](./solid.md).
 
 ## Building
 
@@ -636,15 +575,12 @@ toolchain and no submodule.
 2. Node.js 18+
 3. Xcode with Metal Toolchain (macOS)
 
-The `cli/` and `disktree/` builds use Node.js to set executable permissions on
-Unix. Windows needs no `chmod` command.
-
 ```bash
 # Install Metal Toolchain if needed
 xcodebuild -downloadComponent MetalToolchain
 
 # Install dependencies
-bun install
+pnpm install
 
 # Check out the pinned GPUI fork
 git submodule update --init --recursive
@@ -694,7 +630,7 @@ cmake --version
 
 rustup target add aarch64-pc-windows-msvc
 $env:CARGO_BUILD_TARGET = 'aarch64-pc-windows-msvc'
-bun install
+pnpm install
 Push-Location packages/native
 bun run build
 Pop-Location
@@ -920,7 +856,7 @@ What the page sees inside a drag region:
 | Windows | Native, and the OS owns the whole region: it drags, maximizes on double click and shows the system menu on right click, none of which the page sees |
 | Linux | Implemented the same way, right click opens the window menu. Not exercised on a real Linux window yet |
 
-[`examples/titlebar.tsx`](https://github.com/remorses/gpuix/blob/main/examples/titlebar.tsx)
+[`examples/titlebar.tsx`](../examples/titlebar.tsx)
 is the whole pattern: a drag bar with a button and an input cut out of it.
 To test a press in a region, see [Window actions in tests](#window-actions-in-tests).
 
@@ -1238,7 +1174,7 @@ GPUI aborts the process on a font without the names, and silently drops a font
 without the glyph, so `registerFont()` throws for both and for bytes that are
 not a font. Fonts load into the process and last until it exits.
 
-WOFF and WOFF2 are not supported ([deviations](./docs/fork/deviations.md#text)); convert them to TrueType first. The browser
+WOFF and WOFF2 are not supported ([deviations](./fork/deviations.md#text)); convert them to TrueType first. The browser
 renderer does not have this method, use `FontFace` there.
 
 ### Let an agent drive the app
@@ -2065,7 +2001,7 @@ defineKeyframes('draw', { from: { strokeDashoffset: 180 }, to: { strokeDashoffse
   `<svg>`. A property a `motion` animation drives is not transitioned, as on a box
 
 The attributes that are not CSS properties above are neither keyframed nor
-transitioned ([deviations](./docs/fork/deviations.md#motion)).
+transitioned ([deviations](./fork/deviations.md#motion)).
 
 Because the `<svg>` is rasterised as one image, an animated shape paints a new
 image every frame. The `<svg>` keeps the image it last painted and drops it from
@@ -2133,7 +2069,7 @@ gesture props, and answers to them natively, with no render per hover or press.
   gesture. A component that writes a name of its own, or `inherit={false}`, breaks
   the chain; a name in an object (`animate={{ ... }}`) does not. Framer's
   `staggerChildren`, `delayChildren` and `when` are not built: every child animates
-  at once ([deviations](./docs/fork/deviations.md#motion)).
+  at once ([deviations](./fork/deviations.md#motion)).
 - **SVG shapes** take `variants` and the names handed down to them, so an icon
   moves when the button around it is hovered. A shape takes no pointer or focus
   event of its own (the `<svg>` is one image), so its own `whileHover`,
@@ -2202,7 +2138,7 @@ is nothing to animate.)
   are `layout`, `layoutId`, `layoutDependency`, `onLayoutAnimation*`, `whileDrag` and
   Framer's `drag*` props: a layout animation and a drag move a box with a transform,
   which a span cannot show, so no layout animation runs and none of its callbacks is
-  called ([deviations](./docs/fork/deviations.md#motion)). (`draggable` and the DOM `onDrag*` events are the
+  called ([deviations](./fork/deviations.md#motion)). (`draggable` and the DOM `onDrag*` events are the
   ordinary ones.) A `Reorder.Item` rendered `as` a span renders and does not reorder.
 - A span that is a flex or grid item, or has `display: block`, is laid out as an
   element and paints its colours the same way, but still takes only the keys above.
@@ -2491,7 +2427,7 @@ needs it, then gives it back. A value drives one window at a time.
   - Controls used before the value is bound to a window apply when the animation
     starts, and `duration` and `iterationDuration` are known at once.
 
-  It differs from Motion in a few edges ([deviations](./docs/fork/deviations.md#motion)). A paused
+  It differs from Motion in a few edges ([deviations](./fork/deviations.md#motion)). A paused
   animation holds its value's node, so stop it when its component goes
   (`useEffect(() => () => controls.stop(), [])`).
 - **Lengths.** A motion value reads `"20px"`, `"50%"`, `"2em"`, `"calc(100% - 20px)"`
@@ -2568,7 +2504,7 @@ animation runs finishes the jumping properties at once.
 through `style` of a `motion.*` component under the config, to `width`,
 `height`, `top`, `right`, `bottom` or `left`: the value jumps and `finished`
 resolves. Motion for React does not reduce a bare `animate(value)`; gpuix does,
-so a bound size follows the setting ([deviations](./docs/fork/deviations.md#motion)). A value bound to padding or opacity, bound
+so a bound size follows the setting ([deviations](./fork/deviations.md#motion)). A value bound to padding or opacity, bound
 to a plain `div`, or not bound to any element animates normally.
 
 CSS `transition` is not affected, as in the DOM. `useReducedMotionConfig()`
@@ -2663,7 +2599,7 @@ Differences from Motion for React:
 - `"preserve-aspect"` is not supported, and a box that holds a `layoutId` does
   not crossfade with the one it replaces or mix their border radii: the newcomer
   is shown as the old box from the first frame, and the old one stays as it is
-  ([deviations](./docs/fork/deviations.md#motion)).
+  ([deviations](./fork/deviations.md#motion)).
 - A `boxShadow` of several shadows is corrected shadow by shadow, where Motion
   leaves a list uncorrected.
 - The element that held a `layoutId` is not hidden when another takes the id.
@@ -2781,7 +2717,7 @@ The wheel goes to the innermost scroller under the pointer that can still scroll
 
 A trackpad gesture stays on the scroller that took its first delta, momentum included, so a fling does not jump to the parent when the inner list runs out. A mouse wheel does the same until it pauses for half a second or the pointer moves. `onWheel` listeners on every element under the pointer still run, whichever scroller moved.
 
-`wheel` is one DOM event per wheel input, aimed at the element under the pointer and run along its path: `onWheelCapture` from the outermost ancestor down, then `onWheel` from the target up, and `stopPropagation()` works. Pointer capture does not redirect it, as in a browser; a pointer lock does. It runs before any scroller takes the delta, so `scrollTop` read in a handler is the position before this input. Calling `preventDefault()` in either phase cancels the scroll that input would cause, in every scroller and text input. Two deviations from the DOM ([deviations](./docs/fork/deviations.md#events-and-input), [other platforms](./docs/fork/deviations.md#other-platforms)):
+`wheel` is one DOM event per wheel input, aimed at the element under the pointer and run along its path: `onWheelCapture` from the outermost ancestor down, then `onWheel` from the target up, and `stopPropagation()` works. Pointer capture does not redirect it, as in a browser; a pointer lock does. It runs before any scroller takes the delta, so `scrollTop` read in a handler is the position before this input. Calling `preventDefault()` in either phase cancels the scroll that input would cause, in every scroller and text input. Two deviations from the DOM ([deviations](./fork/deviations.md#events-and-input), [other platforms](./fork/deviations.md#other-platforms)):
 
 - It cancels that input only. A browser that sees the first wheel of a gesture cancelled cancels the whole gesture; here the next input scrolls unless its own handler cancels it, so a handler that wants a gesture cancelled calls `preventDefault()` on each input.
 - It needs the handler to run before the scroll, which only holds on macOS and in the test renderer. On Windows and Linux the event reaches JavaScript through a queue after native scrolled, so `preventDefault()` has no effect there.
@@ -2897,7 +2833,7 @@ The scroller picks an **anchor**: the first box of its content, in layout order,
 
 A change the page makes to the anchor itself is its own move and is not compensated: the `top`, `margin`, `padding`, `width`, `height`, `min-`/`max-` size, `position` or `containIntrinsicSize` of the anchor or of any box between it and the scroller, whenever the anchor ends up somewhere else because of it. An explicit scroll (a wheel, a scrollbar, `scrollTop`, `scrollTo`) drops the anchor, and the next one is picked from the layout as it was before the frame's changes, so content that arrives in the frame of a scroll is still compensated. The same goes for an anchor that is removed, hidden, or turned `overflowAnchor: 'none'`: the box after it takes over.
 
-Where gpuix differs from Chrome (a nested scroller is anchored as one box, there are no priority candidates, and the events and a relative anchor's `top` differ in corner cases): [deviations](./docs/fork/deviations.md#scroll). `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
+Where gpuix differs from Chrome (a nested scroller is anchored as one box, there are no priority candidates, and the events and a relative anchor's `top` differ in corner cases): [deviations](./fork/deviations.md#scroll). `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
 
 ### Sticky positioning
 
@@ -2945,7 +2881,7 @@ function Pane({ offsetX, children }: { offsetX: number; children: React.ReactNod
 
 Keep the moving subtree in a `memo` component whose props do not change during a
 pan. The wheel then costs a handful of style mutations, not one per row. The
-[timeline example](./examples/timeline.tsx) does this for a ruler, a track
+[timeline example](../examples/timeline.tsx) does this for a ruler, a track
 column, and a clip grid.
 
 ## Virtual lists
@@ -3454,7 +3390,7 @@ and the gaps fitted between them. A pattern starts over with every **text
 fragment**, which is a text node in one inline box on one row: an outer dashed
 underline starts again after a nested box and between two text nodes, and on every
 wrapped row, and the spaces that hang past the end of a row are not drawn under.
-(A paragraph in which no `<span>` restyles anything is one fragment: see [text.md](./docs/fork/text.md#text-decoration).) `auto` and `from-font` stay fractional; a
+(A paragraph in which no `<span>` restyles anything is one fragment: see [text.md](./fork/text.md#text-decoration).) `auto` and `from-font` stay fractional; a
 solid or double line floors them to a device pixel (at least one) when it paints,
 and a dotted or dashed one rounds them. A length is rounded to the nearest device
 pixel, a half up, and is at least one, `0px` included, as in Chrome: `1.5px` is two
@@ -3585,7 +3521,7 @@ it covers the one written later wins. `hover`, `active` and the other state styl
   CSS treats it in intrinsic sizes.
 - Deviations: an `auto` margin and a negative padding or border width count as 0, and a span with no
   painted glyph that is not empty, or cut by `text-overflow` or `lineClamp` at its end, loses its inline space
-  ([deviations](./docs/fork/deviations.md#text)).
+  ([deviations](./fork/deviations.md#text)).
 
 ### Painting an inline box
 
@@ -3798,7 +3734,7 @@ can set change its run, and `outline` (or `outlineWidth`, `outlineStyle`,
   other focusables dim ([Focus styles](#focus-styles)). A focused span starts that
   dim for the elements, like any control, but a span is not dimmed when another
   control has focus, and `keyboardFocusDim` is not read on one: a dim is an
-  opacity, and a span has no element to set it on ([deviations](./docs/fork/deviations.md#text)).
+  opacity, and a span has no element to set it on ([deviations](./fork/deviations.md#text)).
 
 ### White space
 
@@ -3965,7 +3901,7 @@ A soft hyphen (U+00AD) breaks where Chrome's does, and the row that breaks there
 hyphen-minus if not) that counts in the row's width and alignment and in the box of the element holding it, but is no part of the text
 (copy, search, the caret and hit testing don't see it).
 
-A hanging space at a soft wrap stays in the text, ICU4X breaks a few rare sequences differently from Chrome's ICU, and `hyphens` and `line-break` are not styles: [deviations](./docs/fork/deviations.md#text).
+A hanging space at a soft wrap stays in the text, ICU4X breaks a few rare sequences differently from Chrome's ICU, and `hyphens` and `line-break` are not styles: [deviations](./fork/deviations.md#text).
 
 #### Balanced and pretty lines
 
@@ -4182,7 +4118,7 @@ the alignment of the cell in its row (`baseline`, `top`, `middle`, `bottom`, see
 
 #### Atomic inlines: selection, queries and deviations
 
-Where atomic inlines differ from Chrome (an absolute descendant is positioned against the box, a percentage `height` inside it is `auto`, `textOverflow` and `lineClamp` ignore a paragraph with one in it, a span holding only atomics reports its line box, a match cannot cross the box): [deviations](./docs/fork/deviations.md#text).
+Where atomic inlines differ from Chrome (an absolute descendant is positioned against the box, a percentage `height` inside it is `auto`, `textOverflow` and `lineClamp` ignore a paragraph with one in it, a span holding only atomics reports its line box, a match cannot cross the box): [deviations](./fork/deviations.md#text).
 
 - The text in an atomic inline is a text of its own for [selection](#text-selection) and [search](#text-highlighting-and-search),
   and it falls where the box sits in the paragraph, as in a browser: a drag across the box selects the text
@@ -5367,7 +5303,7 @@ widths, which are whole device pixels, rounded half up,
 and `scrollTop` and `scrollLeft` are as they were. A few cases of a
 percentage, a flex share or a text are still a unit off Chrome's, the scroll offset an element is placed
 at is a whole device pixel, and a box that is not a scroller reports its padding box as `clientWidth` and the
-same number as `scrollWidth`: [deviations](./docs/fork/deviations.md#layout).
+same number as `scrollWidth`: [deviations](./fork/deviations.md#layout).
 
 `renderer.getElementBounds(id)` is the raw read on the live `GpuixRenderer` and
 on the test renderer. It does the same flush and layout, and returns `null`
@@ -5564,7 +5500,7 @@ Base UI:
 The default for `initialFocus` differs from Base UI, which picks the first
 tabbable element. GPUI's tab order exists only after the popup has painted,
 so GPUIX focuses the popup and lets the first Tab walk that order
-([deviations](./docs/fork/deviations.md#base-ui)).
+([deviations](./fork/deviations.md#base-ui)).
 
 A dialog opened from app state, with no `Trigger`, still returns focus: the
 Popup records the focused element before it mounts.
@@ -5650,7 +5586,7 @@ To opt *out* — toolbars, buttons, line-number gutters — set
 </div>
 ```
 
-![Text selected across markdown blocks](./docs/images/selection.png)
+![Text selected across markdown blocks](./images/selection.png)
 
 Read the selection from the renderer, or react when it changes:
 
@@ -5889,7 +5825,7 @@ header. `style` is the surface, so the card look is yours.
 />
 ```
 
-![A syntax-highlighted code block](./docs/images/code.png)
+![A syntax-highlighted code block](./images/code.png)
 
 `fontFamily`, `fontSize`, `fontWeight`, `lineHeight` and `color` in `style` beat
 the theme. Rows are a fixed height, so `fontSize` alone scales that height by the
@@ -5941,7 +5877,7 @@ scroller. See [Scrolling](#scrolling).
 />
 ```
 
-![A unified diff with word-level highlights](./docs/images/diff.png)
+![A unified diff with word-level highlights](./images/diff.png)
 
 ### `<markdown>`
 
@@ -5952,7 +5888,7 @@ strikethrough, task lists, and autolinked bare URLs.
 <markdown source={readme} onLinkClick={(e) => open(e.value)} />
 ```
 
-![Markdown with headings, lists, a table and a code fence](./docs/images/markdown.png)
+![Markdown with headings, lists, a table and a code fence](./images/markdown.png)
 
 ### Theming
 
@@ -5993,7 +5929,7 @@ so changing `diffLineHeight` also re-sizes the scroll model.
 
 The same three components, retuned entirely from `metrics` with no rebuild:
 
-![The components with enlarged metrics](./docs/images/metrics.png)
+![The components with enlarged metrics](./images/metrics.png)
 
 Languages bundled: Rust, TypeScript, TSX, JavaScript, JSX, Python, Go, JSON,
 Bash, TOML, YAML, Markdown, HTML, CSS, C.
@@ -6169,7 +6105,7 @@ Apple Silicon, x86, and ARM64 desktop), with no row padding. It is
 opaque pixels, which is why the example fills the background first. For a
 transparent canvas, use `getImageData().data` with the default `'rgba'` format.
 
-The [waveform example](./examples/waveform.tsx) writes BGRA by hand, at 2x.
+The [waveform example](../examples/waveform.tsx) writes BGRA by hand, at 2x.
 
 ### `<svg>`
 
@@ -6458,7 +6394,7 @@ does not matter. Any number of pages work, in the same order.
   the page; any other corners leave it square.
 
 Transforms, filters, masks, `clipPath`, blend modes and non-uniform radii do not
-apply to the native view: see [the deviations](./docs/fork/deviations.md#webview-and-window-composition).
+apply to the native view: see [the deviations](./fork/deviations.md#webview-and-window-composition).
 
 ### Pointer and wheel
 
@@ -6553,7 +6489,7 @@ view, so it can draw outside its box (an outer shadow, edge highlights) up to th
 clips of its ancestors. `overflow: hidden` (or `clip`) cuts it to the padding box
 and to the inner `borderRadius` (all four corners the same circle; otherwise square).
 Ancestor `overflow` clips always apply, as rectangles: a rounded ancestor clip does
-not round the view. See [the deviations](./docs/fork/deviations.md#nativeview).
+not round the view. See [the deviations](./fork/deviations.md#nativeview).
 
 ### Pointer
 
@@ -6570,7 +6506,7 @@ Focus stays with GPUI unless the library makes its view first responder itself; 
 click on a GPUI element takes the keyboard back. The element is not a tab stop.
 
 The details for a library author, with a minimal addon, are in
-[docs/fork/nativeview.md](./docs/fork/nativeview.md).
+[docs/fork/nativeview.md](./fork/nativeview.md).
 
 ## Supported Events
 
@@ -6743,7 +6679,7 @@ more than 4px (logical pixels, from the press) starts a drag:
 `setDragImage` is accepted and does nothing: gpuix does not draw a drag image, so
 nothing follows the pointer. The drag stays inside the window: it cannot drop on
 another app, and a drag from another app is a file drag. What a drag image would take is in
-[deviations](./docs/fork/deviations.md#events-and-input).
+[deviations](./fork/deviations.md#events-and-input).
 
 **`onWheel`** reports wheel input: the delta, before any scroller has applied it,
 signed like the DOM (`deltaY` is positive for down). **`onScroll`** reports the
@@ -7050,7 +6986,7 @@ multiple, and a length inherits as pixels.
 
 Limits: a `calc()` that comes out negative clamps to 0 for `fontSize` and for grid
 track sizes. A repeating gradient whose stop position is a `calc()` of a length and
-a `%` skips the special case for a zero-length repeat ([deviations](./docs/fork/deviations.md#layout)).
+a `%` skips the special case for a zero-length repeat ([deviations](./fork/deviations.md#layout)).
 
 ### Shorthands
 
@@ -7699,7 +7635,7 @@ Differences from Chrome:
 - A `--p` that JS writes each frame is a paint-only frame that builds the elements reading it, not a patched tick; a
   transition or an animation of the same transform patches every tick. Motion's string keys do not substitute `var()`.
 - A scroller whose range a patched tick changes declines the patch when its offset would clamp or a scrollbar's thumb would
-  move, and a scroller inside an `inline-block` is not updated by a patch ([deviations](./docs/fork/deviations.md#paint-and-transforms)).
+  move, and a scroller inside an `inline-block` is not updated by a patch ([deviations](./fork/deviations.md#paint-and-transforms)).
 
 ### Cursors
 
@@ -7743,7 +7679,7 @@ uses `csscolorparser` 0.8.3 and accepts:
 Standard comma and modern space/slash alpha forms work. Values are converted
 to hard-clipped sRGB before GPUI paints them. Invalid strings are ignored for
 that property; they do not reject the full style object. The relative-colour and wide-gamut limits are in
-[deviations](./docs/fork/deviations.md#paint-and-transforms).
+[deviations](./fork/deviations.md#paint-and-transforms).
 
 ### Gradients and background layers
 
@@ -7774,7 +7710,7 @@ layers, `position / size`, repeat, origin and clip boxes, and a final colour.
 A longhand written after the shorthand wins over it. `image-set()` layers are skipped, an interpolation space other than `srgb` and
 `oklab` skips the layer, `backgroundOrigin` and `backgroundClip` move the layers only (the background colour
 fills the border box, or the glyphs under `text`), and `backgroundAttachment` is ignored in the shorthand:
-[deviations](./docs/fork/deviations.md#paint-and-transforms).
+[deviations](./fork/deviations.md#paint-and-transforms).
 
 #### Image backgrounds
 
@@ -7814,7 +7750,7 @@ it, and the bytes are handed to native. A revoked URL paints nothing. This needs
 renderer that has `setStyleImage`: the native one and the test renderer do.
 
 Limits: `image-set()` is not drawn and an inline `<span>` box paints
-`backgroundColor` only ([deviations](./docs/fork/deviations.md#paint-and-transforms)). A `url()` in `mask` and `maskImage` loads the same way
+`backgroundColor` only ([deviations](./fork/deviations.md#paint-and-transforms)). A `url()` in `mask` and `maskImage` loads the same way
 (see `maskImage`, below).
 
 #### Gradient text
@@ -8102,7 +8038,7 @@ size of each slice instead of being warped with it: a gradient along an axis com
 as Chrome's, but a radial one keeps its circle and an angled one its angle where Chrome
 stretches them with the slice. Past 4096 tiles in one edge nothing is drawn for it.
 
-Limits, listed in [deviations](./docs/fork/deviations.md#paint-and-transforms): `image-set()`, the legacy `-webkit-mask-composite`
+Limits, listed in [deviations](./fork/deviations.md#paint-and-transforms): `image-set()`, the legacy `-webkit-mask-composite`
 keywords, `no-clip` and `margin-box` are not supported, `fill-box`, `stroke-box` and `view-box` map to the content or border box, and masks, like the other effect groups, are drawn only on macOS.
 
 `clipPath` clips the element and everything in it to a basic shape: `inset()`
@@ -8142,7 +8078,7 @@ subpath that has an area clips everything.
 
 Limits: `url()` is not supported, and a value with a box that has no shape is
 ignored. The other limits (the box keywords, the circular `round` corners, `path()`
-strings) are in [deviations](./docs/fork/deviations.md#paint-and-transforms).
+strings) are in [deviations](./fork/deviations.md#paint-and-transforms).
 
 The shape also clips hit testing, as in CSS: a pointer over the clipped-away part
 hits what is underneath instead, and the element's descendants are cut the same
@@ -8995,7 +8931,7 @@ await animation.finished // resolves with the animation
   `DocumentTimeline` are exported from `@gpuix/react` and `@gpuix/solid`; they
   cannot be constructed by an app. `replaceState`, `persist()`, `commitStyles()`
   and `onremove` do not exist, and `animation-composition` is not supported
-  ([deviations](./docs/fork/deviations.md#motion))
+  ([deviations](./fork/deviations.md#motion))
 
 ##### Animations of `motion`
 
@@ -9074,7 +9010,7 @@ moves a colour in the same change runs it, as a style that does so would.
 </div>
 ```
 
-Costs and limits ([deviations](./docs/fork/deviations.md#paint-and-transforms)):
+Costs and limits ([deviations](./fork/deviations.md#paint-and-transforms)):
 
 - A layer with a `transition` makes every element track transitions, which costs
   a little per element per frame. Name the properties as above instead of `all`
@@ -9118,7 +9054,7 @@ await app.screenshot({ path: 'sent.png' })
 ```
 
 That is the chat example. The real test lives in
-[`examples/chat.test.tsx`](https://github.com/remorses/gpuix/blob/main/examples/chat.test.tsx).
+[`examples/chat.test.tsx`](../examples/chat.test.tsx).
 
 ```
 createTestRoot()          browser render()          launch({ command, args })
@@ -9644,13 +9580,13 @@ const readout = await app.getByTestId('readout').textContent()
 expect(readout).toBe('x=140 y=60 zoom=24 sel=clip-7')
 ```
 
-Every test in [`examples/timeline.test.tsx`](./examples/timeline.test.tsx) works
+Every test in [`examples/timeline.test.tsx`](../examples/timeline.test.tsx) works
 this way, including the drag, trim, snap, and zoom gestures. Keep the screenshot
 as well, for a human to look at after the run.
 
 Screenshots land in `packages/react/screenshots/` and `examples/screenshots/`,
 both gitignored, so they can be inspected after a run without adding a binary
-diff to every commit. The curated set the README links to lives in
+diff to every commit. The curated set this file links to lives in
 `docs/images/` and is regenerated with:
 
 ```bash
@@ -9742,8 +9678,8 @@ The test renderer uses `VisualTestAppContext` with a `TestDispatcher` for determ
 
 ## Documentation
 
-See [AGENTS.md](https://github.com/remorses/gpuix/blob/main/AGENTS.md) for detailed architecture, communication flow, and contributing guide.
+See [AGENTS.md](../AGENTS.md) for detailed architecture, communication flow, and contributing guide.
 
 ## License
 
-[Apache-2.0](https://github.com/remorses/gpuix/blob/main/LICENSE)
+[Apache-2.0](../LICENSE). See [NOTICE](../NOTICE).
