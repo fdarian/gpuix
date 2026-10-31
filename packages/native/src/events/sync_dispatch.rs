@@ -92,6 +92,13 @@ impl ScopeGuard {
         });
         Self { previous }
     }
+
+    /// A sync call made with no window or app to give back: `ACTIVE` is emptied, so every call JS
+    /// makes while it runs finds nothing to use.
+    fn enter_without_window() -> Self {
+        IN_SYNC_CALL.with(|depth| depth.set(depth.get() + 1));
+        Self { previous: ACTIVE.with(|active| active.take()) }
+    }
 }
 
 impl Drop for ScopeGuard {
@@ -143,6 +150,33 @@ pub(crate) fn emit(
         callback(payload);
     }
     DispatchOutcome::default()
+}
+
+/// Delivers `payload` for `window` the way `emit` does, from code that holds the window or the app
+/// and has no `&mut` of them to give: an element's teardown, which runs inside `applyBatch`, a
+/// frame, or the drop of a window.
+///
+/// The handler runs as in a sync call, but nothing is reachable from it: any renderer call it makes
+/// fails with [`NESTED`], where reaching for the window or app that the caller holds would be
+/// undefined behaviour. Without a sync handler the event goes through `callback`, like any other.
+pub(crate) fn emit_without_window(
+    window: gpui::WindowId,
+    callback: &Option<EventCallback>,
+    payload: EventPayload,
+) -> DispatchOutcome {
+    if backend::available(window) {
+        return run_without_window(|| backend::call(window, payload));
+    }
+    if let Some(callback) = callback {
+        callback(payload);
+    }
+    DispatchOutcome::default()
+}
+
+/// Runs `call` as a sync call that no window or app is reachable from.
+fn run_without_window<R>(call: impl FnOnce() -> R) -> R {
+    let _scope = ScopeGuard::enter_without_window();
+    call()
 }
 
 /// `emit_event_full`, but delivered with `emit`.
@@ -507,6 +541,64 @@ mod backend {
 mod tests {
     use super::*;
     use gpui::DragOperation;
+
+    fn event() -> EventPayload {
+        EventPayload { element_id: 7.0, event_type: "detach".to_string(), ..Default::default() }
+    }
+
+    #[test]
+    fn without_a_sync_handler_the_event_goes_through_the_callback() {
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = received.clone();
+        let callback: Option<EventCallback> = Some(std::sync::Arc::new(move |payload: EventPayload| {
+            sink.lock().unwrap().push(payload.event_type);
+        }));
+        let window = gpui::WindowId::from(1_u64);
+        let outcome = emit_without_window(window, &callback, event());
+        assert_eq!(outcome, DispatchOutcome::default());
+        assert_eq!(*received.lock().unwrap(), ["detach"]);
+    }
+
+    #[test]
+    fn without_a_sync_handler_and_a_callback_the_event_is_dropped() {
+        let window = gpui::WindowId::from(1_u64);
+        assert_eq!(emit_without_window(window, &None, event()), DispatchOutcome::default());
+    }
+
+    #[test]
+    fn a_call_made_without_a_window_is_nested_whatever_it_asks_for() {
+        assert!(!in_sync_call());
+        run_without_window(|| {
+            assert!(in_sync_call());
+            assert_eq!(update_active_window(|_, _| ()), Err(NESTED.to_string()));
+            assert_eq!(update_root_view(|_, _, _| ()), Err(NESTED.to_string()));
+            assert_eq!(update_root_view_or_defer(|_, _, _| ()), Err(NESTED.to_string()));
+            assert_eq!(invalidate_root_view(crate::retained_tree::Dirty::default()), Err(NESTED.to_string()));
+            assert!(with_active_window(|_, _| ()).is_none());
+        });
+        assert!(!in_sync_call());
+    }
+
+    #[test]
+    fn a_renderer_call_routes_to_the_nested_error_inside_it() {
+        let outcome: Result<(), String> = run_without_window(|| {
+            route((), |()| update_active_window(|_, _| ()), |message| message, |()| Ok(()))
+        });
+        assert_eq!(outcome, Err(NESTED.to_string()));
+    }
+
+    #[gpui::test]
+    fn the_window_of_a_sync_call_is_given_back_when_the_call_without_one_ends(cx: &mut gpui::TestAppContext) {
+        let window = cx.add_empty_window();
+        window.update(|window, app| {
+            let _scope = ScopeGuard::enter(window, app);
+            assert!(with_active_window(|_, _| ()).is_some());
+            run_without_window(|| assert!(with_active_window(|_, _| ()).is_none()));
+            assert!(with_active_window(|_, _| ()).is_some());
+            assert!(in_sync_call());
+        });
+        assert!(!in_sync_call());
+    }
 
     #[test]
     fn each_drop_effect_is_its_operation() {
