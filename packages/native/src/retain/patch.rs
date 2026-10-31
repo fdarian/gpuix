@@ -51,6 +51,7 @@ impl Unpatchable {
             Unpatchable::NoFrame => "NoFrame".to_owned(),
             Unpatchable::LayoutPass => "LayoutPass".to_owned(),
             Unpatchable::Unsteady => "Unsteady".to_owned(),
+            Unpatchable::Gliding => "Gliding".to_owned(),
             Unpatchable::ScrollAnimation => "ScrollAnimation".to_owned(),
             Unpatchable::Edited => "Edited".to_owned(),
             Unpatchable::Everything => "Everything".to_owned(),

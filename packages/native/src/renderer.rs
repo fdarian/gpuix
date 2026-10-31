@@ -9207,8 +9207,11 @@ impl GpuixView {
             reference: false,
             layout_only: false,
         };
+        let gliding = self.layout_flips.needs_frames(|id| {
+            tree.elements.get(&id).is_some_and(|element| !crate::layout::box_generation::is_hidden(&tree, element))
+        });
         self.retain
-            .preview(&sources, crate::scroll::animating() || crate::scrollbar::animating())
+            .preview(&sources, crate::scroll::animating() || crate::scrollbar::animating(), gliding)
     }
 
     /// Everything `Dormancy::holds` reads that a build of the element is not the only way to move,

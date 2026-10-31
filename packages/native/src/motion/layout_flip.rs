@@ -543,6 +543,19 @@ impl LayoutFlips {
             .retain(|_, departed| frame - departed.gone <= DEPARTED_FRAMES);
     }
 
+    /// Whether a frame has to carry a `layout` box on: a glide that has not ended, events that
+    /// the next render sends, or a box JS can drag, whose values nothing else tells a tick about.
+    /// `visible` says whether the element has a box, since none is stepped without one.
+    pub(crate) fn needs_frames(&self, visible: impl Fn(u64) -> bool) -> bool {
+        let store = self.0.borrow();
+        !store.events.is_empty()
+            || store.flips.iter().any(|(id, flip)| {
+                flip.config.is_some()
+                    && (flip.track.is_some() || matches!(drag_ids(&flip.source), Ok(Some(_))))
+                    && visible(*id)
+            })
+    }
+
     /// The events the glides raised since the last call.
     pub(crate) fn take_events(&self) -> Vec<LayoutEvent> {
         std::mem::take(&mut self.0.borrow_mut().events)
@@ -1069,6 +1082,38 @@ mod tests {
 
         let half = flips.step(2, rect([100.0, 0.0]), Drag::default(), at(start, 516)).unwrap();
         assert!((half.offset()[0] + 50.0).abs() < 1e-6, "{:?}", half.offset());
+    }
+
+    #[test]
+    fn a_box_needs_frames_from_the_commit_that_moved_it_until_its_events_are_sent() {
+        let start = Instant::now();
+        let flips = LayoutFlips::default();
+        let shown = |_: u64| true;
+        render(&flips, &[1]);
+        mount(&flips, 1, &json!({ "mode": true, "transition": { "duration": 1.0, "ease": "linear" } }));
+        flips.step(1, rect([0.0, 0.0]), Drag::default(), start).unwrap();
+        assert!(!flips.needs_frames(shown), "a box that never moved asks for nothing");
+
+        render(&flips, &[1]);
+        flips.step(1, rect([100.0, 0.0]), Drag::default(), at(start, 16)).unwrap();
+        assert!(flips.needs_frames(shown), "the glide and its start event");
+        flips.take_events();
+        assert!(flips.needs_frames(shown), "the glide goes on");
+        assert!(!flips.needs_frames(|_| false), "a box with no box of its own is stepped by nobody");
+
+        let done = flips.step(1, rect([100.0, 0.0]), Drag::default(), at(start, 1100)).unwrap();
+        assert!(done.completed);
+        assert!(flips.needs_frames(shown), "the complete event is sent by the next render");
+        flips.take_events();
+        assert!(!flips.needs_frames(shown), "idle again");
+    }
+
+    #[test]
+    fn a_box_that_can_be_dragged_always_needs_frames() {
+        let flips = LayoutFlips::default();
+        render(&flips, &[1]);
+        mount(&flips, 1, &json!({ "mode": true, "dragOffset": { "x": 4, "y": 5, "active": 6 } }));
+        assert!(flips.needs_frames(|_| true));
     }
 
     #[test]

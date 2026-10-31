@@ -196,7 +196,9 @@ pub(crate) enum Exclusion {
     Fixed,
     /// `overflow: scroll` or `auto`.
     Scroller,
-    /// `layout` prop: moves by an offset of its own.
+    /// `layout` prop: moves by an offset of its own. The box is built by every frame, so that its
+    /// glide starts where a commit moved it; whether a glide runs is asked of a tick by
+    /// [`Retain::preview`], not recorded.
     LayoutAnimation,
     /// Built as part of a paragraph's line.
     AtomicInline,
@@ -231,10 +233,7 @@ impl Exclusion {
     /// `<markdown>`, `<diff>`) does not: it is rebuilt by every frame that builds its page and
     /// paints the same in a tick.
     pub(crate) fn varies_with_time(self) -> bool {
-        matches!(
-            self,
-            Self::Highlight | Self::Svg | Self::VirtualList | Self::VirtualRow | Self::LayoutAnimation
-        )
+        matches!(self, Self::Highlight | Self::Svg | Self::VirtualList | Self::VirtualRow)
     }
 
     fn name(self) -> &'static str {
@@ -887,6 +886,9 @@ pub(crate) enum Unpatchable {
     LayoutPass,
     /// The frame built an element whose paint follows the clock, see [`Plan::unsteady`].
     Unsteady,
+    /// A `layout` glide is in flight, or its events are still to be sent: a frame steps it, and a
+    /// tick would leave it where it was. A `layout` box with no glide running is not this.
+    Gliding,
     ScrollAnimation,
     /// The tree is not the one the frame was built from.
     Edited,
@@ -1880,10 +1882,11 @@ impl Retain {
     /// nothing that follows the clock outside the units. Changes nothing: a tick that is not drawn
     /// this way is drawn whole, and finds the same changes.
     ///
-    /// `scroll_animating` says whether a scroll animation (or a scrollbar fading) has frames to run.
+    /// `scroll_animating` says whether a scroll animation (or a scrollbar fading) has frames to run,
+    /// and `gliding` whether a `layout` box has a glide or events that a frame has to carry on.
     /// `sources` is what the tick would be built from, with the peeks of the sources that are taken
     /// when read (`Measurements::peek_changed`, `links::peek_changed`, `take_commanded`'s peek).
-    pub(crate) fn preview(&self, sources: &Sources, scroll_animating: bool) -> Result<Vec<u64>, Unpatchable> {
+    pub(crate) fn preview(&self, sources: &Sources, scroll_animating: bool, gliding: bool) -> Result<Vec<u64>, Unpatchable> {
         if !self.planning || !self.plan.recorded || !self.seen.known {
             return Err(Unpatchable::NoFrame);
         }
@@ -1895,6 +1898,9 @@ impl Retain {
         }
         if scroll_animating {
             return Err(Unpatchable::ScrollAnimation);
+        }
+        if gliding {
+            return Err(Unpatchable::Gliding);
         }
         let revision = sources
             .tree
@@ -2843,6 +2849,9 @@ impl Retain {
             } else {
                 None
             };
+            // What a tick can patch is worth recording for where nothing can be skipped: the units of the
+            // frame after come from these records, so a page that forgets them never has one.
+            candidates |= motion.dynamic & Dynamic::OWN != 0 && refusal.is_none();
             let effects = (node.effects_end > node.effects_start)
                 .then(|| Rc::<[BuildEffect]>::from(&all_effects[node.effects_start..node.effects_end]));
             self.records.insert(
@@ -4880,7 +4889,7 @@ mod tests {
 
         fn preview(&self, hovered: &[u64], scroll_animating: bool) -> Result<Vec<u64>, Unpatchable> {
             let sources = sources_of(&self.tree, &self.focus, &self.handles, &self.scrolls, hovered, false);
-            self.retain.preview(&sources, scroll_animating)
+            self.retain.preview(&sources, scroll_animating, false)
         }
 
         /// The page, with 2 and 4 running something (whether it only paints, if so).
@@ -5120,7 +5129,7 @@ mod tests {
         assert_eq!(page.ids(), vec![2]);
         let mut sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
         sources.motion = vec![2];
-        assert_eq!(page.retain.preview(&sources, false), Err(Unpatchable::Ended(2)));
+        assert_eq!(page.retain.preview(&sources, false, false), Err(Unpatchable::Ended(2)));
         page.page(&[], None, None);
         assert_eq!(page.ids(), Vec::<u64>::new());
     }
@@ -5449,7 +5458,7 @@ mod tests {
             assert_eq!(page.ids(), if is_unit { vec![2] } else { Vec::new() }, "{runs:?}");
             let due = Sources { clock_due: &|_| true, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
             assert_eq!(
-                page.retain.preview(&due, false),
+                page.retain.preview(&due, false, false),
                 if is_unit { Ok(vec![2]) } else { Err(Unpatchable::Refused(Refusal::LayoutAnimation)) },
                 "{runs:?}"
             );
@@ -5470,7 +5479,7 @@ mod tests {
         assert_eq!(page.ids(), vec![2, 4]);
         assert_eq!(page.preview(&[], false), Ok(vec![4]), "a tick of the animation leaves the caret as painted");
         let due = Sources { clock_due: &|id| id == 2, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
-        assert_eq!(page.retain.preview(&due, false), Ok(vec![2, 4]), "the tick of the phase paints it too");
+        assert_eq!(page.retain.preview(&due, false, false), Ok(vec![2, 4]), "the tick of the phase paints it too");
     }
 
     #[test]
@@ -5490,7 +5499,7 @@ mod tests {
         assert_eq!(page.ids(), vec![2, 4]);
         assert_eq!(page.preview(&[], false), Ok(vec![4]), "a value that rests leaves the element as it was painted");
         let due = Sources { clock_due: &|id| id == 2, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
-        assert_eq!(page.retain.preview(&due, false), Ok(vec![2, 4]), "a value that moved or was written paints it again");
+        assert_eq!(page.retain.preview(&due, false, false), Ok(vec![2, 4]), "a value that moved or was written paints it again");
     }
 
     #[test]
@@ -5510,7 +5519,7 @@ mod tests {
         assert_eq!(page.ids(), vec![4]);
         assert_eq!(page.preview(&[], false), Ok(vec![4]), "a width that rests moves no box");
         let due = Sources { clock_due: &|id| id == 2, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
-        assert_eq!(page.retain.preview(&due, false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)), "a value that moves lays out");
+        assert_eq!(page.retain.preview(&due, false, false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)), "a value that moves lays out");
     }
 
     #[test]
@@ -5544,15 +5553,32 @@ mod tests {
         build(&mut page, Exclusion::CustomElement);
         build(&mut page, Exclusion::CustomElement);
         assert_eq!(page.preview(&[], false), Ok(vec![2]), "a code block is rebuilt by its frame, and paints the same in a tick");
-        for varies in [
-            Exclusion::Highlight,
-            Exclusion::Svg,
-            Exclusion::VirtualList,
-            Exclusion::LayoutAnimation,
-        ] {
+        for varies in [Exclusion::Highlight, Exclusion::Svg, Exclusion::VirtualList] {
             build(&mut page, varies);
             assert_eq!(page.preview(&[], false), Err(Unpatchable::Unsteady), "{varies:?}");
         }
+        build(&mut page, Exclusion::LayoutAnimation);
+        build(&mut page, Exclusion::LayoutAnimation);
+        assert_eq!(page.ids(), vec![2]);
+        assert_eq!(page.preview(&[], false), Ok(vec![2]), "a layout box with no glide running leaves a tick alone");
+        let sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
+        assert_eq!(page.retain.preview(&sources, false, true), Err(Unpatchable::Gliding), "a glide in flight is stepped by a frame");
+    }
+
+    #[test]
+    fn a_page_with_a_loop_and_nothing_to_skip_is_recorded_at_every_frame() {
+        let mut page = Units::new();
+        for _ in 0..6 {
+            page.frame(&[], false, |page| {
+                page.element(1, None, |page| {
+                    page.element(2, Some(true), |_| {});
+                    page.element(5, None, |page| page.retain.exclude(Exclusion::LayoutAnimation));
+                });
+            });
+        }
+        assert_eq!(page.retain.take_frame_log(), vec![true; 6], "a back-off forgets the records the next unit is chosen from");
+        assert_eq!(page.ids(), vec![2]);
+        assert_eq!(page.preview(&[], false), Ok(vec![2]));
     }
 
     #[test]
@@ -5574,7 +5600,7 @@ mod tests {
         both(&mut page);
         assert_eq!(page.preview(&[], false), Err(Unpatchable::Refused(Refusal::LayoutAnimation)));
         let sources = Sources { dormant: &|id| id == 5, ..sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false) };
-        assert_eq!(page.retain.preview(&sources, false), Ok(vec![2]), "dormant: the tick carries its clock without building it");
+        assert_eq!(page.retain.preview(&sources, false, false), Ok(vec![2]), "dormant: the tick carries its clock without building it");
     }
 
     #[test]
@@ -5585,7 +5611,7 @@ mod tests {
         let motion_on_5 = |page: &Units| {
             let mut sources = sources_of(&page.tree, &page.focus, &page.handles, &page.scrolls, &[], false);
             sources.motion = vec![5];
-            page.retain.preview(&sources, false)
+            page.retain.preview(&sources, false, false)
         };
         assert_eq!(motion_on_5(&page), Err(Unpatchable::Outside(5)), "a box that is drawn and runs something outside the unit");
         let none = serde_json::json!({"display": "none"});
@@ -5675,7 +5701,7 @@ mod tests {
             sources.dormant = dormant;
             sources.verdicts = verdicts;
             sources.motion = vec![3, 4];
-            page.retain.preview(&sources, false)
+            page.retain.preview(&sources, false, false)
         };
         assert_eq!(preview(&page, &culled, 0), Err(Unpatchable::Dormancy), "3 and 4 are to enter the dormant set, which a frame does");
         dormancy_frame(&mut page, &culled, 0);
