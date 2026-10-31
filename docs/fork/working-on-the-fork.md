@@ -30,8 +30,8 @@ zed vendors taffy 0.13.0 in `third_party/taffy`, wired in by `[patch.crates-io]`
 
 ## Commits
 
-One commit per behaviour, with its tests and its docs: a feature commit carries its `docs/reference.md` and `AGENTS.md` text
-and the matching `docs/fork/` text, as ordinary changes. There is no fork commit and no required order.
+One commit per behaviour, with its tests and its docs: a feature commit carries its `docs/reference.md` text and the
+matching `docs/fork/` text, as ordinary changes. `AGENTS.md` changes only when the code map or a rule every contributor needs does. There is no fork commit and no required order.
 
 - **A commit that needs a zed change bumps the gitlink itself.** Land the zed commit on `poc` and push it first, then make the
   gpuix commit with `git add zed`. A zed commit that is not on `fdarian/zed` leaves a `main` nobody else can check out.
@@ -52,8 +52,8 @@ each area's JS bindings, written three times: macOS, wasm and the Windows/Linux 
 - **An upstream change** the fork already carries in its own form is skipped, not merged; the ledger says so.
 - **Fork-owned files.** Many files below are the fork's alone, so a conflict there is upstream editing the code around them.
   The resolution keeps the invariant named, not one side.
-- **`AGENTS.md`.** Take the pick's side for sections the fork did not rewrite and keep the fork's for events, scrolling,
-  bounds and the other behaviour the fork documents.
+- **`AGENTS.md`.** Keep the fork's file: it is Alpina's own orientation, and the topic docs hold the behaviour. Take from the
+  pick only a line that is still true here.
 - **`.gitmodules`.** A conflict means upstream changed the submodule URL or branch; keep `fdarian/zed` on `poc`.
 - **`@gpuix/` in a picked commit** becomes `@ghia/` (see [syncing-upstream.md](syncing-upstream.md)).
 
