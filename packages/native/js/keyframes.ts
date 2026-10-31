@@ -85,7 +85,7 @@ interface KeyframesRegistry {
 
 // `@keyframes` is document-global, so one registry serves every renderer in the
 // process. It lives on `globalThis` so two copies of this module share it.
-const REGISTRY_KEY = Symbol.for("@gpuix/native/keyframes")
+const REGISTRY_KEY = Symbol.for("@ghia/native/keyframes")
 
 function registry(): KeyframesRegistry {
   const existing = Reflect.get(globalThis, REGISTRY_KEY) as KeyframesRegistry | undefined
@@ -122,7 +122,7 @@ function liveHosts(shared: KeyframesRegistry): KeyframesHost[] {
  * renderer exists yet. A renderer that throws for a good definition (its window
  * closed) does not stop the others: every renderer is tried, the definition is
  * kept, and the error is thrown afterwards. The check needs the native addon, so it runs once
- * `@gpuix/native/runtime` or `/testing` is loaded, which every renderer package
+ * `@ghia/native/runtime` or `/testing` is loaded, which every renderer package
  * does; the web build has no motion engine and checks nothing.
  */
 export function defineKeyframes(name: string, frames: KeyframesDefinition): void {
@@ -171,7 +171,7 @@ export function registerKeyframesHost(host: KeyframesHost): void {
 /**
  * Lets `defineKeyframes` check a definition before any renderer exists. The
  * native entry points call this; `keyframes.ts` cannot import the addon itself
- * because `@gpuix/native/host` is also loaded by the browser build.
+ * because `@ghia/native/host` is also loaded by the browser build.
  */
 export function registerKeyframesValidator(validator: KeyframesValidator): void {
   registry().validator = validator

@@ -1,4 +1,4 @@
-import { createTestRoot } from "@gpuix/react/testing"
+import { createTestRoot } from "@ghia/react/testing"
 import { ChatApp } from "./chat"
 
 const turnCount = Number(process.env.TURNS ?? "1000")

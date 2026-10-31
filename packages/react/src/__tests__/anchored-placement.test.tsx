@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { AnchoredPlacementEvent } from "@gpuix/native/host"
+import type { AnchoredPlacementEvent } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

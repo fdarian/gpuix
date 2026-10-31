@@ -1,5 +1,5 @@
 import React from "react"
-import { render } from "@gpuix/react"
+import { render } from "@ghia/react"
 import { App } from "./app"
 import { EXIT_COULD_NOT_RUN, run } from "./driver"
 

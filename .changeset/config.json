@@ -8,9 +8,9 @@
   "ignore": [],
   "fixed": [
     [
-      "@gpuix/native",
-      "@gpuix/solid",
-      "@gpuix/react"
+      "@ghia/native",
+      "@ghia/solid",
+      "@ghia/react"
     ]
   ],
   "linked": [],

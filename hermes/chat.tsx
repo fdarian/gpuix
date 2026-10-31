@@ -2,7 +2,7 @@
  * Desktop chat example for hermes-node. Always mounts; no Bun entry check.
  */
 import React from 'react'
-import { applyMacCpuThrottleFromEnv, render } from '@gpuix/react'
+import { applyMacCpuThrottleFromEnv, render } from '@ghia/react'
 import { ChatApp } from '../examples/chat.tsx'
 
 applyMacCpuThrottleFromEnv()

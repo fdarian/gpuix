@@ -1,7 +1,7 @@
 /** Browser entry for the full GPUIX chat example. */
 
 import React from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 import { ChatApp } from './chat'
 
 // Do NOT add `import.meta.hot.accept("./chat", ...)` here. Bun runs an

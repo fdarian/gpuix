@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
-import { clipboard } from "@gpuix/native/host"
+import { clipboard } from "@ghia/native/host"
 import { window } from "../index.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import type { TestRendererOptions } from "../testing.js"

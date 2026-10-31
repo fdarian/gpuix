@@ -20,7 +20,7 @@ import React, { useState, useRef } from "react"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { startFrameLoop } from "../reconciler/renderer.js"
 import { motion } from "../index"
-import type { EventPayload, HostDataTransfer, HostDragEvent, HostFile, HostMouseEvent } from "@gpuix/native"
+import type { EventPayload, HostDataTransfer, HostDragEvent, HostFile, HostMouseEvent } from "@ghia/native"
 import type { PublicInstance } from "../types/host.js"
 import { expectScreenshotsDiffer, expectScreenshotsEqual, SHOTS_DIR } from "./test-utils"
 
@@ -33,8 +33,8 @@ describe("frame loop", () => {
     () => {
       const script = [
         'import { readFile } from "node:fs/promises"',
-        'import { GpuixRenderer } from "@gpuix/native"',
-        'import { startFrameLoop } from "@gpuix/native/runtime"',
+        'import { GpuixRenderer } from "@ghia/native"',
+        'import { startFrameLoop } from "@ghia/native/runtime"',
         "const renderer = new GpuixRenderer(() => {})",
         "renderer.init({ focus: false })",
         "let wakes = 0",
@@ -78,7 +78,7 @@ describe("frame loop", () => {
       const script = [
         'import React from "react"',
         `import { createRenderer, render } from ${JSON.stringify(rendererPath)}`,
-        'import { startFrameLoop } from "@gpuix/native/runtime"',
+        'import { startFrameLoop } from "@ghia/native/runtime"',
         "const renderer = createRenderer()",
         "renderer.init({ focus: false })",
         "const wakes = []",
@@ -251,8 +251,8 @@ describe("frame loop", () => {
     "arms no timer on an idle wake loop and keeps replacement loops registered",
     () => {
       const script = [
-        'import { GpuixRenderer } from "@gpuix/native"',
-        'import { startFrameLoop } from "@gpuix/native/runtime"',
+        'import { GpuixRenderer } from "@ghia/native"',
+        'import { startFrameLoop } from "@ghia/native/runtime"',
         "const renderer = new GpuixRenderer(() => {})",
         "renderer.init({ focus: false, show: false })",
         "let clears = 0",
@@ -312,7 +312,7 @@ describe("frame loop", () => {
     "returns control to JavaScript while AppKit is idle",
     () => {
       const script = [
-        'import { GpuixRenderer } from "@gpuix/native"',
+        'import { GpuixRenderer } from "@ghia/native"',
         "const renderer = new GpuixRenderer(() => {})",
         "renderer.init({ focus: false })",
         "renderer.tick()",

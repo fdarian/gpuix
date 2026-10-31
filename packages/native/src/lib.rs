@@ -100,7 +100,7 @@ pub fn has_test_gpuix_renderer() -> bool {
 }
 
 /// Checks a keyframes definition the way `GpuixRenderer.defineKeyframes` does,
-/// without a renderer. `defineKeyframes` from `@gpuix/native/host` runs it
+/// without a renderer. `defineKeyframes` from `@ghia/native/host` runs it
 /// first so a bad definition throws where it is written.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[napi]

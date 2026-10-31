@@ -2,8 +2,8 @@
 
 import { forwardRef } from "react"
 import type { ReactElement, ReactNode } from "react"
-import { createElementMethods } from "@gpuix/native/host"
-import type { NativeRenderer } from "@gpuix/native/host"
+import { createElementMethods } from "@ghia/native/host"
+import type { NativeRenderer } from "@ghia/native/host"
 import { useGpuixRequired } from "../hooks/use-gpuix.js"
 import type { HostPointerEvent, KeyEvent, Props, PublicInstance, StyleDesc } from "../types/host.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"

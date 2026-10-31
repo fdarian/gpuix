@@ -117,7 +117,7 @@ The test renderer's tree dump reports a descendant of an `aria-hidden` or `inert
 
 ## Platform APIs
 
-- `navigator.clipboard.writeText`/`readText`, attached to an existing `navigator` and never creating one. `@gpuix/native` declares the global `Clipboard` type once for both adapters.
+- `navigator.clipboard.writeText`/`readText`, attached to an existing `navigator` and never creating one. `@ghia/native` declares the global `Clipboard` type once for both adapters.
 - File picker `accept` filters (a zed commit).
 - `EyeDropper` on macOS.
 

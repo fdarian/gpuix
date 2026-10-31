@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 function Counter() {
   const [count, setCount] = useState(0)

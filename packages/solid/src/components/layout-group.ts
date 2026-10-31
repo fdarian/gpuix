@@ -1,5 +1,5 @@
 import { createComponent, createContext, useContext, type Accessor, type JSX } from "solid-js"
-import { joinLayoutGroupId } from "@gpuix/native/host"
+import { joinLayoutGroupId } from "@ghia/native/host"
 
 /** The id prefix `motion.*` components below apply to their `layoutId`. */
 export const LayoutGroupContext = createContext<Accessor<string | undefined>>()

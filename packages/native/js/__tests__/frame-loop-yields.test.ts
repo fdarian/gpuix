@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import * as native from "@gpuix/native"
+import * as native from "@ghia/native"
 import { describe, expect, it } from "vitest"
 
 const nativePackageDir = fileURLToPath(new URL("../..", import.meta.url))

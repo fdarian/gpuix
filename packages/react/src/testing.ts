@@ -1,19 +1,19 @@
 import type { ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import {
   TestRenderer,
   hasNativeTestRenderer,
   type TestWindowOptions,
-} from "@gpuix/native/testing"
+} from "@ghia/native/testing"
 import { createRoot, flushSync, type Root } from "./reconciler/reconciler.js"
 import {
   createRendererState,
   type RootEventHandlers,
   type SyncDispatchResult,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { handleGpuixEvent } from "./reconciler/event-registry.js"
 
-export * from "@gpuix/native/testing"
+export * from "@ghia/native/testing"
 
 export interface TestRoot {
   root: Root

@@ -1,5 +1,5 @@
 {
-  "name": "@gpuix/native",
+  "name": "@ghia/native",
   "version": "0.10.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -58,7 +58,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fdarian/alpina.git",
+    "url": "git+https://github.com/fdarian/ghia.git",
     "directory": "packages/native"
   },
   "publishConfig": {
@@ -72,7 +72,7 @@
     "build:js": "tsc",
     "check:test-support": "tsc -p tsconfig.test-support.json",
     "build:web": "bun ../../scripts/web.ts --build-only",
-    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @gpuix/native locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
+    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @ghia/native locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
     "test": "vitest run js/__tests__"
   },
   "dependencies": {

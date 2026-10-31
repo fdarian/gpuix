@@ -8,8 +8,8 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import type { DomEvent, HostInputEvent } from "@gpuix/native/host"
-import { preventEventDefault, type HostMouseEvent, type HostPointerEvent, type HostProps, type InputProps, type KeyEvent } from "@gpuix/native/host"
+import type { DomEvent, HostInputEvent } from "@ghia/native/host"
+import { preventEventDefault, type HostMouseEvent, type HostPointerEvent, type HostProps, type InputProps, type KeyEvent } from "@ghia/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"

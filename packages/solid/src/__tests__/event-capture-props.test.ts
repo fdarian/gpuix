@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import type { MutationRenderer, NativeRenderer } from "@gpuix/native/host"
+import type { MutationRenderer, NativeRenderer } from "@ghia/native/host"
 import { createHostElement, HostRoot, insertHostNode, setHostProperty } from "../host.js"
 
 function setup() {

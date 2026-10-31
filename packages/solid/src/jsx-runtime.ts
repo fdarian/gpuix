@@ -60,7 +60,7 @@ import type {
   SvgFeTurbulenceProps,
   TextareaProps,
   VirtualListProps,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { createComponent, createElement, spread } from "./universal.js"
 import type { HostElement } from "./host.js"
 

@@ -932,7 +932,7 @@ function lookup(registry: Registry, id: number): Animation | undefined {
 // Shared through `globalThis` like the renderer states: the JSX runtime can load
 // a second copy of this module, and a copy that lists animations must be heard
 // by the copy that routes the events.
-const REGISTRIES_KEY = Symbol.for("@gpuix/native/web-animations")
+const REGISTRIES_KEY = Symbol.for("@ghia/native/web-animations")
 
 function registryOf(renderer: object): Registry {
   let all = Reflect.get(globalThis, REGISTRIES_KEY) as WeakMap<object, Registry> | undefined

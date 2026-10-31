@@ -8,7 +8,7 @@ import React, {
   useRef,
 } from "react"
 import type { ReactElement, ReactNode } from "react"
-import { resolveFocusTarget } from "@gpuix/native/host"
+import { resolveFocusTarget } from "@ghia/native/host"
 import type { FocusTarget, HostPointerEvent, KeyEvent, Props, PublicInstance } from "../types/host.js"
 import { useGpuix, useGpuixRequired } from "../hooks/use-gpuix.js"
 import { buttonProps } from "./button.js"

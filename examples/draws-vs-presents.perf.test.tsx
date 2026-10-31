@@ -44,8 +44,8 @@
 
 import React, { useRef, useState } from 'react'
 import { describe, expect, it } from 'vitest'
-import { flushSync, motion, type PublicInstance } from '@gpuix/react'
-import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
+import { flushSync, motion, type PublicInstance } from '@ghia/react'
+import { createTestRoot, hasNativeTestRenderer } from '@ghia/react/testing'
 import { formatSummary, sample, summarize, type Summary } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 

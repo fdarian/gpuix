@@ -13,8 +13,8 @@ export {
 } from "./universal.js"
 export { createRoot, GpuixContext, useGpuix, useGpuixRequired } from "./root.js"
 export type { HostElement } from "./host.js"
-import { document as sharedDocument, window } from "@gpuix/native/host"
-import type { GpuixDocument } from "@gpuix/native/host"
+import { document as sharedDocument, window } from "@ghia/native/host"
+import type { GpuixDocument } from "@ghia/native/host"
 import type { HostElement } from "./host.js"
 export { window }
 /** `activeElement` and `pointerLockElement` are `HostElement`s, the objects a `ref` gives. */
@@ -24,7 +24,7 @@ export type {
   DomEvent,
   RootEvent,
   WindowEventListener,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 export { createRenderer, render, resetRender } from "./renderer.js"
 export {
   Animation,
@@ -33,14 +33,14 @@ export {
   MediaQueryList,
   MediaQueryListEvent,
   matchMedia,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 export type {
   AnimationPlaybackControls,
   AnimationPlaybackControlsWithThen,
   AnimationPlaybackState,
   AnimationPlayState,
   MatchMedia,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 export {
   createAppearance,
   createMatchMedia,
@@ -132,11 +132,11 @@ export {
   resolveStyle,
   DismissableLayer,
 } from "./components/floating.js"
-export * from "@gpuix/native/host"
-export { screen } from "@gpuix/native/screen"
-export type { Display, Rectangle, Size } from "@gpuix/native/screen"
-export { GpuixRenderer } from "@gpuix/native"
-export type { EventModifiers, EventPayload, WindowOptions } from "@gpuix/native"
+export * from "@ghia/native/host"
+export { screen } from "@ghia/native/screen"
+export type { Display, Rectangle, Size } from "@ghia/native/screen"
+export { GpuixRenderer } from "@ghia/native"
+export type { EventModifiers, EventPayload, WindowOptions } from "@ghia/native"
 export type { JSX, SolidHostProps } from "./jsx-runtime.js"
 export type { MotionDivProps, MotionShapeProps, MotionSpanProps } from "./components/motion.js"
 export type {

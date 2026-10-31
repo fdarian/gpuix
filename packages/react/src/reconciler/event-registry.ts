@@ -1,4 +1,4 @@
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import {
   createRendererState,
   registerEventHandler,
@@ -6,7 +6,7 @@ import {
   unregisterEventHandler,
   unregisterEventListener,
   unregisterEventHandlers,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   Container,
   ElementIdAllocator,

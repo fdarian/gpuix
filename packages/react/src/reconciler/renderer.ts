@@ -1,21 +1,21 @@
 import React, { type ReactNode } from "react"
-import { GpuixRenderer } from "@gpuix/native"
-import type { EventPayload, WindowOptions } from "@gpuix/native"
-import { App as AutomationApp } from "@gpuix/native/automation"
+import { GpuixRenderer } from "@ghia/native"
+import type { EventPayload, WindowOptions } from "@ghia/native"
+import { App as AutomationApp } from "@ghia/native/automation"
 import {
   createNativeRenderer,
   enableAutomation as enableNativeAutomation,
   installBrowserAutomation as installNativeBrowserAutomation,
   startFrameLoop as startNativeFrameLoop,
   type WindowFontsOption,
-} from "@gpuix/native/runtime"
+} from "@ghia/native/runtime"
 import { createRoot, flushSync, type Root } from "./reconciler.js"
 import type {
   DebugFrameOverlayMode,
   NativeRenderer,
   WindowKeyEventHandlers,
 } from "../types/host.js"
-import type { LiveAutomationRenderer } from "@gpuix/native/automation"
+import type { LiveAutomationRenderer } from "@ghia/native/automation"
 
 export { createRoot, flushSync, reconciler } from "./reconciler.js"
 export type { Root } from "./reconciler.js"
@@ -57,7 +57,7 @@ function uninstallRuntimeErrorHandlers(): void {
 }
 
 export function createRenderer(
-  onEvent?: (event: import("@gpuix/native").EventPayload) => void
+  onEvent?: (event: import("@ghia/native").EventPayload) => void
 ): GpuixRenderer {
   return createNativeRenderer({
     onEvent,

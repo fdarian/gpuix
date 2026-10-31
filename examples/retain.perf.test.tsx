@@ -18,8 +18,8 @@
 
 import React, { useState } from 'react'
 import { describe, expect, it } from 'vitest'
-import { motion } from '@gpuix/react'
-import { createTestRoot, hasNativeTestRenderer, type TestRoot } from '@gpuix/react/testing'
+import { motion } from '@ghia/react'
+import { createTestRoot, hasNativeTestRenderer, type TestRoot } from '@ghia/react/testing'
 import { countedReasons, formatRetain, formatRetained, retainedDelta, type RetainCounters } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 import { ChatApp } from './chat'

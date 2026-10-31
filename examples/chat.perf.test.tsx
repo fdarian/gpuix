@@ -22,8 +22,8 @@ import {
   hasNativeTestRenderer,
   readMacCpuThrottle,
   type TestRoot,
-} from '@gpuix/react/testing'
-import { connectTest } from '@gpuix/react/automation'
+} from '@ghia/react/testing'
+import { connectTest } from '@ghia/react/automation'
 import { ChatApp } from './chat'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

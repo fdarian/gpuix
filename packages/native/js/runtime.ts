@@ -1,6 +1,6 @@
-import * as native from "@gpuix/native"
-import { GpuixRenderer } from "@gpuix/native"
-import type { EventPayload, WindowOptions } from "@gpuix/native"
+import * as native from "@ghia/native"
+import { GpuixRenderer } from "@ghia/native"
+import type { EventPayload, WindowOptions } from "@ghia/native"
 import {
   App,
   browserRendererAsTest,

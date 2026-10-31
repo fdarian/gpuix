@@ -4,12 +4,12 @@ import {
   observeWindowSize,
   readWindowInsets,
   readWindowSize,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   ObserverOptions,
   WindowInsets,
   WindowSize,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { useGpuix } from "./use-gpuix.js"
 
 export interface WindowSizeOptions extends ObserverOptions {}

@@ -1,6 +1,6 @@
 import type { Key, ReactNode, Ref } from "react"
-import type { EventPayload } from "@gpuix/native"
-import { HOST_BINDING } from "@gpuix/native/host"
+import type { EventPayload } from "@ghia/native"
+import { HOST_BINDING } from "@ghia/native/host"
 import type {
   Animation,
   BoundingClientRect,
@@ -78,9 +78,9 @@ import type {
   TextControlSelection,
   ScrollableElement,
   WindowKeyEventHandlers,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 
-export * from "@gpuix/native/host"
+export * from "@ghia/native/host"
 
 /** `onFocusIn` and `onFocusOut` do not exist in React, where `onFocus` and `onBlur` bubble. */
 type ReactHostProps<Props> = Omit<Props, "onFocusIn" | "onFocusOut">
@@ -221,7 +221,7 @@ export interface AnchoredProps extends ReactHostProps<NativeAnchoredProps> {
   ref?: Ref<PublicInstance>
 }
 
-export type VirtualListProps = import("@gpuix/native/host").VirtualListProps & {
+export type VirtualListProps = import("@ghia/native/host").VirtualListProps & {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<PublicInstance>

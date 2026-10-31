@@ -1,6 +1,6 @@
 /** The app the e2e drives: the `<webview>` among GPUI content, in a real window. */
 import React, { useEffect, useRef, useState } from "react"
-import type { WebviewInstance } from "@gpuix/react"
+import type { WebviewInstance } from "@ghia/react"
 
 export const FIXTURE = new URL("./fixture.html", import.meta.url).pathname
 export const FIXTURE_BARE = new URL("./fixture-bare.html", import.meta.url).pathname

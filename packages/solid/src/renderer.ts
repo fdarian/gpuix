@@ -1,6 +1,6 @@
 import type { JSX } from "solid-js"
-import { GpuixRenderer, type WindowOptions } from "@gpuix/native"
-import type { NativeRenderer, RootEventHandlers } from "@gpuix/native/host"
+import { GpuixRenderer, type WindowOptions } from "@ghia/native"
+import type { NativeRenderer, RootEventHandlers } from "@ghia/native/host"
 import {
   createNativeRenderer,
   installBrowserAutomation,
@@ -8,10 +8,10 @@ import {
   type FrameLoop,
   type FrameLoopOptions,
   type WindowFontsOption,
-} from "@gpuix/native/runtime"
+} from "@ghia/native/runtime"
 import { createRoot, type Root } from "./root.js"
 
-const RENDER_HOST = Symbol.for("@gpuix/solid/render-host")
+const RENDER_HOST = Symbol.for("@ghia/solid/render-host")
 
 interface RenderSlot {
   renderer?: NativeRenderer
@@ -33,7 +33,7 @@ export interface RenderOptions
 }
 
 export function createRenderer(
-  onEvent?: (event: import("@gpuix/native").EventPayload) => void
+  onEvent?: (event: import("@ghia/native").EventPayload) => void
 ): GpuixRenderer {
   return createNativeRenderer({
     onEvent,

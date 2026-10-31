@@ -2,8 +2,8 @@ import { afterAll, describe, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 
-// Inside the package so `@gpuix/solid` self-resolves to the built dist and
-// `@gpuix/native` and `solid-js` resolve through its node_modules.
+// Inside the package so `@ghia/solid` self-resolves to the built dist and
+// `@ghia/native` and `solid-js` resolve through its node_modules.
 const root = resolve(import.meta.dir, "../..")
 mkdirSync(join(root, "tmp"), { recursive: true })
 const temp = mkdtempSync(join(root, "tmp/clipboard-types-"))
@@ -12,7 +12,7 @@ afterAll(() => rmSync(temp, { recursive: true, force: true }))
 const tscTimeout = 60_000
 const tsc = join(root, "node_modules/typescript/bin/tsc")
 
-const source = `import { clipboard } from "@gpuix/solid"
+const source = `import { clipboard } from "@ghia/solid"
 
 export async function roundTrip(): Promise<string> {
   await navigator.clipboard.writeText("x")
@@ -21,7 +21,7 @@ export async function roundTrip(): Promise<string> {
 }
 `
 
-// Without the DOM lib, solid-js and the rest of @gpuix/native's declarations
+// Without the DOM lib, solid-js and the rest of @ghia/native's declarations
 // reference DOM types that do not exist, so that consumer needs skipLibCheck.
 // With it, errors are still reported in the fixture's own source, which is
 // where a missing `navigator.clipboard` shows up.

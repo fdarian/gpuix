@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react"
-import { REDUCED_MOTION_QUERY, matchMediaFor } from "@gpuix/native/host"
-import type { MatchMedia } from "@gpuix/native/host"
+import { REDUCED_MOTION_QUERY, matchMediaFor } from "@ghia/native/host"
+import type { MatchMedia } from "@ghia/native/host"
 import { useGpuixRequired } from "./use-gpuix.js"
 
 /**

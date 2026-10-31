@@ -9,7 +9,7 @@ following upstream is in [syncing-upstream.md](syncing-upstream.md).
 
 Two repos, one branch each that matters:
 
-| | `fdarian/alpina` | `fdarian/zed` |
+| | `fdarian/ghia` | `fdarian/zed` |
 |---|---|---|
 | Branch | `main` (GitHub default) | `poc` (GitHub default) |
 | Holds | the gpuix code with the fork's commits on top | zed's `gpuix` branch with the fork's commits on top |
@@ -52,10 +52,10 @@ each area's JS bindings, written three times: macOS, wasm and the Windows/Linux 
 - **An upstream change** the fork already carries in its own form is skipped, not merged; the ledger says so.
 - **Fork-owned files.** Many files below are the fork's alone, so a conflict there is upstream editing the code around them.
   The resolution keeps the invariant named, not one side.
-- **`AGENTS.md`.** Keep the fork's file: it is Alpina's own orientation, and the topic docs hold the behaviour. Take from the
+- **`AGENTS.md`.** Keep the fork's file: it is Ghia's own orientation, and the topic docs hold the behaviour. Take from the
   pick only a line that is still true here.
 - **`.gitmodules`.** A conflict means upstream changed the submodule URL or branch; keep `fdarian/zed` on `poc`.
-- **`@gpuix/` in a picked commit** becomes `@ghia/` (see [syncing-upstream.md](syncing-upstream.md)).
+- **`@ghia/` in a picked commit** becomes `@ghia/` (see [syncing-upstream.md](syncing-upstream.md)).
 
 The notes below are grouped by the topic doc that describes the behaviour; read that doc for why the invariant exists.
 
@@ -387,12 +387,12 @@ keeps its own build script for them.
 There is no format job and no Turbo: a format commit over upstream-derived code would conflict with every pick.
 
 A user-visible change adds a changeset with `pnpm changeset`. Pushing it to `main` runs `release.yml`, where the changesets
-action opens or updates the `Version Packages` PR. `@gpuix/native`, `@gpuix/solid` and `@gpuix/react` are `fixed`: they share a
+action opens or updates the `Version Packages` PR. `@ghia/native`, `@ghia/solid` and `@ghia/react` are `fixed`: they share a
 version. Merging that PR runs the action again: `bun run ci:release` builds the addon and both adapters on the runner and
 `changeset publish` publishes the three packages with provenance, through npm trusted publishing (OIDC, no token). Each
 package's `prepublishOnly` refuses to run without `CI`, so nothing is published from a laptop by accident.
 
-`@gpuix/native` ships its addon in its own tarball (`gpuix-native.darwin-arm64.node`) and has no platform packages; only
+`@ghia/native` ships its addon in its own tarball (`gpuix-native.darwin-arm64.node`) and has no platform packages; only
 `aarch64-apple-darwin` is built.
 
 The first publish of a package cannot use OIDC, because a trusted publisher can only be added to a package that exists on npm.
@@ -400,11 +400,11 @@ Publish each package once by hand from a checkout of the version commit, after b
 `workspace:^` into the version, `npm publish` does not):
 
 ```bash
-CI=true pnpm --filter @gpuix/native --filter @gpuix/solid --filter @gpuix/react publish --access public --no-git-checks
+CI=true pnpm --filter @ghia/native --filter @ghia/solid --filter @ghia/react publish --access public --no-git-checks
 ```
 
-Then on npmjs.com add a trusted publisher to each package (Settings, Publishing): repository `fdarian/alpina`, workflow
-`release.yml`, branch `main`. `repository.url` in each `package.json` must stay `git+https://github.com/fdarian/alpina.git`, or
+Then on npmjs.com add a trusted publisher to each package (Settings, Publishing): repository `fdarian/ghia`, workflow
+`release.yml`, branch `main`. `repository.url` in each `package.json` must stay `git+https://github.com/fdarian/ghia.git`, or
 the publish is rejected.
 
 ## Where new code goes
@@ -417,7 +417,7 @@ upstream tractable.
   default, into `MetricsOverride` and into the `GpuixMetrics` TypeScript interface, so a design tweak is a re-render and not a
   native rebuild. It also goes into `Metrics::hash_diff_layout_into` if it changes the height of a `<diff>` row, since a changed
   hash resets the list; the markdown and code metrics stay out of it because a reset drops the scroll anchor.
-- **Framework-neutral TypeScript belongs in `@gpuix/native`, not in an adapter.** `@gpuix/native/host` owns host contracts,
+- **Framework-neutral TypeScript belongs in `@ghia/native`, not in an adapter.** `@ghia/native/host` owns host contracts,
   mutation batching, renderer-local ids, event routing, observers and text search. `testing` and `automation` own the shared
   test wrapper and automation client. None of these subpaths loads the `.node` addon at import time except `testing`, which
   constructs the native test class. React and Solid keep framework scheduling, context, JSX integration and components.

@@ -13,8 +13,8 @@ import React, {
   useState,
 } from "react"
 import type { ReactElement, ReactNode, Ref } from "react"
-import type { DomEvent, RootEvent } from "@gpuix/native/host"
-import { EVENT_PROP_NAMES, pushDismissLayer } from "@gpuix/native/host"
+import type { DomEvent, RootEvent } from "@ghia/native/host"
+import { EVENT_PROP_NAMES, pushDismissLayer } from "@ghia/native/host"
 import type {
   DismissLayer,
   KeyEvent,

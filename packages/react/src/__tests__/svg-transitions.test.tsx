@@ -12,7 +12,7 @@ import path from "path"
 import { fileURLToPath } from "url"
 import { createElement, type ReactNode } from "react"
 import { describe, expect, it } from "vitest"
-import type { HostTransitionEvent } from "@gpuix/native/host"
+import type { HostTransitionEvent } from "@ghia/native/host"
 import { CSSTransition, motion, type PublicInstance } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 

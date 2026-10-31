@@ -15,8 +15,8 @@ import {
   useState,
 } from "react"
 import type { ReactElement, ReactNode, Ref } from "react"
-import { measurePopLayout } from "@gpuix/native/host"
-import type { PopLayoutStyle, PresenceMode } from "@gpuix/native/host"
+import { measurePopLayout } from "@ghia/native/host"
+import type { PopLayoutStyle, PresenceMode } from "@ghia/native/host"
 import { useGpuix } from "../hooks/use-gpuix.js"
 import type { Instance } from "../types/host.js"
 export type ComponentKey = string | number

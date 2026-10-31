@@ -1,7 +1,7 @@
 import { createContext, createElement, useContext, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
-import { isReducedMotion, mergeMotionConfig } from "@gpuix/native/host"
-import type { MotionConfigValue } from "@gpuix/native/host"
+import { isReducedMotion, mergeMotionConfig } from "@ghia/native/host"
+import type { MotionConfigValue } from "@ghia/native/host"
 import { useReducedMotion } from "../hooks/use-media-query.js"
 
 type MotionConfigState = MotionConfigValue & {

@@ -8,7 +8,7 @@ import {
   readWindowInsets,
   readWindowSize,
   toAppearance,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   Appearance,
   MatchMedia,
@@ -17,7 +17,7 @@ import type {
   TextSearchOptions,
   WindowInsets,
   WindowSize,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { useGpuix, useGpuixRequired } from "./root.js"
 
 export function createWindowSize(options: ObserverOptions = {}): Accessor<WindowSize> {

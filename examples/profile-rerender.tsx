@@ -9,8 +9,8 @@
  */
 
 import React from 'react'
-import { flushSync } from '@gpuix/react'
-import { createTestRoot } from '@gpuix/react/testing'
+import { flushSync } from '@ghia/react'
+import { createTestRoot } from '@ghia/react/testing'
 import { App } from './rerender-fixture'
 
 const mode = process.env.MODE ?? 'frame'

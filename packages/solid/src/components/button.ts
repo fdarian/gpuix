@@ -1,8 +1,8 @@
 /** Headless Base UI-shaped Button: a focusable `div` that acts like `<button>`. */
 
 import { splitProps, type JSX } from "solid-js"
-import { createElementMethods } from "@gpuix/native/host"
-import type { HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@gpuix/native/host"
+import { createElementMethods } from "@ghia/native/host"
+import type { HostPointerEvent, HostProps, KeyEvent, NativeRenderer } from "@ghia/native/host"
 import { useGpuixRequired } from "../root.js"
 import { renderSlot, resolveStyle, type StateStyle } from "./floating.js"
 

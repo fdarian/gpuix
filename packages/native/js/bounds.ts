@@ -17,7 +17,7 @@ interface FlushableQueue {
   flushMutations(): void
 }
 
-const QUEUES_KEY = Symbol.for("@gpuix/native/mutation-queues")
+const QUEUES_KEY = Symbol.for("@ghia/native/mutation-queues")
 
 // Keyed by the renderer object a queue applies to. Queues are held weakly: a
 // root that was unmounted and replaced leaves its queue behind otherwise.
@@ -95,7 +95,7 @@ export function readBoundingClientRect(renderer: NativeRenderer, id: number): Bo
  * Key of the method a framework adapter puts on its host element instances to
  * let shared code (observers) reach the element's renderer and mutation queue.
  */
-export const HOST_BINDING: unique symbol = Symbol.for("@gpuix/native/host-binding")
+export const HOST_BINDING: unique symbol = Symbol.for("@ghia/native/host-binding")
 
 /**
  * Key of the method a host element offers to be told each time it is created
@@ -103,7 +103,7 @@ export const HOST_BINDING: unique symbol = Symbol.for("@gpuix/native/host-bindin
  * again after a removal, so an observer started earlier must follow it. An
  * element that is always mounted when handed out (React) does not have it.
  */
-export const HOST_MOUNT: unique symbol = Symbol.for("@gpuix/native/host-mount")
+export const HOST_MOUNT: unique symbol = Symbol.for("@ghia/native/host-mount")
 
 export interface HostBinding {
   readonly renderer: NativeRenderer

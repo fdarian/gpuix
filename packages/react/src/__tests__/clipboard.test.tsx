@@ -6,7 +6,7 @@
 
 import React, { useState } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import { clipboard } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 

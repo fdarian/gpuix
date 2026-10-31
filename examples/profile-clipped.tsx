@@ -9,7 +9,7 @@
  */
 
 import React from 'react'
-import { createTestRoot } from '@gpuix/react/testing'
+import { createTestRoot } from '@ghia/react/testing'
 
 const clip = process.env.CLIP ?? 'hidden'
 const seconds = Number(process.env.SECONDS ?? '12')

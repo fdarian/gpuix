@@ -75,12 +75,12 @@ describe("Solid package consumer", () => {
       private: true,
       type: "module",
       dependencies: {
-        "@gpuix/native": `file:./${nativeTarball}`,
-        "@gpuix/solid": `file:./${solidTarball}`,
+        "@ghia/native": `file:./${nativeTarball}`,
+        "@ghia/solid": `file:./${solidTarball}`,
         "solid-js": "1.9.15",
       },
       overrides: {
-        "@gpuix/native": `file:./${nativeTarball}`,
+        "@ghia/native": `file:./${nativeTarball}`,
       },
     }))
     for (const filename of [

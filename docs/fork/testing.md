@@ -305,7 +305,7 @@ The gpui fuzzers run inside `cargo test -p gpui --lib --features test-support`.
 ## Measuring performance
 
 - **Profile one path at a time: first mount, scroll, or a chrome `setState`.** Mount is React mapping every child into queued `createInstance` / `setStyle` / `setCustomProp` ops, one `applyBatch`, the Rust `RetainedTree`, then a first paint that builds only the visible rows. A scroll is wheel, notify, `render()`, Taffy on the visible rows, paint. A sidebar click or a composer key re-renders the parent and runs `{rows.map(...)}` again unless the list is in `memo`, which costs what a mount costs.
-- **Profile a mount from a short script, not the live window,** because the tick loop drowns it: mount through `createTestRoot()` (from `@gpuix/react/testing`), time `root.render(...)`, exit. `examples/profile-chat-scroll.tsx` is that script for the chat (`MOUNT_ONLY=1`, `INTERACT=1` for the sidebar and composer path; a fast wheel flush is no proof that chrome updates are cheap).
+- **Profile a mount from a short script, not the live window,** because the tick loop drowns it: mount through `createTestRoot()` (from `@ghia/react/testing`), time `root.render(...)`, exit. `examples/profile-chat-scroll.tsx` is that script for the chat (`MOUNT_ONLY=1`, `INTERACT=1` for the sidebar and composer path; a fast wheel flush is no proof that chrome updates are cheap).
   ```bash
   cd examples
   MOUNT_ONLY=1 bun --cpu-prof --cpu-prof-dir=../tmp/cpu-profiles profile-chat-scroll.tsx

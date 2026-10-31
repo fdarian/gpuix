@@ -16,7 +16,7 @@ import {
   motion,
   type PublicInstance,
 } from "../index"
-import type { HostAnimationEvent } from "@gpuix/native/host"
+import type { HostAnimationEvent } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 

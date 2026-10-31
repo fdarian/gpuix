@@ -28,7 +28,7 @@ import {
   requestFormSubmit,
   selectTextControl,
   setTextControlSelectionRange,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   Animation,
   ElementMethods,
@@ -51,8 +51,8 @@ import type {
   StyleDesc,
   TextControlHost,
   WebviewMethods,
-} from "@gpuix/native/host"
-import type { DomEvent } from "@gpuix/native/host"
+} from "@ghia/native/host"
+import type { DomEvent } from "@ghia/native/host"
 
 export type HostNode = HostElement | HostText
 export type HostParent = HostRoot | HostElement

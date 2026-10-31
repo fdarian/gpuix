@@ -6,7 +6,7 @@
  * the window, as a key with nothing focused is.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { document, window } from "@gpuix/native/host"
+import { document, window } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 describe.skipIf(!hasNativeTestRenderer)("Solid window and document pointer listeners", () => {

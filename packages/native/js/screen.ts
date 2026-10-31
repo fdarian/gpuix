@@ -1,7 +1,7 @@
-import * as native from "@gpuix/native"
-import type { Display } from "@gpuix/native"
+import * as native from "@ghia/native"
+import type { Display } from "@ghia/native"
 
-export type { Display, Rectangle, Size } from "@gpuix/native"
+export type { Display, Rectangle, Size } from "@ghia/native"
 
 // The browser entry has no display functions, so they are read off the
 // namespace: a named import would fail the browser bundle of the adapters.

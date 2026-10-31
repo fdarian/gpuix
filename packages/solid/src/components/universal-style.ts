@@ -1,6 +1,6 @@
 import { createEffect, onCleanup, type JSX } from "solid-js"
-import { pushUniversalStyle } from "@gpuix/native/host"
-import type { StyleDesc, UniversalStyleEntry } from "@gpuix/native/host"
+import { pushUniversalStyle } from "@ghia/native/host"
+import type { StyleDesc, UniversalStyleEntry } from "@ghia/native/host"
 import { useGpuix } from "../root.js"
 
 export interface UniversalStyleProps {

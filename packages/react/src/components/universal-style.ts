@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react"
-import { pushUniversalStyle } from "@gpuix/native/host"
-import type { StyleDesc, UniversalStyleEntry } from "@gpuix/native/host"
+import { pushUniversalStyle } from "@ghia/native/host"
+import type { StyleDesc, UniversalStyleEntry } from "@ghia/native/host"
 import { useGpuix } from "../hooks/use-gpuix.js"
 
 export interface UniversalStyleProps {

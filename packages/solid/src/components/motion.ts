@@ -9,7 +9,7 @@ import {
   splitProps,
   type JSX,
 } from "solid-js"
-import type { DomEvent, MotionValueStyle } from "@gpuix/native/host"
+import type { DomEvent, MotionValueStyle } from "@ghia/native/host"
 import {
   elementScope,
   gestureDescription,
@@ -26,7 +26,7 @@ import {
   withoutIgnoredSpanStyle,
   withoutLayoutTransition,
   wireMotionTransition,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   ExitTarget,
   LayoutDrag,
@@ -55,7 +55,7 @@ import type {
   SvgImageProps,
   SvgTextProps,
   SvgTspanProps,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type { SolidHostProps } from "../jsx-runtime.js"
 import { createElement, spread } from "../universal.js"
 import type { HostElement } from "../host.js"

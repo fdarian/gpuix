@@ -1,7 +1,7 @@
 import path from "path"
 import { describe, expect, it } from "vitest"
 import type { ReactNode } from "react"
-import type { StyleDesc } from "@gpuix/native/host"
+import type { StyleDesc } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 

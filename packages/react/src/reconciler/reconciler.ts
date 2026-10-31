@@ -7,7 +7,7 @@ import {
   createMutationQueue,
   installElementSource,
   syncWindowEventListeners,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { GpuixContext, type GpuixContextValue } from "../hooks/use-gpuix.js"
 import type {
   Container,

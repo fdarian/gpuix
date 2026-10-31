@@ -3,10 +3,10 @@ import {
   TestRenderer,
   hasNativeTestRenderer,
   type TestWindowOptions,
-} from "@gpuix/native/testing"
+} from "@ghia/native/testing"
 import { createRoot, type Root } from "./root.js"
 
-export * from "@gpuix/native/testing"
+export * from "@ghia/native/testing"
 
 export interface TestRoot {
   root: Root

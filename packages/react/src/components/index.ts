@@ -18,8 +18,8 @@ import {
   withoutIgnoredSpanStyle,
   withoutLayoutTransition,
   wireMotionTransition,
-} from "@gpuix/native/host"
-import type { StyleDesc } from "@gpuix/native/host"
+} from "@ghia/native/host"
+import type { StyleDesc } from "@ghia/native/host"
 import type {
   ExitTarget,
   LayoutDrag,

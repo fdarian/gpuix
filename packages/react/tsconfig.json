@@ -13,7 +13,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@gpuix/react",
+    "jsxImportSource": "@ghia/react",
     "lib": ["ES2022", "DOM"],
     "types": ["vitest/globals", "node"],
     "verbatimModuleSyntax": true

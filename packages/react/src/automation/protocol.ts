@@ -1,1 +1,1 @@
-export * from "@gpuix/native/automation"
+export * from "@ghia/native/automation"

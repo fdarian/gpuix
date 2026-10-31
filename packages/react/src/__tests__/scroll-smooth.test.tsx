@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { StyleDesc } from "@gpuix/native/host"
-import type { ScrollEvent } from "@gpuix/native/host"
+import type { StyleDesc } from "@ghia/native/host"
+import type { ScrollEvent } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

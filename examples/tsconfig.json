@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "jsxImportSource": "@gpuix/react",
+    "jsxImportSource": "@ghia/react",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

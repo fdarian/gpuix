@@ -76,7 +76,7 @@ async function buildWasm(): Promise<void> {
   })
 
   fs.mkdirSync(PACKAGE_OUTPUT, { recursive: true })
-  console.log("web: generating the @gpuix/native browser loader")
+  console.log("web: generating the @ghia/native browser loader")
   await run({
     command: "wasm-bindgen",
     args: [WASM, "--target", "web", "--out-dir", PACKAGE_OUTPUT, "--out-name", "gpuix-web"],
@@ -99,10 +99,10 @@ async function main() {
     return
   }
 
-  // `examples/` imports `@gpuix/react` through its `main`, so `dist` has to
+  // `examples/` imports `@ghia/react` through its `main`, so `dist` has to
   // exist. Run `bun run dev` in `packages/react` to keep it fresh while editing
   // the library itself.
-  console.log("web: building @gpuix/react")
+  console.log("web: building @ghia/react")
   await run({ command: "bun", args: ["run", "build"], cwd: path.join(ROOT, "packages", "react") })
 
   const routes: Record<string, unknown> = {}

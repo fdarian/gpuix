@@ -1,4 +1,4 @@
-preload = ["@gpuix/solid/preload"]
+preload = ["@ghia/solid/preload"]
 
 [test]
-preload = ["@gpuix/solid/preload"]
+preload = ["@ghia/solid/preload"]

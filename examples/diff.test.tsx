@@ -16,7 +16,7 @@ import path from "path"
 import { fileURLToPath } from "url"
 import { describe, it, expect, beforeEach } from "vitest"
 import React from "react"
-import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "@gpuix/react/testing"
+import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "@ghia/react/testing"
 import type { StructuredPatchHunk as Hunk } from "diff"
 import { DiffViewer } from "./diff"
 

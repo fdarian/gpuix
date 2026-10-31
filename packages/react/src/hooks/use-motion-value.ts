@@ -7,7 +7,7 @@ import {
   springValue,
   transformValue,
   velocityValue,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   MotionData,
   MotionSpringConfig,
@@ -15,7 +15,7 @@ import type {
   MotionValue,
   MotionValueEvents,
   Widen,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { reconciler } from "../reconciler/reconciler.js"
 import { useGpuixRequired } from "./use-gpuix.js"
 

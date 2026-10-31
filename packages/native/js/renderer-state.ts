@@ -167,8 +167,8 @@ export type ActiveRoot = RendererRootBinding & {
   scoped: GpuixEventTarget
 }
 
-const STATE_KEY = Symbol.for("@gpuix/native/renderer-states")
-const MOUNTED_KEY = Symbol.for("@gpuix/native/mounted-renderer")
+const STATE_KEY = Symbol.for("@ghia/native/renderer-states")
+const MOUNTED_KEY = Symbol.for("@ghia/native/mounted-renderer")
 
 /** Mount order, oldest first. Shared through `globalThis` like the renderer states. */
 function mountedRenderers(): NativeRenderer[] {

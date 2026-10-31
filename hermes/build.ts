@@ -16,12 +16,12 @@ const common: esbuild.BuildOptions = {
   bundle: true,
   platform: 'node',
   format: 'cjs',
-  external: ['@gpuix/native'],
+  external: ['@ghia/native'],
   jsx: 'automatic',
-  jsxImportSource: '@gpuix/react',
+  jsxImportSource: '@ghia/react',
   define: { 'process.env.NODE_ENV': '"production"' },
   alias: {
-    '@gpuix/react': path.join(repo, 'packages/react'),
+    '@ghia/react': path.join(repo, 'packages/react'),
     react: path.join(repo, 'node_modules/react'),
   },
   plugins: [

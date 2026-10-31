@@ -1,5 +1,5 @@
 import fs from "fs"
-import { screen } from "@gpuix/native/screen"
+import { screen } from "@ghia/native/screen"
 import { afterEach, describe, expect, it } from "vitest"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
 import { readPixels, SHOTS_DIR, type Pixels } from "./test-utils.js"

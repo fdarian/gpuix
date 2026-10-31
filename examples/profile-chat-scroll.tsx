@@ -1,7 +1,7 @@
 // Profile ChatApp wheel frames. Run with bun --cpu-prof.
 import React from 'react'
-import { connectTest } from '@gpuix/react/automation'
-import { applyMacCpuThrottleFromEnv, createTestRoot } from '@gpuix/react/testing'
+import { connectTest } from '@ghia/react/automation'
+import { applyMacCpuThrottleFromEnv, createTestRoot } from '@ghia/react/testing'
 import { ChatApp } from './chat'
 
 applyMacCpuThrottleFromEnv()

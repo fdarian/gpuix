@@ -2,10 +2,10 @@
 
 Proof that a GPUIX React app can run on [hermes-node](https://github.com/tmikov/hermes-node) instead of Node or Bun.
 
-The window is real GPUI. React reconciles in Hermes. The native addon is the same `@gpuix/native` `.node` file.
+The window is real GPUI. React reconciles in Hermes. The native addon is the same `@ghia/native` `.node` file.
 
 ```
-React CJS bundle  ►  hermes-node  ►  process.dlopen  ►  @gpuix/native  ►  GPUI
+React CJS bundle  ►  hermes-node  ►  process.dlopen  ►  @ghia/native  ►  GPUI
 ```
 
 ## Run

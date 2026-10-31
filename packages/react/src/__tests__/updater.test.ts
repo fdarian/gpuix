@@ -25,7 +25,7 @@ type NativeUpdater = {
   ) => Promise<AvailableUpdate | null>
 }
 
-const native = createRequire(import.meta.url)("@gpuix/native") as NativeUpdater
+const native = createRequire(import.meta.url)("@ghia/native") as NativeUpdater
 const describeNative = typeof native.checkUpdate === "function" ? describe : describe.skip
 
 function listen(

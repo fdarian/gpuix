@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url"
-import solidPlugin from "@gpuix/solid/bun-plugin"
+import solidPlugin from "@ghia/solid/bun-plugin"
 
 const result = await Bun.build({
   entrypoints: [fileURLToPath(new URL("./build-entry.tsx", import.meta.url))],

@@ -7,8 +7,8 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import type { DomEvent } from "@gpuix/native/host"
-import type { HostMouseEvent, HostPointerEvent, HostProps } from "@gpuix/native/host"
+import type { DomEvent } from "@ghia/native/host"
+import type { HostMouseEvent, HostPointerEvent, HostProps } from "@ghia/native/host"
 import { jsx } from "../jsx-runtime.js"
 import {
   FloatingLayer,

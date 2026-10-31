@@ -52,7 +52,7 @@ describe("native ESM package", () => {
       "node",
       "--input-type=module",
       "-e",
-      "Promise.all([import('@gpuix/native/host'), import('@gpuix/native/automation')]).then(([host, automation]) => console.log(typeof host.createMutationQueue, typeof automation.connectTest))",
+      "Promise.all([import('@ghia/native/host'), import('@ghia/native/automation')]).then(([host, automation]) => console.log(typeof host.createMutationQueue, typeof automation.connectTest))",
     ])
     expect(imported.status, imported.stderr).toBe(0)
     expect(imported.stdout.trim()).toBe("function function")
@@ -62,7 +62,7 @@ describe("native ESM package", () => {
       "--conditions=browser",
       "--input-type=module",
       "-e",
-      "console.log(import.meta.resolve('@gpuix/native'))",
+      "console.log(import.meta.resolve('@ghia/native'))",
     ])
     expect(browser.status, browser.stderr).toBe(0)
     expect(browser.stdout).toContain("browser.mjs")

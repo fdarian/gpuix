@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import { defineKeyframes } from "../index"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 

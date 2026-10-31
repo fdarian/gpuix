@@ -12,7 +12,7 @@
 /// stays stale. Only a test can catch that.
 ///
 /// `injectIntoGlobalHook` has to run before `reconciler.ts` evaluates, so
-/// `@gpuix/react` is loaded with a dynamic import after the hook is installed.
+/// `@ghia/react` is loaded with a dynamic import after the hook is installed.
 /// A static import would evaluate first and the injection would find no hook.
 
 import { describe, expect, it } from "vitest"

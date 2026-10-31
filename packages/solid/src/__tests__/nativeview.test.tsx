@@ -3,7 +3,7 @@
 // `onDetach`, and in which order. The geometry of the surface is covered with the native side.
 import { For, Show, createSignal } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing.js"
 
 let open: TestRoot | undefined

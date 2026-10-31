@@ -2,7 +2,7 @@
 /// per input, aimed at what is under the pointer, with a path, capture and bubble.
 
 import { beforeEach, describe, expect, it } from "vitest"
-import type { HostWheelEvent, ScrollEvent } from "@gpuix/native/host"
+import type { HostWheelEvent, ScrollEvent } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
