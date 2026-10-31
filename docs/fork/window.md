@@ -31,7 +31,7 @@ bar had to sit exactly under the strip and its buttons paid the delay. GPUI had 
 `appRegion: "drag" | "no-drag"` is Electron's `-webkit-app-region`.
 
 `appRegion` is not a DOM or CSS property, and the standards-track `window-drag` has a different value set. It is the
-exception to the DOM/CSS principle ([FORK.md](../../FORK.md)): a web port needs it and nothing in the DOM does the job.
+exception to the DOM/CSS principle ([index.md](index.md#the-principle-dom-and-css-semantics)): a web port needs it and nothing in the DOM does the job.
 
 ### Why the press is handled natively
 

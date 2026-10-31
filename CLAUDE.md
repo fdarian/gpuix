@@ -1,6 +1,3 @@
-Read [AGENTS.md](./AGENTS.md) first.
+Read [AGENTS.md](./AGENTS.md) first, then [docs/fork/index.md](./docs/fork/index.md): this is Alpina, `fdarian/alpina` on `main`, a fork of `remorses/gpuix`, and the fork docs override AGENTS.md wherever they disagree.
 
-This checkout is the `fdarian/gpuix` fork; [FORK.md](./FORK.md) overrides AGENTS.md wherever they disagree.
-AGENTS.md started as upstream's file and the fork now edits it for its own behaviour, so upstream syncs can
-conflict there. The `zed/` submodule is `fdarian/zed` on `poc`, not `remorses/zed` on `gpuix`: keep it on
-local `poc`, and land zed changes there and update the submodule as described in [docs/fork/working-on-the-fork.md](./docs/fork/working-on-the-fork.md)'s "Repos and branches".
+The `zed/` submodule is `fdarian/zed` on `poc`, not `remorses/zed` on `gpuix`. Keep it on local `poc`. Both `main` and zed `poc` are append-only: never rebase or force-push. Upstream is followed by cherry-pick ([docs/fork/syncing-upstream.md](./docs/fork/syncing-upstream.md)); a commit that needs a zed change bumps the gitlink itself once zed is pushed ([docs/fork/working-on-the-fork.md](./docs/fork/working-on-the-fork.md), "Repos and branches").
