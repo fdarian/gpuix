@@ -50,8 +50,17 @@ async function recoverWindow() {
   if (remaining) throw new NotCheckable(`${remaining} (it could not be made key and visible again after: ${cause})`)
 }
 
+/** Gets the window back before an action if the machine took it (another app took the focus between two
+ *  checks), or ends the run as not checkable. A loss during the action is `check`'s to find. */
+export async function ensureCheckable() {
+  if (problem() === null) return
+  const remaining = await makeCheckable(false)
+  if (remaining) throw new NotCheckable(remaining)
+}
+
 /** Records the outcome of a check that reads something that may throw. */
 export async function attempt(group: string, name: string, body: () => Promise<[boolean, string]> | [boolean, string]) {
+  await ensureCheckable()
   try {
     const [pass, detail] = await body()
     check(group, name, pass, detail)
@@ -131,10 +140,13 @@ export function spanIs(span: Span, start: number, end: number): boolean {
 
 /** Mounts a scene and waits for each named `<nativeview>` to be attached once more, then for the frame. */
 export async function showScene(scene: Scene, mounts: string[]) {
+  // A window the machine hid gets no frames, and its views never attach.
+  await ensureCheckable()
   const before = mounts.map((name) => recordOf(name).attaches.length)
   controls.show(scene)
   await waitFor(`${mounts.join(", ")} to attach`, () => mounts.every((name, index) => recordOf(name).attaches.length > before[index]!))
   await sleep(SETTLE_MS)
+  await ensureCheckable()
 }
 
 /** Takes the scene down. Whether the views detached is the lifecycle group's to check, not a precondition of

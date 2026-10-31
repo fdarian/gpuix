@@ -68,3 +68,16 @@ void nv_click_later(double x, double y) {
     [window sendEvent:mouse_event(window, NSEventTypeLeftMouseUp, x, y, 1)];
   });
 }
+
+static int count_views(NSView *view) {
+  int count = 1;
+  for (NSView *subview in [view subviews]) count += count_views(subview);
+  return count;
+}
+
+// How many views the app's window holds in all, the content view included: a native surface is among them
+// from the frame that makes it.
+int nv_view_count(void) {
+  NSWindow *window = app_window();
+  return window ? count_views([window contentView]) : 0;
+}

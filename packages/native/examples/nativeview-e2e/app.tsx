@@ -340,7 +340,7 @@ function PointerScene(props: PointerScene) {
           onClick={() => {
             controls.pointer.buttonClicks += 1
           }}
-          style={{ ...absolute(layout.button), backgroundColor: COLORS.blue }}
+          style={{ ...absolute(layout.button), backgroundColor: COLORS.blue, pointerEvents: "auto" }}
         />
       </Library>
       <div

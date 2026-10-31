@@ -1,6 +1,7 @@
 /** The groups about attach and detach: when `onAttach` and `onDetach` come, what the library's view is
  *  then, and what the window does with a view when it closes. */
 import { writeFileSync } from "node:fs"
+import { flushSync } from "@gpuix/react"
 import { addon, LogEntry } from "./addon"
 import { auditLog } from "./audit"
 import { controls, LAYOUT, NativeRecord, recordOf } from "./app"
@@ -39,12 +40,59 @@ const sameCounts = (record: NativeRecord, before: ReturnType<typeof counts>) =>
 
 const colorIs = (color: Color, expected: Color, tolerance = 22) => near(color, expected, tolerance)
 
+interface TickingRenderer {
+  tick(): boolean
+}
+
+/** The renderer the app was rendered with. */
+function liveRenderer(): TickingRenderer {
+  const host = Reflect.get(globalThis, "__gpuixRenderHost") as { renderer?: TickingRenderer } | undefined
+  if (!host?.renderer) throw new Error("the app has no renderer to hook")
+  return host.renderer
+}
+
+/** Mounts a nativeview and, in the same turn of the event loop as the tick that makes its surface (the window
+ *  holds more views then) and queues its `attach`, before that event reaches JS, unmounts it. */
+async function droppedAttach(group: string) {
+  const record = recordOf(A)
+  const before = counts(record)
+  const logLength = addon.log().length
+  const renderer = liveRenderer()
+  const tick = renderer.tick
+  const viewsBefore = windows.viewCount()
+  let unmountedAfterSurface: { attachesThen: number } | null = null
+  renderer.tick = () => {
+    const running = tick.call(renderer)
+    if (!unmountedAfterSurface && windows.viewCount() > viewsBefore) {
+      unmountedAfterSurface = { attachesThen: record.attaches.length }
+      flushSync(() => controls.show({ kind: "empty" }))
+    }
+    return running
+  }
+  try {
+    flushSync(() => controls.show({ kind: "lifecycle", a: true, b: false, swapped: false }))
+    await waitFor("the surface of the nativeview to be made", () => unmountedAfterSurface !== null)
+  } finally {
+    renderer.tick = tick
+  }
+  await sleep(SETTLE_MS + DETACH_MS)
+  await attempt(group, "an unmount after the surface was made and before the queued attach arrived drops the attach", () => {
+    const seen = unmountedAfterSurface as { attachesThen: number } | null
+    return [
+      seen !== null && seen.attachesThen === before.attaches && sameCounts(record, before) && addon.log().length === logLength,
+      `onAttach had been called ${seen?.attachesThen} times when it was unmounted (${before.attaches} before); counts ${JSON.stringify(before)} -> ${JSON.stringify(counts(record))}; addon calls ${logLength} -> ${addon.log().length}`,
+    ]
+  })
+}
+
 export async function lifecycle() {
   const group = "lifecycle"
   const a = recordOf(A)
   const b = recordOf(B)
   const scene = (shownA: boolean, shownB: boolean, swapped = false) => ({ kind: "lifecycle" as const, a: shownA, b: shownB, swapped })
   const pixel = (index: number) => colorAt(capture(), ...slot(index))
+
+  await droppedAttach(group)
 
   const firstA = counts(a)
   await showScene(scene(true, false), [A])

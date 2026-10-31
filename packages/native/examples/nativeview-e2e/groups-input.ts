@@ -121,10 +121,14 @@ export async function pointer() {
     return [seen.log.buttonClicks === 1 && seen.library.mouseDowns === 0, describe(seen)]
   })
 
-  await attempt(group, "nativeEvents with pointer-events: none: the library's view gets nothing", async () => {
+  await attempt(group, "nativeEvents with pointer-events: none: the library's view gets nothing and the box's own onClick does not fire", async () => {
     const seen = await clickIn({ nativeEvents: true, pointerEventsNone: true }, [rightHalf, leftHalf])
-    // The element's own handlers are not asserted: its canvas hitbox is its own, as a <webview>'s is.
-    return [seen.library.mouseDowns === 0, describe(seen)]
+    return [seen.library.mouseDowns === 0 && seen.log.clicks === 0 && seen.log.pointerDowns === 0, describe(seen)]
+  })
+
+  await attempt(group, "under pointer-events: none a child with pointer-events: auto still gets its click, and the library's view nothing", async () => {
+    const seen = await clickIn({ nativeEvents: true, pointerEventsNone: true }, [onButton])
+    return [seen.log.buttonClicks === 1 && seen.library.mouseDowns === 0, describe(seen)]
   })
 
   await clearScene()
