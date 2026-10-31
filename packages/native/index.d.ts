@@ -1104,6 +1104,17 @@ export declare class TestGpuixRenderer {
    * last frame applied.
    */
   getWebviewNativeView(elementId: number): WebviewNativeViewReading
+  /**
+   * Where the last composed frame put the native view of a `<nativeview>`, null while it has no
+   * surface or the frame did not place it.
+   */
+  getNativeviewSurface(elementId: number): NativeviewSurfaceReading | null
+  /** The native surfaces the window made and removed, in order. */
+  getNativeSurfaceEvents(): Array<NativeSurfaceEventReading>
+  /** How many warnings a `<nativeview>` has issued. */
+  getNativeviewWarnings(elementId: number): number
+  /** Makes the window refuse native surfaces (`false`), as a platform that cannot compose does. */
+  setNativeSurfacesAvailable(available: boolean): void
   /** Make the fonts in a TrueType or OpenType file usable by `fontFamily`. */
   registerFont(data: Buffer): void
   /**
@@ -1449,6 +1460,8 @@ export interface CompositionLayerReading {
   primitives: number
   /** For a native layer: the element of its webview. */
   webview?: number
+  /** For a native layer: the element of its nativeview. */
+  nativeview?: number
   /** For a native layer: whether it shows. */
   visible: boolean
 }
@@ -1889,6 +1902,12 @@ export interface EventPayload {
   errorDescription?: string
   /** The URL that failed to load. Populated for: did-fail-load. */
   validatedUrl?: string
+  /**
+   * The address of the content `NSView` of a `<nativeview>` as a decimal string: a pointer
+   * does not survive a round trip through an `f64` on every platform, and JS makes a `bigint`
+   * of it. Populated for: attach, detach.
+   */
+  nativeHandle?: string
   modifiers?: EventModifiers
 }
 
@@ -2112,6 +2131,40 @@ export interface MotionValuePlayback {
    * the animation starts and once it has finished.
    */
   startTime?: number
+}
+
+/** What the test platform did to a native surface. */
+export interface NativeSurfaceEventReading {
+  /** `"created"` or `"removed"`. */
+  kind: string
+  /** The index of the attachment, which is the handle `attach` carries. */
+  handle: string
+}
+
+export interface NativeviewRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Where the last composed frame put the native view of a `<nativeview>`, in window pixels. */
+export interface NativeviewSurfaceReading {
+  /**
+   * The content view JS got with `attach`, as a decimal string: the index of the attachment
+   * on the test platform.
+   */
+  handle: string
+  /** The whole surface, not cut by its clip. */
+  bounds: NativeviewRect
+  /**
+   * What shows of it: for an element that does not clip, the content mask around it, which
+   * can be larger than `bounds`.
+   */
+  clip: NativeviewRect
+  opacity: number
+  cornerRadius: number
+  capturesPointer: boolean
 }
 
 /**

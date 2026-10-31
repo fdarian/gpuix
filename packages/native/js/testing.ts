@@ -150,7 +150,40 @@ export interface CompositionLayer {
   primitives: number
   /** Native layers: the element of its `<webview>`. */
   webview?: number | null
+  /** Native layers: the element of its `<nativeview>`. */
+  nativeview?: number | null
   visible: boolean
+}
+
+export interface NativeviewRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Where the last composed frame put the native view of a `<nativeview>`, in window pixels. */
+export interface NativeviewSurface {
+  /** The content view `onAttach` got, as a decimal string: the index of the attachment on the
+   *  test platform (`"0"`, `"1"`, ...). */
+  handle: string
+  /** The whole surface: the padding box of the element. */
+  bounds: NativeviewRect
+  /** What shows of it. For an element that does not clip it is the content mask around the
+   *  element, which can be larger than `bounds`. */
+  clip: NativeviewRect
+  opacity: number
+  /** The radius the view is cut to: the inner radius of an element that clips, else 0. */
+  cornerRadius: number
+  /** The view takes the pointer events over its box. */
+  capturesPointer: boolean
+}
+
+/** What the test platform did to a native surface of the window. */
+export interface NativeSurfaceEvent {
+  kind: "created" | "removed"
+  /** The index of the attachment, the `handle` of `onAttach`. */
+  handle: string
 }
 
 /** The container view AppKit holds for a `<webview>` surface, in window points from the top
@@ -384,6 +417,10 @@ interface NativeTestRendererApi
   getWebviewSurface(elementId: number): WebviewSurface | null
   getCompositionLayers(): CompositionLayer[]
   getWebviewNativeView(elementId: number): WebviewNativeView
+  getNativeviewSurface(elementId: number): NativeviewSurface | null
+  getNativeSurfaceEvents(): NativeSurfaceEvent[]
+  getNativeviewWarnings(elementId: number): number
+  setNativeSurfacesAvailable(available: boolean): void
   /** Make a TrueType or OpenType font usable by `fontFamily`. */
   registerFont(bytes: Buffer | Uint8Array): void
   setImagePixels(
@@ -1875,6 +1912,38 @@ export class TestRenderer implements NativeRenderer {
   getWebviewNativeView(elementId: number): WebviewNativeView {
     this.native.flush()
     return this.native.getWebviewNativeView(elementId)
+  }
+
+  // ── <nativeview> ────────────────────────────────────────────────
+  // The surface of a nativeview is made when its element is first painted. The test platform
+  // numbers the surfaces it makes from 0, and that number is the `handle` of `onAttach`.
+
+  /** Where the last frame put the native view of the `<nativeview>`; null while it has no
+   *  surface or the frame did not place it (`display: none`, `visibility: hidden`, culled). */
+  getNativeviewSurface(elementId: number): NativeviewSurface | null {
+    this.native.flush()
+    return this.native.getNativeviewSurface(elementId)
+  }
+
+  /** The native surfaces the window made and removed, in order. A surface is removed in the frame
+   *  that no longer places it. */
+  getNativeSurfaceEvents(): NativeSurfaceEvent[] {
+    this.native.flush()
+    return this.native.getNativeSurfaceEvents()
+  }
+
+  /** How many warnings the `<nativeview>` has issued: one when the platform cannot make its
+   *  surface, however many frames are drawn. */
+  getNativeviewWarnings(elementId: number): number {
+    this.native.flush()
+    return this.native.getNativeviewWarnings(elementId)
+  }
+
+  /** `false` makes the window refuse native surfaces, as a platform that cannot compose does:
+   *  call it before the first frame that paints a `<nativeview>`. */
+  setNativeSurfacesAvailable(available: boolean): void {
+    this.native.flush()
+    this.native.setNativeSurfacesAvailable(available)
   }
 
   setImagePixels(
