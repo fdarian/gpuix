@@ -1,24 +1,8 @@
----
-$schema: https://holocron.so/frontmatter.json
-title: "Build native GPUI desktop apps with Solid 1"
-sidebarTitle: Solid
-description: "Paint a Solid 1 tree with GPUI. Covers preload, render, primitives, motion, Select, testing, automation, and every @gpuix/solid export."
-icon: "lucide:layers"
-prompt: |
-  Write the Solid renderer guide from @/packages/solid/, @/README.md,
-  @/examples/solid/, @/packages/native/js/host.ts,
-  @/packages/native/js/host-runtime.ts, @/packages/native/js/testing.ts,
-  and @/packages/native/js/automation/index.ts.
-
-  Cover install, jsx preserve, bunfig preload, bun-plugin, render,
-  createRoot, primitives, motion, Select Combobox Tooltip, testing,
-  automation, and every public package export with a usage snippet.
-  Do not invent APIs. Match Solid names (Select, not Root).
----
+# Build native GPUI desktop apps with Solid 1
 
 **`@gpuix/solid`** paints a Solid 1 tree with GPUI. Same host elements, styles, events, and native addon as React. The adapter is Solid. The window is not a web view.
 
-```diagram
+```text
   bunfig.toml          babel-preset-solid         @gpuix/native
   preload ──────────►  universal compiler ──────► host mutations ──► GPUI ──► GPU
        │                      │
@@ -27,11 +11,7 @@ prompt: |
   createSignal()       render(() => <App />)
 ```
 
-<Aside>
-<Note>
-Host elements, styles, events, virtual lists, and native text are the same as React. This page covers the **Solid adapter**. See the [homepage](../index.mdx) for the shared GPUIX surface.
-</Note>
-</Aside>
+> **Note.** Host elements, styles, events, virtual lists, and native text are the same as React. This page covers the **Solid adapter**. See [reference.md](reference.md) for the shared GPUIX surface.
 
 ## Install
 
@@ -125,11 +105,7 @@ Use **`bun --hot`** so a save remounts Solid on the same window. `render()` is i
 
 Do **not** call `createRenderer()` or `init()` in the app entry. `bun --hot` re-runs the file. A second `init()` would open a second window.
 
-<Aside>
-<Warning>
-Desktop `bun --hot` remounts the tree. It does not keep `createSignal` state. That is the same remount path as React, not Fast Refresh.
-</Warning>
-</Aside>
+> **Warning.** Desktop `bun --hot` remounts the tree. It does not keep `createSignal` state. That is the same remount path as React, not Fast Refresh.
 
 ### Production bundle
 
@@ -317,11 +293,7 @@ function AttachFiles() {
 
 These are the Solid adapters over `@gpuix/native/host`. Call them in a component under a GPUIX root. They return **accessors**, not hook objects.
 
-<Aside>
-<Tip>
-There is no Solid `useWindowSize`. Use `createWindowSize()`. React keeps `useWindowSize`. The native helpers stay on `@gpuix/native/host`.
-</Tip>
-</Aside>
+> **Tip.** There is no Solid `useWindowSize`. Use `createWindowSize()`. React keeps `useWindowSize`. The native helpers stay on `@gpuix/native/host`.
 
 ```ts
 function createWindowSize(options?: ObserverOptions): Accessor<WindowSize>
@@ -473,11 +445,7 @@ Unstyled primitives, same split as [Base UI](https://base-ui.com/react/component
 
 Solid names the root **`Select`**, not `Root`.
 
-<Aside>
-<Note>
-`@gpuix/react/select` exports `Root`. `@gpuix/solid/select` exports `Select`. Copy a React snippet only after you rename the root.
-</Note>
-</Aside>
+> **Note.** `@gpuix/react/select` exports `Root`. `@gpuix/solid/select` exports `Select`. Copy a React snippet only after you rename the root.
 
 ```tsx
 import { createSignal } from 'solid-js'
@@ -573,11 +541,7 @@ interface TestRoot {
 
 `createTestRoot({ width, height, fonts })` sizes the offscreen window and registers font files with `registerFont()`, the same as the `fonts` window option.
 
-<Aside>
-<Info>
-Prefer `createTestRoot()` when you can. Reach for `launch()` plus `focus: false` when the check needs a real window or a real process.
-</Info>
-</Aside>
+> **Info.** Prefer `createTestRoot()` when you can. Reach for `launch()` plus `focus: false` when the check needs a real window or a real process.
 
 `getAllText()` only sees **`<text>`** nodes. For `<code>`, `<diff>`, and `<markdown>`, use `renderer.getPaintedText()`.
 

@@ -8,8 +8,8 @@ fork patches carry it: no inline draws in real windows (patch 1) and a frame pum
 ## No inline draws in real windows (patch 1)
 
 **Problem.** The macOS addon is built with GPUI's `test-support` feature. It is the crate's default feature
-(`packages/native/Cargo.toml:99`), and CI builds the release artifact with `bun run build`, not `build:release`
-(`.github/workflows/ci.yml:33`). With that feature, `App::flush_effects` in `zed/crates/gpui/src/app.rs` draws every
+(`packages/native/Cargo.toml:99`), and the release artifact is built with `bun run build`, not `build:release`
+(`packages/native/package.json`). With that feature, `App::flush_effects` in `zed/crates/gpui/src/app.rs` draws every
 dirty window synchronously at the end of every `App::update`. Test contexts need that because they never run a display
 link. A real window does not, but the feature is a Cargo feature, so the check was compiled in for it too.
 
