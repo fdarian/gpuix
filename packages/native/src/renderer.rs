@@ -9589,6 +9589,13 @@ impl gpui::Render for GpuixView {
         // painted a pass ago), so outside the subtrees that replayed the two passes differ, and
         // every wrapper makes a dispatch node.
         window.set_retention_whole_frame(false);
+        window.set_commit_survey(Some(Rc::new({
+            let flips = self.layout_flips.clone();
+            let tree = self.tree.clone();
+            // A draw an update runs inline can start with the tree locked by that update: then
+            // there is no commit to survey that the update has not just made.
+            move |_: &gpui::Window| tree.try_lock().is_ok_and(|tree| flips.wants_survey(tree.revision()))
+        })));
         window.set_retention_verifier(verifies.then(|| {
             let tapes = self.tapes.clone();
             Rc::new(move |window: &gpui::Window| {
@@ -9706,7 +9713,7 @@ impl gpui::Render for GpuixView {
         }
         self.contents_styles.clear();
         self.svg_trees.retain(|id| tree.elements.contains_key(&id));
-        self.layout_flips.retain(tree.revision(), |id| {
+        self.layout_flips.retain(tree.revision(), !window.is_layout_pass(), |id| {
             tree.elements
                 .get(&id)
                 .is_some_and(|element| element.custom_props().contains_key("layout"))
@@ -9836,6 +9843,9 @@ impl gpui::Render for GpuixView {
             self.css_transitions.take_active() | self.css_animations.take_active();
         let (motion_awake, dormant_motion) = self.note_motion_split(&tree, motion_animating, now);
         let motion_active = !motion_awake.is_empty();
+        if !window.is_layout_pass() {
+            self.layout_flips.note_ticking(transitions_active || motion_active);
+        }
         self.emit_selection_change(&callback);
 
         // The frame reset must paint BEFORE any text, so it is the first child of
