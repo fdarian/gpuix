@@ -17,6 +17,7 @@
     "test:perf:animating": "NODE_ENV=production vitest run --no-file-parallelism one-animating-node.perf.test.tsx",
     "test:perf:clipped": "NODE_ENV=production vitest run --no-file-parallelism clipped.perf.test.tsx",
     "test:perf:retain": "NODE_ENV=production vitest run --no-file-parallelism retain.perf.test.tsx",
+    "test:perf:layout-idle": "NODE_ENV=production vitest run --no-file-parallelism layout-idle.perf.test.tsx",
     "test:perf:draws": "NODE_ENV=production vitest run --no-file-parallelism draws-vs-presents.perf.test.tsx",
     "native-text": "bun --hot native-text.tsx",
     "chat": "bun --hot chat.tsx",
