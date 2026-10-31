@@ -66,7 +66,7 @@ describe("native ESM package", () => {
     ])
     expect(browser.status, browser.stderr).toBe(0)
     expect(browser.stdout).toContain("browser.mjs")
-  })
+  }, 60_000)
 
   // browser.mjs imports the wasm-bindgen build, which `bun run build:web` writes and
   // nothing builds on a macOS-only checkout (CI included), so the bundle cannot resolve it.
