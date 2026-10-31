@@ -46,7 +46,7 @@ Patches 1 and 2 fix two of the three causes of the slow scrolling. Upstream land
 | File | Holds |
 |---|---|
 | [docs/reference.md](../reference.md) | The API contract: the behaviour an app author sees. |
-| [working-on-the-fork.md](working-on-the-fork.md) | Repos and branches, the commit rules, resolving conflicts (what a pick has to preserve), building, where new code goes, platforms and CI. |
+| [working-on-the-fork.md](working-on-the-fork.md) | Repos and branches, the commit rules, resolving conflicts (what a pick has to preserve), building, where new code goes, platforms. |
 | [syncing-upstream.md](syncing-upstream.md) | The ledger of what is reviewed from upstream, and the procedure for taking, adapting or skipping a commit. |
 | [docs/fork/frames-and-wakes.md](frames-and-wakes.md) | Patches 1 and 2, how JS is woken (run-loop watch, input observer), windows that are not key, idle cost and memory footprint. |
 | [docs/fork/window.md](window.md) | Appearance, the `fonts` option, `appRegion` drag regions, window placement and `screen` displays. |
