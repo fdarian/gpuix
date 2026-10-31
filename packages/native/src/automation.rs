@@ -441,7 +441,7 @@ thread_local! {
 thread_local! {
     /// The layout node of the window's engine each host element was last painted with, for
     /// [`HostBox`]. A host in the engine of an atomic inline has none.
-    static HOST_NODES: RefCell<FxHashMap<WindowId, FxHashMap<u64, gpui::LayoutId>>> = RefCell::new(FxHashMap::default());
+    static HOST_NODES: RefCell<FxHashMap<WindowId, FxHashMap<u64, (gpui::LayoutId, u64)>>> = RefCell::new(FxHashMap::default());
 }
 
 /// Where a host element stands in the window's layout, as far as a later reading can tell whether
@@ -449,19 +449,22 @@ thread_local! {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostBox {
     /// The stamp of its node in the window's engine: it follows the box of the node and those of the
-    /// nodes above it, not a box elsewhere.
-    Node(gpui::LayoutId, u64),
+    /// nodes above it, not a box elsewhere. The last is the engine's id at the time (`Window::layout_engine_id`):
+    /// the engine gives its nodes other ids when it moves them to a smaller store, and an id from before is
+    /// then another node's.
+    Node(gpui::LayoutId, u64, u64),
     /// Its node is not in the window's engine, or was not seen, so any box that moved may be its own.
     Anywhere,
 }
 
 impl HostBox {
     /// Where `id` stands now, by the layout node its last paint reported. `Anywhere` for a host that
-    /// reported none or whose node the engine freed since.
+    /// reported none, or whose node the engine freed or gave another id since.
     pub(crate) fn of(window: &gpui::Window, id: u64) -> Self {
         let node = HOST_NODES.with(|nodes| nodes.borrow().get(&window.window_handle().window_id())?.get(&id).copied());
-        match node.and_then(|node| Some((node, window.box_stamp(node)?))) {
-            Some((node, stamp)) => Self::Node(node, stamp),
+        let current = node.filter(|(_, noted_in)| *noted_in == window.layout_engine_id());
+        match current.and_then(|(node, engine)| Some((node, window.box_stamp(node)?, engine))) {
+            Some((node, stamp, engine)) => Self::Node(node, stamp, engine),
             None => Self::Anywhere,
         }
     }
@@ -470,7 +473,7 @@ impl HostBox {
     /// are `same_boxes` as they were then.
     pub(crate) fn unmoved(self, window: &gpui::Window, same_boxes: bool) -> bool {
         match self {
-            Self::Node(node, stamp) => window.box_stamp(node) == Some(stamp),
+            Self::Node(node, stamp, engine) => window.layout_engine_id() == engine && window.box_stamp(node) == Some(stamp),
             Self::Anywhere => same_boxes,
         }
     }
@@ -510,7 +513,7 @@ fn note_host_node(window: &gpui::Window, id: u64, node: gpui::LayoutId) {
         let mut nodes = nodes.borrow_mut();
         let nodes = nodes.entry(window_id).or_default();
         if window.is_window_layout_engine() {
-            nodes.insert(id, node);
+            nodes.insert(id, (node, window.layout_engine_id()));
         } else {
             nodes.remove(&id);
         }
@@ -1217,6 +1220,9 @@ pub fn dispatch_scroll_wheel(
         cx,
     );
 }
+
+#[cfg(test)]
+mod host_box_tests;
 
 #[cfg(test)]
 mod tests {
