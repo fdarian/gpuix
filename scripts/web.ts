@@ -20,7 +20,6 @@
  *   bun scripts/web.ts               # build the Wasm if it is missing, then serve
  *   bun scripts/web.ts --rebuild     # force the cargo + wasm-bindgen step first
  *   bun scripts/web.ts --build-only  # only cargo + wasm-bindgen, do not serve
- *   bun scripts/web.ts --production
  */
 
 import { spawn } from "node:child_process"
@@ -34,7 +33,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const NATIVE = path.join(ROOT, "packages", "native")
 const PACKAGE_OUTPUT = path.join(NATIVE, "wasm")
 const WASM = path.join(NATIVE, "target", "wasm32-unknown-unknown", "release", "gpuix_native.wasm")
-const PRODUCTION_OUTPUT = path.join(ROOT, "website", "public", "chat-example")
 
 /**
  * `packages/native/.cargo/config.toml` links the Wasm with `--shared-memory`,
@@ -86,27 +84,8 @@ async function buildWasm(): Promise<void> {
   })
 }
 
-async function buildProduction(): Promise<void> {
-  fs.rmSync(PRODUCTION_OUTPUT, { recursive: true, force: true })
-  console.log(`web: bundling the chat example into ${path.relative(ROOT, PRODUCTION_OUTPUT)}`)
-  const bundle = await Bun.build({
-    entrypoints: [path.join(ROOT, "examples", "web-chat.tsx")],
-    outdir: PRODUCTION_OUTPUT,
-    target: "browser",
-    format: "esm",
-    minify: true,
-    naming: { entry: "chat.js", asset: "[name].[ext]" },
-  })
-  if (!bundle.success) {
-    for (const message of bundle.logs) console.error(message)
-    throw new Error("browser bundle failed")
-  }
-  fs.copyFileSync(path.join(ROOT, "examples", "web.css"), path.join(PRODUCTION_OUTPUT, "web.css"))
-}
-
 async function main() {
   const buildOnly = process.argv.includes("--build-only")
-  const production = process.argv.includes("--production")
   // `browser.mjs` needs both halves of the wasm-bindgen output. Checking only
   // the `.wasm` lets a half-finished run skip the build and then fail at import.
   const missing = ["gpuix-web.js", "gpuix-web_bg.wasm"].some(
@@ -125,11 +104,6 @@ async function main() {
   // the library itself.
   console.log("web: building @gpuix/react")
   await run({ command: "bun", args: ["run", "build"], cwd: path.join(ROOT, "packages", "react") })
-
-  if (production) {
-    await buildProduction()
-    return
-  }
 
   const routes: Record<string, unknown> = {}
   for (const example of EXAMPLES) {

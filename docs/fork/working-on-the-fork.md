@@ -413,15 +413,14 @@ design and the reasons.
 
 Native views are an exception to "new code in new modules" only at the edges: the zed side of `<webview>` is the new `composition*` modules plus the small hunks listed under [Webview and window composition](#webview-and-window-composition), and nothing else in gpuix knows about a native surface.
 
-## Platforms and CI
+## Platforms
 
 macOS is the platform that was exercised. Several features have a macOS-only path (Metal effects, pointer lock, the
 synchronous dispatch that lets `preventDefault` cancel a native default, the OS reduced-motion read). The Windows, Linux and
 wasm paths were written but not compiled by the people who wrote them, and the zed shader edits for them were never built or
 rendered. The gaps, and what closing each would take, are listed in [deviations.md](deviations.md#other-platforms).
 
-A pull request on the fork runs `.github/workflows/ci.yml`, whose matrix compiles Linux, Windows and Windows ARM64; that is
-the cheapest first check. The wasm build (`bun run build:web`) needs nightly Rust and `wasm-bindgen`.
+The wasm build (`bun run build:web`) needs nightly Rust and `wasm-bindgen`.
 
 The paint changes touched zed crates outside `gpui` (`editor`, `ui`, `terminal_view`, `onboarding`, `keymap_editor`), and those
 were not built. `cargo check -p editor -p ui -p terminal_view` would; it matters only to someone building Zed from this
