@@ -1,13 +1,10 @@
 {
-  "name": "gpuix",
+  "name": "alpina-gpui",
   "private": true,
   "license": "Apache-2.0",
   "workspaces": [
-    "cli",
     "packages/*",
-    "examples",
-    "example-app",
-    "disktree"
+    "examples"
   ],
   "scripts": {
     "build": "bun run build:native && bun run build:react && bun run build:solid",
