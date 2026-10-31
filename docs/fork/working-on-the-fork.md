@@ -379,6 +379,34 @@ Some machines need workarounds that do not belong in the fork: no `metal` compil
 an Xcode license that has not been accepted (point `DEVELOPER_DIR` at the Command Line Tools). The demo that uses this fork
 keeps its own build script for them.
 
+## CI and releases
+
+`ci.yml` runs on pushes to `main` and on pull requests (not for changes that only touch Markdown, `docs/`, `LICENSE`, `NOTICE` or
+`.changeset/`) as one `check` job on `macos-latest`: the native build, the Solid and React builds, then `bun run test` in
+`packages/native`, `packages/solid`, `packages/react` and `examples`. The `*.perf.test.tsx` files and the e2e apps are not run.
+There is no format job and no Turbo: a format commit over upstream-derived code would conflict with every pick.
+
+A user-visible change adds a changeset with `pnpm changeset`. Pushing it to `main` runs `release.yml`, where the changesets
+action opens or updates the `Version Packages` PR. `@gpuix/native`, `@gpuix/solid` and `@gpuix/react` are `fixed`: they share a
+version. Merging that PR runs the action again: `bun run ci:release` builds the addon and both adapters on the runner and
+`changeset publish` publishes the three packages with provenance, through npm trusted publishing (OIDC, no token). Each
+package's `prepublishOnly` refuses to run without `CI`, so nothing is published from a laptop by accident.
+
+`@gpuix/native` ships its addon in its own tarball (`gpuix-native.darwin-arm64.node`) and has no platform packages; only
+`aarch64-apple-darwin` is built.
+
+The first publish of a package cannot use OIDC, because a trusted publisher can only be added to a package that exists on npm.
+Publish each package once by hand from a checkout of the version commit, after building the three (`pnpm publish` turns
+`workspace:^` into the version, `npm publish` does not):
+
+```bash
+CI=true pnpm --filter @gpuix/native --filter @gpuix/solid --filter @gpuix/react publish --access public --no-git-checks
+```
+
+Then on npmjs.com add a trusted publisher to each package (Settings, Publishing): repository `fdarian/alpina`, workflow
+`release.yml`, branch `main`. `repository.url` in each `package.json` must stay `git+https://github.com/fdarian/alpina.git`, or
+the publish is rejected.
+
 ## Where new code goes
 
 New code lives in new modules (`packages/native/src/events/`, `scroll.rs`, `layout/`, `css/`, `motion/`,
