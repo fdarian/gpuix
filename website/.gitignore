@@ -1,8 +1,0 @@
-node_modules
-dist
-.cache
-.env
-.wrangler
-.dev.vars
-public/_holocron
-public/chat-example
