@@ -2624,7 +2624,14 @@ function Tabs({ tabs, active, onSelect }) {
   when the tree changed (a React render or a Solid update), as in Motion: a box
   that layout moves because an animation above it ticked, such as a region
   whose height springs, or because scroll anchoring adjusted, goes along with
-  it and starts no glide. Scrolling is not read as a move either.
+  it and starts no glide. Scrolling is not read as a move either. The commit is
+  measured at the first drawn frame after it, once its effects have run, and a
+  glide starts where the box was seen on the screen: a `scrollTo` or
+  `scrollTop` write in a layout effect, a passive effect or a Solid
+  `createEffect` of the commit is in the measure (the start follows the box, not
+  the content), and a `layoutId` handed from outside a scroller into it starts
+  at the old box whatever the scroller's offset. A scroll written after that
+  frame moves the glide with the content.
 - **A size glide is a scale** of the box about its centre, as Motion's
   projection does it, so layout is not run again on a tick. The box's own
   `borderRadius` and `boxShadow` are corrected by the scale and keep the size
