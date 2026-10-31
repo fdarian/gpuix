@@ -2,10 +2,7 @@
   "name": "alpina-gpui",
   "private": true,
   "license": "Apache-2.0",
-  "workspaces": [
-    "packages/*",
-    "examples"
-  ],
+  "packageManager": "pnpm@12.16.1",
   "scripts": {
     "build": "bun run build:native && bun run build:react && bun run build:solid",
     "build:native": "cd packages/native && bun run build",
