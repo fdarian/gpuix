@@ -27,6 +27,8 @@ const PLAIN_NOTIFICATIONS: ReadonlySet<string> = new Set([
   "did-navigate",
   "page-title-updated",
   "did-fail-load",
+  "attach",
+  "detach",
 ])
 
 /**

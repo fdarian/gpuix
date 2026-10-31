@@ -57,7 +57,10 @@ export function createRoot(
   const state = createRendererState(renderer)
   const eventHandlers = new Map()
   const mutations = createMutationQueue(renderer, (ids) => {
-    for (const id of ids) unregisterEventHandlers(eventHandlers, id)
+    for (const id of ids) {
+      unregisterEventHandlers(eventHandlers, id)
+      container.elements.delete(id)
+    }
     runMotionReleases(container)
   }, (flush) => {
     queueMicrotask(() => {

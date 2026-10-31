@@ -14,6 +14,7 @@ import type {
   InputProps,
   LabelProps,
   MarkdownProps,
+  NativeviewProps,
   Props,
   SvgCircleProps,
   SvgClipPathProps,
@@ -81,6 +82,7 @@ export namespace JSX {
     span: Props
     img: ImgProps
     webview: WebviewProps
+    nativeview: NativeviewProps
     svg: SvgProps
     path: SvgPathProps
     circle: SvgCircleProps

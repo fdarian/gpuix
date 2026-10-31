@@ -207,6 +207,7 @@ export type {
   HostPointerEvent,
   ImgInstance,
   ImgProps,
+  NativeviewProps,
   WebviewInstance,
   WebviewProps,
   FocusTarget,

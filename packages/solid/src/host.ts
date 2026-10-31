@@ -6,11 +6,12 @@ import {
   createWebviewMethods,
   defineScrollMembers,
   EVENT_PROP_NAMES,
-  EVENT_TYPE_BY_PROP,
   blurHostElement,
+  eventTypesWithOverrides,
   focusHostElement,
   hostElementMatches,
   forwardsCustomProp,
+  isNativeviewHandlerProp,
   registerEventListener,
   HOST_BINDING,
   HOST_MOUNT,
@@ -20,6 +21,7 @@ import {
   serializeCustomProp,
   splitMotionStyle,
   syncMotionBindings,
+  syncNativeviewListeners,
   unregisterEventHandlers,
   unregisterEventListener,
   readTextControlSelection,
@@ -391,6 +393,7 @@ function isElementType(type: string): type is ElementType {
     case "diff":
     case "markdown":
     case "webview":
+    case "nativeview":
     case "virtual-list":
     case "path":
     case "circle":
@@ -456,6 +459,9 @@ export function replaceHostText(node: HostText, value: string): void {
   if (node.root && node.mounted) node.root.mutations.setText(node.id, next)
 }
 
+// A `<nativeview>`'s handlers take the pointer and nothing, not an event: see `syncNativeviewListeners`.
+const EVENT_TYPE_BY_PROP = eventTypesWithOverrides({ onAttach: null, onDetach: null })
+
 function eventTypeFor(name: string): string | undefined {
   return EVENT_TYPE_BY_PROP.get(name)
 }
@@ -483,6 +489,12 @@ export function setHostProperty(
     }
     return
   }
+  if (isNativeviewHandlerProp(name)) {
+    if (isEventHandler(value)) node.props.set(name, value)
+    else node.props.delete(name)
+    if (node.root && node.mounted && node.type === "nativeview") syncNativeviewProps(node.root, node)
+    return
+  }
   const eventType = eventTypeFor(name)
   if (eventType) {
     if (isEventHandler(value)) node.props.set(name, value)
@@ -508,6 +520,16 @@ export function setHostProperty(
     node.id,
     name,
     serializeCustomProp(value)
+  )
+}
+
+function syncNativeviewProps(root: HostRoot, node: HostElement): void {
+  syncNativeviewListeners(
+    root.eventHandlers,
+    root.mutations,
+    node.id,
+    node.props.get("onAttach"),
+    node.props.get("onDetach")
   )
 }
 
@@ -539,6 +561,7 @@ function mount(root: HostRoot, node: HostNode): void {
         )
       }
     }
+    if (node.type === "nativeview") syncNativeviewProps(root, node)
   }
   if (node.kind === "element") {
     for (const listener of [...node.mountListeners]) listener()
@@ -587,8 +610,12 @@ export function insertHostNode(
 function markUnmounted(node: HostNode): void {
   node.mounted = false
   if (node.root) {
-    node.root.elements.delete(node.id)
-    unregisterEventHandlers(node.root.eventHandlers, node.id)
+    // A `<nativeview>` hears `detach` while the batch that destroys it is applied, which is
+    // after this: it stays known until `createRoot` releases the destroyed ids.
+    if (!(node.kind === "element" && node.type === "nativeview")) {
+      node.root.elements.delete(node.id)
+      unregisterEventHandlers(node.root.eventHandlers, node.id)
+    }
     // Retired now, released after the batch: an element mounted again before
     // the flush binds its values afresh, and a shared value is never freed between.
     retireMotionBindings(node.root, [node.id])

@@ -27,6 +27,7 @@ import {
   selectTextControl,
   setTextControlSelectionRange,
   splitMotionStyle,
+  syncNativeviewListeners,
 } from "@gpuix/native/host"
 
 const NoEventPriority = 0
@@ -40,6 +41,9 @@ const EVENT_TYPE_BY_PROP = eventTypesWithOverrides({
   onBlur: "focusout",
   onFocusIn: null,
   onFocusOut: null,
+  // A `<nativeview>`'s handlers take the pointer and nothing, not an event: see `syncNativeviewListeners`.
+  onAttach: null,
+  onDetach: null,
 })
 import type {
   Container,
@@ -195,8 +199,9 @@ function assertPlacement(parent: Instance | undefined, child: Instance | TextIns
 
 // ── Event wiring helpers ─────────────────────────────────────────────
 
-function syncEventListeners(container: Container, id: number, props: Props): void {
+function syncEventListeners(container: Container, id: number, type: ElementType, props: Props): void {
   const record = props as Record<string, unknown>
+  if (type === "nativeview") syncNativeviewProps(container, id, record)
   for (const propName in record) {
     const eventType = EVENT_TYPE_BY_PROP.get(propName)
     const handler = record[propName]
@@ -210,6 +215,32 @@ function syncEventListeners(container: Container, id: number, props: Props): voi
       )
     }
   }
+}
+
+function syncNativeviewProps(
+  container: Container,
+  id: number,
+  props: Record<string, unknown>
+): void {
+  syncNativeviewListeners(
+    container.eventHandlers,
+    container.renderer,
+    id,
+    props.onAttach,
+    props.onDetach
+  )
+}
+
+function diffNativeviewProps(
+  container: Container,
+  id: number,
+  oldProps: Props,
+  newProps: Props
+): void {
+  const previous = oldProps as Record<string, unknown>
+  const next = newProps as Record<string, unknown>
+  if (previous.onAttach === next.onAttach && previous.onDetach === next.onDetach) return
+  syncNativeviewProps(container, id, next)
 }
 
 /**
@@ -360,7 +391,7 @@ function materialize(node: HostNode): HostNodeState {
     if (state.hidden) renderer.setStyle(node.id, hiddenStyle(node.props.style))
     else sendStyle(renderer, node.id, node.props)
     syncMotionBindings(state.container, node.id, node.props.style, node.type)
-    syncEventListeners(state.container, node.id, node.props)
+    syncEventListeners(state.container, node.id, node.type, node.props)
     syncCustomProps(renderer, node.id, node.type, node.props)
   } else {
     renderer.createElement(node.id, "text")
@@ -587,6 +618,9 @@ export const hostConfig = {
       syncMotionBindings(container, instance.id, newProps.style, instance.type)
     }
     diffEventListeners(container, instance.id, oldProps, newProps)
+    if (instance.type === "nativeview") {
+      diffNativeviewProps(container, instance.id, oldProps, newProps)
+    }
     // Custom prop diff (for non-div/text elements)
     diffCustomProps(container.renderer, instance.id, instance.type, oldProps, newProps)
     instance.props = newProps

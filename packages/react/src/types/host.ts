@@ -18,6 +18,7 @@ import type {
   LabelProps as NativeLabelProps,
   TextareaProps as NativeTextareaProps,
   ImgProps as NativeImgProps,
+  NativeviewProps as NativeNativeviewProps,
   WebviewMethods,
   WebviewProps as NativeWebviewProps,
   SvgProps as NativeSvgProps,
@@ -125,6 +126,12 @@ export interface WebviewProps extends ReactHostProps<NativeWebviewProps> {
   key?: Key | null
   children?: ReactNode
   ref?: Ref<WebviewInstance>
+}
+
+export interface NativeviewProps extends ReactHostProps<NativeNativeviewProps> {
+  key?: Key | null
+  children?: ReactNode
+  ref?: Ref<PublicInstance>
 }
 
 export interface SvgProps extends ReactHostProps<NativeSvgProps> {

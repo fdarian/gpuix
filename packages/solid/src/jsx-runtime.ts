@@ -11,6 +11,7 @@ import type {
   MarkdownProps,
   MotionProps,
   MotionValueStyle,
+  NativeviewProps,
   SvgMotionProps,
   SvgCircleProps,
   SvgClipPathProps,
@@ -105,6 +106,7 @@ export namespace JSX {
     span: SolidHostProps
     img: SolidHostProps<ImgProps>
     webview: SolidHostProps<WebviewProps>
+    nativeview: SolidHostProps<NativeviewProps>
     svg: SolidHostProps<SvgProps>
     path: SolidHostProps<SvgPathProps>
     circle: SolidHostProps<SvgCircleProps>

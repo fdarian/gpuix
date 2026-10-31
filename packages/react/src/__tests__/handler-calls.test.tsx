@@ -130,6 +130,8 @@ function calls(r, ids) {
     getMediaFeatures: () => r.getMediaFeatures(),
     getMotionValue: () => r.getMotionValue(910),
     getMotionValuePlayback: () => r.getMotionValuePlayback(910),
+    getNativeviewSurface: () => r.getNativeviewSurface(ids.nativeview),
+    getNativeviewWarnings: () => r.getNativeviewWarnings(ids.nativeview),
     getMotionValueVelocity: () => r.getMotionValueVelocity(910),
     getPaintedFrameCount: () => r.getPaintedFrameCount(),
     getPaintedHighlights: () => r.getPaintedHighlights(),
@@ -193,6 +195,7 @@ function calls(r, ids) {
     setMotionValue: () => r.setMotionValue(910, 3),
     setMotionValueListener: () => r.setMotionValueListener(910, true, true),
     setMotionValueSpeed: () => r.setMotionValueSpeed(910, 2),
+    setNativeSurfacesAvailable: () => r.setNativeSurfacesAvailable(true),
     setPointerCapture: () => r.setPointerCapture(ids.box, 1),
     setPatchEnabled: () => r.setPatchEnabled(true),
     setRetainLift: () => r.setRetainLift(["svg"]),
@@ -251,6 +254,7 @@ describeNative("renderer calls from a sync handler", () => {
             form: renderer.findByTestId("form").id,
             img: renderer.findByTestId("img").id,
             webview: renderer.findByTestId("webview").id,
+            nativeview: renderer.findByTestId("nativeview").id,
           }
           renderer.createMotionValue(910, 1)
           for (const [name, call] of Object.entries(calls(renderer, ids))) {
@@ -272,6 +276,7 @@ describeNative("renderer calls from a sync handler", () => {
             </form>
             <img testId="img" style={{ width: 10, height: 10 }} />
             <webview testId="webview" style={{ width: 10, height: 10 }} />
+            <nativeview testId="nativeview" style={{ width: 10, height: 10 }} />
             <div testId="box" style={{ width: 50, height: 20, animation: "handler-calls-grow 1s linear forwards" }} />
             <div testId="scroller" style={{ width: 100, height: 50, overflow: "scroll" }}>
               <div style={{ height: 400 }} />

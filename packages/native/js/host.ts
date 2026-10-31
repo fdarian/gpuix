@@ -63,6 +63,7 @@ export * from "./observers.js"
 export * from "./presence.js"
 export * from "./renderer-state.js"
 export * from "./text-selection.js"
+export * from "./nativeview.js"
 export * from "./webview.js"
 export * from "./scroll.js"
 export * from "./reorder.js"
@@ -1564,6 +1565,7 @@ export type ElementType =
   | "diff"
   | "markdown"
   | "webview"
+  | "nativeview"
   | "virtual-list"
   | SvgChildType
 
@@ -2051,6 +2053,47 @@ export interface WebviewProps extends HostProps {
   /** A load failed: `event.errorCode` (an `NSURLError` code, not a Chromium net error),
    *  `event.errorDescription` and `event.validatedUrl`. */
   onDidFailLoad?: (event: DomEvent) => void
+}
+
+/**
+ * A native view of a separate library, put between GPUI layers of the window. It is a `div`
+ * otherwise: `style`, children and events apply, and the box is the element's border box.
+ *
+ * `onAttach` hands the library the content `NSView` of the element's native surface, and the
+ * library adds its view as a subview that fills it. The surface takes the element's box, clip,
+ * opacity and corner radius, so what clips or fades the element clips or fades the view.
+ *
+ * Lifetime: the view is valid from `onAttach` until `onDetach` returns. `onDetach` is called
+ * synchronously, before the surface is taken down, when the element unmounts and when the window
+ * closes, and once for every `onAttach`. In `onDetach` the library MUST remove its view and
+ * release it and every reference to the pointer. Using the pointer after `onDetach` returns is
+ * undefined behaviour and can crash the process. `display: none` hides the surface and does not
+ * detach, and a keyed reorder does not detach. Keep `onDetach` set for as long as the element
+ * can be attached: removing it while attached means the library is never told.
+ *
+ * Only macOS has native surfaces. Elsewhere the element lays out and paints nothing, a warning
+ * is logged once, and `onAttach` is never called.
+ */
+export interface NativeviewProps extends HostProps {
+  /**
+   * Take pointer events into the library's view. Off by default: the surface takes none, and
+   * clicks and hover on the element and its children work as on a `div`. On, a point where GPUI
+   * has nothing above the surface goes to the library view's `hitTest:`, and a `nil` falls back
+   * to GPUI.
+   */
+  nativeEvents?: boolean
+  /**
+   * The native surface exists. `view` is the pointer of its content `NSView`, as a `bigint`.
+   * Called once, after the first frame that has the surface. See the lifetime rule
+   * above. A throw is reported like any handler's and does not unpair `onDetach`.
+   */
+  onAttach?: (view: bigint) => void
+  /**
+   * The surface is about to be taken down: remove and release the view added in `onAttach`.
+   * Runs synchronously, before the unmount or the window close continues. Called only when
+   * `onAttach` ran, or on every detach when there is no `onAttach`.
+   */
+  onDetach?: () => void
 }
 
 /** Byte order of a `setImagePixels` buffer. Alpha is straight in both. */
