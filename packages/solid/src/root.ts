@@ -1,5 +1,5 @@
 import { createComponent, createContext, useContext, type JSX } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import {
   createMutationQueue,
   createRendererState,
@@ -7,8 +7,8 @@ import {
   runMotionReleases,
   syncWindowEventListeners,
   unregisterEventHandlers,
-} from "@gpuix/native/host"
-import { toAppearance } from "@gpuix/native/host"
+} from "@ghia/native/host"
+import { toAppearance } from "@ghia/native/host"
 import type {
   Appearance,
   MutationRenderer,
@@ -17,7 +17,7 @@ import type {
   RootEvent,
   SyncDispatchResult,
   RootEventHandlers,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import { HostRoot, removeHostNode } from "./host.js"
 import { universalRender } from "./universal.js"
 

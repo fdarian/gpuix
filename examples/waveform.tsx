@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react'
-import { render } from '@gpuix/react'
-import type { ImgInstance, PublicInstance } from '@gpuix/react'
+import { render } from '@ghia/react'
+import type { ImgInstance, PublicInstance } from '@ghia/react'
 
 const WIDTH = 720
 const HEIGHT = 96

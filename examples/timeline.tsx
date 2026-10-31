@@ -54,7 +54,7 @@ import {
   type HostMouseEvent,
   type PublicInstance,
   type StyleDesc,
-} from '@gpuix/react'
+} from '@ghia/react'
 import {
   createProject,
   formatTimecode,

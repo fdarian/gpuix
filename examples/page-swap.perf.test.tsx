@@ -10,8 +10,8 @@
 
 import React from 'react'
 import { describe, it } from 'vitest'
-import { flushSync } from '@gpuix/react'
-import { createTestRoot, hasNativeTestRenderer, type TestRoot } from '@gpuix/react/testing'
+import { flushSync } from '@ghia/react'
+import { createTestRoot, hasNativeTestRenderer, type TestRoot } from '@ghia/react/testing'
 import { formatSummary, sample, summarize, type Sample } from './perf-harness'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

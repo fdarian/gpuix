@@ -2,7 +2,7 @@
 
 ## Ported source
 
-GPUIX's text selection, syntax highlighting, markdown renderer and diff viewer
+Ghia's text selection, syntax highlighting, markdown renderer and diff viewer
 are ported from **[Comet](https://github.com/zeronsh/comet)** (MIT, Copyright (c)
 2026 Wing). The ported files carry a header naming their original.
 
@@ -15,7 +15,7 @@ double-click, drag autoscroll, and bounded undo follow generic composer
 behavior reviewed at
 [`b3fa518`](https://github.com/zeronsh/comet/commit/b3fa51872f70c8f973c241b659cf0c166766f4f5).
 
-| GPUIX file | Comet original |
+| Ghia file | Comet original |
 | --- | --- |
 | `packages/native/src/text/selection.rs` | [`crates/ui/src/markdown/selection.rs`](https://github.com/zeronsh/comet/blob/main/crates/ui/src/markdown/selection.rs) |
 | `packages/native/src/text/paint.rs` | [selection sections of `crates/ui/src/markdown/render.rs`](https://github.com/zeronsh/comet/blob/main/crates/ui/src/markdown/render.rs) |
@@ -29,18 +29,18 @@ behavior reviewed at
 | `packages/native/src/custom_elements/code.rs` | `render_code_block` in `crates/ui/src/markdown/render.rs` |
 | `packages/native/src/custom_elements/input.rs` | [caret blink sections of `crates/ui/src/composer.rs`](https://github.com/zeronsh/comet/blob/main/crates/ui/src/composer.rs) |
 | `packages/native/src/theme.rs` | `crates/ui/src/theme.rs` |
-| `packages/native/src/updater.rs` | [cargo-packager-updater 0.2.3](https://github.com/crabnebula-dev/cargo-packager/blob/v0.2.3/crates/updater/src/lib.rs) (MIT OR Apache-2.0). HTTP uses GPUIX `reqwest_client`, not crates.io `reqwest`. |
+| `packages/native/src/updater.rs` | [cargo-packager-updater 0.2.3](https://github.com/crabnebula-dev/cargo-packager/blob/v0.2.3/crates/updater/src/lib.rs) (MIT OR Apache-2.0). HTTP uses Ghia `reqwest_client`, not crates.io `reqwest`. |
 
 The Solid host-tree structure is based on
 [`jhomra21/gpuix-solid`](https://github.com/jhomra21/gpuix-solid/tree/main/packages/solid1)
-(MIT). GPUIX keeps only native host nodes, mutations, and structural queries.
+(MIT). Ghia keeps only native host nodes, mutations, and structural queries.
 It does not include that package's DOM, browser-event, class parsing, drag, or
 Kobalte compatibility layers.
 
 The Bun Solid compiler preload and plugin follow
 [`@opentui/solid`](https://github.com/anomalyco/opentui/tree/main/packages/solid)
-(MIT). GPUIX uses the same universal Solid transform and client-runtime redirect
-with its own package name and GPUIX host renderer.
+(MIT). Ghia uses the same universal Solid transform and client-runtime redirect
+with its own package name and Ghia host renderer.
 
 ## Example icons
 
@@ -84,4 +84,4 @@ not ship it. The licence is next to it in `inter-subset-OFL.txt`.
 | arboard | MIT / Apache-2.0 | https://github.com/1Password/arboard |
 | GPUI | Apache-2.0 | https://github.com/zed-industries/zed |
 
-GPUIX itself is licensed under the terms in `LICENSE`.
+Ghia itself is licensed under the terms in `LICENSE`.

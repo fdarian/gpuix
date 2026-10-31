@@ -1,8 +1,8 @@
 /** Exercises the bidirectional, cursor-paginated virtual chat example. */
 
 import React from 'react'
-import { connectTest } from '@gpuix/react/automation'
-import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from '@gpuix/react/testing'
+import { connectTest } from '@ghia/react/automation'
+import { createTestRoot, hasNativeTestRenderer, type TestRenderer } from '@ghia/react/testing'
 import { describe, expect, it, vi } from 'vitest'
 import { createFakeMessageApi, InfiniteChatApp } from './infinite-chat'
 

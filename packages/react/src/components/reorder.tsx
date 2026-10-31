@@ -2,8 +2,8 @@
 
 import { createContext, createElement, useCallback, useContext, useLayoutEffect, useRef, useState } from "react"
 import type { ComponentType, ReactElement, ReactNode, Ref } from "react"
-import { ReorderController, createReorderDrag } from "@gpuix/native/host"
-import type { ReorderAxis } from "@gpuix/native/host"
+import { ReorderController, createReorderDrag } from "@ghia/native/host"
+import type { ReorderAxis } from "@ghia/native/host"
 import { useGpuix, useGpuixRequired } from "../hooks/use-gpuix.js"
 import type { Instance, Props } from "../types/host.js"
 import { createMotionComponent } from "./index.js"

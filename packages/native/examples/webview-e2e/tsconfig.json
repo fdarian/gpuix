@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "jsxImportSource": "@gpuix/react",
+    "jsxImportSource": "@ghia/react",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,9 +12,9 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
-      "@gpuix/react": ["../../../react/dist/index.js"],
-      "@gpuix/react/jsx-runtime": ["../../../react/jsx-runtime.js"],
-      "@gpuix/react/jsx-dev-runtime": ["../../../react/jsx-dev-runtime.js"]
+      "@ghia/react": ["../../../react/dist/index.js"],
+      "@ghia/react/jsx-runtime": ["../../../react/jsx-runtime.js"],
+      "@ghia/react/jsx-dev-runtime": ["../../../react/jsx-dev-runtime.js"]
     }
   },
   "include": ["./*.ts", "./*.tsx"]

@@ -4,7 +4,7 @@
  */
 import React from "react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { document, window, type DomEvent } from "@gpuix/native/host"
+import { document, window, type DomEvent } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

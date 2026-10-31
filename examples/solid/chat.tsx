@@ -37,7 +37,7 @@ import {
   type DialogPopupProps,
   type HostElement,
   type StyleDesc,
-} from "@gpuix/solid"
+} from "@ghia/solid"
 import iconCompose from "../assets/icons/compose.svg" with { type: "text" }
 import iconSearch from "../assets/icons/search.svg" with { type: "text" }
 import iconSidebar from "../assets/icons/panel-left.svg" with { type: "text" }
@@ -827,7 +827,7 @@ function Inspector(props: {
   )
 }
 
-// @gpuix/solid does not export its element class; take it from a ref signature.
+// @ghia/solid does not export its element class; take it from a ref signature.
 
 /** A modal card. Dialog owns Escape, the backdrop press, the Tab trap, and
  *  moving focus in on open and back out on close. */

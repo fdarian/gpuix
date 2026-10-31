@@ -1,8 +1,8 @@
-# Alpina reference
+# Ghia reference
 
 **React and Solid** for [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), Zed's GPU UI framework.
 
-Write a React or Solid tree in TypeScript. Alpina paints it with Metal. No Electron. No web view for your UI: a `<webview>` shows a page where you ask for one.
+Write a React or Solid tree in TypeScript. Ghia paints it with Metal. No Electron. No web view for your UI: a `<webview>` shows a page where you ask for one.
 
 `useState` and JSX still apply. Layout, text, and input go through GPUI, not the DOM.
 
@@ -10,7 +10,7 @@ This file is the API contract: every prop, event, style and behavior is document
 
 ![A glass dashboard over a painted sky](./images/mail-app.jpg)
 
-Everything above is Alpina: the glass window, the cards, the schedule,
+Everything above is Ghia: the glass window, the cards, the schedule,
 and native text.
 
 ## Quickstart
@@ -18,20 +18,20 @@ and native text.
 Install the packages:
 
 ```bash
-pnpm add --save-exact @gpuix/react @gpuix/native react
+pnpm add --save-exact @ghia/react @ghia/native react
 pnpm add -D @types/react typescript
 ```
 
-**Pin your adapter and `@gpuix/native` to the same exact version.** Alpina is
+**Pin your adapter and `@ghia/native` to the same exact version.** Ghia is
 still pre-1.0, so a new release can break either package. The adapter pulls
-`@gpuix/native` with a version range, and that range can install a newer native
+`@ghia/native` with a version range, and that range can install a newer native
 binary under an older adapter. Add both as direct dependencies. Upgrade them
 together.
 
-`@gpuix/react` pulls the native renderer for your platform. Using Solid 1
+`@ghia/react` pulls the native renderer for your platform. Using Solid 1
 instead? Start with the [Solid quick start](#solid-quick-start).
 
-### 1. Point TypeScript at the Alpina JSX types
+### 1. Point TypeScript at the Ghia JSX types
 
 **`jsxImportSource` is required.** Without it TypeScript uses DOM types, so
 `<virtual-list>`, `<markdown>`, `<code>` and `style.hover` all fail to
@@ -44,7 +44,7 @@ typecheck.
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "jsxImportSource": "@gpuix/react",
+    "jsxImportSource": "@ghia/react",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true
@@ -59,7 +59,7 @@ starts the frame loop.
 
 ```tsx
 import { useState } from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -98,7 +98,7 @@ bun --hot app.tsx
 For hot reload during development, use `bun --hot` rather than plain `bun`.
 A save then remounts React on the same window instead of opening a second one.
 
-Bun is not required to run the renderer. Alpina uses Node-API native bindings,
+Bun is not required to run the renderer. Ghia uses Node-API native bindings,
 and React apps also run on Node.js. For
 Node.js, compile TSX to JavaScript first or use a Node-compatible TSX loader.
 The `--hot` option and same-window hot-remount workflow described below are
@@ -193,7 +193,7 @@ is **34 MB**.
 ### 6. Auto-update
 
 Packaging does **not** turn on updates. The running app calls
-`checkUpdate` on `@gpuix/native`. HTTP uses the same `reqwest_client` as
+`checkUpdate` on `@ghia/native`. HTTP uses the same `reqwest_client` as
 `<img>`. There is no second native addon.
 
 Host on **GitHub Releases**. Create the release first. CI packs on each OS,
@@ -213,8 +213,8 @@ Store the private key and its password as repo secrets
 `CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD`. Put the **public** key in the app.
 
 ```tsx
-import { checkUpdate } from '@gpuix/native'
-import { render } from '@gpuix/react'
+import { checkUpdate } from '@ghia/native'
+import { render } from '@ghia/react'
 import { App } from './app'
 
 async function maybeUpdate() {
@@ -293,7 +293,7 @@ GitHub will 404 the API. Optional: put a Cloudflare cache in front of
 | Example | Run | What it shows |
 |---|---|---|
 | **blurred window** | `bun run blurred-window` | A macOS frosted-glass surface using GPUI's native vibrancy backdrop and transparent titlebar |
-| **chat** | `bun --hot chat.tsx` | An Alpina app: transparent titlebar, animated sidebar, per-thread transcripts, demo replies, composer, `<markdown>` |
+| **chat** | `bun --hot chat.tsx` | An Ghia app: transparent titlebar, animated sidebar, per-thread transcripts, demo replies, composer, `<markdown>` |
 | **timeline** | `bun --hot timeline.tsx` | A video-editor timeline: clip dragging, edge trimming with snapping, playhead scrubbing, marquee selection, zoom under the pointer, and a two-axis pan with a frozen ruler and track column |
 | **mail** | `bun --hot mail.tsx` | A Superhuman-style mail client: three panes, thread list, and a Framer newsletter |
 | **native-text** | `bun --hot native-text.tsx` | The three native text components with a tab switcher |
@@ -359,7 +359,7 @@ dependency stays evaluated and cached. Two rules follow:
   Bun runs an importer's dependency-accept callback **even when the imported
   module already self-accepted**, so that callback would remount the tree on top
   of a successful refresh and throw away every `useState`
-- keep the `@gpuix/native` import in a module that can never become a Refresh
+- keep the `@ghia/native` import in a module that can never become a Refresh
   boundary and is never explicitly accepted
 
 The chat example puts a virtualized `<diff>` and a GFM table inside an assistant
@@ -373,7 +373,7 @@ Markdown, code and a virtualized diff in one frame:
 
 ## Architecture
 
-Alpina bridges React and Solid to GPUI using a **shared mutation-based runtime**.
+Ghia bridges React and Solid to GPUI using a **shared mutation-based runtime**.
 Desktop apps use napi-rs; browser apps load the same Rust renderer through
 wasm-bindgen. Each framework adapter collects changed elements into one atomic
 mutation batch. Rust applies that batch to a retained element tree that GPUI
@@ -421,7 +421,7 @@ reads each frame.
 
 ## Why This Works
 
-GPUI is an **immediate-mode** UI framework — it rebuilds the entire element tree every frame. Instead of fighting this, Alpina embraces it:
+GPUI is an **immediate-mode** UI framework — it rebuilds the entire element tree every frame. Instead of fighting this, Ghia embraces it:
 
 1. The React or Solid adapter detects a state change and queues host mutations (`createElement`, `setStyle`, `appendChild`, etc.)
 2. `applyBatch()` validates and applies the complete commit to the Rust **RetainedTree**
@@ -443,7 +443,7 @@ type MutationHost = Pick<GpuixRenderer, "applyBatch">
 
 `createMutationQueue` only needs that. Window size, focus, and selection use smaller host types (`WindowSizeHost`, `SelectionHost`). `NativeRenderer` is `MutationHost` plus those methods, so a fake can implement `applyBatch` alone.
 
-Element IDs are plain numbers generated by an incrementing counter in JS. React may abandon work in concurrent render mode, so Alpina keeps new host nodes in JS until React places the accepted subtree during commit. Only then are its mutations added to the batch. `applyBatch()` applies that accepted commit atomically and marks the Rust view dirty for the next frame.
+Element IDs are plain numbers generated by an incrementing counter in JS. React may abandon work in concurrent render mode, so Ghia keeps new host nodes in JS until React places the accepted subtree during commit. Only then are its mutations added to the batch. `applyBatch()` applies that accepted commit atomically and marks the Rust view dirty for the next frame.
 
 ## Event Flow
 
@@ -480,15 +480,15 @@ Event handlers are stored in a JS-side registry keyed by `(elementId, eventType)
 
 ## Packages
 
-- **`@gpuix/native`**: Rust bindings plus the framework-neutral TypeScript host runtime. It owns host types, mutation batching, renderer state, event routing, observers, native testing, and automation.
-- **`@gpuix/native/host`**: host contracts, mutation helpers, renderer ownership, window observers, selection observation, and text search. Importing it does not load the `.node` addon.
-- **`@gpuix/native/testing`**: the shared `TestRenderer` over the real `TestGpuixRenderer`.
-- **`@gpuix/native/automation`**: the shared automation protocol, client, locators, and process launcher.
-- **`@gpuix/react`**: the React reconciler and React components. It preserves its existing exports and re-exports shared testing, automation, search, and observer APIs.
-- **`@gpuix/solid`**: the Solid 1 universal renderer, Solid primitives, motion, Select, Combobox, Tooltip, Bun preload, and build plugin.
+- **`@ghia/native`**: Rust bindings plus the framework-neutral TypeScript host runtime. It owns host types, mutation batching, renderer state, event routing, observers, native testing, and automation.
+- **`@ghia/native/host`**: host contracts, mutation helpers, renderer ownership, window observers, selection observation, and text search. Importing it does not load the `.node` addon.
+- **`@ghia/native/testing`**: the shared `TestRenderer` over the real `TestGpuixRenderer`.
+- **`@ghia/native/automation`**: the shared automation protocol, client, locators, and process launcher.
+- **`@ghia/react`**: the React reconciler and React components. It preserves its existing exports and re-exports shared testing, automation, search, and observer APIs.
+- **`@ghia/solid`**: the Solid 1 universal renderer, Solid primitives, motion, Select, Combobox, Tooltip, Bun preload, and build plugin.
 
-Pin the selected adapter and `@gpuix/native` to the **same exact version**.
-Alpina is still pre-1.0. Breaking changes can land before v1. Upgrade them
+Pin the selected adapter and `@ghia/native` to the **same exact version**.
+Ghia is still pre-1.0. Breaking changes can land before v1. Upgrade them
 together.
 
 ### Solid quick start
@@ -496,7 +496,7 @@ together.
 Install Solid and the official Solid adapter:
 
 ```bash
-pnpm add --save-exact @gpuix/solid @gpuix/native solid-js
+pnpm add --save-exact @ghia/solid @ghia/native solid-js
 ```
 
 Use Solid's preserved JSX. The preload compiles application `.tsx` and `.jsx`
@@ -509,7 +509,7 @@ files for Solid's universal renderer and selects the reactive client runtime.
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",
-    "jsxImportSource": "@gpuix/solid",
+    "jsxImportSource": "@ghia/solid",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true
@@ -518,12 +518,12 @@ files for Solid's universal renderer and selects the reactive client runtime.
 ```
 
 ```toml
-preload = ["@gpuix/solid/preload"]
+preload = ["@ghia/solid/preload"]
 ```
 
 ```tsx
 import { createSignal } from 'solid-js'
-import { render } from '@gpuix/solid'
+import { render } from '@ghia/solid'
 
 function App() {
   const [count, setCount] = createSignal(0)
@@ -536,7 +536,7 @@ function App() {
   )
 }
 
-render(() => <App />, { title: 'Solid Alpina', width: 800, height: 600 })
+render(() => <App />, { title: 'Solid Ghia', width: 800, height: 600 })
 ```
 
 Run it directly. No wrapper command or Vite configuration is required.
@@ -549,7 +549,7 @@ bun --hot app.tsx
 For production `Bun.build`, pass the exported plugin:
 
 ```ts
-import solidPlugin from '@gpuix/solid/bun-plugin'
+import solidPlugin from '@ghia/solid/bun-plugin'
 
 await Bun.build({
   entrypoints: ['./app.tsx'],
@@ -559,13 +559,13 @@ await Bun.build({
 })
 ```
 
-`@gpuix/solid` targets stable Solid 1.9. Its peer range is `>=1.9 <2`.
+`@ghia/solid` targets stable Solid 1.9. Its peer range is `>=1.9 <2`.
 
 The full Solid adapter API is in the [Solid guide](./solid.md).
 
 ## Building
 
-This section is for **working on Alpina itself**. To build an app with it, see
+This section is for **working on Ghia itself**. To build an app with it, see
 [Quickstart](#quickstart) instead. Installing the packages needs no Rust
 toolchain and no submodule.
 
@@ -606,7 +606,7 @@ bun --hot counter.tsx
 
 ```tsx
 import React, { useState } from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -648,13 +648,13 @@ terminal.
 | `focus` | boolean, default `true` | `false` opens the window behind the active app, like `open -g` |
 | `show` | boolean, default `true` | `false` opens the window hidden. Call `activateWindow()` to reveal it |
 | `x` / `y` | CSS px | Where the window's top-left opens, in the global space [`screen`](#displays) reports: origin at the primary display's top-left, y down, so a display to the left of or above it is negative. The window opens on the display that contains the point, else the nearest. Both are needed, otherwise the window is centred on the primary display. With `fullscreen: true` it goes fullscreen on that display. As in Electron |
-| `fonts` | string[] | Font files (`.ttf`, `.otf`) read and passed to [`registerFont()`](#custom-fonts) right after the window opens, so `fontFamily: "Inter"` resolves without a system-wide install. Alpina ships no fonts: the app supplies its own files. Paths resolve against the process's current working directory, so pass absolute ones, e.g. `fileURLToPath(new URL("./fonts/Inter-Regular.ttf", import.meta.url))`. An unreadable path makes `render()` throw. On macOS a variable font follows `fontWeight` and `fontVariationSettings`; elsewhere it only renders its default instance, so pass one static file per weight |
+| `fonts` | string[] | Font files (`.ttf`, `.otf`) read and passed to [`registerFont()`](#custom-fonts) right after the window opens, so `fontFamily: "Inter"` resolves without a system-wide install. Ghia ships no fonts: the app supplies its own files. Paths resolve against the process's current working directory, so pass absolute ones, e.g. `fileURLToPath(new URL("./fonts/Inter-Regular.ttf", import.meta.url))`. An unreadable path makes `render()` throw. On macOS a variable font follows `fontWeight` and `fontVariationSettings`; elsewhere it only renders its default instance, so pass one static file per weight |
 
 Call it again after a save and it remounts the tree on the same window.
 
 ### The macOS menu bar
 
-Alpina installs the application menu bar for you, so a fresh app already answers
+Ghia installs the application menu bar for you, so a fresh app already answers
 `⌘Q`, `⌘H`, `⌥⌘H`, `⌘M`, and `⌘W`. Without it `NSApp.mainMenu` is nil, macOS
 paints an empty menu bar, and those shortcuts do not exist at all: AppKit only
 provides them through menu items.
@@ -713,7 +713,7 @@ to reveal a `show: false` window. Reach it from any component with
 `useGpuixRequired()`:
 
 ```tsx
-import { useGpuixRequired } from '@gpuix/react'
+import { useGpuixRequired } from '@ghia/react'
 
 function Reveal() {
   const renderer = useGpuixRequired()
@@ -822,7 +822,7 @@ To test a press in a region, see [Window actions in tests](#window-actions-in-te
 opens, so an app can pick where to open.
 
 ```ts
-import { screen } from '@gpuix/react'
+import { screen } from '@ghia/react'
 
 screen.getAllDisplays()    // every display, in the order the OS lists them
 screen.getPrimaryDisplay() // the one with the menu bar
@@ -840,7 +840,7 @@ Both functions work on macOS only and throw elsewhere.
 To open on the second display, centred in its work area:
 
 ```tsx
-import { render, screen } from '@gpuix/react'
+import { render, screen } from '@ghia/react'
 
 const primary = screen.getPrimaryDisplay()
 const target = screen.getAllDisplays().find((d) => d.id !== primary.id) ?? primary
@@ -893,13 +893,13 @@ the same attachment as `onSelectionChange`. `event.value` is `"light"` or
 `"dark"`. It fires when the effective appearance changes, whether the user
 flipped the OS setting or the app called `setAppearance`. It does not fire for
 the initial value, so read `getAppearance()` first, or use
-`observeAppearance(renderer, subscribe, callback)` from `@gpuix/react`, which
+`observeAppearance(renderer, subscribe, callback)` from `@ghia/react`, which
 does both: it calls `callback` with the current value and then on every event
 that `subscribe` delivers. In Solid, `createAppearance()` returns an accessor.
 
 macOS applies `appearance` and `setAppearance`. On Windows and Linux they are
 accepted and ignored, and `getAppearance()` reports GPUI's value for the
-window. Alpina does not change the default theme of `<code>`, `<diff>` or
+window. Ghia does not change the default theme of `<code>`, `<diff>` or
 `<markdown>` with the appearance; pass those your own colors.
 
 `TestRenderer` does what the live renderer does: the `appearance` option and
@@ -920,7 +920,7 @@ with `matches`, `media`, `addEventListener('change', ...)`,
 `media`, and it fires only when `matches` flips.
 
 ```tsx
-import { useMediaQuery, useReducedMotion } from '@gpuix/react'
+import { useMediaQuery, useReducedMotion } from '@ghia/react'
 
 function Sidebar() {
   const wide = useMediaQuery('(min-width: 800px)')
@@ -940,14 +940,14 @@ one bound to the window your component is rendered in:
 
 Code with no component to ask can import `matchMedia` from the adapter. It uses
 the window of the most recently mounted root that is still mounted, and throws
-when no root is mounted. Outside an adapter, `matchMediaFor(renderer)` from `@gpuix/native/host`
+when no root is mounted. Outside an adapter, `matchMediaFor(renderer)` from `@ghia/native/host`
 binds to a renderer.
 
 Supported syntax is Media Queries Level 4: `and`, `or`, `not`, `only`, comma
 lists, parentheses, and range syntax such as `(400px <= width < 800px)`. The
 media types `all` and `screen` match, `print` and `speech` do not.
 
-| Feature | Value in Alpina |
+| Feature | Value in Ghia |
 |---|---|
 | `width`, `height`, `aspect-ratio`, `orientation` | The window's content size. `min-` / `max-` prefixes and ranges work. Lengths take `px`, `em`, `rem` (16px), `pt`, `pc`, `in`, `cm`, `mm`, `Q`, `vw`, `vh`, `vmin`, `vmax`. |
 | `prefers-color-scheme` | The window's effective appearance, the same value as `getAppearance()`. |
@@ -958,7 +958,7 @@ media types `all` and `screen` match, `print` and `speech` do not.
 | `pointer`, `any-pointer` | Always `fine`. |
 | `color`, `monochrome` | `8` and `0`. |
 
-A query item that does not parse, or names a feature or value Alpina does not
+A query item that does not parse, or names a feature or value Ghia does not
 know, is `not all`: it never matches and `media` reports `not all`. The other
 items of a comma list still count.
 
@@ -992,7 +992,7 @@ The "Show scroll bars" setting (see [Scrollbars](#scrollbars)) works the same wa
 the selected absolute paths, or `null` when the user cancels.
 
 ```tsx
-import { useGpuixRequired } from '@gpuix/react'
+import { useGpuixRequired } from '@ghia/react'
 
 function AttachFiles() {
   const renderer = useGpuixRequired()
@@ -1019,7 +1019,7 @@ omit this optional capability.
 
 On the current Windows GPUI backend, the system dialog does not distinguish
 cancellation from other `IFileDialog::Show` errors, so both resolve with
-`null`. This needs a fix in GPUI before Alpina can report those errors.
+`null`. This needs a fix in GPUI before Ghia can report those errors.
 
 `accept` filters the selectable files with the HTML `accept` syntax:
 extensions, MIME types and `type/*` wildcards, separated by commas and
@@ -1042,19 +1042,19 @@ table there; filter the returned paths yourself.
 promises, as in the DOM.
 
 ```tsx
-import { clipboard } from '@gpuix/react' // or '@gpuix/solid'
+import { clipboard } from '@ghia/react' // or '@ghia/solid'
 
 await clipboard.writeText('copied')
 const text = await clipboard.readText() // '' when the clipboard has no text
 ```
 
 When a renderer is created and the runtime has no `navigator.clipboard`,
-Alpina installs `clipboard` there so code written for the web runs unchanged. An existing
+Ghia installs `clipboard` there so code written for the web runs unchanged. An existing
 `navigator.clipboard` is never replaced. It always talks to the renderer
 created last. Only text is supported, not images or `ClipboardItem`s; the
 browser build leaves the browser's own `navigator.clipboard` alone.
 
-`@gpuix/native` also declares `Navigator.clipboard` globally, so a project whose
+`@ghia/native` also declares `Navigator.clipboard` globally, so a project whose
 `tsconfig` has no DOM lib (`lib: ["ESNext"]`) type-checks `navigator.clipboard`
 too. With the DOM lib the declaration is identical to its own and merges.
 
@@ -1104,7 +1104,7 @@ background daemon, run the app from a `launchd` agent in
 
 ```tsx
 import { readFileSync } from 'node:fs'
-import { useGpuixRequired } from '@gpuix/react'
+import { useGpuixRequired } from '@ghia/react'
 
 function LoadFonts() {
   const renderer = useGpuixRequired()
@@ -1155,7 +1155,7 @@ every screenshot, click, and assertion runs on a window that never interrupts
 you:
 
 ```ts
-import { launch } from '@gpuix/react/automation'
+import { launch } from '@ghia/react/automation'
 
 const app = await launch({
   command: 'bun',
@@ -1204,7 +1204,7 @@ The root is a **concurrent root**, so React commits in a later microtask.
 same as in `react-dom`.
 
 ```tsx
-import { flushSync } from '@gpuix/react'
+import { flushSync } from '@ghia/react'
 
 flushSync(() => setSidebarOpen(true))
 ```
@@ -1266,7 +1266,7 @@ THROTTLE=utility bun --hot chat.tsx
 ### 1. End the file with `render()`
 
 ```tsx
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 function App() {
   return <div style={{ padding: 16 }}>hello</div>
@@ -1371,7 +1371,7 @@ each frame.
 ### Animate a target
 
 ```tsx
-import { motion } from '@gpuix/react'
+import { motion } from '@ghia/react'
 
 function WelcomeCard() {
   return (
@@ -1451,7 +1451,7 @@ list can be animated, in `animate`, `initial` and `exit`:
 | `fontVariationSettings` | `'"wght" 650, "wdth" 90'`, or `normal` |
 | `textUnderlineOffset` | `auto`, or any length or percentage, may be negative |
 | `textDecorationThickness` | `auto`, `from-font`, or any length or percentage; a negative one paints a device pixel, as zero does |
-| `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour Alpina parses |
+| `backgroundColor`, `color`, `borderColor`, `borderTopColor` ... `borderLeftColor`, `outlineColor`, `textDecorationColor`, `scrollbarColor`, `selectionColor` | any colour Ghia parses |
 | `boxShadow` | one shadow or a list |
 | `filter` | `none` or a list of `blur()`, `brightness()`, `contrast()`, `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`, `saturate()`, `sepia()` and `drop-shadow()`; see below |
 
@@ -2036,7 +2036,7 @@ gesture props, and answers to them natively, with no render per hover or press.
 `motion.span` animates what an inline `<span>` shows inside text, with the
 `initial`, `animate`, `exit`, `transition` and `variants` of Framer's
 `motion.span`, and answers to `whileHover`, `whileTap`, `whileFocus` and
-`whileInView` (see [Gestures and variants](#gestures-and-variants)). It is available in `@gpuix/react` and `@gpuix/solid`, and the type
+`whileInView` (see [Gestures and variants](#gestures-and-variants)). It is available in `@ghia/react` and `@ghia/solid`, and the type
 of its props is `MotionSpanProps`.
 
 ```tsx
@@ -2054,7 +2054,7 @@ of its props is `MotionSpanProps`.
 ```
 
 A span is text that its paragraph paints, not a box of its own, so it animates
-what CSS lets an inline box show and Alpina's inline model draws: `opacity`, the
+what CSS lets an inline box show and Ghia's inline model draws: `opacity`, the
 colours (`color`, `backgroundColor`, `textDecorationColor`, `outlineColor`,
 `borderColor` and the four `border*Color` sides), the font of its text
 (`fontSize`, `fontWeight`, `fontVariationSettings`, `lineHeight`, `verticalAlign`), its `padding`,
@@ -2105,7 +2105,7 @@ width. This reveals or hides the content without reflowing its text on every
 frame.
 
 ```tsx
-import { motion } from '@gpuix/react'
+import { motion } from '@ghia/react'
 import type { ReactNode } from 'react'
 
 function SidebarFrame({
@@ -2150,7 +2150,7 @@ when it is a child of **`AnimatePresence`**. Without `AnimatePresence`, React
 destroys the node on the same commit.
 
 ```tsx
-import { AnimatePresence, motion } from '@gpuix/react'
+import { AnimatePresence, motion } from '@ghia/react'
 
 function Toast({ show }: { show: boolean }) {
   return (
@@ -2200,7 +2200,7 @@ callback (outside a component) are not kept: they stop updating when the child
 leaves, as before.
 
 ```tsx
-import { usePresence } from '@gpuix/react'
+import { usePresence } from '@ghia/react'
 
 function DeferredRemoval() {
   const [isPresent, safeToRemove] = usePresence()
@@ -2288,7 +2288,7 @@ frame in Rust, with no render and no N-API call per frame. `motion.div` accepts
 them too. A bound value is applied after `animate` and `transition`.
 
 ```tsx
-import { animate, useMotionValue, useTransform } from '@gpuix/react'
+import { animate, useMotionValue, useTransform } from '@ghia/react'
 
 function Meter() {
   const x = useMotionValue(0)
@@ -2304,7 +2304,7 @@ function Meter() {
 ```
 
 ```tsx
-import { animate, createMotionValue, createTransform } from '@gpuix/solid'
+import { animate, createMotionValue, createTransform } from '@ghia/solid'
 
 function Meter() {
   const x = createMotionValue(0)
@@ -2431,7 +2431,7 @@ Solid signals.
 `MotionConfig` overrides only the props it sets.
 
 ```tsx
-import { MotionConfig, motion } from '@gpuix/react'
+import { MotionConfig, motion } from '@ghia/react'
 
 <MotionConfig transition={{ type: 'spring', duration: 0.4 }} reducedMotion="user">
   <motion.div animate={{ width: open ? 240 : 40, opacity: open ? 1 : 0.5 }} />
@@ -2458,7 +2458,7 @@ animation runs finishes the jumping properties at once.
 `animate()` on a motion value follows the same rule when the value is bound,
 through `style` of a `motion.*` component under the config, to `width`,
 `height`, `top`, `right`, `bottom` or `left`: the value jumps and `finished`
-resolves. Motion for React does not reduce a bare `animate(value)`; Alpina does,
+resolves. Motion for React does not reduce a bare `animate(value)`; Ghia does,
 so a bound size follows the setting ([deviations](./fork/deviations.md#motion)). A value bound to padding or opacity, bound
 to a plain `div`, or not bound to any element animates normally.
 
@@ -2475,7 +2475,7 @@ accordion, a list that reorders, a card that grows. `layoutId` shares a glide
 between elements.
 
 ```tsx
-import { LayoutGroup, motion } from '@gpuix/react'
+import { LayoutGroup, motion } from '@ghia/react'
 
 function Tabs({ tabs, active, onSelect }) {
   return (
@@ -2504,7 +2504,7 @@ function Tabs({ tabs, active, onSelect }) {
 </div>
 ```
 
-`@gpuix/solid` takes the same props.
+`@ghia/solid` takes the same props.
 
 - **`layout`** is `true`, `"position"`, `"size"` or `false`. `true` animates
   the position and the size, `"position"` only the corner (the size snaps) and
@@ -2565,7 +2565,7 @@ and glide into place with [`layout`](#layout-animations).
 
 ```tsx
 import { useState } from 'react'
-import { Reorder } from '@gpuix/react'
+import { Reorder } from '@ghia/react'
 
 function Tasks() {
   const [tasks, setTasks] = useState(['Write', 'Review', 'Ship'])
@@ -2581,7 +2581,7 @@ function Tasks() {
 }
 ```
 
-`@gpuix/solid` takes the same props; render the items with `<For>` inside the
+`@ghia/solid` takes the same props; render the items with `<For>` inside the
 group.
 
 - **`Reorder.Group`** takes `values` (the current order), `onReorder(values)`
@@ -2627,8 +2627,8 @@ specific timestamps. This avoids timer sleeps and gives CI the same frames on
 every run.
 
 ```tsx
-import { connectTest } from '@gpuix/react/automation'
-import { createTestRoot } from '@gpuix/react/testing'
+import { connectTest } from '@ghia/react/automation'
+import { createTestRoot } from '@ghia/react/testing'
 import { ChatApp } from './chat'
 
 const { render, renderer } = createTestRoot()
@@ -2781,7 +2781,7 @@ The scroller picks an **anchor**: the first box of its content, in layout order,
 
 A change the page makes to the anchor itself is its own move and is not compensated: the `top`, `margin`, `padding`, `width`, `height`, `min-`/`max-` size, `position` or `containIntrinsicSize` of the anchor or of any box between it and the scroller, whenever the anchor ends up somewhere else because of it. An explicit scroll (a wheel, a scrollbar, `scrollTop`, `scrollTo`) drops the anchor, and the next one is picked from the layout as it was before the frame's changes, so content that arrives in the frame of a scroll is still compensated. The same goes for an anchor that is removed, hidden, or turned `overflowAnchor: 'none'`: the box after it takes over.
 
-Where Alpina differs from Chrome (a nested scroller is anchored as one box, there are no priority candidates, and the events and a relative anchor's `top` differ in corner cases): [deviations](./fork/deviations.md#scroll). `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
+Where Ghia differs from Chrome (a nested scroller is anchored as one box, there are no priority candidates, and the events and a relative anchor's `top` differ in corner cases): [deviations](./fork/deviations.md#scroll). `<virtual-list>` has its own row-based anchoring (below). `fixtures/scroll-anchoring-oracle.*` pins the rest against headless Chrome.
 
 ### Sticky positioning
 
@@ -2853,7 +2853,7 @@ function MessageList({ messages }: { messages: Message[] }) {
 }
 ```
 
-The list needs a **bounded height** or bounded flex space. Its direct children are rows and can contain any Alpina host or custom element.
+The list needs a **bounded height** or bounded flex space. Its direct children are rows and can contain any Ghia host or custom element.
 
 The list paints its own box style like a `<div>`: `backgroundColor`, borders, `borderRadius`, `boxShadow`, `opacity`, `filter`, `mask` and `clipPath` apply to it and its rows, and a `borderRadius` or `clipPath` cuts what the pointer can hit.
 
@@ -2866,7 +2866,7 @@ The list paints its own box style like a `<div>`: `backgroundColor`, borders, `b
 
 ### How virtualization works
 
-**React reconciliation stays normal.** The complete keyed child list crosses the mutation protocol and remains in Rust's retained tree. Alpina defers only the expensive GPUI element construction, layout, and paint work.
+**React reconciliation stays normal.** The complete keyed child list crosses the mutation protocol and remains in Rust's retained tree. Ghia defers only the expensive GPUI element construction, layout, and paint work.
 
 ```text
 React Fiber + Rust RetainedTree    all row IDs, props, text, and events
@@ -2902,7 +2902,7 @@ index:     0        1        2        3        4        5        6        7
 
 The sum of that height cache is the scroll length, so a rough estimate only affects **scrollbar accuracy** before a row is visited. The measured height replaces the estimate automatically, and the scrollbar converges as you scroll.
 
-When a retained descendant changes, Alpina marks its direct row for remeasurement, so a streaming row grows correctly. Appending, removing, or reordering keyed rows keeps measurements for rows whose IDs did not change.
+When a retained descendant changes, Ghia marks its direct row for remeasurement, so a streaming row grows correctly. Appending, removing, or reordering keyed rows keeps measurements for rows whose IDs did not change.
 
 `estimatedItemHeight` is optional in children mode, where every row exists and can be measured. It is **required** with `itemCount`, because React never mounts the rows outside the window and native has no element to measure. Those indexes render as an empty box of the estimated height until React mounts the real row.
 
@@ -3362,7 +3362,7 @@ measured from there: text inside it that is raised or lowered with `verticalAlig
 line, as in Chrome, and a box that is raised itself carries its underline up with
 it. The underline of the paragraph's own container is on the baseline of the row.
 Chrome interrupts an underline where it crosses the ink of a glyph
-(`text-decoration-skip-ink: auto`); Alpina draws it whole.
+(`text-decoration-skip-ink: auto`); Ghia draws it whole.
 
 - A `<text>` anywhere else is a block, and a block child ends a paragraph.
 - A nested `<text>` with a `tabIndex` is a block too: it is an element of its own
@@ -3826,7 +3826,7 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
   breaks where Chrome's does, at both scales. The pieces are added as Blink adds them, each glyph's
   advance cut to a 65536th of a device pixel and a kern a whole number of them. Where a line breaks
   between two letters that kern (`wordBreak: 'break-all'`, a word cut by `overflowWrap`, kana the font
-  kerns) Chrome shapes the end of the line again without the kern, and so does Alpina: the line is as
+  kerns) Chrome shapes the end of the line again without the kern, and so does Ghia: the line is as
   wide as its end shaped alone, and has to fit that. A `-` that starts a line does not break from a
   digit after it (`-20`) unless `break-all`.
 - `break-all` adds the places of Blink's table for it (`kBreakAllLineBreakClassTable`) to the ones
@@ -3843,7 +3843,7 @@ a value of `whiteSpace` that wraps, and only a container sets them: a `<span>` o
 - A value CSS does not have throws, like any style that cannot be parsed.
 - Text laid out by GPUI itself, as Zed does, keeps breaking such a word at the
   edge: its `TextStyle::overflow_wrap` defaults to `BreakWord`, and `Normal` is
-  what Alpina sets for all of its text.
+  what Ghia sets for all of its text.
 
 A soft hyphen (U+00AD) breaks where Chrome's does, and the row that breaks there ends with a hyphen (U+2010 if the font has it, a
 hyphen-minus if not) that counts in the row's width and alignment and in the box of the element holding it, but is no part of the text
@@ -4264,7 +4264,7 @@ next burst. `collectGarbageWhenIdle()` runs one full collection once the app has
 stopped committing for a while, then waits for the next burst.
 
 ```tsx
-import { collectGarbageWhenIdle } from '@gpuix/react'
+import { collectGarbageWhenIdle } from '@ghia/react'
 
 const stop = collectGarbageWhenIdle() // checks every 5s, collects after two quiet checks
 ```
@@ -4308,7 +4308,7 @@ Set `padding` on the input style or on a parent wrapper. When the input has
 ## Accessibility
 
 GPUI talks to the **macOS AX tree**, Windows UIA, and Linux AT-SPI through
-AccessKit. Alpina maps React props onto that API. A node is in the tree only
+AccessKit. Ghia maps React props onto that API. A node is in the tree only
 when it has **both** a GPUI id (always set) and a **role**.
 
 Prop names match React DOM. Role **values** are ARIA tokens, not AccessKit
@@ -4426,7 +4426,7 @@ submission while the control is empty.
 ```
 
 - **Implicit submission.** Enter in an `<input>` submits its form when the form
-  has at most one `<input>`. Alpina has no submit button (a `div` with
+  has at most one `<input>`. Ghia has no submit button (a `div` with
   `role="button"` is not one), so no form has a default button, and HTML's
   fallback applies: a form with two or more `<input>`s does not submit on Enter,
   whether they are disabled, read-only or of any `type`, and a nested form's
@@ -4449,7 +4449,7 @@ renderer. On Windows and Linux they are queued like other events.
 
 ## Focus and keyboard navigation
 
-Focus is a **native GPUI concept**. Alpina connects stable React element IDs to
+Focus is a **native GPUI concept**. Ghia connects stable React element IDs to
 persistent `gpui::FocusHandle` values, so focus survives React rerenders:
 
 ```text
@@ -4532,15 +4532,15 @@ The props follow each framework's web behaviour:
 | React | none | none | `onFocus` | `onBlur` |
 
 React DOM listens to `focusin` and `focusout` for `onFocus` and `onBlur`, so in
-`@gpuix/react` those props bubble and there is no `onFocusIn` or `onFocusOut`.
-`@gpuix/solid` is plain DOM.
+`@ghia/react` those props bubble and there is no `onFocusIn` or `onFocusOut`.
+`@ghia/solid` is plain DOM.
 
 ### Keyboard events
 
 Each keystroke is **one** `keydown`, and one `keyup` on release, like the DOM.
 It targets the focused element, runs capture, target and bubble through its
 ancestors, then reaches `document` and `window`. With nothing focused it goes to
-`window` alone and `event.target` is `null` (Alpina has no `body` or `html`
+`window` alone and `event.target` is `null` (Ghia has no `body` or `html`
 element to stand in).
 
 Handlers run synchronously, before the editor acts on the key, so
@@ -4681,7 +4681,7 @@ adapters export. They are `EventTarget`-shaped and are not installed as
 globals, so libraries do not mistake the app for a browser:
 
 ```tsx
-import { document, window } from '@gpuix/react' // or '@gpuix/solid'
+import { document, window } from '@ghia/react' // or '@ghia/solid'
 
 function onKey(event) {
   if (event.key === 'k' && event.modifiers?.cmd) openPalette()
@@ -4846,7 +4846,7 @@ wrap and style it in a local file, then import those local components throughout
 the app.
 
 ```text
-@gpuix/react/select ► components/ui/select.tsx ► application screens
+@ghia/react/select ► components/ui/select.tsx ► application screens
   native behavior       local styles/variants       product-specific use
 ```
 
@@ -4854,21 +4854,21 @@ Each primitive has a dedicated namespace entry point:
 
 | Import | Main parts |
 |---|---|
-| `@gpuix/react/button` | `Button`, `buttonProps` |
-| `@gpuix/react/select` | `Root`, `Trigger`, `Value`, `Content`, `Item` |
-| `@gpuix/react/combobox` | `Root`, `Input`, `Content`, `List`, `Item`, `Empty` |
-| `@gpuix/react/tooltip` | `Provider`, `Root`, `Trigger`, `Content` |
-| `@gpuix/react/dialog` | `Root`, `Trigger`, `Portal`, `Backdrop`, `Popup`, `Title`, `Description`, `Close` |
-| `@gpuix/react/floating` | `FloatingLayer`, `renderSlot` |
+| `@ghia/react/button` | `Button`, `buttonProps` |
+| `@ghia/react/select` | `Root`, `Trigger`, `Value`, `Content`, `Item` |
+| `@ghia/react/combobox` | `Root`, `Input`, `Content`, `List`, `Item`, `Empty` |
+| `@ghia/react/tooltip` | `Provider`, `Root`, `Trigger`, `Content` |
+| `@ghia/react/dialog` | `Root`, `Trigger`, `Portal`, `Backdrop`, `Popup`, `Title`, `Description`, `Close` |
+| `@ghia/react/floating` | `FloatingLayer`, `renderSlot` |
 
 ### Build a local Select
 
 Create `components/ui/select.tsx`. This file is application code, so it can be
-copied and changed without waiting for Alpina to add a theme option:
+copied and changed without waiting for Ghia to add a theme option:
 
 ```tsx
 import * as React from 'react'
-import * as SelectPrimitive from '@gpuix/react/select'
+import * as SelectPrimitive from '@ghia/react/select'
 
 export const Select = SelectPrimitive.Root
 export const SelectValue = SelectPrimitive.Value
@@ -4995,10 +4995,10 @@ Start their local files from namespace imports too:
 
 ```tsx
 // components/ui/combobox.tsx
-import * as ComboboxPrimitive from '@gpuix/react/combobox'
+import * as ComboboxPrimitive from '@ghia/react/combobox'
 
 // components/ui/tooltip.tsx
-import * as TooltipPrimitive from '@gpuix/react/tooltip'
+import * as TooltipPrimitive from '@ghia/react/tooltip'
 ```
 
 The application still uses compound components, not one large configuration
@@ -5123,7 +5123,7 @@ or changed popup geometry.
 
 ### Which element gets a pointer event
 
-Alpina hit-tests like the DOM. The pointer's **target** is the topmost element
+Ghia hit-tests like the DOM. The pointer's **target** is the topmost element
 under it, whatever that element paints or has a listener for, and the event
 then runs along the target's ancestors in the tree you wrote: capture from the
 root down, the target, bubble back up. A `div` with no fill, a transparent
@@ -5180,7 +5180,7 @@ Take `target` from a `ref` and render the portal once it is set. A portal into a
 element that has not mounted has nowhere to attach.
 
 ```tsx
-import { createPortal, type PublicInstance } from '@gpuix/react'
+import { createPortal, type PublicInstance } from '@ghia/react'
 
 function Screen() {
   const [layer, setLayer] = useState<PublicInstance | null>(null)
@@ -5263,7 +5263,7 @@ gets its true box too (see [Skipping content](#skipping-content-with-contentvisi
 ### Observe size and visibility
 
 `ResizeObserver` and `IntersectionObserver` follow the DOM. Export them from
-`@gpuix/react` or `@gpuix/solid` and pass a host element (a React `ref`, a Solid
+`@ghia/react` or `@ghia/solid` and pass a host element (a React `ref`, a Solid
 `ref`) where the DOM takes an `Element`. They are not installed as globals.
 
 ```tsx
@@ -5379,11 +5379,11 @@ between, and everything else in tree order.
 
 ### Button
 
-Alpina has no native `<button>`, so a `div` with `onClick` is not reachable with
+Ghia has no native `<button>`, so a `div` with `onClick` is not reachable with
 Tab and ignores the keyboard. `Button` is the [Base UI Button](https://base-ui.com/react/components/button):
 
 ```tsx
-import { Button } from '@gpuix/react/button'
+import { Button } from '@ghia/react/button'
 
 <Button onClick={save} disabled={saving} style={(state) => ({ opacity: state.disabled ? 0.5 : 1 })}>
   Save
@@ -5408,7 +5408,7 @@ import { Button } from '@gpuix/react/button'
 Same parts as [Base UI Dialog](https://base-ui.com/react/components/dialog):
 
 ```tsx
-import * as Dialog from '@gpuix/react/dialog'
+import * as Dialog from '@ghia/react/dialog'
 
 <Dialog.Root>
   <Dialog.Trigger>Settings</Dialog.Trigger>
@@ -5447,7 +5447,7 @@ Base UI:
 
 The default for `initialFocus` differs from Base UI, which picks the first
 tabbable element. GPUI's tab order exists only after the popup has painted,
-so Alpina focuses the popup and lets the first Tab walk that order
+so Ghia focuses the popup and lets the first Tab walk that order
 ([deviations](./fork/deviations.md#base-ui)).
 
 A dialog opened from app state, with no `Trigger`, still returns focus: the
@@ -5481,7 +5481,7 @@ A custom overlay joins the same stack with `DismissableLayer`. Mount it only
 while the overlay is open:
 
 ```tsx
-import { DismissableLayer } from '@gpuix/react' // or '@gpuix/solid'
+import { DismissableLayer } from '@ghia/react' // or '@ghia/solid'
 
 {open && (
   <DismissableLayer onEscapeKeyDown={() => setOpen(false)}>
@@ -5519,7 +5519,7 @@ function onKeyDown(event: KeyEvent) {
 
 ## Text selection
 
-Every text Alpina paints is **selectable and copyable**, including text inside
+Every text Ghia paints is **selectable and copyable**, including text inside
 `<code>`, `<diff>` and `<markdown>`. A drag that starts in a heading and ends
 inside a fenced code block selects everything between; Cmd+C copies it joined in
 document order.
@@ -5571,7 +5571,7 @@ follows paint order, so a press lands on the topmost text under the pointer.
 <summary>Why not one big text element, like Zed?</summary>
 
 Zed's markdown selects continuously because its whole document is a single
-element over one text model. Alpina renders a *tree* of text elements, so it
+element over one text model. Ghia renders a *tree* of text elements, so it
 rebuilds that continuity at paint time instead. The mechanism is ported from
 [Comet](https://github.com/zeronsh/comet) (MIT), which faced the same problem.
 </details>
@@ -5589,7 +5589,7 @@ window and a container searches only that container.
 ```
 
 It reaches `<text>`, `<code>`, `<markdown>` and `<diff>` with no extra props,
-because every string Alpina paints goes through the same funnel.
+because every string Ghia paints goes through the same funnel.
 
 Text in a [`contentVisibility`](#skipping-content-with-contentvisibility) subtree is
 searched as a browser's find does: the text of a skipped `"auto"` element is found
@@ -5606,7 +5606,7 @@ box `containIntrinsicSize` gives it, so scrolling to the element works before it
 event handlers, so nothing here needs an effect.
 
 ```tsx
-import { useTextSearch } from '@gpuix/react'
+import { useTextSearch } from '@ghia/react'
 
 function Find() {
   const [query, setQuery] = useState('')
@@ -5686,7 +5686,7 @@ The nearest declaration wins, so a nested `highlight` replaces its ancestor's
 for that subtree.
 
 **`userSelect: "none"` does not opt out of search.** A browser still finds that
-text, so Alpina still highlights it. Only element chrome, a code gutter or a diff
+text, so Ghia still highlights it. Only element chrome, a code gutter or a diff
 file header, is excluded.
 
 <details>
@@ -5707,7 +5707,7 @@ Both numbers travel together in `matches`, because supplying one without the
 other is always wrong.
 
 ```tsx
-import { findRanges, useTextSearch } from '@gpuix/react'
+import { findRanges, useTextSearch } from '@ghia/react'
 
 // One entry per row, so a prefix sum gives both numbers.
 const perRow = useMemo(
@@ -5736,7 +5736,7 @@ line, and `<markdown>` paints inline runs rather than its source.
 <summary>Why a wash and not gpui's HighlightStyle</summary>
 
 `HighlightStyle.background_color` is painted natively by gpui, but only with
-square corners, and it cannot report the boxes it drew. Alpina paints quads from
+square corners, and it cannot report the boxes it drew. Ghia paints quads from
 `range_rects`, the same helper selection and inline-code pills use, so a
 soft-wrapped match is one box per visual row and `getPaintedHighlights()` can
 assert the geometry without a screenshot. Zed's own editor paints search
@@ -6017,7 +6017,7 @@ stretch one logical pixel into four screen pixels.
 ```tsx
 import { createCanvas } from 'canvas'
 import { useLayoutEffect, useRef } from 'react'
-import type { ImgInstance } from '@gpuix/react'
+import type { ImgInstance } from '@ghia/react'
 
 function Waveform({ samples }: { samples: Float32Array }) {
   const img = useRef<ImgInstance>(null)
@@ -6049,7 +6049,7 @@ function Waveform({ samples }: { samples: Float32Array }) {
 
 node-canvas `toBuffer('raw')` is **BGRA** on little-endian machines (every
 Apple Silicon, x86, and ARM64 desktop), with no row padding. It is
-**premultiplied**, and Alpina expects straight alpha. That is identical only for
+**premultiplied**, and Ghia expects straight alpha. That is identical only for
 opaque pixels, which is why the example fills the background first. For a
 transparent canvas, use `getImageData().data` with the default `'rgba'` format.
 
@@ -6079,12 +6079,12 @@ the DOM, so `style.color` recolours an icon drawn with `fill="currentColor"` and
 root keeps it. The default `color` is black, white under a dark `colorScheme`, and
 an element with no fill paints black, as in a browser.
 
-For application icons, prefer **raw SVG source**. It works with both Alpina
+For application icons, prefer **raw SVG source**. It works with both Ghia
 targets and lets a bundler embed each icon in the JavaScript bundle. Use `src`
 only for a desktop app that intentionally ships loose asset files.
 
 `src` is a filesystem path **or** a `data:image/svg+xml,…` URL. Vitest and some
-Bun `import … with { type: 'file' }` bindings emit the data URL. Alpina decodes
+Bun `import … with { type: 'file' }` bindings emit the data URL. Ghia decodes
 both.
 
 Give the element a `width` and `height`: an `<svg>` has no intrinsic size here.
@@ -6155,7 +6155,7 @@ When both children and `source` or `src` are given, the children win.
 The DOM `pathLength` attribute works as in a browser: it declares the length
 that `strokeDasharray` and `strokeDashoffset` are measured in, so
 `<path pathLength={1} strokeDasharray="0.5 1" />` strokes half of the outline.
-Alpina measures the shape itself and writes absolute dash values, because the
+Ghia measures the shape itself and writes absolute dash values, because the
 rasteriser does not support the attribute.
 
 `fill` and `stroke` keep their own colours, so animating them with
@@ -6217,7 +6217,7 @@ React:
 
 ```tsx
 import { useRef, useState } from 'react'
-import type { WebviewInstance } from '@gpuix/react'
+import type { WebviewInstance } from '@ghia/react'
 
 function Browser() {
   const view = useRef<WebviewInstance>(null)
@@ -6244,7 +6244,7 @@ Solid:
 
 ```tsx
 import { createSignal } from 'solid-js'
-import type { HostElement } from '@gpuix/solid'
+import type { HostElement } from '@ghia/solid'
 
 function Browser() {
   let view!: HostElement
@@ -6388,7 +6388,7 @@ layer) and `getCompositionLayers()` lists the layers of the frame.
 
 `<nativeview>` is a `div` with a native layer in it, for a **separate library** that
 puts its own AppKit view (a visual-effect view, a map, a Metal view) between the
-layers GPUI draws. Alpina does not know what the view is: it places it, clips it and
+layers GPUI draws. Ghia does not know what the view is: it places it, clips it and
 keeps it in the paint order, and the library never links GPUI. The only thing that
 crosses is the address of a content `NSView`. **macOS only**: elsewhere the element
 is an empty box that lays out its children and logs a warning once, and `onAttach`
@@ -6418,7 +6418,7 @@ hit-tested like one, and its children are ordinary children.
   keyed reorder does not detach.
 - **The library must remove and release its view in `onDetach`.** The pointer is
   valid from `onAttach` until `onDetach` returns; using it afterwards is undefined
-  and can crash. Alpina calls from inside `onDetach` fail ("A renderer call cannot be
+  and can crash. Ghia calls from inside `onDetach` fail ("A renderer call cannot be
   nested…"): touch only your view.
 - **`nativeEvents`** (default off): see Pointer below.
 
@@ -6496,7 +6496,7 @@ The details for a library author, with a minimal addon, are in
 
 Every pointer, mouse, drag and composition handler also has a capture-phase twin:
 `onClickCapture`, `onPointerDownCapture`, `onDropCapture`, and so on.
-`onMouseDownOutside` is Alpina's own event and has none.
+`onMouseDownOutside` is Ghia's own event and has none.
 
 `onMouseDownOutside` fires after `pointerdown` and `mousedown` of a press, for any button, on every element
 that listens for it and does not contain the pressed element. A press that hits no element at all is outside
@@ -6624,7 +6624,7 @@ more than 4px (logical pixels, from the press) starts a drag:
 `setData`, `getData`, `clearData`, `types`, `effectAllowed` and `dropEffect`.
 `setData` and `effectAllowed` work in `dragstart` only. `getData` works in
 `dragstart` and `drop` and returns `""` in every other event, `dragover` included.
-`setDragImage` is accepted and does nothing: Alpina does not draw a drag image, so
+`setDragImage` is accepted and does nothing: Ghia does not draw a drag image, so
 nothing follows the pointer. The drag stays inside the window: it cannot drop on
 another app, and a drag from another app is a file drag. What a drag image would take is in
 [deviations](./fork/deviations.md#events-and-input).
@@ -6780,7 +6780,7 @@ call that asked. Elsewhere the next frame applies the request.
 
 `pointerlockchange` and `pointerlockerror` are DOM events at `document`: listen
 with `document.addEventListener('pointerlockchange', ...)`, the `document` and
-`window` objects `@gpuix/react` and `@gpuix/solid` export. `event.target` is
+`window` objects `@ghia/react` and `@ghia/solid` export. `event.target` is
 `document`, as in the DOM, and they run the window propagation (window capture,
 document capture, document bubble, window bubble), bubble and cannot be
 cancelled. The element is `document.pointerLockElement`, like
@@ -6840,7 +6840,7 @@ CSS-like styling via the `style` prop:
 ```
 
 > [!IMPORTANT]
-> **Alpina styles look like CSS but are not CSS.** A few differences trip
+> **Ghia styles look like CSS but are not CSS.** A few differences trip
 > everyone up on the first project:
 >
 > - **`div` is block, not flex.** Set `display: "flex"` before using
@@ -6949,7 +6949,7 @@ written later wins, as in CSS. The ones below take CSS's several-value syntax.
 |---|---|
 | `padding`, `margin`, `inset`, `borderWidth` | One to four values in CSS order: `"8px"` is all sides, `"8px 12px"` top and bottom then left and right, `"1px 2px 3px"` top, left and right, bottom, `"1px 2px 3px 4px"` top, right, bottom, left. `margin` and `inset` take `auto` too. `borderWidth` takes `thin`, `medium` and `thick` and no `%` |
 | `gap` | One or two lengths: `"4px 8px"` is the gap between rows, then between columns |
-| `paddingBlock`, `paddingInline`, `marginBlock`, `marginInline`, `insetBlock`, `insetInline` | One value for both ends or `"<start> <end>"`. Block is top and bottom, inline is left and right: Alpina only lays out horizontally. The start of an inline pair is the left, and the right where the element's `direction` is `rtl` |
+| `paddingBlock`, `paddingInline`, `marginBlock`, `marginInline`, `insetBlock`, `insetInline` | One value for both ends or `"<start> <end>"`. Block is top and bottom, inline is left and right: Ghia only lays out horizontally. The start of an inline pair is the left, and the right where the element's `direction` is `rtl` |
 | `borderBlock`, `borderInline` | Written like `border` (`"1px solid red"`), for top and bottom or left and right (both sides get the one value, so `direction` does not matter) |
 | `flex` | A number `n` is `n 1 0%`. `none` is `0 0 auto`, `auto` is `1 1 auto`, `initial` is `0 1 auto`. Otherwise `<grow> <shrink>? \|\| <basis>`: `"2 3"`, `"2 100px"`, `"100px 2"`, and a lone basis (`"100px"`, `"50%"`, `"fit-content"`) is `1 1 <basis>`. The basis is what `flexBasis` takes: `"1 1 content"` is a basis of the content size |
 | `flexFlow` | `"<direction> \|\| <wrap>"` in either order (`"column wrap"`); a part left out is `row` or `nowrap` |
@@ -7489,7 +7489,7 @@ size, since a moving transform lays nothing out.
   pointer event are in the target's own, untransformed space (in the plane of a box seen in perspective, too). `offsetWidth`, `clientWidth`, `scrollWidth`, `ResizeObserver` and
   `onLayout` still report the layout box.
 - **A `<span>` takes no transform while it is an inline box.** CSS does not transform a non-atomic inline box, and neither does
-  Alpina; the same span with `display: inline-block` (an atomic inline) does. A `motion.span` drops the Motion keys whatever its
+  Ghia; the same span with `display: inline-block` (an atomic inline) does. A `motion.span` drops the Motion keys whatever its
   `display` (see [Animate an inline span](#animate-an-inline-span)).
 - **Text** is rasterized through the transform, so scaled, rotated and skewed text is as sharp as Chrome's, and
   `scale(2)` text is the text at twice the size. A translation moves a box from where layout snaps it by exactly the
@@ -7547,7 +7547,7 @@ is from the plane of the element it is on and shows its children through it. A c
   child's depth adds to its parent's turn. The default, `'flat'`, flattens the children onto the element's plane before the
   element is turned. The used value is `flat` whatever is declared when the element has a grouping property: `opacity`
   below 1 (or a current animation of it), `filter`, `backdropFilter`, `clipPath`, a mask, or `overflow` other than
-  `visible` on either axis. This is the list Chrome uses, minus `isolation`, `mix-blend-mode` and `will-change`, which Alpina
+  `visible` on either axis. This is the list Chrome uses, minus `isolation`, `mix-blend-mode` and `will-change`, which Ghia
   does not have. A declared `preserve-3d` is still a stacking context and a containing block when a grouping property
   overrides it.
 - **`backfaceVisibility: 'hidden'`** draws nothing of the element and what is in it, and hits nothing, while its back
@@ -7613,7 +7613,7 @@ over another window.
 
 ### Colors
 
-Every color-bearing style field accepts the same string grammar. Alpina native
+Every color-bearing style field accepts the same string grammar. Ghia native
 uses `csscolorparser` 0.8.3 and accepts:
 
 - named colors and `transparent`;
@@ -7803,7 +7803,7 @@ const theme = {
 }
 
 <div style={{ backgroundColor: theme.surface, borderColor: theme.accent }}>
-  <text style={{ color: theme.text }}>Hello Alpina!</text>
+  <text style={{ color: theme.text }}>Hello Ghia!</text>
 </div>
 ```
 
@@ -8149,7 +8149,7 @@ inside it is hovered.
 There is no stylesheet, so this is not the whole of `:has()`. It cannot express:
 
 - An arbitrary selector. `:has(.error)`, `:has(img)` and `:has(+ x)` need a
-  selector engine; the six keys cover the pseudo-classes Alpina tracks
+  selector engine; the six keys cover the pseudo-classes Ghia tracks
 - A direct child only (`:has(> x)`). The match is on any descendant
 - `:has(:checked)` and the like. There is no `checked` state style, so there is no
   `hasChecked` either: see [`:checked`](#form-control-state-disabled-enabled).
@@ -8174,7 +8174,7 @@ they apply to a strict ancestor of such a control.
 </div>
 ```
 
-What counts as a form control is what Alpina has: an `<input>`, a `<textarea>`,
+What counts as a form control is what Ghia has: an `<input>`, a `<textarea>`,
 and the components that stand in for a `<button>` or a `<select>`: `Button`, the
 triggers of `Dialog`, `Select` and `Combobox`, and the root of a `Select`. A
 control is `:enabled` unless it is `disabled`. A plain `<div disabled>` is not a
@@ -8191,7 +8191,7 @@ ancestors that declare `hasDisabled` or `hasEnabled` in the same frame.
 [Transitions](#css-transitions), [animations](#css-animations) and
 [`<UniversalStyle>`](#universal-style) refinements work in them as in `hover`.
 
-**`:checked` is not available.** It needs a checkable element, and Alpina has none:
+**`:checked` is not available.** It needs a checkable element, and Ghia has none:
 every `<input type>` is text-like, and there is no checkbox, radio or `<option>`
 to be checked or selected. So there is no `checked` or `hasChecked` key; derive the
 state in your component and pass the style, as for a custom checkbox built from a
@@ -8504,7 +8504,7 @@ than from the live input device:
 `<textarea>`, or a primitive such as `Button`. A `<span>` with a `tabIndex`
 takes both variants too, see [Focus on an inline box](#focus-on-an-inline-box).
 
-**Default: everything else dims.** Alpina draws no ring. While a control
+**Default: everything else dims.** Ghia draws no ring. While a control
 (`Button`, a `tabIndex` div) has keyboard focus, every **other** focusable
 element renders at 40% of its opacity. The focused one stays as it is, and you
 see at a glance everything Tab can reach.
@@ -8595,7 +8595,7 @@ render per frame.
   can transition. Shorthand names (`padding`, `margin`, `border-radius`, `inset`,
   `flex`, ...) cover their longhands. `transform`, `translate`, `rotate`, `scale` and
   `transform-origin`, `perspective` and `perspective-origin` transition too (see [Transforms](#transforms)); a valid CSS name
-  Alpina does not animate (`transform-style`) is accepted and matches nothing. A camelCase name, a bad time or
+  Ghia does not animate (`transform-style`) is accepted and matches nothing. A camelCase name, a bad time or
   timing function, or an unparsable value is rejected when the style is set, like
   any other invalid style
 - **Inline boxes.** A `<span>` transitions what an inline box shows too, and only that (see
@@ -8680,7 +8680,7 @@ render per frame.
   `enabled`, `hasDisabled` and `hasEnabled` are folded
   into the style that is compared, so they animate in and out. A `transition` set inside `hover` is the one used while entering hover; the
   base one is used leaving it. An
-  element that declares a transition has its state styles applied by Alpina instead
+  element that declares a transition has its state styles applied by Ghia instead
   of GPUI's per-element refinements, so they show one frame after the pointer
   moves. Elements without a transition behave as before
 - **`display: none`.** An element that is not rendered has no transitions: going
@@ -8717,7 +8717,7 @@ no stylesheet to hold `@keyframes`, so `defineKeyframes` is its analogue. The
 animation then runs natively, with no React render per frame.
 
 ```tsx
-import { defineKeyframes } from '@gpuix/react' // or '@gpuix/solid'
+import { defineKeyframes } from '@ghia/react' // or '@ghia/solid'
 
 defineKeyframes('pulse', {
   from: { opacity: 1 },
@@ -8786,7 +8786,7 @@ defineKeyframes('pulse', {
 
 Differences from a browser:
 
-- A missing `from` or `to` of a style whose own value Alpina cannot read from
+- A missing `from` or `to` of a style whose own value Ghia cannot read from
   the element's style (an inherited one such as `fontSize`) holds the nearest
   keyframe instead of using the computed value
 - A property the keyframes name counts as driven by the animation for as long as
@@ -8859,7 +8859,7 @@ await animation.finished // resolves with the animation
   `animation`, the property is no longer transitioned or has a new target) or that
   `cancel()` took back is idle and out of `getAnimations()`, and `play()`, a seek or
   `finish()` runs it again as in Chrome, whatever the style says, for as long as your
-  code holds the object; letting go of it frees what Alpina kept
+  code holds the object; letting go of it frees what Ghia kept
 - **`effect`.** A `KeyframeEffect` with `target`, `getKeyframes()` (the keyframes
   with computed values, the implicit 0% and 100% ones Chrome adds, and each
   keyframe's easing; a transition's start and end), `getTiming()`,
@@ -8873,10 +8873,10 @@ await animation.finished // resolves with the animation
 - **`getAnimations({ subtree: true })` and `document.getAnimations()`.** The
   animations of the element and everything below it, or of every window, in
   Chrome's order: every transition then every animation, each in document order of
-  the elements. `document` comes from `@gpuix/react` or `@gpuix/solid`
+  the elements. `document` comes from `@ghia/react` or `@ghia/solid`
   ([`window` and `document`](#window-and-document))
 - **Classes.** `Animation`, `CSSAnimation`, `CSSTransition`, `KeyframeEffect` and
-  `DocumentTimeline` are exported from `@gpuix/react` and `@gpuix/solid`; they
+  `DocumentTimeline` are exported from `@ghia/react` and `@ghia/solid`; they
   cannot be constructed by an app. `replaceState`, `persist()`, `commitStyles()`
   and `onremove` do not exist, and `animation-composition` is not supported
   ([deviations](./fork/deviations.md#motion))
@@ -8884,7 +8884,7 @@ await animation.finished // resolves with the animation
 ##### Animations of `motion`
 
 Motion 14.1.0 hands some of what it animates to the browser's Web Animations, and
-`getAnimations()` lists the same where Alpina runs them: the `opacity` and
+`getAnimations()` lists the same where Ghia runs them: the `opacity` and
 `backgroundColor` of a `motion` component, and a `color`, `outlineColor`, SVG `fill`
 or `stroke` whose keyframe is in a syntax only the browser reads (`oklch()`,
 `color-mix()`), unless the transition has `repeatDelay`, `repeatType: 'mirror'` or
@@ -8910,7 +8910,7 @@ every element, and nothing in your tree owns every element. `<UniversalStyle>` i
 the CSS `* { ... }` rule: a style layer under the own style of every element.
 
 ```tsx
-import { UniversalStyle } from '@gpuix/react' // or '@gpuix/solid'
+import { UniversalStyle } from '@ghia/react' // or '@ghia/solid'
 
 <UniversalStyle style={{ transition: 'background-color 300ms, color 300ms' }} />
 ```
@@ -8981,8 +8981,8 @@ Mouse actions use the normal GPUI input path in all three hosts.
 ```
 
 ```ts
-import { createTestRoot } from '@gpuix/react'
-import { connectTest } from '@gpuix/react/automation'
+import { createTestRoot } from '@ghia/react'
+import { connectTest } from '@ghia/react/automation'
 import { ChatApp } from './chat'
 
 const { render, renderer } = createTestRoot()
@@ -8996,7 +8996,7 @@ await app.getByTestId('sidebar-collapse').click()
 await app.clock.fastForward(200)
 await app.screenshot({ path: 'collapsed.png' })
 
-await app.getByTestId('composer').fill('hello Alpina')
+await app.getByTestId('composer').fill('hello Ghia')
 await app.getByTestId('send').click()
 await app.screenshot({ path: 'sent.png' })
 ```
@@ -9155,7 +9155,7 @@ so a normal terminal run is unchanged. Lines without a `data:` prefix are
 ignored; `console.log` cannot break a message.
 
 ```ts
-import { launch } from '@gpuix/react/automation'
+import { launch } from '@ghia/react/automation'
 
 const app = await launch({
   command: 'bun',
@@ -9193,7 +9193,7 @@ when a locator is not enough.
 | Linux | Not yet | Waiting for GPUI's wgpu headless renderer |
 
 ```ts
-import { createTestRoot } from '@gpuix/react/testing'
+import { createTestRoot } from '@ghia/react/testing'
 
 const { root, renderer } = createTestRoot()
 
@@ -9334,8 +9334,8 @@ nothing reaches the OS. `setFrameWakeCallback(callback)` wakes on it, and
 The test window draws no frames: they stay `flush()` and `drawFrame()`.
 
 ```ts
-import { createTestRoot } from '@gpuix/react/testing'
-import { startFrameLoop } from '@gpuix/react'
+import { createTestRoot } from '@ghia/react/testing'
+import { startFrameLoop } from '@ghia/react'
 
 const { renderer, render } = createTestRoot()
 render(<div style={{ width: '100%', height: '100%' }} onMouseMove={() => moved++} />)
@@ -9477,7 +9477,7 @@ Counters you read off the renderer:
   link can tell a patched tick from one drawn whole: `patchedFrames` and
   `patchedUnits`, `emptyTicks` (ticks whose only changes are in content nobody sees, such as the
   content of a `content-visibility` host that skips: no frame is built and none is presented), and two JSON objects keyed by reason, `declines` (ticks GPUI drew
-  whole after trying to patch them) and `unpatchable` (ticks Alpina did not try to
+  whole after trying to patch them) and `unpatchable` (ticks Ghia did not try to
   patch, such as `Sourced` for a pointer move and `Edited` for a commit). While
   something runs, every tick drawn whole is counted in one of the two, on a page with
   no patched unit too. A running element that is no unit is counted under the reason

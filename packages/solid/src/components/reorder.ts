@@ -11,9 +11,9 @@ import {
   type Component,
   type JSX,
 } from "solid-js"
-import type { EventPayload } from "@gpuix/native"
-import { ReorderController, createReorderDrag } from "@gpuix/native/host"
-import type { HostPointerEvent, ReorderAxis } from "@gpuix/native/host"
+import type { EventPayload } from "@ghia/native"
+import { ReorderController, createReorderDrag } from "@ghia/native/host"
+import type { HostPointerEvent, ReorderAxis } from "@ghia/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import type { SolidHostProps } from "../jsx-runtime.js"

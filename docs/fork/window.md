@@ -133,8 +133,8 @@ options and `screen.getAllDisplays()` / `getPrimaryDisplay()`.
 - `WindowOptions.x` and `.y` (CSS px) put the window's top-left there when both are set; with one missing the window is
   centred as before. The space is global: origin at the primary display's top-left, y down, so a display to the left of or
   above it is negative.
-- `screen` (`packages/native/js/screen.ts`, `./screen` in `@gpuix/native`, re-exported by `@gpuix/react` and
-  `@gpuix/solid`) lists the displays with Electron's `Display` fields (`id`, `label`, `bounds`, `workArea`, `size`,
+- `screen` (`packages/native/js/screen.ts`, `./screen` in `@ghia/native`, re-exported by `@ghia/react` and
+  `@ghia/solid`) lists the displays with Electron's `Display` fields (`id`, `label`, `bounds`, `workArea`, `size`,
   `workAreaSize`, `scaleFactor`, `rotation`, `internal`).
 - `fullscreen` with a point goes fullscreen on that display.
 - The functions are read off the native namespace, as `validateKeyframes` is: the browser entry has none, and a named

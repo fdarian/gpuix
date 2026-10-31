@@ -20,7 +20,7 @@
 
 import React from 'react'
 import { describe, expect, it } from 'vitest'
-import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
+import { createTestRoot, hasNativeTestRenderer } from '@ghia/react/testing'
 import { formatRetain } from './perf-harness'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

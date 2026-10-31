@@ -18,9 +18,9 @@
  */
 
 import React from 'react'
-import { flushSync } from '@gpuix/react'
-import { createTestRoot } from '@gpuix/react/testing'
-import { connectTest } from '@gpuix/react/automation'
+import { flushSync } from '@ghia/react'
+import { createTestRoot } from '@ghia/react/testing'
+import { connectTest } from '@ghia/react/automation'
 import { ChatApp } from './chat'
 
 const mode = process.env.MODE ?? 'highlight'

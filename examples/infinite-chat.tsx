@@ -17,7 +17,7 @@ import {
   useGpuix,
   type DomEvent,
   type PublicInstance,
-} from '@gpuix/react'
+} from '@ghia/react'
 import dedent from 'string-dedent'
 import { SafeMdxContent } from './chat'
 

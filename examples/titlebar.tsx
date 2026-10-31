@@ -1,7 +1,7 @@
 /** A custom titlebar: a drag region that moves the window, with interactive controls cut out of it. */
 
 import { useState } from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 const muted = '#FFFFFF99'
 

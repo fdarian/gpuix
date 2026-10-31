@@ -3,7 +3,7 @@
 
 import React, { useState } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
-import type { EventPayload, KeyEvent } from "@gpuix/native"
+import type { EventPayload, KeyEvent } from "@ghia/native"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

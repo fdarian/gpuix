@@ -7,7 +7,7 @@
 
 import path from "path"
 import { fileURLToPath } from "url"
-import { launch } from "@gpuix/solid/automation"
+import { launch } from "@ghia/solid/automation"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const shots = path.resolve(here, "..", "screenshots")

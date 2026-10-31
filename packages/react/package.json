@@ -1,5 +1,5 @@
 {
-  "name": "@gpuix/react",
+  "name": "@ghia/react",
   "version": "0.10.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -72,7 +72,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fdarian/alpina.git",
+    "url": "git+https://github.com/fdarian/ghia.git",
     "directory": "packages/react"
   },
   "publishConfig": {
@@ -80,7 +80,7 @@
     "access": "public"
   },
   "scripts": {
-    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @gpuix/react locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
+    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @ghia/react locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
     "build": "tsc",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "dev": "tsc --watch",
@@ -88,7 +88,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gpuix/native": "workspace:^",
+    "@ghia/native": "workspace:^",
     "react-reconciler": "^0.33.0"
   },
   "peerDependencies": {

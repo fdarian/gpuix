@@ -1,6 +1,6 @@
 # Syncing with upstream
 
-Alpina takes commits from gpuix and zed one at a time. There is no mirror branch and no rebase: `main` and zed `poc` only
+Ghia takes commits from gpuix and zed one at a time. There is no mirror branch and no rebase: `main` and zed `poc` only
 grow (see [Repos and branches](working-on-the-fork.md#repos-and-branches)), and a ledger below records how far each upstream
 has been reviewed.
 

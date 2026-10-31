@@ -26,7 +26,7 @@ import {
   hasNativeTestRenderer,
   readMacCpuThrottle,
   type TestRoot,
-} from '@gpuix/react/testing'
+} from '@ghia/react/testing'
 import { TimelineApp } from './timeline'
 import { createProject } from './timeline-data'
 

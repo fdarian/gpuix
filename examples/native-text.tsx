@@ -13,7 +13,7 @@
  */
 
 import React, { useState } from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 const README = `# GPUIX
 

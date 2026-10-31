@@ -21,8 +21,8 @@
 
 import React from 'react'
 import { describe, expect, it } from 'vitest'
-import { motion } from '@gpuix/react'
-import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
+import { motion } from '@ghia/react'
+import { createTestRoot, hasNativeTestRenderer } from '@ghia/react/testing'
 import { countedReasons, formatRetain, formatRetained, formatSummary, retainedDelta, sample, summarize } from './perf-harness'
 import { C, CardGrid, LONG_TWEEN } from './perf-fixtures'
 

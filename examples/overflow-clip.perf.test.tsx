@@ -12,8 +12,8 @@
 
 import React from 'react'
 import { describe, expect, it } from 'vitest'
-import { flushSync } from '@gpuix/react'
-import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
+import { flushSync } from '@ghia/react'
+import { createTestRoot, hasNativeTestRenderer } from '@ghia/react/testing'
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 

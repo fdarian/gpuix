@@ -5,7 +5,7 @@
  */
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { applyMacCpuThrottleFromEnv, render } from '@gpuix/react'
+import { applyMacCpuThrottleFromEnv, render } from '@ghia/react'
 
 import iconSidebar from './assets/icons/panel-left.svg' with { type: 'text' }
 import iconArrowLeft from './assets/icons/arrow-left.svg' with { type: 'text' }

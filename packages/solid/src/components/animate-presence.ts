@@ -11,9 +11,9 @@ import {
   type JSX,
   type Signal,
 } from "solid-js"
-import type { DomEvent } from "@gpuix/native/host"
-import { measurePopLayout } from "@gpuix/native/host"
-import type { MotionProps, PresenceMode } from "@gpuix/native/host"
+import type { DomEvent } from "@ghia/native/host"
+import { measurePopLayout } from "@ghia/native/host"
+import type { MotionProps, PresenceMode } from "@ghia/native/host"
 import { HostElement, setHostProperty, type HostNode } from "../host.js"
 import {
   anchorHost,

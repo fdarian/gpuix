@@ -1,5 +1,5 @@
 {
-  "name": "@gpuix/webview-e2e",
+  "name": "@ghia/webview-e2e",
   "private": true,
   "type": "module",
   "scripts": {

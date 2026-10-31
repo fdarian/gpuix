@@ -1,7 +1,7 @@
 /** The app the e2e drives: `<nativeview>`s among GPUI content in a real window, with the test addon as
  *  the library that puts a plain coloured NSView into each. One scene at a time; the driver switches them. */
 import React, { useEffect, useState } from "react"
-import { flushSync, type NativeviewProps } from "@gpuix/react"
+import { flushSync, type NativeviewProps } from "@ghia/react"
 import { addon, AttachOptions, Hit } from "./addon"
 
 export const COLORS = {

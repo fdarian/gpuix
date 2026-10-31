@@ -1,7 +1,7 @@
 // Spawned by frame-loop-yields.test.ts: runs the real frame loop against a hidden
 // window, wakes it from a Rust thread, and prints how much JS work got through.
 import { readFile } from "node:fs/promises"
-import { GpuixRenderer } from "@gpuix/native"
+import { GpuixRenderer } from "@ghia/native"
 import { startFrameLoop } from "../../runtime.js"
 
 const mode = process.argv[2]

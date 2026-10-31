@@ -1,7 +1,7 @@
 /** Browser entry for the bidirectional infinite history example. */
 
 import React from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 import { InfiniteChatApp } from './infinite-chat'
 
 // Do NOT add `import.meta.hot.accept("./infinite-chat", ...)` here. See the note

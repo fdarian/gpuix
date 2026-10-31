@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { document, window } from "@gpuix/native/host"
+import { document, window } from "@ghia/native/host"
 import type { HostElement } from "../host.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 

@@ -6,8 +6,8 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js"
-import { isReducedMotion } from "@gpuix/native/host"
-import type { MotionConfigValue, ReducedMotionSetting } from "@gpuix/native/host"
+import { isReducedMotion } from "@ghia/native/host"
+import type { MotionConfigValue, ReducedMotionSetting } from "@ghia/native/host"
 import { createReducedMotion } from "../primitives.js"
 
 export type MotionConfigState = {

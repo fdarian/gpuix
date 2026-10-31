@@ -5,8 +5,8 @@
 
 import { describe, it, expect, beforeEach } from "vitest"
 import React from "react"
-import type { HostDragEvent, HostMouseEvent } from "@gpuix/native"
-import { document, window } from "@gpuix/native/host"
+import type { HostDragEvent, HostMouseEvent } from "@ghia/native"
+import { document, window } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

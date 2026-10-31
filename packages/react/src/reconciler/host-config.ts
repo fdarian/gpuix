@@ -6,7 +6,7 @@
 
 import { createContext } from "react"
 import { DefaultEventPriority } from "react-reconciler/constants.js"
-import type { HostEventHandler } from "@gpuix/native/host"
+import type { HostEventHandler } from "@ghia/native/host"
 import {
   assertSvgPlacement,
   createElementMethods,
@@ -28,7 +28,7 @@ import {
   setTextControlSelectionRange,
   splitMotionStyle,
   syncNativeviewListeners,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 
 const NoEventPriority = 0
 

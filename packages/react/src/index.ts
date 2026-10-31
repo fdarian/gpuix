@@ -1,6 +1,6 @@
 // GPUIX React - React bindings for GPUI
-import { document as sharedDocument } from "@gpuix/native/host"
-import type { GpuixDocument } from "@gpuix/native/host"
+import { document as sharedDocument } from "@ghia/native/host"
+import type { GpuixDocument } from "@ghia/native/host"
 import type { PublicInstance } from "./types/host.js"
 export { createRoot, flushSync } from "./reconciler/index.js"
 export { createPortal } from "./reconciler/portal.js"
@@ -30,7 +30,7 @@ export {
   defineKeyframes,
   isMotionValue,
   motionValue,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 export type {
   AnimationPlaybackControls,
   AnimationPlaybackControlsWithThen,
@@ -42,7 +42,7 @@ export type {
   MotionTransformOptions,
   MotionValue,
   MotionValueEvents,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 export {
   clipboard,
   MediaQueryList,
@@ -59,7 +59,7 @@ export {
   readWindowSize,
   window,
   ResizeObserver,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 /** `activeElement` and `pointerLockElement` are elements as a `ref` gives them. */
 export const document = sharedDocument as GpuixDocument<PublicInstance>
 export type {
@@ -81,7 +81,7 @@ export type {
   ResizeObserverEntry,
   ResizeObserverOptions,
   ResizeObserverSize,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 export type {
   FindRangesOptions,
   TextSearch,
@@ -299,8 +299,8 @@ export {
   readMacCpuThrottle,
 } from "./cpu-throttle.js"
 export type { MacCpuThrottle } from "./cpu-throttle.js"
-export { screen } from "@gpuix/native/screen"
-export type { Display, Rectangle, Size } from "@gpuix/native/screen"
+export { screen } from "@ghia/native/screen"
+export type { Display, Rectangle, Size } from "@ghia/native/screen"
 export { collectGarbageWhenIdle } from "./idle-gc.js"
 export type { IdleGcOptions } from "./idle-gc.js"
 export type {
@@ -308,6 +308,6 @@ export type {
   EventModifiers,
   WindowOptions,
   WindowSize as NativeWindowSize,
-} from "@gpuix/native"
+} from "@ghia/native"
 
-export { GpuixRenderer } from "@gpuix/native"
+export { GpuixRenderer } from "@ghia/native"

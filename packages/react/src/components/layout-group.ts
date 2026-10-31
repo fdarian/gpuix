@@ -1,6 +1,6 @@
 import { createContext, createElement, useContext, useMemo } from "react"
 import type { ReactElement, ReactNode } from "react"
-import { joinLayoutGroupId } from "@gpuix/native/host"
+import { joinLayoutGroupId } from "@ghia/native/host"
 
 /** The id prefix `motion.*` components below apply to their `layoutId`. */
 export const LayoutGroupContext = createContext<string | undefined>(undefined)

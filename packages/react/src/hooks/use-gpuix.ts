@@ -1,5 +1,5 @@
 import { useContext, createContext } from "react"
-import type { MutationRenderer } from "@gpuix/native/host"
+import type { MutationRenderer } from "@ghia/native/host"
 import type { NativeRenderer } from "../types/host.js"
 
 export interface GpuixContextValue {

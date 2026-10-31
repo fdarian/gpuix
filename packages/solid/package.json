@@ -1,5 +1,5 @@
 {
-  "name": "@gpuix/solid",
+  "name": "@ghia/solid",
   "version": "0.10.0",
   "description": "Solid renderer for GPUIX",
   "license": "Apache-2.0",
@@ -76,7 +76,7 @@
   "files": ["dist", "LICENSE"],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fdarian/alpina.git",
+    "url": "git+https://github.com/fdarian/ghia.git",
     "directory": "packages/solid"
   },
   "publishConfig": {
@@ -86,12 +86,12 @@
   "scripts": {
     "build": "tsc",
     "test": "bun run build && bun test",
-    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @gpuix/solid locally. CI is the only release path.'); process.exit(1) }\""
+    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @ghia/solid locally. CI is the only release path.'); process.exit(1) }\""
   },
   "dependencies": {
     "@babel/core": "^7.28.0",
     "@babel/preset-typescript": "^7.27.1",
-    "@gpuix/native": "workspace:^",
+    "@ghia/native": "workspace:^",
     "babel-preset-solid": "1.9.15"
   },
   "peerDependencies": {

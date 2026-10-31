@@ -1,5 +1,5 @@
 {
-  "name": "@gpuix/nativeview-e2e",
+  "name": "@ghia/nativeview-e2e",
   "private": true,
   "type": "module",
   "scripts": {

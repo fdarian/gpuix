@@ -9,8 +9,8 @@ import {
   useContext,
   type JSX,
 } from "solid-js"
-import { resolveFocusTarget } from "@gpuix/native/host"
-import type { FocusTarget, HostPointerEvent, HostProps, KeyEvent } from "@gpuix/native/host"
+import { resolveFocusTarget } from "@ghia/native/host"
+import type { FocusTarget, HostPointerEvent, HostProps, KeyEvent } from "@ghia/native/host"
 import type { HostElement } from "../host.js"
 import { jsx } from "../jsx-runtime.js"
 import { useGpuixRequired } from "../root.js"

@@ -152,7 +152,7 @@ type ElementSourceEntry = {
  * is evaluated again while a renderer's state, which asks it for elements on
  * every event, stays from the first evaluation.
  */
-const ELEMENT_SOURCES_KEY = Symbol.for("@gpuix/native/element-sources")
+const ELEMENT_SOURCES_KEY = Symbol.for("@ghia/native/element-sources")
 const elementSources: Map<object, ElementSourceEntry> = (() => {
   const existing = Reflect.get(globalThis, ELEMENT_SOURCES_KEY) as Map<object, ElementSourceEntry> | undefined
   if (existing) return existing
@@ -218,7 +218,7 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
    */
   getAnimations(): Animation[] {
     const list = Reflect.get(globalThis, DOCUMENT_ANIMATIONS_KEY) as ((renderer: object) => Animation[]) | undefined
-    if (!list) throw new Error("Web Animations are not loaded: import @gpuix/native/host before document.getAnimations()")
+    if (!list) throw new Error("Web Animations are not loaded: import @ghia/native/host before document.getAnimations()")
     return [...elementSources].flatMap(([renderer, entry]) => (entry.windowGone ? [] : list(renderer)))
   }
 }
@@ -227,7 +227,7 @@ export class GpuixDocument<Element = unknown> extends GpuixEventTarget {
  * Kept on `globalThis` like the element sources: the module that makes `Animation` objects
  * (`web-animations`) imports this one, so it hands `document` the way to list a renderer's.
  */
-const DOCUMENT_ANIMATIONS_KEY = Symbol.for("@gpuix/native/document-animations")
+const DOCUMENT_ANIMATIONS_KEY = Symbol.for("@ghia/native/document-animations")
 
 /** @internal Called by `web-animations` once, with how to list the animations of one renderer's window. */
 export function setDocumentAnimations(list: (renderer: object) => Animation[]): void {

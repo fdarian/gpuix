@@ -1,5 +1,5 @@
 {
-  "name": "@gpuix/examples",
+  "name": "@ghia/examples",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -30,8 +30,8 @@
     "bench:serde": "bun bench-serialization.ts"
   },
   "dependencies": {
-    "@gpuix/react": "workspace:^",
-    "@gpuix/solid": "workspace:^",
+    "@ghia/react": "workspace:^",
+    "@ghia/solid": "workspace:^",
     "solid-js": "1.9.15",
     "@kmamal/sdl": "^0.11.12",
     "diff": "^7.0.0",

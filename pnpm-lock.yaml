@@ -194,10 +194,10 @@ importers:
 
   examples:
     dependencies:
-      '@gpuix/react':
+      '@ghia/react':
         specifier: workspace:^
         version: link:../packages/react
-      '@gpuix/solid':
+      '@ghia/solid':
         specifier: workspace:^
         version: link:../packages/solid
       '@kmamal/sdl':
@@ -265,7 +265,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@gpuix/native':
+      '@ghia/native':
         specifier: workspace:^
         version: link:../native
       react:
@@ -305,7 +305,7 @@ importers:
       '@babel/preset-typescript':
         specifier: ^7.27.1
         version: 7.29.7(@babel/core@7.29.7)
-      '@gpuix/native':
+      '@ghia/native':
         specifier: workspace:^
         version: link:../native
       babel-preset-solid:

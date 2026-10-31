@@ -1,6 +1,6 @@
 /** A macOS frosted-glass window using GPUI's native blurred backdrop. */
 
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 const glass = {
   display: 'flex' as const,

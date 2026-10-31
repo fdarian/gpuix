@@ -1,4 +1,4 @@
-import { screen as nativeScreen } from "@gpuix/native/screen"
+import { screen as nativeScreen } from "@ghia/native/screen"
 import { expect, it } from "vitest"
 import { screen } from "../index.js"
 

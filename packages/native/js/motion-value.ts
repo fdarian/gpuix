@@ -303,7 +303,7 @@ export type AnimationMeasurer = (
   transition: MotionCurve | undefined
 ) => { duration: number; iterationDuration: number }
 
-const MEASURER_KEY = Symbol.for("@gpuix/native/motion-measurer")
+const MEASURER_KEY = Symbol.for("@ghia/native/motion-measurer")
 
 /** Called by the entry points that load the native addon, as `registerKeyframesValidator` is. */
 export function registerAnimationMeasurer(measure: AnimationMeasurer): void {
@@ -399,7 +399,7 @@ type Animation = {
 /** `finished` is for callers; what cleans up after an animation waits on this one. */
 const settlements = new WeakMap<object, Promise<void>>()
 
-const COUNTER_KEY = Symbol.for("@gpuix/native/motion-value-ids")
+const COUNTER_KEY = Symbol.for("@ghia/native/motion-value-ids")
 
 /** One counter per process, so values from two copies of this module never share an id. */
 function nextId(): number {

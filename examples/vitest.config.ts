@@ -1,4 +1,4 @@
-import { applyMacCpuThrottleFromEnv } from '@gpuix/react'
+import { applyMacCpuThrottleFromEnv } from '@ghia/react'
 import { defineConfig } from 'vitest/config'
 
 applyMacCpuThrottleFromEnv()

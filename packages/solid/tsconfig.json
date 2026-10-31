@@ -13,7 +13,7 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "jsx": "preserve",
-    "jsxImportSource": "@gpuix/solid",
+    "jsxImportSource": "@ghia/solid",
     "lib": ["ES2022", "DOM"],
     "types": ["bun", "node"]
   },

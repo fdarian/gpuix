@@ -46,14 +46,14 @@ scrolling, bubble handlers see `is_hovered` false). How a layout-only pass avoid
   `TestGpuixRenderer`, `createTestRoot` and `captureScreenshot` on macOS (`packages/native/src/renderer.rs`,
   `capture_screenshot`), so a plain release addon loses them.
 - **Two addons: a release addon without `test-support`, and a separate test addon with it, loaded only by
-  `@gpuix/native/testing`.** Built and tried; it cannot work in one process. Both addons embed GPUI, and a load-time
+  `@ghia/native/testing`.** Built and tried; it cannot work in one process. Both addons embed GPUI, and a load-time
   constructor registers the Objective-C window class (`gpui_macos/src/window.rs:366`, `ClassDecl::new(name,
   superclass).unwrap()` in `build_window_class`, reached from `build_classes::__ctor_private`). The second `dlopen`
   finds the class already registered, `unwrap()` panics inside an `extern "C"` constructor, and the process aborts
   ("panic in a function that cannot unwind"). Minimal repro: `require` the two `.node` files in one `bun -e`. In the
   react suite, six test files abort their vitest worker: `styles`, `render`, `events`, `floating-controls`,
   `animate-presence` and `debug-frame-overlay`. Each imports the adapter's public entry (which loads the release addon
-  through `@gpuix/native`) and `@gpuix/native/testing` (which loads the test addon). The other 21 files, 300 tests,
+  through `@ghia/native`) and `@ghia/native/testing` (which loads the test addon). The other 21 files, 300 tests,
   passed. Making the two coexist needs either lazily loaded adapter addons or a zed change that tolerates an
   already-registered class, which would share Objective-C method implementations between two dylibs that each have
   their own statics. Neither was worth it, and the two-addon build also loses `captureScreenshot` in the release addon.
@@ -64,7 +64,7 @@ its own `App` and sets the mode to `Test` gets the old behaviour, which is the p
 
 **Upstreaming.** Two routes. Land the guard in `remorses/zed` (one commit, no gpuix change), or build the release addon
 without `test-support` and make the adapters load the addon lazily so a test process that also uses
-`@gpuix/native/testing` never loads two. The first is smaller. The second also shrinks the binary, but it needs the lazy
+`@ghia/native/testing` never loads two. The first is smaller. The second also shrinks the binary, but it needs the lazy
 load and a decision about `captureScreenshot`, and CI would build and publish a second artifact for the test addon.
 
 ## How JS is woken (patch 2)
@@ -329,7 +329,7 @@ IOSurface 11 MB, graphics 11 MB, stacks 7.5 MB, JIT 6 MB. Ranked:
 
 ## API
 
-- `FrameLoopOptions` is exported from `@gpuix/native/runtime`.
+- `FrameLoopOptions` is exported from `@ghia/native/runtime`.
 - Solid's `render()` takes `frameLoop: { frameMs }` and passes it to `startFrameLoop`.
 - `GPUIX_PRESENT_LOG` (a zed commit) logs when each `MTLDrawable` is presented; it is how the present gaps in the tables
   above were measured.

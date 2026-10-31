@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import React from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@ghia/native"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip

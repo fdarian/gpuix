@@ -2,7 +2,7 @@
  * GPUIX counter for hermes-node. Bundled to CJS; the .node stays external.
  */
 import React, { useState } from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@ghia/react'
 
 function App() {
   const [count, setCount] = useState(0)

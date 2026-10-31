@@ -276,7 +276,7 @@ export declare class GpuixRenderer {
    * list keys to the animatable style properties plus `animationTimingFunction`.
    * Redefining a name replaces it for running animations too. A bad
    * definition throws and leaves the earlier one. Use `defineKeyframes` from
-   * `@gpuix/native/host`, which defines it on every renderer.
+   * `@ghia/native/host`, which defines it on every renderer.
    */
   defineKeyframes(name: string, framesJson: string): void
   /**
@@ -2362,7 +2362,7 @@ export interface UpdaterHeader {
 
 /**
  * Checks a keyframes definition the way `GpuixRenderer.defineKeyframes` does,
- * without a renderer. `defineKeyframes` from `@gpuix/native/host` runs it
+ * without a renderer. `defineKeyframes` from `@ghia/native/host` runs it
  * first so a bad definition throws where it is written.
  */
 export declare function validateKeyframes(name: string, framesJson: string): void

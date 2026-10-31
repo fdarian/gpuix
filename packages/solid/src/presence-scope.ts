@@ -46,7 +46,7 @@ type SharedState = {
   hostOwners: WeakMap<HostNode, Owner | null>
 }
 
-const SHARED = Symbol.for("@gpuix/solid/presence-scope")
+const SHARED = Symbol.for("@ghia/solid/presence-scope")
 
 /**
  * On `globalThis`: the JSX runtime can load a second copy of this module, and

@@ -1,4 +1,4 @@
-import { createTestRoot } from "@gpuix/solid/testing"
+import { createTestRoot } from "@ghia/solid/testing"
 import { createView } from "./view.tsx"
 
 const app = createTestRoot()

@@ -107,7 +107,7 @@ describe("browser bundle safety", () => {
 
 describe("TestGpuixRenderer availability", () => {
   it("exports a constructor, and a flag that is true only when construction works", () => {
-    const native = createRequire(import.meta.url)("@gpuix/native") as {
+    const native = createRequire(import.meta.url)("@ghia/native") as {
       TestGpuixRenderer?: new (width?: number, height?: number) => unknown
       hasTestGpuixRenderer?: () => boolean
     }
@@ -124,7 +124,7 @@ describe("TestGpuixRenderer availability", () => {
   })
 
   it("rejects invalid options through the production promise bridge", async () => {
-    const native = createRequire(import.meta.url)("@gpuix/native") as {
+    const native = createRequire(import.meta.url)("@ghia/native") as {
       GpuixRenderer: new () => {
         promptForPaths(options: {
           files: boolean
@@ -140,7 +140,7 @@ describe("TestGpuixRenderer availability", () => {
   })
 
   it("rejects a malformed accept filter through the production promise bridge", async () => {
-    const native = createRequire(import.meta.url)("@gpuix/native") as {
+    const native = createRequire(import.meta.url)("@ghia/native") as {
       GpuixRenderer: new () => {
         promptForPaths(options: { accept: string }): Promise<string[] | null>
       }
@@ -153,7 +153,7 @@ describe("TestGpuixRenderer availability", () => {
   })
 
   it("exports desktop window controls through the production renderer", () => {
-    const native = createRequire(import.meta.url)("@gpuix/native") as {
+    const native = createRequire(import.meta.url)("@ghia/native") as {
       GpuixRenderer: new () => {
         minimizeWindow(): void
         zoomWindow(): void

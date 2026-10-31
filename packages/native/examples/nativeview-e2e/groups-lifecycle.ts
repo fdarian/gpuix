@@ -1,7 +1,7 @@
 /** The groups about attach and detach: when `onAttach` and `onDetach` come, what the library's view is
  *  then, and what the window does with a view when it closes. */
 import { writeFileSync } from "node:fs"
-import { flushSync } from "@gpuix/react"
+import { flushSync } from "@ghia/react"
 import { addon, LogEntry } from "./addon"
 import { auditLog } from "./audit"
 import { controls, LAYOUT, NativeRecord, recordOf } from "./app"

@@ -1,31 +1,31 @@
 # Build native GPUI desktop apps with Solid 1
 
-**`@gpuix/solid`** paints a Solid 1 tree with GPUI. Same host elements, styles, events, and native addon as React. The adapter is Solid. The window is not a web view.
+**`@ghia/solid`** paints a Solid 1 tree with GPUI. Same host elements, styles, events, and native addon as React. The adapter is Solid. The window is not a web view.
 
 ```text
-  bunfig.toml          babel-preset-solid         @gpuix/native
+  bunfig.toml          babel-preset-solid         @ghia/native
   preload ──────────►  universal compiler ──────► host mutations ──► GPUI ──► GPU
        │                      │
        ▼                      ▼
-  app.tsx              @gpuix/solid renderer
+  app.tsx              @ghia/solid renderer
   createSignal()       render(() => <App />)
 ```
 
-> **Note.** Host elements, styles, events, virtual lists, and native text are the same as React. This page covers the **Solid adapter**. See [reference.md](reference.md) for the shared Alpina surface.
+> **Note.** Host elements, styles, events, virtual lists, and native text are the same as React. This page covers the **Solid adapter**. See [reference.md](reference.md) for the shared Ghia surface.
 
 ## Install
 
-Pin **`@gpuix/solid`** and **`@gpuix/native`** to the same exact version. Alpina is still pre-1.0. Upgrade them together.
+Pin **`@ghia/solid`** and **`@ghia/native`** to the same exact version. Ghia is still pre-1.0. Upgrade them together.
 
 ```bash
-pnpm add --save-exact @gpuix/solid @gpuix/native solid-js
+pnpm add --save-exact @ghia/solid @ghia/native solid-js
 ```
 
 The peer range is **`solid-js` `>=1.9 <2`**.
 
 ### TypeScript
 
-**`jsx: "preserve"`** and **`jsxImportSource: "@gpuix/solid"`** are required. Without them TypeScript uses DOM types, so `<virtual-list>`, `<markdown>`, and `style.hover` fail to typecheck.
+**`jsx: "preserve"`** and **`jsxImportSource: "@ghia/solid"`** are required. Without them TypeScript uses DOM types, so `<virtual-list>`, `<markdown>`, and `style.hover` fail to typecheck.
 
 ```json
 {
@@ -34,7 +34,7 @@ The peer range is **`solid-js` `>=1.9 <2`**.
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",
-    "jsxImportSource": "@gpuix/solid",
+    "jsxImportSource": "@ghia/solid",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true
@@ -47,16 +47,16 @@ The peer range is **`solid-js` `>=1.9 <2`**.
 The preload compiles application `.tsx` and `.jsx` for Solid's **universal renderer** and selects the reactive client runtime. Do not add Vite.
 
 ```toml
-preload = ["@gpuix/solid/preload"]
+preload = ["@ghia/solid/preload"]
 ```
 
 That is the whole Bun setup. `examples/solid/bunfig.toml` also preloads tests:
 
 ```toml
-preload = ["@gpuix/solid/preload"]
+preload = ["@ghia/solid/preload"]
 
 [test]
-preload = ["@gpuix/solid/preload"]
+preload = ["@ghia/solid/preload"]
 ```
 
 ## First app
@@ -65,7 +65,7 @@ End the file with **`render()`**. That call creates the window, mounts Solid, an
 
 ```tsx
 import { createSignal } from 'solid-js'
-import { render } from '@gpuix/solid'
+import { render } from '@ghia/solid'
 
 function App() {
   const [count, setCount] = createSignal(0)
@@ -87,7 +87,7 @@ function App() {
   )
 }
 
-render(() => <App />, { title: 'Solid Alpina', width: 800, height: 600 })
+render(() => <App />, { title: 'Solid Ghia', width: 800, height: 600 })
 ```
 
 Give every **`<text>`** a `color`. GPUI does not inherit color from a parent. Text with no color paints black and disappears on a dark surface.
@@ -112,7 +112,7 @@ Do **not** call `createRenderer()` or `init()` in the app entry. `bun --hot` re-
 For **`Bun.build`**, pass the exported plugin. The preload is for `bun app.tsx`. The plugin is for a production build.
 
 ```ts
-import solidPlugin from '@gpuix/solid/bun-plugin'
+import solidPlugin from '@ghia/solid/bun-plugin'
 
 await Bun.build({
   entrypoints: ['./app.tsx'],
@@ -133,17 +133,17 @@ A worked chat lives in `examples/solid/chat.tsx`. Run it with `cd examples && bu
 
 | Import                         | What it is                                           |
 | ------------------------------ | ---------------------------------------------------- |
-| `@gpuix/solid`                 | Renderer, primitives, motion, controls, host types   |
-| `@gpuix/solid/jsx-runtime`     | `jsx`, `jsxs`, `Fragment`. Used by `jsxImportSource` |
-| `@gpuix/solid/jsx-dev-runtime` | `jsxDEV`, `Fragment`                                 |
-| `@gpuix/solid/preload`         | Bun preload. Put it in `bunfig.toml`                 |
-| `@gpuix/solid/bun-plugin`      | `Bun.build` plugin                                   |
-| `@gpuix/solid/testing`         | `createTestRoot`, `TestRenderer`                     |
-| `@gpuix/solid/automation`      | `launch`, `connectTest`                              |
-| `@gpuix/solid/select`          | Select primitives                                    |
-| `@gpuix/solid/combobox`        | Combobox primitives                                  |
-| `@gpuix/solid/tooltip`         | Tooltip primitives                                   |
-| `@gpuix/solid/floating`        | `FloatingLayer`, `renderSlot`                        |
+| `@ghia/solid`                 | Renderer, primitives, motion, controls, host types   |
+| `@ghia/solid/jsx-runtime`     | `jsx`, `jsxs`, `Fragment`. Used by `jsxImportSource` |
+| `@ghia/solid/jsx-dev-runtime` | `jsxDEV`, `Fragment`                                 |
+| `@ghia/solid/preload`         | Bun preload. Put it in `bunfig.toml`                 |
+| `@ghia/solid/bun-plugin`      | `Bun.build` plugin                                   |
+| `@ghia/solid/testing`         | `createTestRoot`, `TestRenderer`                     |
+| `@ghia/solid/automation`      | `launch`, `connectTest`                              |
+| `@ghia/solid/select`          | Select primitives                                    |
+| `@ghia/solid/combobox`        | Combobox primitives                                  |
+| `@ghia/solid/tooltip`         | Tooltip primitives                                   |
+| `@ghia/solid/floating`        | `FloatingLayer`, `renderSlot`                        |
 
 There is no **`./cpu-throttle`**. Testing and automation are subpaths only.
 
@@ -194,7 +194,7 @@ render(() => <App />, {
 })
 ```
 
-**`fonts`** is a convenience over `renderer.registerFont()`: it reads each `.ttf` or `.otf` file and registers its bytes right after the window opens. Pass absolute paths; relative ones resolve against the process's current working directory. An unreadable path throws before the window opens. Alpina ships no fonts. Variable fonts render only their default instance, so pass one static file per weight, and set `fontFamily` to the font's exact family name.
+**`fonts`** is a convenience over `renderer.registerFont()`: it reads each `.ttf` or `.otf` file and registers its bytes right after the window opens. Pass absolute paths; relative ones resolve against the process's current working directory. An unreadable path throws before the window opens. Ghia ships no fonts. Variable fonts render only their default instance, so pass one static file per weight, and set `fontFamily` to the font's exact family name.
 
 **`createRenderer()`** stays public for tests and custom hosts. Pass `{ renderer }` into `render()` when you already have one.
 
@@ -222,8 +222,8 @@ interface Root {
 `flush()` sends the mutation queue to native. **`flushSync(fn)`** runs `fn`, then flushes. It does not wait for GPUI paint. Call `renderer.flush()` in a test to see pixels.
 
 ```tsx
-import { createRoot } from '@gpuix/solid'
-import { TestRenderer } from '@gpuix/solid/testing'
+import { createRoot } from '@ghia/solid'
+import { TestRenderer } from '@ghia/solid/testing'
 
 const renderer = new TestRenderer()
 const root = createRoot(renderer)
@@ -248,7 +248,7 @@ interface GpuixContextValue {
 Call them **inside** a tree that `render()` or `createRoot()` mounted.
 
 ```tsx
-import { useGpuixRequired } from '@gpuix/solid'
+import { useGpuixRequired } from '@ghia/solid'
 
 function WindowControls() {
   const renderer = useGpuixRequired()
@@ -291,9 +291,9 @@ function AttachFiles() {
 
 ## Primitives
 
-These are the Solid adapters over `@gpuix/native/host`. Call them in a component under an Alpina root. They return **accessors**, not hook objects.
+These are the Solid adapters over `@ghia/native/host`. Call them in a component under an Ghia root. They return **accessors**, not hook objects.
 
-> **Tip.** There is no Solid `useWindowSize`. Use `createWindowSize()`. React keeps `useWindowSize`. The native helpers stay on `@gpuix/native/host`.
+> **Tip.** There is no Solid `useWindowSize`. Use `createWindowSize()`. React keeps `useWindowSize`. The native helpers stay on `@ghia/native/host`.
 
 ```ts
 function createWindowSize(options?: ObserverOptions): Accessor<WindowSize>
@@ -321,7 +321,7 @@ Poll interval defaults to **100 ms**. Pass `intervalMs: false` for one read.
 ### Window size and insets
 
 ```tsx
-import { createWindowInsets, createWindowSize } from '@gpuix/solid'
+import { createWindowInsets, createWindowSize } from '@ghia/solid'
 
 function Layout() {
   const size = createWindowSize()
@@ -341,7 +341,7 @@ function Layout() {
 ### Selected text
 
 ```tsx
-import { createSelectedText } from '@gpuix/solid'
+import { createSelectedText } from '@ghia/solid'
 
 function SelectionLabel() {
   const selected = createSelectedText()
@@ -352,7 +352,7 @@ function SelectionLabel() {
 ### Appearance
 
 ```tsx
-import { createAppearance } from '@gpuix/solid'
+import { createAppearance } from '@ghia/solid'
 
 function Scheme() {
   const appearance = createAppearance()
@@ -366,7 +366,7 @@ Force it with the `appearance` option or `renderer.setAppearance('light' | 'dark
 
 ```tsx
 import { createSignal } from 'solid-js'
-import { createTextSearch } from '@gpuix/solid'
+import { createTextSearch } from '@ghia/solid'
 
 function FindBar() {
   const [query, setQuery] = createSignal('')
@@ -390,13 +390,13 @@ function FindBar() {
 
 Pass an **accessor** into `createTextSearch`, so a query signal stays live. Spread **`search.props`** onto the container you want to search.
 
-The agnostic helpers still live on **`@gpuix/native/host`**: `readWindowSize`, `observeWindowSize`, `createTextSearchController`, `findRanges`. The Solid wrappers add a signal and `onCleanup`.
+The agnostic helpers still live on **`@ghia/native/host`**: `readWindowSize`, `observeWindowSize`, `createTextSearchController`, `findRanges`. The Solid wrappers add a signal and `onCleanup`.
 
 ## Motion
 
 ```tsx
 import { Show } from 'solid-js'
-import { AnimatePresence, motion } from '@gpuix/solid'
+import { AnimatePresence, motion } from '@ghia/solid'
 
 function WelcomeCard() {
   return (
@@ -445,7 +445,7 @@ Unstyled primitives, same split as [Base UI](https://base-ui.com/react/component
 
 Solid names the root **`Select`**, not `Root`.
 
-> **Note.** `@gpuix/react/select` exports `Root`. `@gpuix/solid/select` exports `Select`. Copy a React snippet only after you rename the root.
+> **Note.** `@ghia/react/select` exports `Root`. `@ghia/solid/select` exports `Select`. Copy a React snippet only after you rename the root.
 
 ```tsx
 import { createSignal } from 'solid-js'
@@ -462,7 +462,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@gpuix/solid'
+} from '@ghia/solid'
 
 function Controls() {
   const [value, setValue] = createSignal('a')
@@ -483,10 +483,10 @@ function Controls() {
 Dedicated subpaths:
 
 ```ts
-import { Select, SelectTrigger, SelectContent, SelectItem } from '@gpuix/solid/select'
-import { Combobox, ComboboxInput, ComboboxContent, ComboboxItem } from '@gpuix/solid/combobox'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@gpuix/solid/tooltip'
-import { FloatingLayer, renderSlot } from '@gpuix/solid/floating'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@ghia/solid/select'
+import { Combobox, ComboboxInput, ComboboxContent, ComboboxItem } from '@ghia/solid/combobox'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@ghia/solid/tooltip'
+import { FloatingLayer, renderSlot } from '@ghia/solid/floating'
 ```
 
 | Root       | Main parts                                                                          |
@@ -512,7 +512,7 @@ Menus go through **`SelectContent` / `ComboboxContent` / `<anchored deferred>`**
 ## Testing
 
 ```ts
-import { createTestRoot, hasNativeTestRenderer } from '@gpuix/solid/testing'
+import { createTestRoot, hasNativeTestRenderer } from '@ghia/solid/testing'
 
 const app = createTestRoot()
 app.render(() => (
@@ -545,12 +545,12 @@ interface TestRoot {
 
 `getAllText()` only sees **`<text>`** nodes. For `<code>`, `<diff>`, and `<markdown>`, use `renderer.getPaintedText()`.
 
-The subpath re-exports **`@gpuix/native/testing`**, including `TestRenderer` and `hasNativeTestRenderer`.
+The subpath re-exports **`@ghia/native/testing`**, including `TestRenderer` and `hasNativeTestRenderer`.
 
 ## Automation
 
 ```ts
-import { launch } from '@gpuix/solid/automation'
+import { launch } from '@ghia/solid/automation'
 
 const app = await launch({
   command: 'bun',
@@ -564,8 +564,8 @@ await app.close()
 ```
 
 ```ts
-import { createTestRoot } from '@gpuix/solid/testing'
-import { connectTest } from '@gpuix/solid/automation'
+import { createTestRoot } from '@ghia/solid/testing'
+import { connectTest } from '@ghia/solid/automation'
 
 const { renderer, render } = createTestRoot()
 render(() => <App />)
@@ -575,17 +575,17 @@ await app.getByTestId('bump').click()
 
 Mark targets with **`testId`**. `click()` hits last painted bounds. `fill()` and `press()` use the live GPUI input pipeline. They do not need window focus.
 
-`@gpuix/solid/automation` re-exports **`@gpuix/native/automation`**: `launch`, `connectTest`, `connectStdio`, `App`, `Locator`.
+`@ghia/solid/automation` re-exports **`@ghia/native/automation`**: `launch`, `connectTest`, `connectStdio`, `App`, `Locator`.
 
 A browser `render()` installs **`globalThis.gpuix`**.
 
 ## Shared host types
 
-`@gpuix/solid` re-exports **`@gpuix/native/host`**. App code can import `StyleDesc`, `HostProps`, `findRanges`, and `createMutationQueue` from either package.
+`@ghia/solid` re-exports **`@ghia/native/host`**. App code can import `StyleDesc`, `HostProps`, `findRanges`, and `createMutationQueue` from either package.
 
 ```ts
-import { GpuixRenderer } from '@gpuix/solid'
-import type { EventPayload, WindowOptions, StyleDesc } from '@gpuix/solid'
+import { GpuixRenderer } from '@ghia/solid'
+import type { EventPayload, WindowOptions, StyleDesc } from '@ghia/solid'
 ```
 
 Host elements are the same as React:
@@ -604,7 +604,7 @@ JSX adds Solid **`children`** and **`ref`** on top of `HostProps`.
 
 ## Compiler internals
 
-These exist because **`babel-preset-solid`** targets `@gpuix/solid` as the universal module. Application code does not import them.
+These exist because **`babel-preset-solid`** targets `@ghia/solid` as the universal module. Application code does not import them.
 
 ```ts
 createElement, createTextNode, insert, insertNode, setProp,
@@ -612,7 +612,7 @@ spread, memo, effect, createComponent, mergeProps, use
 ```
 
 ```ts
-import { jsx, jsxs, Fragment } from '@gpuix/solid/jsx-runtime'
+import { jsx, jsxs, Fragment } from '@ghia/solid/jsx-runtime'
 ```
 
 `jsxImportSource` already points here. Do not import the JSX runtime by hand.

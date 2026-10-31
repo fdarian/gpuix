@@ -6,7 +6,7 @@ import fs from "fs"
 import path from "path"
 import { describe, expect, it, vi } from "vitest"
 import { AnimatePresence, motion } from "../index"
-import { motionValue } from "@gpuix/native/host"
+import { motionValue } from "@ghia/native/host"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
 import { readLogicalPixels, SHOTS_DIR } from "./test-utils.js"
 

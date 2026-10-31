@@ -5,7 +5,7 @@ import solid from "babel-preset-solid"
 import { plugin as registerBunPlugin, type BunPlugin } from "bun"
 import { readFile } from "node:fs/promises"
 
-const PLUGIN_STATE = Symbol.for("@gpuix/solid/bun-plugin")
+const PLUGIN_STATE = Symbol.for("@ghia/solid/bun-plugin")
 
 function stripQuery(path: string): string {
   return path.split(/[?#]/, 1)[0]!
@@ -14,7 +14,7 @@ function stripQuery(path: string): string {
 async function transformSource(code: string, filename: string): Promise<string> {
   const presets: NonNullable<Parameters<typeof transformAsync>[1]>["presets"] = []
   if (/\.[cm]?[jt]sx$/.test(filename)) {
-    presets.push([solid, { generate: "universal", moduleName: "@gpuix/solid" }])
+    presets.push([solid, { generate: "universal", moduleName: "@ghia/solid" }])
   }
   if (/\.[cm]?tsx?$/.test(filename)) presets.push([typescript])
   const result = await transformAsync(code, {

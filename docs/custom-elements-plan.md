@@ -51,7 +51,7 @@ custom_elements/
 
 ## Binary Strategy
 
-**Phase 1 (now):** Everything in a single binary. Custom elements are separate files but compiled into the same `@gpuix/native` crate. This keeps the build simple while we validate the architecture.
+**Phase 1 (now):** Everything in a single binary. Custom elements are separate files but compiled into the same `@ghia/native` crate. This keeps the build simple while we validate the architecture.
 
 **Phase 2 (later):** Split into separate crates and `.node` binaries to reduce default binary size. The trait boundary makes this split mechanical — no architecture changes needed, just move files to a new crate and compile GPUI as a shared `dylib` so both addons share thread-local state.
 

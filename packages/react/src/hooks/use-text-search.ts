@@ -2,11 +2,11 @@ import { useEffect, useState } from "react"
 import {
   createTextSearchController,
   findRanges,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type {
   FindRangesOptions,
   TextSearchOptions,
-} from "@gpuix/native/host"
+} from "@ghia/native/host"
 import type { Props } from "../types/host.js"
 
 export type { FindRangesOptions, TextSearchOptions }

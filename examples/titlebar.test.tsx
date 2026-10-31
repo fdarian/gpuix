@@ -3,7 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import React from 'react'
-import { createTestRoot, hasNativeTestRenderer } from '@gpuix/react/testing'
+import { createTestRoot, hasNativeTestRenderer } from '@ghia/react/testing'
 import { TitlebarApp } from './titlebar'
 
 const describeNative =

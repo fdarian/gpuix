@@ -94,7 +94,7 @@ interface Hub {
   scheduled: ReturnType<typeof setTimeout> | ReturnType<typeof setImmediate> | undefined
 }
 
-const HUBS_KEY = Symbol.for("@gpuix/native/observer-hubs")
+const HUBS_KEY = Symbol.for("@ghia/native/observer-hubs")
 
 function hubFor(renderer: object): Hub {
   let hubs = Reflect.get(globalThis, HUBS_KEY) as WeakMap<object, Hub> | undefined
