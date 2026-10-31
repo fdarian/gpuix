@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { tmpdir } from "node:os"
@@ -68,7 +68,10 @@ describe("native ESM package", () => {
     expect(browser.stdout).toContain("browser.mjs")
   })
 
-  it("bundles both public adapters for the browser", () => {
+  // browser.mjs imports the wasm-bindgen build, which `bun run build:web` writes and
+  // nothing builds on a macOS-only checkout (CI included), so the bundle cannot resolve it.
+  const wasmBuilt = existsSync(fileURLToPath(new URL("../../wasm/gpuix-web.js", import.meta.url)))
+  it.skipIf(!wasmBuilt)("bundles both public adapters for the browser", () => {
     for (const adapter of ["react", "solid"]) {
       const entry = join(temp, `${adapter}-browser.mjs`)
       writeFileSync(
