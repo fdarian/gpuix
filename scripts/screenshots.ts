@@ -1,8 +1,8 @@
 /**
- * Regenerate the screenshots the README links to.
+ * Regenerate the screenshots docs/reference.md links to.
  *
  * Test output lands in gitignored `screenshots/` folders and churns on every
- * run. Only the curated set below is committed, so the README never shows a
+ * run. Only the curated set below is committed, so docs/reference.md never shows a
  * stale frame and the repo never carries a binary diff per test run.
  *
  *   bun scripts/screenshots.ts

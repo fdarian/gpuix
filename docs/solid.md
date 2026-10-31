@@ -18,7 +18,7 @@
 Pin **`@gpuix/solid`** and **`@gpuix/native`** to the same exact version. GPUIX is still pre-1.0. Upgrade them together.
 
 ```bash
-bun add --exact @gpuix/solid @gpuix/native solid-js
+pnpm add --save-exact @gpuix/solid @gpuix/native solid-js
 ```
 
 The peer range is **`solid-js` `>=1.9 <2`**.
