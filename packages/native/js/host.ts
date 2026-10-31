@@ -2057,11 +2057,14 @@ export interface WebviewProps extends HostProps {
 
 /**
  * A native view of a separate library, put between GPUI layers of the window. It is a `div`
- * otherwise: `style`, children and events apply, and the box is the element's border box.
+ * otherwise: `style`, children and events apply. The element's own background and border are
+ * drawn below the view and its children above it.
  *
  * `onAttach` hands the library the content `NSView` of the element's native surface, and the
- * library adds its view as a subview that fills it. The surface takes the element's box, clip,
- * opacity and corner radius, so what clips or fades the element clips or fades the view.
+ * library adds its view as a subview that fills it. The surface fills the padding box of the
+ * element. It is cut to that box, and to the inner border radius, only where the element's
+ * `overflow` clips; an element that does not clip lets the view show as far as the clip of its
+ * ancestors reaches.
  *
  * Lifetime: the view is valid from `onAttach` until `onDetach` returns. `onDetach` is called
  * synchronously, before the surface is taken down, when the element unmounts and when the window
@@ -2084,8 +2087,10 @@ export interface NativeviewProps extends HostProps {
   nativeEvents?: boolean
   /**
    * The native surface exists. `view` is the pointer of its content `NSView`, as a `bigint`.
-   * Called once, after the first frame that has the surface. See the lifetime rule
-   * above. A throw is reported like any handler's and does not unpair `onDetach`.
+   * Called once, asynchronously: it arrives after the first frame that has the surface, not
+   * during that frame. If the element is gone by then, it is not called at all. See the
+   * lifetime rule above. A throw is reported like any handler's and does not unpair
+   * `onDetach`.
    */
   onAttach?: (view: bigint) => void
   /**

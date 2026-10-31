@@ -130,6 +130,7 @@ function calls(r, ids) {
     getMediaFeatures: () => r.getMediaFeatures(),
     getMotionValue: () => r.getMotionValue(910),
     getMotionValuePlayback: () => r.getMotionValuePlayback(910),
+    getNativeSurfaceEvents: () => r.getNativeSurfaceEvents(),
     getNativeviewSurface: () => r.getNativeviewSurface(ids.nativeview),
     getNativeviewWarnings: () => r.getNativeviewWarnings(ids.nativeview),
     getMotionValueVelocity: () => r.getMotionValueVelocity(910),
