@@ -11,11 +11,11 @@
   createSignal()       render(() => <App />)
 ```
 
-> **Note.** Host elements, styles, events, virtual lists, and native text are the same as React. This page covers the **Solid adapter**. See [reference.md](reference.md) for the shared GPUIX surface.
+> **Note.** Host elements, styles, events, virtual lists, and native text are the same as React. This page covers the **Solid adapter**. See [reference.md](reference.md) for the shared Alpina surface.
 
 ## Install
 
-Pin **`@gpuix/solid`** and **`@gpuix/native`** to the same exact version. GPUIX is still pre-1.0. Upgrade them together.
+Pin **`@gpuix/solid`** and **`@gpuix/native`** to the same exact version. Alpina is still pre-1.0. Upgrade them together.
 
 ```bash
 pnpm add --save-exact @gpuix/solid @gpuix/native solid-js
@@ -87,7 +87,7 @@ function App() {
   )
 }
 
-render(() => <App />, { title: 'Solid GPUIX', width: 800, height: 600 })
+render(() => <App />, { title: 'Solid Alpina', width: 800, height: 600 })
 ```
 
 Give every **`<text>`** a `color`. GPUI does not inherit color from a parent. Text with no color paints black and disappears on a dark surface.
@@ -194,7 +194,7 @@ render(() => <App />, {
 })
 ```
 
-**`fonts`** is a convenience over `renderer.registerFont()`: it reads each `.ttf` or `.otf` file and registers its bytes right after the window opens. Pass absolute paths; relative ones resolve against the process's current working directory. An unreadable path throws before the window opens. GPUIX ships no fonts. Variable fonts render only their default instance, so pass one static file per weight, and set `fontFamily` to the font's exact family name.
+**`fonts`** is a convenience over `renderer.registerFont()`: it reads each `.ttf` or `.otf` file and registers its bytes right after the window opens. Pass absolute paths; relative ones resolve against the process's current working directory. An unreadable path throws before the window opens. Alpina ships no fonts. Variable fonts render only their default instance, so pass one static file per weight, and set `fontFamily` to the font's exact family name.
 
 **`createRenderer()`** stays public for tests and custom hosts. Pass `{ renderer }` into `render()` when you already have one.
 
@@ -291,7 +291,7 @@ function AttachFiles() {
 
 ## Primitives
 
-These are the Solid adapters over `@gpuix/native/host`. Call them in a component under a GPUIX root. They return **accessors**, not hook objects.
+These are the Solid adapters over `@gpuix/native/host`. Call them in a component under an Alpina root. They return **accessors**, not hook objects.
 
 > **Tip.** There is no Solid `useWindowSize`. Use `createWindowSize()`. React keeps `useWindowSize`. The native helpers stay on `@gpuix/native/host`.
 
