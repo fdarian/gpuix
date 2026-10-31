@@ -11,9 +11,13 @@
     "example:counter": "cd examples && bun --hot counter.tsx",
     "dev": "bun scripts/dev.ts",
     "web": "bun scripts/web.ts",
-    "web:wasm": "bun scripts/web.ts --build-only"
+    "web:wasm": "bun scripts/web.ts --build-only",
+    "changeset": "changeset",
+    "ci:version": "changeset version",
+    "ci:release": "bun run build:native && bun run build:solid && bun run build:react && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@types/bun": "^1.4.0",
     "react-refresh": "^0.18.0",
     "tsx": "^4.19.0",
