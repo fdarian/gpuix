@@ -72,7 +72,8 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/fdarian/alpina"
+    "url": "git+https://github.com/fdarian/alpina.git",
+    "directory": "packages/react"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

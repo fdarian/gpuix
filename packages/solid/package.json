@@ -76,7 +76,7 @@
   "files": ["dist", "LICENSE"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/fdarian/alpina",
+    "url": "git+https://github.com/fdarian/alpina.git",
     "directory": "packages/solid"
   },
   "publishConfig": {

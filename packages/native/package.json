@@ -53,32 +53,27 @@
   "napi": {
     "binaryName": "gpuix-native",
     "targets": [
-      "aarch64-apple-darwin",
-      "x86_64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc",
-      "aarch64-pc-windows-msvc"
+      "aarch64-apple-darwin"
     ]
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/fdarian/alpina"
+    "url": "git+https://github.com/fdarian/alpina.git",
+    "directory": "packages/native"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
   "scripts": {
-    "artifacts": "napi artifacts",
     "build": "napi build --platform --esm --js index.js --release --features test-support && napi build --platform --js index.cjs --release --features test-support && bun run build:js && bun run check:test-support",
     "build:release": "napi build --platform --esm --js index.js --release --no-default-features && napi build --platform --js index.cjs --release --no-default-features && bun run build:js",
     "build:debug": "napi build --platform --esm --js index.js --features test-support && napi build --platform --js index.cjs --features test-support && bun run build:js && bun run check:test-support",
     "build:js": "tsc",
     "check:test-support": "tsc -p tsconfig.test-support.json",
     "build:web": "bun ../../scripts/web.ts --build-only",
-    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @gpuix/native locally. CI builds all platform binaries. See AGENTS.md.'); process.exit(1) }\" && bun run build:js && bun run build:web && napi pre-publish -t npm --no-gh-release",
-    "test": "vitest run js/__tests__",
-    "universal": "napi universalize",
-    "version": "napi version"
+    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @gpuix/native locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
+    "test": "vitest run js/__tests__"
   },
   "dependencies": {
     "eventsource-parser": "^4.1.0",
@@ -94,6 +89,7 @@
     "index.js",
     "index.cjs",
     "index.d.ts",
+    "gpuix-native.darwin-arm64.node",
     "browser.mjs",
     "dist",
     "wasm",
