@@ -719,6 +719,7 @@ impl TestGpuixRenderer {
             crate::custom_elements::input::init(cx);
             install_test_image_http_client(cx);
             crate::custom_elements::webview::install_test_pages(cx);
+            cx.set_global(crate::custom_elements::nativeview::SurfaceLog::default());
         });
 
         // Open an offscreen window at (-10000, -10000) with the same GpuixView
@@ -1183,7 +1184,9 @@ impl TestGpuixRenderer {
             apply_batch_to_tree(&mut tree, json.as_bytes()).map_err(Error::from_reason)?;
         let dirty = tree.take_dirty();
         let auto_focus = tree.take_auto_focus_request();
+        let tree_id = tree.id();
         drop(tree);
+        crate::custom_elements::nativeview::teardown::tell_destroyed(tree_id, &destroyed)?;
         // Like the live renderer, a change made from a handler marks the window dirty at once, so
         // that a read in the same handler draws it. Outside a handler `flush()` does.
         UNFLUSHED_MUTATIONS.with(|unflushed| unflushed.set(unflushed.get().max(dirty)));
@@ -2340,7 +2343,7 @@ impl TestGpuixRenderer {
     pub fn get_native_surface_events(
         &self,
     ) -> Result<Vec<crate::custom_elements::nativeview::test_api::NativeSurfaceEventReading>> {
-        update_view(|_view, window, _cx| crate::custom_elements::nativeview::test_api::native_surface_events(window))
+        update_view(|_view, _window, cx| crate::custom_elements::nativeview::test_api::native_surface_events(cx))
     }
 
     /// How many warnings a `<nativeview>` has issued.

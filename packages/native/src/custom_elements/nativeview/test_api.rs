@@ -4,7 +4,7 @@
 use gpui::RecordedLayer;
 use napi_derive::napi;
 
-use super::SurfacesRefused;
+use super::{SurfaceEvent, SurfaceLog, SurfacesRefused};
 use crate::renderer::GpuixView;
 
 #[napi(object)]
@@ -18,8 +18,9 @@ pub struct NativeviewRect {
 /// Where the last composed frame put the native view of a `<nativeview>`, in window pixels.
 #[napi(object)]
 pub struct NativeviewSurfaceReading {
-    /// The content view JS got with `attach`, as a decimal string: the index of the attachment
-    /// on the test platform.
+    /// The content view JS got with `attach`, as a decimal string: the address of the `NSView`
+    /// of the window's offscreen platform, a number like 516333569280 that differs per run. The
+    /// Rust unit tests run on gpui's test platform, where it is the index of the attachment.
     pub handle: String,
     /// The whole surface, not cut by its clip.
     pub bounds: NativeviewRect,
@@ -34,9 +35,9 @@ pub struct NativeviewSurfaceReading {
 /// What the test platform did to a native surface.
 #[napi(object)]
 pub struct NativeSurfaceEventReading {
-    /// `"created"` or `"removed"`.
+    /// `"created"` when an element made its surface, `"removed"` when it dropped it.
     pub kind: String,
-    /// The index of the attachment, which is the handle `attach` carries.
+    /// The content view of the surface: the `handle` `attach` carries.
     pub handle: String,
 }
 
@@ -109,19 +110,19 @@ impl GpuixView {
     }
 }
 
-/// The native surfaces the platform made and removed, in order. The last frame is shown first:
-/// a removed surface leaves the platform with the frame that no longer places it.
-pub(crate) fn native_surface_events(window: &mut gpui::Window) -> Vec<NativeSurfaceEventReading> {
-    window.present_cached_frame();
-    window
-        .native_surface_events()
-        .into_iter()
+/// The native surfaces the elements made and dropped, in order. A dropped surface leaves the
+/// window with the next frame that does not place it.
+pub(crate) fn native_surface_events(cx: &gpui::App) -> Vec<NativeSurfaceEventReading> {
+    cx.global::<SurfaceLog>()
+        .0
+        .borrow()
+        .iter()
         .map(|event| match event {
-            gpui::NativeSurfaceEvent::Created(index) => {
-                NativeSurfaceEventReading { kind: "created".to_string(), handle: index.to_string() }
+            SurfaceEvent::Created(handle) => {
+                NativeSurfaceEventReading { kind: "created".to_string(), handle: handle.to_string() }
             }
-            gpui::NativeSurfaceEvent::Removed(index) => {
-                NativeSurfaceEventReading { kind: "removed".to_string(), handle: index.to_string() }
+            SurfaceEvent::Removed(handle) => {
+                NativeSurfaceEventReading { kind: "removed".to_string(), handle: handle.to_string() }
             }
         })
         .collect()

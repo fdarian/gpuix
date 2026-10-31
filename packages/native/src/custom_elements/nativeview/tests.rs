@@ -47,6 +47,7 @@ impl Page {
 
     /// `setup` runs before the first frame.
     fn with_setup(cx: &mut gpui::TestAppContext, elements: Vec<El>, setup: impl FnOnce(&mut gpui::TestAppContext)) -> Self {
+        cx.update(|cx| cx.set_global(super::SurfaceLog::default()));
         setup(cx);
         let tree = Arc::new(Mutex::new(RetainedTree::new()));
         {
@@ -132,15 +133,23 @@ impl Page {
         self.tree.lock().unwrap().destroy_element(id);
     }
 
+    /// What `applyBatch` does with a `destroyElement`: no frame is drawn.
+    fn destroy_in_batch(&self, id: u64) {
+        let mut tree = self.tree.lock().unwrap();
+        let batch = format!(r#"[["destroyElement", {id}]]"#);
+        let destroyed = crate::renderer::apply_batch_to_tree(&mut tree, batch.as_bytes()).unwrap();
+        let tree_id = tree.id();
+        drop(tree);
+        super::teardown::tell_destroyed(tree_id, &destroyed).unwrap();
+    }
+
     fn surface(&self, cx: &mut gpui::TestAppContext, id: u64) -> Option<NativeviewSurfaceReading> {
         self.window.update(cx, |view, window, _| view.nativeview_surface(id, window).unwrap()).unwrap()
     }
 
     fn surface_events(&self, cx: &mut gpui::TestAppContext) -> Vec<String> {
-        let events: Vec<NativeSurfaceEventReading> = self
-            .window
-            .update(cx, |_, window, _| super::test_api::native_surface_events(window))
-            .unwrap();
+        let events: Vec<NativeSurfaceEventReading> =
+            cx.update(|cx| super::test_api::native_surface_events(cx));
         events.into_iter().map(|event| format!("{} {}", event.kind, event.handle)).collect()
     }
 
@@ -611,4 +620,108 @@ fn a_nativeview_is_retained_as_a_div_is(cx: &mut gpui::TestAppContext) {
         }
     }
     assert_eq!(built[0], built[1], "a nativeview is built as often as a div: {built:?}");
+}
+
+#[gpui::test]
+fn a_batch_that_destroys_the_element_tells_detach_before_any_frame(cx: &mut gpui::TestAppContext) {
+    let page = nativeview_page(cx, nativeview(BOX).listening("attach").listening("detach"));
+    page.destroy_in_batch(2);
+    // Nothing was drawn since: it is the batch that told it, while JS still has its handlers.
+    assert_eq!(page.told("detach"), ["2 0"]);
+    page.settle(cx);
+    assert_eq!(page.told("detach"), ["2 0"], "the frame that finds it gone tells nothing more");
+    assert_eq!(page.surface_events(cx), ["created 0", "removed 0"]);
+}
+
+#[gpui::test]
+fn a_batch_that_destroys_a_subtree_tells_detach_for_each_nativeview_in_it(cx: &mut gpui::TestAppContext) {
+    let page = Page::new(
+        cx,
+        vec![
+            el(1, None, "div", ROOT),
+            el(2, Some(1), "div", "{}"),
+            el(3, Some(2), "nativeview", BOX).listening("attach").listening("detach"),
+            el(4, Some(3), "nativeview", BOX).listening("attach").listening("detach"),
+            el(5, Some(1), "nativeview", BOX).listening("attach").listening("detach"),
+        ],
+    );
+    page.destroy_in_batch(2);
+    let mut detached = page.told("detach");
+    detached.sort();
+    assert_eq!(detached.len(), 2, "{detached:?}");
+    assert!(detached[0].starts_with("3 ") && detached[1].starts_with("4 "), "{detached:?}");
+    page.settle(cx);
+    assert_eq!(page.told("detach").len(), 2);
+    let removed = page.surface_events(cx).iter().filter(|event| event.starts_with("removed")).count();
+    assert_eq!(removed, 2);
+    assert!(page.surface(cx, 5).is_some());
+}
+
+#[gpui::test]
+fn a_batch_that_destroys_something_else_leaves_the_nativeview(cx: &mut gpui::TestAppContext) {
+    let page = Page::new(
+        cx,
+        vec![el(1, None, "div", ROOT), nativeview(BOX).listening("attach").listening("detach"), el(3, Some(1), "div", "{}")],
+    );
+    page.destroy_in_batch(3);
+    page.settle(cx);
+    assert!(page.told("detach").is_empty());
+    assert!(page.surface(cx, 2).is_some());
+}
+
+#[gpui::test]
+fn a_box_under_pointer_events_none_is_not_a_target_as_a_div_is_not(cx: &mut gpui::TestAppContext) {
+    // A click on the box alone reaches nothing, and one on a child that is a target reaches the
+    // child: the same as for a div.
+    let mut clicks = Vec::new();
+    for kind in ["div", "nativeview"] {
+        let page = Page::new(
+            cx,
+            vec![
+                el(1, None, "div", ROOT),
+                el(2, Some(1), kind, r#"{"width": 100, "height": 100, "pointerEvents": "none"}"#)
+                    .prop("nativeEvents", serde_json::json!(true))
+                    .listening("click"),
+                el(3, Some(2), "div", r#"{"width": 20, "height": 20, "pointerEvents": "auto"}"#).listening("click"),
+            ],
+        );
+        let bounds = page.bounds(2);
+        let mut visual = gpui::VisualTestContext::from_window(page.window.into(), cx);
+        for offset in [60., 5.] {
+            visual.simulate_click(
+                gpui::point(gpui::px((bounds.x + offset) as f32), gpui::px((bounds.y + offset) as f32)),
+                Default::default(),
+            );
+        }
+        let clicked: Vec<f64> = page
+            .told
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|payload| payload.event_type == "click")
+            .map(|payload| payload.element_id)
+            .collect();
+        clicks.push(clicked);
+    }
+    assert_eq!(clicks[1], [3.0]);
+    assert_eq!(clicks[1], clicks[0]);
+}
+
+#[gpui::test]
+fn the_pointer_is_over_the_native_view_only_where_it_captures(cx: &mut gpui::TestAppContext) {
+    let page = Page::new(
+        cx,
+        vec![
+            el(1, None, "div", ROOT),
+            el(2, Some(1), "nativeview", r#"{"width": 100, "height": 100}"#).prop("nativeEvents", serde_json::json!(true)),
+            el(3, Some(1), "nativeview", r#"{"width": 100, "height": 100}"#),
+        ],
+    );
+    let over = |cx: &mut gpui::TestAppContext, id: u64| {
+        let bounds = page.bounds(id);
+        let point = gpui::point(gpui::px((bounds.x + 50.) as f32), gpui::px((bounds.y + 50.) as f32));
+        cx.update_window(page.window.into(), |_, window, _| window.native_surface_at(point).is_some()).unwrap()
+    };
+    assert!(over(cx, 2));
+    assert!(!over(cx, 3));
 }

@@ -2228,7 +2228,9 @@ impl GpuixRenderer {
             apply_batch_to_tree(&mut tree, json.as_bytes()).map_err(Error::from_reason)?;
         let dirty = tree.take_dirty();
         let auto_focus = tree.take_auto_focus_request();
+        let tree_id = tree.id();
         drop(tree);
+        crate::custom_elements::nativeview::teardown::tell_destroyed(tree_id, &destroyed)?;
         // A re-render that changed nothing sends a batch of identical resends.
         // Waking the window for it makes it rebuild and diff the whole element
         // tree to draw the frame it already has.
@@ -11847,6 +11849,7 @@ fn nativeview_layer(
 ) -> gpui::AnyElement {
     let overflow = ctx.tree.overflow_of(element);
     let layer = crate::custom_elements::nativeview::layer(crate::custom_elements::nativeview::LayerRequest {
+        tree: ctx.tree,
         registry: &mut *ctx.custom_registry,
         element,
         style,

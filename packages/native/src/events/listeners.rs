@@ -192,6 +192,7 @@ impl PointerDispatch {
             .unwrap_or_default();
         crate::focus::defer_mouse_down_default(window, cx, &self.activation.routing, target_path);
         let mut mouse_down_prevented = false;
+        let mut press_stopped = false;
         for payload in output.into_payloads() {
             // A cancelled `pointerdown` of this press holds back the `mousedown` after it.
             if self.pointer.borrow().suppresses(&payload.event_type) {
@@ -204,11 +205,23 @@ impl PointerDispatch {
                 self.pointer.borrow_mut().suppress_mouse_events();
             }
             mouse_down_prevented |= is_mouse_down && outcome.default_prevented;
+            press_stopped |= (is_pointer_down || is_mouse_down) && outcome.propagation_stopped;
         }
         if mouse_down_prevented {
             window.prevent_default();
         }
+        let position = gpui::point(gpui::px(sample.position.0 as f32), gpui::px(sample.position.1 as f32));
+        if withholds_press(press_stopped, window.native_surface_at(position).is_some()) {
+            cx.stop_propagation();
+        }
     }
+}
+
+/// Whether a press is kept from the native view under it: a handler of `pointerdown` or
+/// `mousedown` stopped it. GPUI's own handling of a press that is not over a native view is the
+/// page's focus and click default, which the DOM does not stop with `stopPropagation`.
+fn withholds_press(stopped: bool, over_native_surface: bool) -> bool {
+    stopped && over_native_surface
 }
 
 /// Pixels a line of a mouse wheel is worth in the `wheel` event. Scrollers pick their own
@@ -545,4 +558,21 @@ pub(crate) fn pointer_frame(
     .absolute()
     .w(gpui::px(0.0))
     .h(gpui::px(0.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::withholds_press;
+
+    #[test]
+    fn a_press_is_withheld_from_a_native_view_only_when_a_handler_stopped_it() {
+        assert!(withholds_press(true, true));
+        assert!(!withholds_press(false, true));
+    }
+
+    #[test]
+    fn a_stopped_press_not_over_a_native_view_keeps_gpuis_own_handling() {
+        assert!(!withholds_press(true, false));
+        assert!(!withholds_press(false, false));
+    }
 }

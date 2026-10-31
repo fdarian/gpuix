@@ -164,8 +164,9 @@ export interface NativeviewRect {
 
 /** Where the last composed frame put the native view of a `<nativeview>`, in window pixels. */
 export interface NativeviewSurface {
-  /** The content view `onAttach` got, as a decimal string: the index of the attachment on the
-   *  test platform (`"0"`, `"1"`, ...). */
+  /** The content view `onAttach` got, as a decimal string: the address of the `NSView` of the
+   *  test renderer's offscreen window, a large number like `"516333569280"` that differs per run.
+   *  Compare it with the `attach` handle, do not expect a fixed value. */
   handle: string
   /** The whole surface: the padding box of the element. */
   bounds: NativeviewRect
@@ -179,10 +180,10 @@ export interface NativeviewSurface {
   capturesPointer: boolean
 }
 
-/** What the test platform did to a native surface of the window. */
+/** A native surface made or dropped by a `<nativeview>`, in order. */
 export interface NativeSurfaceEvent {
   kind: "created" | "removed"
-  /** The index of the attachment, the `handle` of `onAttach`. */
+  /** The content view of the surface, the `handle` of `onAttach`. */
   handle: string
 }
 
@@ -1915,8 +1916,7 @@ export class TestRenderer implements NativeRenderer {
   }
 
   // ── <nativeview> ────────────────────────────────────────────────
-  // The surface of a nativeview is made when its element is first painted. The test platform
-  // numbers the surfaces it makes from 0, and that number is the `handle` of `onAttach`.
+  // The surface of a nativeview is made when its element is first painted.
 
   /** Where the last frame put the native view of the `<nativeview>`; null while it has no
    *  surface or the frame did not place it (`display: none`, `visibility: hidden`, culled). */
@@ -1925,8 +1925,9 @@ export class TestRenderer implements NativeRenderer {
     return this.native.getNativeviewSurface(elementId)
   }
 
-  /** The native surfaces the window made and removed, in order. A surface is removed in the frame
-   *  that no longer places it. */
+  /** The native surfaces the `<nativeview>` elements made and dropped, in order. `"removed"` is
+   *  when the element drops the surface (after `detach`); its view leaves the window with the
+   *  next frame. */
   getNativeSurfaceEvents(): NativeSurfaceEvent[] {
     this.native.flush()
     return this.native.getNativeSurfaceEvents()

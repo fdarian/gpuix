@@ -22,6 +22,7 @@ use crate::renderer::EventCallback;
 
 mod geometry;
 mod lifecycle;
+pub(crate) mod teardown;
 #[cfg(feature = "test-support")]
 pub(crate) mod test_api;
 #[cfg(test)]
@@ -36,6 +37,19 @@ use lifecycle::{Availability, Lifecycle};
 pub(crate) struct SurfacesRefused(pub(crate) bool);
 
 impl gpui::Global for SurfacesRefused {}
+
+/// What happened to the native surfaces of a window, which the test renderer reads: its window is a
+/// real offscreen one, whose platform records nothing.
+#[derive(Clone, Default)]
+pub(crate) struct SurfaceLog(pub(crate) Rc<RefCell<Vec<SurfaceEvent>>>);
+
+impl gpui::Global for SurfaceLog {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SurfaceEvent {
+    Created(usize),
+    Removed(usize),
+}
 
 pub struct NativeviewFactory;
 
@@ -56,6 +70,15 @@ struct Attached {
     /// The content view of the surface, which is what JS gets.
     handle: usize,
     window: gpui::WindowId,
+    log: Option<SurfaceLog>,
+}
+
+impl Drop for Attached {
+    fn drop(&mut self) {
+        if let Some(log) = &self.log {
+            log.0.borrow_mut().push(SurfaceEvent::Removed(self.handle));
+        }
+    }
 }
 
 /// What the element, its paint and the registry share. Painting runs in closures that a frame
@@ -68,6 +91,8 @@ pub(crate) struct Shared {
     attached: Option<Attached>,
     lifecycle: Lifecycle,
     availability: Availability,
+    /// The tree and element id `teardown` finds this by.
+    tracked: Option<(u64, u64)>,
 }
 
 impl Shared {
@@ -79,6 +104,7 @@ impl Shared {
             attached: None,
             lifecycle: Lifecycle::default(),
             availability: Availability::default(),
+            tracked: None,
         }
     }
 
@@ -121,7 +147,11 @@ impl Shared {
             .map_err(|error| error.to_string())?
             .downcast::<usize>()
             .map_err(|_| "the surface of this window has no content view".to_string())?;
-        Ok(Attached { surface, handle: *handle, window: window.window_handle().window_id() })
+        let log = cx.has_global::<SurfaceLog>().then(|| cx.global::<SurfaceLog>().clone());
+        if let Some(log) = &log {
+            log.0.borrow_mut().push(SurfaceEvent::Created(*handle));
+        }
+        Ok(Attached { surface, handle: *handle, window: window.window_handle().window_id(), log })
     }
 
     /// Ends the element: tells JS `detach` if it was told `attach`, and then drops the surface. The
@@ -157,6 +187,9 @@ impl Shared {
 impl Drop for Shared {
     fn drop(&mut self) {
         self.take_down();
+        if let Some(key) = self.tracked {
+            teardown::forget(key);
+        }
     }
 }
 
@@ -222,6 +255,7 @@ impl CustomElement for NativeviewElement {
 
 /// What the layer of an element is built from.
 pub(crate) struct LayerRequest<'a> {
+    pub tree: &'a crate::retained_tree::RetainedTree,
     pub registry: &'a mut CustomElementRegistry,
     pub element: &'a crate::retained_tree::RetainedElement,
     pub style: Option<&'a crate::style::StyleDesc>,
@@ -246,6 +280,7 @@ pub(crate) fn layer(request: LayerRequest) -> gpui::AnyElement {
         .flatten()
         .expect("the registry of a view has the nativeview factory");
     shared.borrow_mut().callback = request.event_callback.clone();
+    teardown::track((request.tree.id(), element.id), &shared);
     let captures = captures_pointer(shared.borrow().native_events, request.pointer_events_none);
     let listens = element.events().contains("attach");
     let cut = Cut::new(
@@ -256,12 +291,19 @@ pub(crate) fn layer(request: LayerRequest) -> gpui::AnyElement {
         request.clips,
     );
 
+    // A box that is not a hit target must not put itself in the chain of the pointer through the
+    // hitbox of its canvas, whose parent is the box.
+    let hitbox_behavior = if request.pointer_events_none {
+        gpui::HitboxBehavior::PassThrough
+    } else {
+        gpui::HitboxBehavior::Normal
+    };
     let prepainted = shared.clone();
     let painted = shared;
     gpui::canvas(
         move |bounds, window, cx| {
             let ready = prepainted.borrow_mut().prepare(window, cx, listens);
-            ready.then(|| window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal))
+            ready.then(|| window.insert_hitbox(bounds, hitbox_behavior))
         },
         move |bounds, hitbox, window, _| {
             let Some(hitbox) = hitbox else { return };
