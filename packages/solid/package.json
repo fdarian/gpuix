@@ -1,6 +1,6 @@
 {
   "name": "@ghia/solid",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Solid renderer for GPUIX",
   "license": "Apache-2.0",
   "type": "module",
