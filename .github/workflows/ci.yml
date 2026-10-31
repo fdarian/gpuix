@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - LICENSE
+      - NOTICE
+      - '.changeset/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - LICENSE
+      - NOTICE
+      - '.changeset/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup
+        with: { cache: true }
+
+      # Reads the channel from rust-toolchain.toml, which must match zed's pin
+      # for the gpui revision in packages/native/Cargo.toml. The action's own
+      # cache is off: the rust-cache step below keys it for packages/native.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-apple-darwin
+          cache: false
+          # The action defaults to RUSTFLAGS="-D warnings"; lint policy lives in the crate.
+          rustflags: ''
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/native
+
+      # gpui_apple compiles shaders with `metal`, which Xcode 26 no longer ships
+      # by default; without this the build fails with "missing Metal Toolchain".
+      - run: xcodebuild -downloadComponent MetalToolchain
+
+      - run: bun run build
+        working-directory: packages/native
+      - run: bun run build
+        working-directory: packages/solid
+      - run: bun run build
+        working-directory: packages/react
+
+      - run: bun run test
+        working-directory: packages/native
+      - run: bun run test
+        working-directory: packages/solid
+      - run: bun run test
+        working-directory: packages/react
+      - run: bun run test
+        working-directory: examples
