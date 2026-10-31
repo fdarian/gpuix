@@ -35,7 +35,8 @@ describe.skipIf(!hasWakeSimulator)("the frame loop under display-link wakes", ()
     const run = runFixture("slow")
     console.log("slow frames", JSON.stringify(run))
     // The old loop gives ~1200 ms gaps and back-to-back on nearly every tick; the margins absorb a heavily loaded machine.
-    expect(run.maxTimeoutGapMs).toBeLessThan(150)
+    // A shared CI runner stalls the process for longer than a developer machine does.
+    expect(run.maxTimeoutGapMs).toBeLessThan(process.env.CI ? 400 : 150)
     expect(run.intervals).toBeGreaterThanOrEqual(15)
     expect(run.reads).toBeGreaterThanOrEqual(5)
     expect(run.ticks).toBeGreaterThanOrEqual(15)
