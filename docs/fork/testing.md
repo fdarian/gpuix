@@ -15,6 +15,7 @@ cd zed && cargo test -p gpui_macos --test native_surface       # window composit
 cd packages/native/examples/webview-e2e && bun run e2e         # <webview> on real WKWebViews in a real window
 ```
 
+- Run a package's suite with `bun run test`, not a bare `bun test`: `packages/react`, `packages/native` and `examples` are vitest, so Bun's own runner fails on their `vitest` imports. `packages/solid` is `bun:test` and its script builds first.
 - `packages/native` has one test that bundles both adapters for the browser. It needs `packages/react` built and `bun run build:web` (nightly Rust and `wasm-bindgen`), so it fails on a machine without them. That is unrelated to the fork.
 - The `*.perf.test.tsx` files in `examples/` run with `bun run test:perf` (chat, timeline and rerender) or one at a time, through the scripts that set `NODE_ENV=production`. Use a release addon: a leftover debug build times like a regression.
 - Tests that need the native addon are `describe.skip` when it is missing (`hasNativeTestRenderer`), so a green run without the addon proves little.
@@ -302,6 +303,16 @@ The gpui fuzzers run inside `cargo test -p gpui --lib --features test-support`.
 
 ## Measuring performance
 
+- **Profile one path at a time: first mount, scroll, or a chrome `setState`.** Mount is React mapping every child into queued `createInstance` / `setStyle` / `setCustomProp` ops, one `applyBatch`, the Rust `RetainedTree`, then a first paint that builds only the visible rows. A scroll is wheel, notify, `render()`, Taffy on the visible rows, paint. A sidebar click or a composer key re-renders the parent and runs `{rows.map(...)}` again unless the list is in `memo`, which costs what a mount costs.
+- **Profile a mount from a short script, not the live window,** because the tick loop drowns it: mount through `createTestRoot()` (from `@gpuix/react/testing`), time `root.render(...)`, exit. `examples/profile-chat-scroll.tsx` is that script for the chat (`MOUNT_ONLY=1`, `INTERACT=1` for the sidebar and composer path; a fast wheel flush is no proof that chrome updates are cheap).
+  ```bash
+  cd examples
+  MOUNT_ONLY=1 bun --cpu-prof --cpu-prof-dir=../tmp/cpu-profiles profile-chat-scroll.tsx
+  npx profano ../tmp/cpu-profiles/CPU.*.cpuprofile -n 30      # self time: where the CPU sat
+  npx profano ../tmp/cpu-profiles/CPU.*.cpuprofile --sort total -n 20   # total: the caller chain
+  ```
+  For Rust time, `sample` the bun or node pid, or use `samply`; `ZED_MEASUREMENTS=1` is Zed's frame log, not the debug overlay.
+- **Throttle the CPU to judge a slow machine.** `THROTTLE=utility` re-execs under `taskpolicy -c` (E-cores, a proxy for an M1 or M2 Air) and `background` is harsher (closer to a 2019 Intel Mac); GPU and RAM stay as they are. It works at launch only, so the vitest config wraps the main process and workers inherit it. A throttled run logs its numbers and skips the default budgets, which are for an unclamped M-series CPU. `THROTTLE=utility bun run test:perf`, `THROTTLE=utility bun profile-chat-scroll.tsx` and `THROTTLE=utility bun --hot chat.tsx` all take it. Do not set it in CI.
 - **Use a release addon.** A leftover debug build times like a regression, and scratch apps link this checkout (see [working-on-the-fork.md](working-on-the-fork.md#building)).
 - **The numbers are CPU per frame on the test renderer.** There is no display link in a test, so GPU time, presentation and the compositor are not in them, and they are not what a window shows. The comparison with Electron (idle animated pages, a hover sweep, fast scroll) is rerun by the app that uses this fork.
 - **The test renderer draws a dirty window inline whenever effects flush; a window with a display link draws once.** A baseline taken this way overstates the cost of anything that flushes effects during a frame (the changelog page of the demo drew 20.7 times per frame on `poc` in a scroll). Measure a frame the way the display link ends one with `setInlineDraws(false)` and `drawFrame()`, and a tick with `clockAdvance` ([The test clock](#the-test-clock)).
@@ -312,3 +323,12 @@ The gpui fuzzers run inside `cargo test -p gpui --lib --features test-support`.
 ### Known failing budgets
 
 `timeline.perf.test.tsx` (a 3259-clip pan) fails its budgets on `poc` too, before the retention work, so its failure is not a regression. With culling on, p95 is 44.7 ms on `poc` and 34.1 ms with the retention (the budget is 18 ms); with culling off it is 708 ms against 683 ms (the budget is 400 ms). A drag of a clip, p50, is 13.9 ms against 4.7 ms.
+
+## Driving a live window
+
+The API (`launch`, `connectTest`, `click`, `screenshot`, the clock) is in [docs/reference.md](../reference.md#let-an-agent-drive-the-app). What an agent running one has to do:
+
+- **Always pass `focus: false`** when you open a window to check your own work. The user is doing something else, a window that activates on launch takes the keyboard mid-sentence once per iteration, and `click()` and `screenshot()` never need focus. Wire the entry file so the flag comes from the environment (`GPUIX_BACKGROUND`) and set it in `launch({ env })`, so a human run still behaves normally.
+- **To open an example so the user can look,** start `bun --hot <file>.tsx` and leave that session running. A save remounts React on the same window (state is dropped: it is a remount, not Fast Refresh). Do not relaunch without `--hot`, and do not kill the session after a screenshot.
+- **Drive the app through the automation API,** not `usecomputer`, `screencapture` or desktop clicks.
+- Screenshots go to `packages/react/screenshots/` (gitignored), not `/tmp`, so they can be inspected after a run.

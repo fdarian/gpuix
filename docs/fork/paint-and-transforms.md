@@ -41,6 +41,7 @@ Effect groups (zed `effects.rs`, `gpui_apple`) are `filter`, `backdropFilter`, `
 
 - `currentColor`, `light-dark()` (through an inherited `colorScheme`), `color-mix()`, `color()` in all CSS colour spaces, and named colours. The default text colour follows the scheme.
 - **A hovered `color` reaches descendants' `currentColor`.**
+- **A style value is parsed with a `ColorContext`.** `light-dark()`, `currentColor` and `color-mix()` cannot be resolved without one, so `apply_styles` takes `&ColorContext`, a state refinement uses `for_state`, and children get `descend`. `parse_color_rgba` has no context and none of those functions: do not call it on a style value.
 - **Motion colours resolve through `ColorContext`.** Targets and keyframes (motion, CSS transitions, CSS animation keyframes, `<svg>` `fill` / `stroke`) take `currentColor`, `light-dark()`, `color-mix()` and `color()`, resolved in the element's own context (`currentColor` for `color` itself is the parent's). A new `color`, `colorScheme` or window appearance resolves them again and the track runs to the new colour. A static `<svg>` `fill` / `stroke` that uses those functions is written as `rgba()` in the svg's context. An animated `<svg>` shape changes hue through `SvgPaint::image`, which keeps one image and drops the previous one from the atlas, so an `<svg>` holds one atlas entry, not one per frame.
 
 ## `<svg>` and `<img>`

@@ -25,6 +25,8 @@ The accessibility tree and the input handler (IME caret bounds) are not covered 
 
 What paint used to publish is published from prepaint. `Window::publish_layout(f)` queues `f` and runs it once the whole tree is prepainted, because an element's own prepaint does not yet have the bounds of what comes after it. Published this way: element bounds, borders, inline span bounds and scroll metrics. A `List` that prepaints a row range and rolls it back takes the entries its rolled-back rows queued with it.
 
+Anything new that a read can observe must be published from prepaint when `window.is_layout_pass()`, or a read after a change sees it stale. The `on_painted` and `on_painted_layout` listeners already are; a custom paint-time publisher queues itself with `publish_layout`.
+
 A publication runs under the layout engine that was current when it was queued, and so does a deferred draw (`Window::defer_draw`). An atomic inline lays its boxes out in an engine of its own, swapped in only while it works, and a layout id from it means nothing in the window's engine. Running a publication in the wrong engine made a box inside an `inline-block` read its insets from an unrelated node, or panic with "invalid SlotMap key used", on a layout-only read.
 
 ### A pass does not advance time (#70)
