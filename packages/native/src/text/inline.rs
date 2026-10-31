@@ -48,7 +48,7 @@ pub fn is_blank(text: &str) -> bool {
 /// tree's own `div` rules. Paint dispatches on this and search collects by it, so
 /// the two cannot disagree about which elements lay out a paragraph.
 pub fn is_host_type(element_type: &str) -> bool {
-    matches!(element_type, "div" | "text" | "label" | "form" | "span")
+    matches!(element_type, "div" | "text" | "label" | "form" | "span" | "nativeview")
 }
 
 pub fn is_host_container(element: &RetainedElement) -> bool {
@@ -165,9 +165,10 @@ pub fn is_part_of_paragraph(tree: &RetainedTree, element: &RetainedElement) -> b
     !element_lays_out_items(container) && !is_atomic(element) && is_inline_box(tree, element, container)
 }
 
-/// A host that is a block whatever its style says, or that is not a box to begin with.
+/// A host that is a block whatever its style says, or that is not a box to begin with. A
+/// `<nativeview>` is a box of its own, with a native layer in it that no paragraph could hold.
 fn is_special_host(element: &RetainedElement) -> bool {
-    matches!(element.element_type.as_str(), "label" | "form") || element.custom_props().contains_key("highlight")
+    matches!(element.element_type.as_str(), "label" | "form" | "nativeview") || element.custom_props().contains_key("highlight")
 }
 
 /// Whether `element`, a child of `parent` in a block container, is an inline box that holds the

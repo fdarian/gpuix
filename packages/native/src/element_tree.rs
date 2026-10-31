@@ -333,6 +333,11 @@ pub struct EventPayload {
     /// The URL that failed to load. Populated for: did-fail-load.
     pub validated_url: Option<String>,
 
+    /// The address of the content `NSView` of a `<nativeview>` as a decimal string: a pointer
+    /// does not survive a round trip through an `f64` on every platform, and JS makes a `bigint`
+    /// of it. Populated for: attach, detach.
+    pub native_handle: Option<String>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -418,6 +423,7 @@ impl Default for EventPayload {
             error_code: None,
             error_description: None,
             validated_url: None,
+            native_handle: None,
             modifiers: None,
         }
     }

@@ -2324,6 +2324,42 @@ impl TestGpuixRenderer {
         update_view(move |view, window, _cx| view.webview_native_view(id, window))?.map_err(Error::from_reason)
     }
 
+    /// Where the last composed frame put the native view of a `<nativeview>`, null while it has no
+    /// surface or the frame did not place it.
+    #[napi]
+    pub fn get_nativeview_surface(
+        &self,
+        element_id: f64,
+    ) -> Result<Option<crate::custom_elements::nativeview::test_api::NativeviewSurfaceReading>> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, window, _cx| view.nativeview_surface(id, window))?.map_err(Error::from_reason)
+    }
+
+    /// The native surfaces the window made and removed, in order.
+    #[napi]
+    pub fn get_native_surface_events(
+        &self,
+    ) -> Result<Vec<crate::custom_elements::nativeview::test_api::NativeSurfaceEventReading>> {
+        update_view(|_view, window, _cx| crate::custom_elements::nativeview::test_api::native_surface_events(window))
+    }
+
+    /// How many warnings a `<nativeview>` has issued.
+    #[napi]
+    pub fn get_nativeview_warnings(&self, element_id: f64) -> Result<u32> {
+        let id = to_element_id(element_id)?;
+        update_view(move |view, _window, _cx| view.nativeview_warnings(id))?
+            .map(|warnings| warnings as u32)
+            .map_err(Error::from_reason)
+    }
+
+    /// Makes the window refuse native surfaces (`false`), as a platform that cannot compose does.
+    #[napi]
+    pub fn set_native_surfaces_available(&self, available: bool) -> Result<()> {
+        update_view(move |_view, _window, cx| {
+            crate::custom_elements::nativeview::test_api::set_surfaces_available(cx, available)
+        })
+    }
+
     /// Make the fonts in a TrueType or OpenType file usable by `fontFamily`.
     #[napi]
     pub fn register_font(&self, data: Buffer) -> Result<()> {

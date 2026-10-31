@@ -32,6 +32,8 @@ pub mod webview;
 // What `<webview>` and `<nativeview>` share of showing a native surface.
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod native_surface;
+#[cfg(not(target_family = "wasm"))]
+pub mod nativeview;
 
 /// A `<webview>` is a Tab stop without a `tabIndex`, like a text control, since the page in it
 /// takes keys.
@@ -353,6 +355,12 @@ pub trait CustomElement: 'static {
         None
     }
 
+    /// This element as a `<nativeview>`, for the layer it is built with and the test renderer.
+    #[cfg(not(target_family = "wasm"))]
+    fn as_nativeview(&mut self) -> Option<&mut nativeview::NativeviewElement> {
+        None
+    }
+
     /// The selection of `<input>` and `<textarea>`, in DOM terms.
     fn text_selection(&mut self, _cx: &mut gpui::App) -> Option<text_selection::TextSelection> {
         None
@@ -453,6 +461,8 @@ impl CustomElementRegistry {
         registry.register(Box::new(markdown::MarkdownFactory));
         #[cfg(not(target_family = "wasm"))]
         registry.register(Box::new(webview::WebviewFactory));
+        #[cfg(not(target_family = "wasm"))]
+        registry.register(Box::new(nativeview::NativeviewFactory));
         registry
     }
 
@@ -615,6 +625,24 @@ impl CustomElementRegistry {
             .iter_mut()
             .filter_map(|(id, entry)| entry.element.as_webview().map(|webview| (*id, webview.shared())))
             .collect()
+    }
+
+    /// The shared state of every `<nativeview>` the registry holds, by element id.
+    #[cfg(all(not(target_family = "wasm"), feature = "test-support"))]
+    pub(crate) fn nativeviews(&mut self) -> Vec<(u64, std::rc::Rc<std::cell::RefCell<nativeview::Shared>>)> {
+        self.instances
+            .iter_mut()
+            .filter_map(|(id, entry)| entry.element.as_nativeview().map(|nativeview| (*id, nativeview.shared())))
+            .collect()
+    }
+
+    /// Destroys the adapter of `id` unless it is of `element_type`: an element that is built
+    /// as a host container and keeps its state in the registry (`<nativeview>`) is not an adapter
+    /// that outlived a change of its type.
+    pub(crate) fn destroy_unless(&mut self, id: u64, element_type: &str) {
+        if self.instances.get(&id).is_some_and(|entry| entry.element_type != element_type) {
+            self.destroy(id);
+        }
     }
 
     /// Called when React destroys an element.

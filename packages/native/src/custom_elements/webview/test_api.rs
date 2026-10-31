@@ -72,6 +72,8 @@ pub struct CompositionLayerReading {
     pub primitives: u32,
     /// For a native layer: the element of its webview.
     pub webview: Option<f64>,
+    /// For a native layer: the element of its nativeview.
+    pub nativeview: Option<f64>,
     /// For a native layer: whether it shows.
     pub visible: bool,
 }
@@ -209,6 +211,7 @@ impl GpuixView {
             .into_iter()
             .map(|(id, shared)| (id, shared.borrow().surface_id()))
             .collect();
+        let nativeviews = self.nativeview_surfaces();
         Ok(frame
             .layers
             .iter()
@@ -218,6 +221,7 @@ impl GpuixView {
                     is_base: *is_base,
                     primitives: *primitives as u32,
                     webview: None,
+                    nativeview: None,
                     visible: true,
                 },
                 RecordedLayer::Native { surface, placement, .. } => CompositionLayerReading {
@@ -227,6 +231,10 @@ impl GpuixView {
                     webview: webviews
                         .iter()
                         .find(|(_, candidate)| *candidate == Some(*surface))
+                        .map(|(id, _)| *id as f64),
+                    nativeview: nativeviews
+                        .iter()
+                        .find(|(_, candidate)| candidate == surface)
                         .map(|(id, _)| *id as f64),
                     visible: placement.is_some(),
                 },

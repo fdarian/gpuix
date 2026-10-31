@@ -11052,7 +11052,7 @@ fn build_element_unpumped(
         // listener, and then silently did nothing. `<span>` is the same box;
         // it only differs in being inline inside a paragraph.
         host if crate::text::inline::is_host_type(host) => {
-            ctx.custom_registry.destroy(id);
+            ctx.custom_registry.destroy_unless(id, host);
             if crate::layout::contents::is_display_contents(element) {
                 ctx.retain.exclude(crate::retain::Exclusion::DisplayContents);
                 build_contents_container(element, style, stacking_root, ctx, window, cx)
@@ -11752,7 +11752,8 @@ pub(crate) fn build_host_container(
     // and focus events come from `GpuixView::observe_focus`. The wheel is a window-level
     // input like the pointer's (`events::listeners`).
 
-    let (content, placements, containing_heights) = if skipped {
+    #[cfg_attr(target_family = "wasm", allow(unused_mut))]
+    let (mut content, mut placements, containing_heights) = if skipped {
         // The trim passed down is meant for what is built below.
         ctx.text_box_trim = Default::default();
         Default::default()
@@ -11818,6 +11819,13 @@ pub(crate) fn build_host_container(
             resolved
         )
     });
+    // After the digest above, which the indices of the absent children are of the content without it.
+    // The browser build has no native surfaces: there a `<nativeview>` is a `div`.
+    #[cfg(not(target_family = "wasm"))]
+    if element.element_type == "nativeview" && !skipped {
+        content.insert(0, nativeview_layer(element, style, ctx));
+        placements.insert(0, Placement { rank: 0, document: 0 });
+    }
     host.extend(content);
     if placements.iter().any(|placement| placement.rank != 0) {
         host = host.paint_ranks(placements.iter().map(|placement| placement.rank).collect());
@@ -11827,6 +11835,29 @@ pub(crate) fn build_host_container(
     }
 
     host.into_any_element()
+}
+
+/// The first child of a `<nativeview>`, which paints the native layer in its padding box. The
+/// registry holds the state of the element, which a host container has none of.
+#[cfg(not(target_family = "wasm"))]
+fn nativeview_layer(
+    element: &crate::retained_tree::RetainedElement,
+    style: Option<&StyleDesc>,
+    ctx: &mut BuildCtx,
+) -> gpui::AnyElement {
+    let overflow = ctx.tree.overflow_of(element);
+    let layer = crate::custom_elements::nativeview::layer(crate::custom_elements::nativeview::LayerRequest {
+        registry: &mut *ctx.custom_registry,
+        element,
+        style,
+        colors: &ctx.inherited.colors,
+        lengths: &ctx.inherited.lengths,
+        clips: overflow.x.clips() || overflow.y.clips(),
+        pointer_events_none: ctx.inherited.pointer_events_none,
+        event_callback: ctx.event_callback,
+    });
+    ctx.retain.custom_built(element.id, ctx.custom_registry.retain_state(element.id));
+    layer
 }
 
 /// The table a collapsed border is resolved for.
