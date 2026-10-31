@@ -383,7 +383,7 @@ keeps its own build script for them.
 
 `ci.yml` runs on pushes to `main` and on pull requests (not for changes that only touch Markdown, `docs/`, `LICENSE`, `NOTICE` or
 `.changeset/`) as one `check` job on `macos-latest`: the native build, the Solid and React builds, then `bun run test` in
-`packages/native`, `packages/solid`, `packages/react` and `examples`. The `*.perf.test.tsx` files and the e2e apps are not run.
+`packages/native`, `packages/solid`, `packages/react` and `examples`. A failing suite does not skip the ones after it. The `*.perf.test.tsx` files and the e2e apps are not run.
 There is no format job and no Turbo: a format commit over upstream-derived code would conflict with every pick.
 
 A user-visible change adds a changeset with `pnpm changeset`. Pushing it to `main` runs `release.yml`, where the changesets
