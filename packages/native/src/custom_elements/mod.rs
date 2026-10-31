@@ -29,6 +29,9 @@ pub mod svg_tree;
 // `<webview>` is an unknown element and renders nothing.
 #[cfg(not(target_family = "wasm"))]
 pub mod webview;
+// What `<webview>` and `<nativeview>` share of showing a native surface.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) mod native_surface;
 
 /// A `<webview>` is a Tab stop without a `tabIndex`, like a text control, since the page in it
 /// takes keys.
