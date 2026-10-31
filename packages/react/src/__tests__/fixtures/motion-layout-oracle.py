@@ -4,6 +4,10 @@
 out a `before`, then on `window.__flip()` renders an `after` and records the `getBoundingClientRect()` of the tracked boxes
 (and, for `radius`, their computed border radius and shadow) on every animation frame for 1600 ms.
 
+It also regenerates motion-layout-scroll-oracle.json from motion-layout-scroll-oracle.html, whose scenes write the
+`scrollTop` of a scroller in a layout effect or a passive effect of the commit that moves the box. Name a page
+(`motion-layout-oracle` or `motion-layout-scroll-oracle`) as the argument to regenerate only that one.
+
   MOTION_ROOT=<node_modules holding motion, framer-motion, react and react-dom, at motion 14.1.0> \\
     uv run --with playwright python motion-layout-oracle.py
 
@@ -25,8 +29,9 @@ if not root:
     sys.exit("set MOTION_ROOT to the node_modules directory that holds motion 14.1.0")
 exe = os.environ.get("CHROME", os.path.expanduser("~/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell"))
 
-# scene -> (primary box, primary quantity), or None when nothing animates.
-SCENES = {
+# page -> scene -> (primary box, primary quantity[, where it starts]), or None when nothing animates. A scene whose scroll is
+# written after Motion measured starts where the commit's measure put it, not at the rect the `before` state had.
+PAGES = {"motion-layout-oracle": {
     "height": ("box", "height"),
     "widthMove": ("box", "width"),
     "position": ("box", "y"),
@@ -35,13 +40,29 @@ SCENES = {
     "nested": ("parent", "height"),
     "radius": ("card", "width"),
     "layoutId": ("card", "width"),
-}
+}, "motion-layout-scroll-oracle": {
+    "scrollDownLayoutEffect": ("box", "y"),
+    "scrollDownPassiveSync": ("box", "y"),
+    "scrollDownPassiveDefault": ("box", "y", -10),
+    "scrollUpLayoutEffect": ("box", "y"),
+    "scrollUpPassiveDefault": ("box", "y", 90),
+    "scrollOnlyLayoutEffect": ("box", "y"),
+    "nestedLayoutEffect": ("box", "y"),
+    "nestedPassiveDefault": ("box", "y", -25),
+    "layoutIdLayoutEffect": ("card", "y"),
+    "layoutIdPassiveDefault": ("card", "y", -30),
+    "layoutIdPassiveSync": ("card", "y"),
+    "layoutIdOtherScroller": ("card", "x"),
+    "scrollDownLayoutScroll": ("box", "y", -10),
+}, "motion-layout-footer-oracle": {
+    "footer": "free",
+}}
 KEEP = (-50, 1100)
 
 
-def build(work):
+def build(work, page):
     os.makedirs(os.path.join(work, "vendor"))
-    shutil.copy(os.path.join(here, "motion-layout-oracle.html"), os.path.join(work, "oracle.html"))
+    shutil.copy(os.path.join(here, page + ".html"), os.path.join(work, "oracle.html"))
     entry = os.path.join(work, "react-entry.js")
     shutil.copy(os.path.join(here, "motion-layout-oracle-react-entry.js"), entry)
     # The bare imports of the entry resolve through a node_modules next to it.
@@ -53,13 +74,17 @@ def progress(frame, primary, before, after):
     box = frame["boxes"][primary[0]]
     if box is None:
         return None
-    start, end = before[primary[0]][primary[1]], after[primary[0]][primary[1]]
+    start, end = (primary[2] if len(primary) > 2 else before[primary[0]][primary[1]]), after[primary[0]][primary[1]]
     return (box[primary[1]] - start) / (end - start)
 
 
-def fit(name, data):
+def fit(scenes, name, data):
     """The scene as the JSON stores it, its frames rebased to the start of the animation."""
-    primary = SCENES[name]
+    primary = scenes[name]
+    if primary == "free":
+        frames = [dict(f, t=f["t"]) for f in data["frames"]]
+        print(f"{name}: {len(frames)} frames")
+        return {"start": 0.0, "before": data["before"], "after": data["after"], "frames": frames}
     before, after = data["before"], data["after"]
     if primary is None:
         start = 0.0
@@ -85,7 +110,10 @@ def fit(name, data):
     else:
         deviation = 0.0
     print(f"{name}: {len(frames)} frames, start {start:.1f} ms, max |p - t/1000| = {deviation:.4f}")
-    return {"start": start, "before": before, "after": after, "frames": frames}
+    out = {"start": start, "before": before, "after": after, "frames": frames}
+    if "scrolledAt" in data:
+        out["scrolledAt"] = [t - start for t in data["scrolledAt"]]
+    return out
 
 
 async def record(browser, url, name):
@@ -100,24 +128,25 @@ async def record(browser, url, name):
     return data
 
 
-async def main(work):
+async def main(work, page):
     from playwright.async_api import async_playwright
 
     url = "file://" + os.path.join(work, "oracle.html")
     scenes = {}
     async with async_playwright() as p:
         browser = await p.chromium.launch(executable_path=exe)
-        for name in SCENES:
-            scenes[name] = fit(name, await record(browser, url, name))
+        for name in PAGES[page]:
+            scenes[name] = fit(PAGES[page], name, await record(browser, url, name))
         version = browser.version
         await browser.close()
     with open(os.path.join(root, "motion", "package.json")) as f:
         motion_version = json.load(f)["version"]
     out = {"meta": {"motion": motion_version, "chrome": version}, "scenes": scenes}
-    with open(os.path.join(here, "motion-layout-oracle.json"), "w") as f:
+    with open(os.path.join(here, page + ".json"), "w") as f:
         json.dump(out, f, indent=1)
 
 
-with tempfile.TemporaryDirectory(prefix="motion-layout-oracle-") as work:
-    build(work)
-    asyncio.run(main(work))
+for page in sys.argv[1:] or PAGES:
+    with tempfile.TemporaryDirectory(prefix="motion-layout-oracle-") as work:
+        build(work, page)
+        asyncio.run(main(work, page))

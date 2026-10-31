@@ -1,0 +1,166 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Motion 14.1.0: a layout glide of a box whose scroller is written in the same commit</title>
+<!-- Run by motion-layout-oracle.py, which builds vendor/motion-react.js next to this page. Every scene runs in its own page
+     (?scene=<name>): the page lays out the scene's `before`, window.__flip() renders `after` and records the viewport rect
+     (`getBoundingClientRect`) of the tracked boxes on every animation frame for 1600 ms. A scene's effect writes the
+     `scrollTop` of its scrollers in a layout effect or a passive effect of the commit that renders `after`; `flush: "sync"`
+     renders in `flushSync` (React flushes the passive effects of a sync render at the end of its commit, before Motion's
+     microtask measure), `"default"` renders on the default lane (the passive effects run after the measure). -->
+<style>
+  html, body { margin: 0; background: white; }
+  .scroller { overflow: auto; position: relative; }
+</style>
+<script src="vendor/motion-react.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+const R = window.MotionReact;
+const h = R.React.createElement;
+const motion = R.motion;
+const transition = { duration: 1, ease: "linear" };
+const RED = "rgb(255, 0, 0)";
+const after = (state) => state === "after";
+const space = (height) => h("div", { style: { height, flexShrink: 0 } });
+const filler = h("div", { style: { height: 900, flexShrink: 0 } });
+const scroller = (id, height, children, props) =>
+  h(props && props.layoutScroll ? motion.div : "div", Object.assign({ className: "scroller", "data-id": id, style: { height, width: 300 } }, props), children);
+const box = (id, layout, extra) =>
+  h(motion.div, Object.assign({ "data-id": id, layout, transition, style: { width: 100, height: 40, flexShrink: 0, background: RED } }, extra));
+
+// A scene lists the ids it tracks, the scrollTop each scroller has before and the scrollTop its effect writes (`writes`),
+// and renders its `before` and `after` state.
+const SCENES = {
+  // Content moves 60 px down, the scroller scrolls 30 px down: the box was at 20 and ends at 20 + 60 - 30 = 50.
+  scrollDownLayoutEffect: {
+    ids: ["box"], when: "layout", flush: "sync", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [after(s) ? space(60) : null, box("box", true), filler])),
+  },
+  scrollDownPassiveSync: {
+    ids: ["box"], when: "passive", flush: "sync", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [after(s) ? space(60) : null, box("box", true), filler])),
+  },
+  scrollDownPassiveDefault: {
+    ids: ["box"], when: "passive", flush: "default", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [after(s) ? space(60) : null, box("box", true), filler])),
+  },
+  // Scrolled to 50 before, 10 after: 20 + 80 - 50 = 50 before, 20 + 140 - 10 = 150 after.
+  scrollUpLayoutEffect: {
+    ids: ["box"], when: "layout", flush: "sync", before: { s: 50 }, writes: { s: 10 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [space(after(s) ? 140 : 80), box("box", true), filler])),
+  },
+  scrollUpPassiveDefault: {
+    ids: ["box"], when: "passive", flush: "default", before: { s: 50 }, writes: { s: 10 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [space(after(s) ? 140 : 80), box("box", true), filler])),
+  },
+  // The same scroll, with no move of the box in the content: only the scroll.
+  scrollOnlyLayoutEffect: {
+    ids: ["box"], when: "layout", flush: "sync", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [space(60), box("box", true, after(s) ? { style: { width: 100, height: 60, flexShrink: 0, background: RED } } : {}), filler])),
+  },
+  // Two scrollers, the box in the inner one: the outer one scrolls 20 and the inner one 30, the content above the box moves 60.
+  nestedLayoutEffect: {
+    ids: ["box"], when: "layout", flush: "sync", before: { outer: 0, inner: 0 }, writes: { outer: 20, inner: 30 },
+    render: (s) => h("div", null, space(10), scroller("outer", 300, [space(15), scroller("inner", 200, [after(s) ? space(60) : null, box("box", true), filler]), h("div", { style: { height: 900 } })])),
+  },
+  nestedPassiveDefault: {
+    ids: ["box"], when: "passive", flush: "default", before: { outer: 0, inner: 0 }, writes: { outer: 20, inner: 30 },
+    render: (s) => h("div", null, space(10), scroller("outer", 300, [space(15), scroller("inner", 200, [after(s) ? space(60) : null, box("box", true), filler]), h("div", { style: { height: 900 } })])),
+  },
+  // FF's shape: a card outside the scroller hands its layoutId to a box in it, and the scroller scrolls in the same commit.
+  layoutIdLayoutEffect: {
+    ids: ["card"], when: "layout", flush: "sync", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null,
+      h("div", { style: { height: 60 } }, after(s) ? null : box("card", true, { layoutId: "card", layout: undefined })),
+      space(20),
+      scroller("s", 200, [space(100), after(s) ? box("card", true, { layoutId: "card", layout: undefined }) : null, filler])),
+  },
+  layoutIdPassiveDefault: {
+    ids: ["card"], when: "passive", flush: "default", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null,
+      h("div", { style: { height: 60 } }, after(s) ? null : box("card", true, { layoutId: "card", layout: undefined })),
+      space(20),
+      scroller("s", 200, [space(100), after(s) ? box("card", true, { layoutId: "card", layout: undefined }) : null, filler])),
+  },
+  layoutIdPassiveSync: {
+    ids: ["card"], when: "passive", flush: "sync", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null,
+      h("div", { style: { height: 60 } }, after(s) ? null : box("card", true, { layoutId: "card", layout: undefined })),
+      space(20),
+      scroller("s", 200, [space(100), after(s) ? box("card", true, { layoutId: "card", layout: undefined }) : null, filler])),
+  },
+  // A layoutId hand-off across two scrollers that stand at different offsets, with no scroll in the commit.
+  layoutIdOtherScroller: {
+    ids: ["card"], when: "layout", flush: "sync", before: { a: 40, b: 0 }, writes: {},
+    render: (s) => h("div", { style: { display: "flex", flexDirection: "row" } },
+      scroller("a", 200, [space(60), after(s) ? null : box("card", true, { layoutId: "card", layout: undefined }), filler]),
+      scroller("b", 200, [space(100), after(s) ? box("card", true, { layoutId: "card", layout: undefined }) : null, filler])),
+  },
+  // layoutScroll on the scroller: Motion measures in the scroller's own content space.
+  scrollDownLayoutScroll: {
+    ids: ["box"], when: "layout", flush: "sync", before: { s: 0 }, writes: { s: 30 },
+    render: (s) => h("div", null, space(20), scroller("s", 200, [after(s) ? space(60) : null, box("box", true), filler], { layoutScroll: true })),
+  },
+};
+
+const scene = SCENES[new URLSearchParams(location.search).get("scene")];
+const root = R.createRoot(document.getElementById("root"));
+const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+
+let flipStart, scrolledAt = [];
+function write(positions) {
+  if (flipStart !== undefined) scrolledAt.push(performance.now() - flipStart);
+  for (const id of Object.keys(positions)) document.querySelector('[data-id="' + id + '"]').scrollTop = positions[id];
+}
+
+function App(props) {
+  const flipped = after(props.state);
+  R.React.useLayoutEffect(() => { if (flipped && scene.when === "layout") write(scene.writes); }, [flipped]);
+  R.React.useEffect(() => { if (flipped && scene.when === "passive") write(scene.writes); }, [flipped]);
+  return scene.render(props.state);
+}
+
+function sample() {
+  const boxes = {};
+  for (const id of scene.ids) {
+    const el = document.querySelector('[data-id="' + id + '"]');
+    if (!el) { boxes[id] = null; continue; }
+    const r = el.getBoundingClientRect();
+    boxes[id] = { x: r.x, y: r.y, width: r.width, height: r.height };
+  }
+  return { boxes };
+}
+
+let beforeRects;
+R.flushSync(() => root.render(h(App, { state: "before" })));
+setTimeout(async () => {
+  write(scene.before);
+  await frame();
+  await frame();
+  beforeRects = sample().boxes;
+  window.__ready = true;
+}, 300);
+
+window.__flip = function () {
+  const t0 = performance.now();
+  flipStart = t0;
+  const frames = [];
+  const tick = () => {
+    const t = performance.now() - t0;
+    frames.push(Object.assign({ t }, sample()));
+    if (t < 1600) { requestAnimationFrame(tick); return; }
+    document.documentElement.setAttribute("data-oracle", JSON.stringify({ before: beforeRects, after: sample().boxes, frames, scrolledAt }));
+    window.__oracle = true;
+  };
+  if (scene.flush === "sync") R.flushSync(() => root.render(h(App, { state: "after" })));
+  else root.render(h(App, { state: "after" }));
+  tick();
+};
+})();
+</script>
+</body>
+</html>
