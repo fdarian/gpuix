@@ -1,93 +1,61 @@
 # Working on the fork
 
-How the two repos are laid out, what order the commits keep, how to sync with upstream and resolve the conflicts a sync
-produces, how to build, where new code goes, and which platforms have been exercised. The conflict notes are the long part:
-each says which invariant a file carries, so a resolution keeps the invariant and not one side of the diff.
+How the two repos are laid out, which commit rules keep their history append-only, what a cherry-pick from upstream has to
+preserve, how to build, where new code goes, and which platforms have been exercised. The conflict notes are the long part:
+each says which invariant a file carries, so a resolution keeps the invariant and not one side of the diff. The procedure for
+following upstream is in [syncing-upstream.md](syncing-upstream.md).
 
 ## Repos and branches
 
-Two repos, same shape:
+Two repos, one branch each that matters:
 
-| | `fdarian/gpuix` | `fdarian/zed` |
+| | `fdarian/alpina` | `fdarian/zed` |
 |---|---|---|
-| `main` / `gpuix` | `main`: mirror of `remorses/gpuix` `main`, no patches | `gpuix`: mirror of `remorses/zed` `gpuix`, no patches |
-| `poc` (GitHub default) | upstream `main` plus the fork's commits | upstream `gpuix` plus the fork's commits |
-| `upstream` remote | `remorses/gpuix` | `remorses/zed` |
+| Branch | `main` (GitHub default) | `poc` (GitHub default) |
+| Holds | the gpuix code with the fork's commits on top | zed's `gpuix` branch with the fork's commits on top |
+| `upstream` remote | `remorses/gpuix`, branch `main` | `remorses/zed`, branch `gpuix` |
 
-`gpuix/zed` is a submodule; `.gitmodules` points at `https://github.com/fdarian/zed` on `poc`. The submodule's origin is
-`fdarian/zed` on GitHub, a fresh worktree gets it with `git submodule update --init zed`, and zed feature branches are
+Both branches are append-only: nothing is rebased, amended or force-pushed once it is on GitHub. gpuix `main` records the zed
+commit it needs as the `zed` gitlink, so rewriting zed `poc` would leave old gpuix commits pinning SHAs that no longer exist.
+There is no mirror of either upstream branch; the `upstream` remote is where [syncing-upstream.md](syncing-upstream.md) reads.
+
+`zed/` is a submodule; `.gitmodules` points at `https://github.com/fdarian/zed` on `poc`, and that stays. The submodule's origin
+is `fdarian/zed` on GitHub, a fresh worktree gets it with `git submodule update --init zed`, and zed feature branches are
 pushed there. `main` in `fdarian/zed` is not part of the fork. Keep `zed/` on local `poc` and land zed changes there; a
-feature may live on its own branch in either repo until it lands on `poc`.
+feature may live on its own branch in either repo until it lands on `main` or `poc`.
 
 zed vendors taffy 0.13.0 in `third_party/taffy`, wired in by `[patch.crates-io]` in both `zed/Cargo.toml` and
 `packages/native/Cargo.toml`. Keep both entries pointing at the vendored copy: the layout features need the fork's patches (see
 [Layout and scrolling](#layout-and-scrolling)).
 
-## The commit stack
+## Commits
 
-`git log upstream/main..poc` is the list of gpuix commits and `git -C zed log upstream/gpuix..poc` the list of zed commits;
-this file keeps only the rules the order follows.
+One commit per behaviour, with its tests and its docs: a feature commit carries its `docs/reference.md` and `AGENTS.md` text
+and the matching `docs/fork/` text, as ordinary changes. There is no fork commit and no required order.
 
-- **Order, bottom to top in gpuix `poc`:** upstream `main`; the patches (frame loop, springs, appearance, `fonts`); the
-  DOM-parity commits grouped by area in the order A, B, C, D, E, each area followed by its own `Integrate <area>: …` commits
-  (the fixes that adapt it to the areas below it); the cross-area `Integrate …` commits named by the pair or triple they
-  reconcile (`Integrate A×B: …`, `Integrate A×B×C: …`); the docs commits; the later features, one commit per behaviour,
-  each with its tests; and the fork commit. The subjects of the cross-area commits are the changelog of the cross-area
-  decisions.
-- **zed `poc`** has the same shape on top of upstream `gpuix`: the frame-log and `flush_effects` patches first, then the
-  DOM-parity commits by area, then the integration commits, then the later features.
-- **The fork commit stays last.** It carries `.gitmodules`, the submodule bump to zed `poc`, `FORK.md` (and `docs/fork/`),
-  `scripts/sync-upstream.sh`, the README notice and the `CLAUDE.md` pointer. The sync script folds a new zed tip into it
-  with `git commit --amend`, which only works while it is the tip.
-- **Docs travel with their commit.** A feature commit carries its own README and `AGENTS.md` text. The `FORK.md` and
-  `docs/fork/` text for a feature is a `fixup!` commit of the fork commit, so the fork commit stays the one place that
-  describes the fork.
-- **Only the fork commit touches the `zed` gitlink.** A feature commit never carries a submodule bump: if it did, every sync
-  where upstream moves the pin would conflict on it, and the commit would not be reproducible from the area's own history.
-  The cost is that a commit in the middle of the stack builds only against the zed commit its area needs. Check out `zed/` at
-  the tip of that area's zed commits before building a mid-stack state, and never `git add zed` or `git commit -a` while it
-  differs from the fork commit's pin.
+- **A commit that needs a zed change bumps the gitlink itself.** Land the zed commit on `poc` and push it first, then make the
+  gpuix commit with `git add zed`. A zed commit that is not on `fdarian/zed` leaves a `main` nobody else can check out.
+- **Do not bump the gitlink by accident.** `git add zed` and `git commit -a` stage whatever `zed/` is checked out at; check
+  `git diff zed` before a commit that is not about zed.
+- **Never rewrite what is pushed.** A fix to an earlier commit is a new commit.
 - **`.gitmodules` stays `fdarian/zed` on `poc`.**
-
-## Syncing with upstream
-
-```bash
-scripts/sync-upstream.sh             # rebase both repos and push
-scripts/sync-upstream.sh --no-push   # rebase only, to inspect first
-```
-
-The script needs clean working trees (untracked files do not count) in gpuix and in `zed/`, an `upstream` remote in gpuix,
-and initialises `zed/` if it is missing; it adds zed's `upstream` remote (`remorses/zed`) when absent. Then it:
-
-1. Fetches every remote in gpuix and in `zed/`.
-2. Checks out `poc` in both and fast-forwards it to `origin/poc` when it is behind (a clone last pushed from elsewhere). A
-   `poc` that is ahead or diverged, a rebase not pushed yet, is kept as it is.
-3. Rebases zed `poc` onto upstream zed's `gpuix` branch. The target is its tip, not the commit upstream gpuix pins, which
-   may lag it; the test suites check that the fork builds against the tip.
-4. Rebases gpuix `poc` onto `upstream/main`. If the only conflict is the `zed` pointer (upstream moved the pin and the fork
-   commit moves it too), it points `zed` at the rebased zed tip and continues. Any other conflict stops the script and
-   prints the files.
-5. Puts `zed/` back on `poc`, and folds a changed zed tip into the fork commit with `git commit --amend`.
-6. Pushes (unless `--no-push`): upstream gpuix's `main` to gpuix `main` and upstream zed's `gpuix` to zed `gpuix`, both
-   fast-forward only, then zed `poc`, then gpuix `poc`, with `--force-with-lease`.
-
-The rebase is linear: a plain `git rebase` drops merge commits and replays everything, so `poc` has no merges. The stack is
-long, so a sync after upstream touches `renderer.rs` can stop several times.
 
 ## Resolving conflicts
 
-Resolve the files the script prints, run `git rebase --continue`, and run the script again. Four files collect conflicts from
-every area: `packages/native/src/renderer.rs` (wiring for each area's JS bindings, written three times: macOS, wasm and the
-Windows/Linux command path), `packages/native/js/host.ts`, `README.md` and `AGENTS.md`.
+These are the invariants a cherry-pick from upstream has to preserve; resolve each conflict by keeping them, then
+`git cherry-pick --continue`. Four files collect conflicts from every area: `packages/native/src/renderer.rs` (wiring for
+each area's JS bindings, written three times: macOS, wasm and the Windows/Linux command path), `packages/native/js/host.ts`,
+`docs/reference.md` and `AGENTS.md`.
 
-- **Generated files.** The `index.d.ts`, `index.js` and `index.cjs` in `packages/native` are never resolved by hand: take
-  upstream's and regenerate with `bun run build` in `packages/native`.
-- **A change that landed upstream** is deleted from `poc`, not resolved.
+- **Generated files.** The `index.d.ts`, `index.js` and `index.cjs` in `packages/native` are never resolved by hand: keep
+  the fork's file and regenerate with `bun run build` in `packages/native`.
+- **An upstream change** the fork already carries in its own form is skipped, not merged; the ledger says so.
 - **Fork-owned files.** Many files below are the fork's alone, so a conflict there is upstream editing the code around them.
   The resolution keeps the invariant named, not one side.
-- **`AGENTS.md`.** Take upstream's side for sections the fork did not rewrite and keep the fork's for events, scrolling,
+- **`AGENTS.md`.** Take the pick's side for sections the fork did not rewrite and keep the fork's for events, scrolling,
   bounds and the other behaviour the fork documents.
-- **Fork commit.** `.gitmodules` conflicts mean upstream changed the submodule URL or branch; keep `fdarian/zed` on `poc`.
+- **`.gitmodules`.** A conflict means upstream changed the submodule URL or branch; keep `fdarian/zed` on `poc`.
+- **`@gpuix/` in a picked commit** becomes `@ghia/` (see [syncing-upstream.md](syncing-upstream.md)).
 
 The notes below are grouped by the topic doc that describes the behaviour; read that doc for why the invariant exists.
 
@@ -405,10 +373,10 @@ keeps its own build script for them.
 ## Where new code goes
 
 New code lives in new modules (`packages/native/src/events/`, `scroll.rs`, `layout/`, `css/`, `motion/`,
-`packages/native/js/events/` and so on). `renderer.rs`, `style.rs` and `host.ts` get wiring only, which keeps the rebase onto
+`packages/native/js/events/` and so on). `renderer.rs`, `style.rs` and `host.ts` get wiring only, which keeps picking from
 upstream tractable.
 
-The README is the API contract, as upstream's `AGENTS.md` requires: behaviour is documented there, and `docs/fork/` holds the
+`docs/reference.md` is the API contract, as `AGENTS.md` requires: behaviour is documented there, and `docs/fork/` holds the
 design and the reasons.
 
 Native views are an exception to "new code in new modules" only at the edges: the zed side of `<webview>` is the new `composition*` modules plus the small hunks listed under [Webview and window composition](#webview-and-window-composition), and nothing else in gpuix knows about a native surface.
