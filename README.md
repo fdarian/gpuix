@@ -6007,6 +6007,7 @@ Bash, TOML, YAML, Markdown, HTML, CSS, C.
 | `svg`           | Tintable monochrome SVG icons from source or disk |
 | `anchored`      | Positioned overlay                               |
 | `webview`       | A web page in a native view of the window (macOS) |
+| `nativeview`    | A `div` with an AppKit view from another library in it (macOS) |
 | `canvas`        | Custom drawing (planned)                         |
 
 ## Images and icons
@@ -6492,6 +6493,78 @@ answers a script, and `setWebviewHistory` sets the history. `getWebviewSurface(i
 reads where the last frame put the page (position, clip, opacity, corner radius,
 layer) and `getCompositionLayers()` lists the layers of the frame.
 
+## `<nativeview>`
+
+`<nativeview>` is a `div` with a native layer in it, for a **separate library** that
+puts its own AppKit view (a visual-effect view, a map, a Metal view) between the
+layers GPUI draws. gpuix does not know what the view is: it places it, clips it and
+keeps it in the paint order, and the library never links GPUI. The only thing that
+crosses is the address of a content `NSView`. **macOS only**: elsewhere the element
+is an empty box that lays out its children and logs a warning once, and `onAttach`
+is never called.
+
+```tsx
+<nativeview
+  style={{ width: 320, height: 200, borderRadius: 16, overflow: 'hidden' }}
+  nativeEvents
+  onAttach={(view) => library.attach(view)}
+  onDetach={() => library.detach()}
+>
+  <text>Over the native view</text>
+</nativeview>
+```
+
+It is a `div` in every other respect: sized, laid out, styled, scrolled and
+hit-tested like one, and its children are ordinary children.
+
+- **`onAttach(view: bigint)`**: the native surface exists; `view` is the address of
+  its content `NSView`. The library adds its own view to it, filling it. Called once
+  per element, asynchronously (after the first frame that shows the surface), and not
+  at all if the element is gone by then.
+- **`onDetach()`**: the surface is about to be taken down. Called synchronously, on
+  unmount (inside the update that removes the element) and on window close, exactly
+  once for every `onAttach`. `display: none` hides the surface and does not detach; a
+  keyed reorder does not detach.
+- **The library must remove and release its view in `onDetach`.** The pointer is
+  valid from `onAttach` until `onDetach` returns; using it afterwards is undefined
+  and can crash. gpuix calls from inside `onDetach` fail ("A renderer call cannot be
+  nested…"): touch only your view.
+- **`nativeEvents`** (default off): see Pointer below.
+
+### Layers and geometry
+
+The element's own background and border are painted first, then the native view,
+then its children, then later siblings, as DOM paints a first child. The view fills
+the element's padding box (the border stays visible around it) and follows the box
+through scroll, resize, `translate` / `scale` transforms and `opacity`;
+`display: none`, `visibility: hidden` and skipped `contentVisibility` hide it.
+
+### Clipping follows `overflow`
+
+With the default `overflow: visible` the element's box and radius do **not** cut the
+view, so it can draw outside its box (an outer shadow, edge highlights) up to the
+clips of its ancestors. `overflow: hidden` (or `clip`) cuts it to the padding box
+and to the inner `borderRadius` (all four corners the same circle; otherwise square).
+Ancestor `overflow` clips always apply, as rectangles: a rounded ancestor clip does
+not round the view. See [the deviations](./docs/fork/deviations.md#nativeview).
+
+### Pointer
+
+By default the view takes no pointer events: `onClick`, hover and the rest on the
+`<nativeview>` and its children work as on a `div`, whatever the library's view
+answers to `hitTest:`. With `nativeEvents`, a point where GPUI has nothing above the
+view goes to the library view's own `hitTest:` (a plain `NSView` returns itself, so
+return `nil` for the points you want to leave to GPUI), and a `nil` falls back to
+GPUI. GPUI content above the view (children, popovers painted later) always wins,
+and GPUI sees a press first, then the library view; `stopPropagation()` on
+`pointerdown` withholds it. `pointerEvents: 'none'` turns `nativeEvents` off.
+
+Focus stays with GPUI unless the library makes its view first responder itself; a
+click on a GPUI element takes the keyboard back. The element is not a tab stop.
+
+The details for a library author, with a minimal addon, are in
+[docs/fork/nativeview.md](./docs/fork/nativeview.md).
+
 ## Supported Events
 
 | Event | Props | Payload fields |
@@ -6522,6 +6595,7 @@ layer) and `getCompositionLayers()` lists the layers of the frame.
 | Change | `onChange` | `value`, `inputType`, `data`, `isComposing` — `<input>` and `<textarea>` only, once per edit like the DOM `input`. See [The change event](#the-change-event) |
 | Submit | `onSubmit` | `formData`, `submitter` — `<form>`, bubbling. See [Forms](#forms) |
 | Webview | `onDidStartLoading`, `onDidStopLoading`, `onDidNavigate`, `onPageTitleUpdated`, `onDidFailLoad` | `url`, `title`, `explicitSet`, `errorCode`, `errorDescription`, `validatedUrl` — `<webview>` only, at the element, not bubbling. See [`<webview>`](#webview) |
+| Native view | `onAttach`, `onDetach` | `nativeHandle` (decimal digits) — `<nativeview>` only, at the element, not bubbling; the handlers get the `bigint` and no event. See [`<nativeview>`](#nativeview) |
 | Toggle file | `onToggleFile` | `value` (file path) — `<diff>` only |
 | Show more | `onShowMore` | `value` (hidden line count) — `<diff>` only |
 | Line click | `onLineClick` | `value`, `oldLine`, `newLine` — `<diff>` only |
