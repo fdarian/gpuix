@@ -2135,9 +2135,9 @@ export interface MotionValuePlayback {
 
 /** What the test platform did to a native surface. */
 export interface NativeSurfaceEventReading {
-  /** `"created"` or `"removed"`. */
+  /** `"created"` when an element made its surface, `"removed"` when it dropped it. */
   kind: string
-  /** The index of the attachment, which is the handle `attach` carries. */
+  /** The content view of the surface: the `handle` `attach` carries. */
   handle: string
 }
 
@@ -2151,8 +2151,9 @@ export interface NativeviewRect {
 /** Where the last composed frame put the native view of a `<nativeview>`, in window pixels. */
 export interface NativeviewSurfaceReading {
   /**
-   * The content view JS got with `attach`, as a decimal string: the index of the attachment
-   * on the test platform.
+   * The content view JS got with `attach`, as a decimal string: the address of the `NSView`
+   * of the window's offscreen platform, a number like 516333569280 that differs per run. The
+   * Rust unit tests run on gpui's test platform, where it is the index of the attachment.
    */
   handle: string
   /** The whole surface, not cut by its clip. */
