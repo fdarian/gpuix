@@ -56,14 +56,21 @@ jobs:
         working-directory: packages/native
       - run: bun run build
         working-directory: packages/solid
-      - run: bun run build
+      - id: build-react
+        run: bun run build
         working-directory: packages/react
 
-      - run: bun run test
+      # A failing suite must not hide the ones after it, but a failed build stops the job:
+      # a step after a failure is skipped, so react's build succeeding means all three did.
+      - if: ${{ !cancelled() && steps.build-react.outcome == 'success' }}
+        run: bun run test
         working-directory: packages/native
-      - run: bun run test
+      - if: ${{ !cancelled() && steps.build-react.outcome == 'success' }}
+        run: bun run test
         working-directory: packages/solid
-      - run: bun run test
+      - if: ${{ !cancelled() && steps.build-react.outcome == 'success' }}
+        run: bun run test
         working-directory: packages/react
-      - run: bun run test
+      - if: ${{ !cancelled() && steps.build-react.outcome == 'success' }}
+        run: bun run test
         working-directory: examples
