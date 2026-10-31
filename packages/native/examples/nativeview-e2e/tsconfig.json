@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@gpuix/react",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["bun"],
+    "baseUrl": ".",
+    "paths": {
+      "@gpuix/react": ["../../../react/dist/index.js"],
+      "@gpuix/react/jsx-runtime": ["../../../react/jsx-runtime.js"],
+      "@gpuix/react/jsx-dev-runtime": ["../../../react/jsx-dev-runtime.js"]
+    }
+  },
+  "include": ["./*.ts", "./*.tsx"]
+}

@@ -1,0 +1,29 @@
+[package]
+name = "nativeview-e2e-addon"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "The library side of the <nativeview> e2e: a napi addon that adds a plain NSView to a content view it is handed as a pointer"
+
+[lib]
+crate-type = ["cdylib"]
+
+# No GPUI and no gpuix: the only thing shared with the app is the pointer, as for a real library.
+[dependencies]
+napi = { version = "3.12.7", features = ["napi8"] }
+napi-derive = "3.6.8"
+objc = "0.2"
+
+[build-dependencies]
+napi-build = "2.4.4"
+
+# Not a member of packages/native's workspace.
+[workspace]
+
+[profile.release]
+# Same as packages/native: rustc's llvm-strip pass leaves a string table that macOS 27 dyld refuses.
+strip = "none"
+
+# The objc 0.2 macros test a `cargo-clippy` feature that no crate declares.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
