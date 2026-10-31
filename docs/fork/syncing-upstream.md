@@ -36,7 +36,7 @@ Skips worth remembering, with the reason (a commit that looks wanted but breaks 
 4. Run the suites ([testing.md](testing.md)).
 5. Advance the ledger in its own commit. A skip worth remembering is a line under "Skips" with its reason.
 
-A picked commit has `@gpuix/` rewritten to `@ghia/`: the packages are published under `@ghia`, and upstream's commits name
-`@gpuix`.
+A picked commit has upstream's npm scope rewritten to `@ghia`, because the packages are published under it. The script
+is in the body of the commit "The npm scope is @ghia".
 
 A zed pick goes to zed `poc` first and is pushed; then a gpuix commit bumps the `zed` gitlink.
