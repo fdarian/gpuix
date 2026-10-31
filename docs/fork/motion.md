@@ -174,7 +174,7 @@ An invalid animation, transition or grid track used to make `applyBatch` fail in
 
 ## Upstreaming
 
-Patch 3 is self-contained in `packages/native/src/motion/` (it began as `motion.rs`), the transition types in `packages/native/js/host.ts`, the React `motionKey`, tests and the README section, plus a changeset. `remorses/gpuix` requires an approved issue first.
+Patch 3 is self-contained in `packages/native/src/motion/` (it began as `motion.rs`), the transition types in `packages/native/js/host.ts`, the React `motionKey`, tests and the `docs/reference.md` section, plus a changeset. `remorses/gpuix` requires an approved issue first.
 
 Area E is almost all gpuix (`packages/native/src/motion/`, `js/motion-*.ts`, `keyframes.ts`, `presence.ts`, `layout-animation.ts`, `match-media.ts`, the adapters); the zed side is one commit that exposes layout content size. It builds on patch 3, on the layout prop types, the paint colour resolver and the pointer state, so it cannot be sent alone.
 

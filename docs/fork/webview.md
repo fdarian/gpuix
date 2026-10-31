@@ -1,6 +1,6 @@
 # `<webview>` and window composition
 
-`<webview>` shows a web page inside a window: Electron's tag, on a system `WKWebView`. GPUI draws with Metal into the window's layer and has no way to put another renderer's output into its scene, so the page lives in a native view that the window composes between GPUI layers. The README ([`<webview>`](../../README.md#webview)) holds what an app sees; this file holds how it works and why. The list of what does not match a browser is in [deviations.md](deviations.md#webview-and-window-composition).
+`<webview>` shows a web page inside a window: Electron's tag, on a system `WKWebView`. GPUI draws with Metal into the window's layer and has no way to put another renderer's output into its scene, so the page lives in a native view that the window composes between GPUI layers. `docs/reference.md` ([`<webview>`](../reference.md#webview)) holds what an app sees; this file holds how it works and why. The list of what does not match a browser is in [deviations.md](deviations.md#webview-and-window-composition).
 
 macOS only. Other platforms get an element that makes no page, and a warning once.
 

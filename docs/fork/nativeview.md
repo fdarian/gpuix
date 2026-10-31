@@ -1,6 +1,6 @@
 # `<nativeview>`: a native view from another library between the GPUI layers
 
-`<nativeview>` is a `div` with a native layer in it. A separate library (its own napi addon, with no link to GPUI) puts any AppKit view there: an `NSVisualEffectView`, a `CAMetalLayer`-backed view, a map, a glass effect. gpuix owns the placeholder, the layer order, the geometry, the clipping, the pointer and the React and Solid wiring; the library owns its view. The element knows nothing about what the view is. The README ([`<nativeview>`](../../README.md#nativeview)) holds what an app sees; this file holds how a library uses it and why it works as it does. What does not match the DOM is in [deviations.md](deviations.md#nativeview).
+`<nativeview>` is a `div` with a native layer in it. A separate library (its own napi addon, with no link to GPUI) puts any AppKit view there: an `NSVisualEffectView`, a `CAMetalLayer`-backed view, a map, a glass effect. gpuix owns the placeholder, the layer order, the geometry, the clipping, the pointer and the React and Solid wiring; the library owns its view. The element knows nothing about what the view is. `docs/reference.md` ([`<nativeview>`](../reference.md#nativeview)) holds what an app sees; this file holds how a library uses it and why it works as it does. What does not match the DOM is in [deviations.md](deviations.md#nativeview).
 
 macOS only. Other platforms get an empty box that lays out its children, and a warning once; `onAttach` is never called.
 
