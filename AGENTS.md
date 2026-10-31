@@ -8,6 +8,10 @@ Solid / React (TypeScript)  ->  napi-rs  ->  GPUI (Rust, zed/ submodule)  ->  Me
 
 Read [README.md](./README.md), then [docs/fork/index.md](./docs/fork/index.md): what the fork changes, the principle behind it, and the map of the topic docs. Where `docs/fork/*` and this file disagree, the fork docs win.
 
+## Principle
+
+Alpina brings DOM compatibility to desktop apps without a browser engine: React and Solid, CSS styling, DOM behaviour and the TypeScript ecosystem work as they do on the web, and GPUI takes the browser engine's place. Judge every change by that: code written for the web should work here unchanged and run at native speed.
+
 ## Docs
 
 - [docs/reference.md](./docs/reference.md) - the API contract: every element, prop, event, renderer option, method and behaviour an app author sees. **Document every user-facing change there in the same change**; a changeset does not replace it.
