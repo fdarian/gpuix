@@ -59,14 +59,14 @@ describe("Solid package consumer", () => {
       [join(workspace, "packages/native"), nativeTarball],
       [join(workspace, "packages/solid"), solidTarball],
     ]) {
+      // `bun pm pack` only rewrites `workspace:^` for a Bun workspace, and the
+      // workspace is pnpm's.
       const packed = run([
-        "bun",
-        "pm",
+        "pnpm",
         "pack",
-        "--filename",
+        "--out",
         join(temp, filename),
         "--ignore-scripts",
-        "--quiet",
       ], packageDirectory)
       expect(packed.exitCode, packed.stderr.toString()).toBe(0)
     }
