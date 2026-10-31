@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Motion 14.1.0: a `layout="position"` footer under a region whose height springs</title>
+<!-- Run by motion-layout-oracle.py, which builds vendor/motion-react.js next to this page. FF's ask-user-questions card:
+     a region whose height springs to the measured height of its content, a footer under it with a Back and a Skip button
+     that are `layout="position"` boxes, all inside a scroller. Two cards stand side by side, the left one with `layout`
+     on its buttons and the right one without. window.__flip() goes to the next question (a commit that swaps the content
+     and shows Back), a ResizeObserver reports the new content height (a second commit that starts the spring), and the
+     page records the viewport rect of both Skip buttons on every animation frame for 1600 ms. Two more commits land
+     while the spring runs (frames 3 and 6). -->
+<style>
+  html, body { margin: 0; background: white; }
+  .scroller { overflow: auto; position: relative; width: 300px; height: 360px; }
+  .row { height: 40px; flex-shrink: 0; }
+</style>
+<script src="vendor/motion-react.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+const R = window.MotionReact;
+const h = R.React.createElement;
+const motion = R.motion;
+const spring = { type: "spring", duration: 0.24, bounce: 0.12 };
+const tween = { duration: 0.2, ease: "easeOut" };
+
+function Card(props) {
+  const [height, setHeight] = R.React.useState(undefined);
+  const content = R.React.useRef(null);
+  R.React.useEffect(() => {
+    const observer = new ResizeObserver(() => setHeight(Math.round(content.current.offsetHeight)));
+    observer.observe(content.current);
+    return () => observer.disconnect();
+  }, []);
+  const rows = props.question === 0 ? 2 : 5;
+  const layout = props.layout ? "position" : undefined;
+  return h("div", { className: "scroller", "data-id": props.name + "-scroller" },
+    h("div", { style: { width: 300, flexShrink: 0 } },
+      h("div", { style: { height: 30 } }),
+      h(motion.div, { initial: false, animate: { height: height === undefined ? "auto" : height }, transition: spring, style: { overflow: "hidden" } },
+        h("div", { ref: content, key: "content" }, Array.from({ length: rows }, (_, i) => h("div", { key: props.question + "-" + i, className: "row", style: { background: "#ddd", marginBottom: 0 } })))),
+      h("div", { style: { display: "flex", flexDirection: "row", gap: 8, padding: 8 } },
+        props.question > 0 ? h(motion.div, { "data-id": props.name + "-back", layout, transition: tween, style: { width: 60, height: 28, background: "#00f" } }) : null,
+        h(motion.div, { "data-id": props.name + "-skip", layout, transition: tween, style: { width: 60, height: 28, background: "#f00" } })),
+      h("div", { "data-id": props.name + "-tick", style: { height: 4 } }, String(props.tick)),
+      h("div", { style: { height: 900 } })));
+}
+
+function App(props) {
+  return h("div", { style: { display: "flex", flexDirection: "row" } },
+    h(Card, { name: "layout", layout: true, question: props.question, tick: props.tick }),
+    h(Card, { name: "plain", layout: false, question: props.question, tick: props.tick }));
+}
+
+const root = R.createRoot(document.getElementById("root"));
+const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const ids = ["layout-skip", "plain-skip"];
+function sample() {
+  const boxes = {};
+  for (const id of ids) {
+    const r = document.querySelector('[data-id="' + id + '"]').getBoundingClientRect();
+    boxes[id] = { x: r.x, y: r.y, width: r.width, height: r.height };
+  }
+  return { boxes };
+}
+
+let beforeRects;
+R.flushSync(() => root.render(h(App, { question: 0, tick: 0 })));
+setTimeout(async () => {
+  await frame(); await frame(); await frame();
+  beforeRects = sample().boxes;
+  window.__ready = true;
+}, 500);
+
+window.__flip = function () {
+  const t0 = performance.now();
+  const frames = [];
+  // Commits that land while the spring runs, as FF's page has them (a hover measurement, a signal): the third and
+  // the sixth frame re-render the card with the same question.
+  let index = 0;
+  const tick = () => {
+    const t = performance.now() - t0;
+    frames.push(Object.assign({ t }, sample()));
+    index += 1;
+    if (index === 3 || index === 6) R.flushSync(() => root.render(h(App, { question: 1, tick: index })));
+    if (t < 1600) { requestAnimationFrame(tick); return; }
+    document.documentElement.setAttribute("data-oracle", JSON.stringify({ before: beforeRects, after: sample().boxes, frames }));
+    window.__oracle = true;
+  };
+  R.flushSync(() => root.render(h(App, { question: 1, tick: 0 })));
+  tick();
+};
+})();
+</script>
+</body>
+</html>
