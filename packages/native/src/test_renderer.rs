@@ -677,7 +677,7 @@ impl TestGpuixRenderer {
     /// same `to_gpui_window_options`. The size defaults to 1280x800 (not the live 800x600),
     /// and `focus` to false: the window is offscreen and must not take the OS's keyboard.
     /// `fullscreen` is ignored, because a fullscreen window would leave the offscreen
-    /// position; see the README's test renderer section for what else the window cannot
+    /// position; see docs/reference.md's test renderer section for what else the window cannot
     /// represent. `scaleFactor` is the window's device pixels per CSS px, `1` when unset.
     #[napi(constructor)]
     pub fn new(options: Option<WindowOptions>, scale_factor: Option<f64>) -> Result<Self> {

@@ -1,5 +1,5 @@
 /// The test window takes the options a live window does, through the same translation, so what
-/// the offscreen window can represent behaves as it does live. See the README's Testing section
+/// the offscreen window can represent behaves as it does live. See docs/reference.md's Testing section
 /// for what it cannot.
 
 import React from "react"

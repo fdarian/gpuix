@@ -456,8 +456,8 @@ interface NativeTestRendererConstructor {
  * The options a live window takes (`WindowOptions`), applied to the offscreen test window by
  * the same translation, plus the fonts option and the test hooks below. The size defaults to
  * 1280x800 and `focus` to false, since the window is offscreen and must not take the OS's
- * keyboard. `fullscreen`, `appId`, `appName` and `layerShell` have no effect on it; the README's
- * Testing section lists what each option does there.
+ * keyboard. `fullscreen`, `appId`, `appName` and `layerShell` have no effect on it; the
+ * docs/reference.md's Testing section lists what each option does there.
  */
 export interface TestRendererOptions extends WindowOptions, WindowFontsOption {
   /**

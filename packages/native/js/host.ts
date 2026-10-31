@@ -590,7 +590,7 @@ export interface StyleDesc {
    *  `position: absolute` or `fixed`, they are `"block"`, `"flex"`, `"grid"` and `"table"`.
    *  The table values: `"table"`, `"table-row-group"`, `"table-header-group"`,
    *  `"table-footer-group"`, `"table-row"`, `"table-cell"`, `"table-caption"`, `"table-column"`
-   *  and `"table-column-group"` (see the README's Tables section; `colSpan`, `rowSpan` and
+   *  and `"table-column-group"` (see docs/reference.md's Tables section; `colSpan`, `rowSpan` and
    *  `span` are props of the element). */
   display?: string
   visibility?: string
@@ -1547,7 +1547,7 @@ export type StateStyleDesc = Omit<
 export type GroupStateStyleDesc = StateStyleDesc & { group?: string | true }
 
 // Element types supported by GPUIX. `span` is inline: it, raw strings and a
-// `text` inside a `text` or `span` are runs of one paragraph, see README
+// `text` inside a `text` or `span` are runs of one paragraph, see docs/reference.md
 // "Inline text".
 export type ElementType =
   | "div"
