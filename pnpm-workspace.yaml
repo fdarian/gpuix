@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - examples
+allowBuilds:
+  '@kmamal/sdl': false
+  cbor-extract: false
+  esbuild: false
+  msgpackr-extract: false
