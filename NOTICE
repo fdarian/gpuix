@@ -1,0 +1,9 @@
+Alpina
+Copyright 2026 Farrel Fachrizal Darian
+
+Alpina is a fork of gpuix (https://github.com/remorses/gpuix)
+Copyright 2026 remorses
+Licensed under the Apache License, Version 2.0.
+
+Alpina modifies files from gpuix. The Git history of this repository records
+each change. Third-party source is listed in THIRD_PARTY_NOTICES.md.
