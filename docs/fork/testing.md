@@ -6,7 +6,7 @@ How the fork is tested: the commands, the Chrome oracles that pin DOM/CSS behavi
 
 ```bash
 cd packages/native && cargo test --lib          # Rust unit tests
-cd packages/native && bun run test              # vitest; needs react and the wasm build for one test
+cd packages/native && bun run test              # vitest; one test skips without the wasm build
 cd packages/react && bun run test               # vitest, needs the addon built
 cd packages/solid && bun run test               # builds, then bun test
 cd examples && bun run test                     # the examples suite; *.perf.test.tsx is excluded
@@ -16,7 +16,7 @@ cd packages/native/examples/webview-e2e && bun run e2e         # <webview> on re
 ```
 
 - Run a package's suite with `bun run test`, not a bare `bun test`: `packages/react`, `packages/native` and `examples` are vitest, so Bun's own runner fails on their `vitest` imports. `packages/solid` is `bun:test` and its script builds first.
-- `packages/native` has one test that bundles both adapters for the browser. It needs `packages/react` built and `bun run build:web` (nightly Rust and `wasm-bindgen`), so it fails on a machine without them. That is unrelated to the fork.
+- `packages/native` has one test that bundles both adapters for the browser. It needs `packages/react` built and `bun run build:web` (nightly Rust and `wasm-bindgen`), so it is skipped while `packages/native/wasm/gpuix-web.js` is absent, which is every checkout and CI run that does not build the wasm.
 - The `*.perf.test.tsx` files in `examples/` run with `bun run test:perf` (chat, timeline and rerender) or one at a time, through the scripts that set `NODE_ENV=production`. Use a release addon: a leftover debug build times like a regression.
 - Tests that need the native addon are `describe.skip` when it is missing (`hasNativeTestRenderer`), so a green run without the addon proves little.
 - Almost none of the tests needs a real window: the test renderer (`createTestRoot`) draws offscreen. The macOS-only pieces (pointer lock, Metal effects, the OS reduced-motion read, the real window drag) were therefore checked against a simulated platform, not a live one. The exceptions open a real window: zed's `native_surface` test and the `<webview>` e2e below.
