@@ -49,7 +49,7 @@ Patches 1 and 2 fix two of the three causes of the slow scrolling. Upstream land
 | [working-on-the-fork.md](working-on-the-fork.md) | Repos and branches, the commit rules, resolving conflicts (what a pick has to preserve), building, where new code goes, platforms. |
 | [syncing-upstream.md](syncing-upstream.md) | The ledger of what is reviewed from upstream, and the procedure for taking, adapting or skipping a commit. |
 | [docs/fork/frames-and-wakes.md](frames-and-wakes.md) | Patches 1 and 2, how JS is woken (run-loop watch, input observer), windows that are not key, idle cost and memory footprint. |
-| [docs/fork/window.md](window.md) | Appearance, the `fonts` option, `appRegion` drag regions, window placement and `screen` displays. |
+| [docs/fork/window.md](window.md) | Appearance, the `fonts` option, `appRegion` drag regions, the menu bar rules, window placement and `screen` displays. |
 | [docs/fork/events-and-input.md](events-and-input.md) | Pointer events, focus, keyboard, forms, accessibility, platform APIs, state styles from pointer and focus, inline span listeners. |
 | [docs/fork/layout.md](layout.md) | Positioning, stacking, grid, tables, container queries, shorthands, lengths, intrinsic widths, flex rows sized by their items, `flow-root`, the persistent layout engine and its taffy cache, relayout boundaries, layout containment, fractional units, baselines. |
 | [docs/fork/text.md](text.md) | Inline text and spans, atomic inlines, white space, line boxes, wrapping and line breaking (the fit test, soft hyphens, overflowing rows), text-box trim, decorations, fonts (fallback advances, script runs, `text-spacing-trim`), glyph positions, text measure keys. |
@@ -62,7 +62,7 @@ Patches 1 and 2 fix two of the three causes of the slow scrolling. Upstream land
 | [docs/fork/observers-and-content-visibility.md](observers-and-content-visibility.md) | `onLayout`, `ResizeObserver`, `IntersectionObserver`, report order; `content-visibility` and what it does to events, accessibility, Tab and find. |
 | [docs/fork/webview.md](webview.md) | `<webview>` and native window composition: the placeholder and layer cut, geometry, input and focus handoff, the wake timer, the zed modules and how they differ from zed PR #62379, tests. |
 | [docs/fork/nativeview.md](nativeview.md) | `<nativeview>` for library authors: `onAttach` / `onDetach` and the lifetime rule, a minimal library, geometry, `overflow` clipping, pointer and focus, nested views, tests. |
-| [docs/fork/testing.md](testing.md) | Test commands, Chrome oracles, the test renderer, the `<webview>` e2e, switches and counters, the test clock, the retention verifier, fuzzers, perf measurement and known failing budgets. |
+| [docs/fork/testing.md](testing.md) | Test commands, Chrome oracles, the test renderer, the `<webview>` e2e, switches and counters, the test clock, the retention verifier, fuzzers, perf measurement and known failing budgets, driving a live window. |
 | [docs/fork/deviations.md](deviations.md) | Every known deviation from Chrome, the DOM, Electron and Motion, one section per topic, plus the other-platform gaps. |
 
 ## Where notes go

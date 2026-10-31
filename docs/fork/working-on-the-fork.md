@@ -197,6 +197,8 @@ See [paint-and-transforms.md](paint-and-transforms.md).
   missing from it fails to compile, and every area that adds a style field (layout, paint, motion, drag regions) touches it.
   It also lists `container_type`, `container_name`, `container` and the `@container` blocks, and layers `custom_properties`.
 - **A change to `Quad` needs the shader and the Rust struct to move together,** on every backend, or the stride checks fail.
+  `Underline` is a GPU struct too: change the Rust struct, `shaders.metal`, `shaders.wgsl`, `shaders_webgl.wgsl` (stride and
+  loader) and `shaders.hlsl` together.
 - **`StyleDesc::differs_only_in_paint`** (`style.rs`) and **`AnimProp::paints_only`** are the paint-only key list. A style
   field that is not copied over the clone is a layout key, which is the safe side. A field added to the list must not move or
   size a box, change a stacking context or a clip, or start a motion, or a bounds read after the write answers from a stale
@@ -366,6 +368,13 @@ append when each frame reaches the screen to that file. There is no separate tes
 [frames-and-wakes.md](frames-and-wakes.md#no-inline-draws-in-real-windows-patch-1)), so `TestGpuixRenderer` is in the same
 file.
 
+After a reconciler change in `packages/react`, run `bun run build` there. The `examples/` apps and `bun --hot chat.tsx` load
+`packages/react/dist`, while its vitest suite loads `src`, so a fix can pass one and fail the other. Never run `bun run clean`
+there while the web dev server (`bun scripts/web.ts`) is up: the folder is in the server's module graph, and removing it
+corrupts the registry until the server restarts (every page load fails with `Failed to load bundled module
+'packages/react/dist/index.js'`). `build` is plain `tsc` for that reason and the wipe is a separate script; clean first, then
+start the server.
+
 Some machines need workarounds that do not belong in the fork: no `metal` compiler (enable `gpui_macos/runtime_shaders`), or
 an Xcode license that has not been accepted (point `DEVELOPER_DIR` at the Command Line Tools). The demo that uses this fork
 keeps its own build script for them.
@@ -375,6 +384,21 @@ keeps its own build script for them.
 New code lives in new modules (`packages/native/src/events/`, `scroll.rs`, `layout/`, `css/`, `motion/`,
 `packages/native/js/events/` and so on). `renderer.rs`, `style.rs` and `host.ts` get wiring only, which keeps picking from
 upstream tractable.
+
+- **Layout numbers live in `Theme::metrics`, not in a Rust `const`.** A new number that decides layout goes on `Metrics` with a
+  default, into `MetricsOverride` and into the `GpuixMetrics` TypeScript interface, so a design tweak is a re-render and not a
+  native rebuild. It also goes into `Metrics::hash_diff_layout_into` if it changes the height of a `<diff>` row, since a changed
+  hash resets the list; the markdown and code metrics stay out of it because a reset drops the scroll anchor.
+- **Framework-neutral TypeScript belongs in `@gpuix/native`, not in an adapter.** `@gpuix/native/host` owns host contracts,
+  mutation batching, renderer-local ids, event routing, observers and text search. `testing` and `automation` own the shared
+  test wrapper and automation client. None of these subpaths loads the `.node` addon at import time except `testing`, which
+  constructs the native test class. React and Solid keep framework scheduling, context, JSX integration and components.
+- **The mutation queue carries raw objects.** `setStyle` and `setCustomProp` take raw JSON values; encoding either before the
+  outer batch is stringified adds a second parse and turns a string such as `"top"` into nested JSON.
+- **Ported code.** `text/`, `syntax/`, `markdown/`, `diff/`, `theme.rs`, `custom_elements/code.rs`, `custom_elements/diff.rs` and
+  the caret blink in `custom_elements/input.rs` come from [Comet](https://github.com/zeronsh/comet) (MIT); each file names its
+  original in its header and `THIRD_PARTY_NOTICES.md` has the table. Read the original first when fixing one: it usually says
+  why the code is shaped as it is.
 
 `docs/reference.md` is the API contract, as `AGENTS.md` requires: behaviour is documented there, and `docs/fork/` holds the
 design and the reasons.

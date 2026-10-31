@@ -113,6 +113,16 @@ nothing runs nested inside GPUI's mouse dispatch, and starting the move there is
 own title bar do. Whether the mouse-up arrives is unverified, and the bookkeeping reset is right either way. Windows and
 Linux were written, not compiled.
 
+## The macOS menu bar
+
+[docs/reference.md](../reference.md#the-macos-menu-bar) describes the menus an app gets. The rules behind them are in `packages/native/src/app_menu.rs`; two are not visible from the API.
+
+- **No Edit menu with `⌘C` / `⌘V` / `⌘X` / `⌘A`.** AppKit consumes a key equivalent before the window sees the key event, so those items would take the keystroke away from the selection listener in `text::paint` and from the per-focus clipboard handling in `custom_elements::input`. An Edit menu needs those handlers moved into GPUI actions first.
+- **The system menu bar is outside the window,** so the automation API cannot see it. Verify it through the accessibility tree of the app you launched, by its pid, and not with a screenshot:
+  ```bash
+  osascript -e 'tell application "System Events" to tell (first process whose unix id is PID) to get name of every menu bar item of menu bar 1'
+  ```
+
 ## Window placement and displays
 
 An app can put a window on a second monitor and learn where the monitors are. Electron's answer is `x` / `y` in the window
