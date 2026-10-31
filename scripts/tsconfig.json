@@ -8,7 +8,7 @@
     "noImplicitAny": false,
     "skipLibCheck": true,
     "noEmit": true,
-    // The workspace hoists @types/node under packages/react. @types/bun is a
+    // @types/node is only declared by packages/react, and pnpm links it there. @types/bun is a
     // root devDependency: it types `Bun.serve` and the `*.html` import that the
     // dev server uses as its bundler entry.
     "typeRoots": ["../packages/react/node_modules/@types", "../node_modules/@types"],
